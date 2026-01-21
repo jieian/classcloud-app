@@ -1,0 +1,71 @@
+html, body {
+  background-color: #CFE3BE;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.centerWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+.logo {
+  max-width: 50px;
+  width: 100%;
+  height: auto;
+  margin-left: 10px;
+  margin-bottom: 20px;
+}
+
+.classCloud {
+  margin-bottom: 15px;
+  font-size: 16px;
+  font-weight: 550;
+}
+
+.greenColor {
+  color: #597D37;
+}
+
+.welcomeText {
+  font-family: "Poppins";
+  font-size: clamp(1.4rem, 1rem + 0.5vw, 1.6rem);
+  margin-bottom: 15px;
+}
+
+.greenInputLabel {
+  color: #597D37;
+  font-weight: 500;
+}
+
+.greenInputPlaceholder::placeholder {
+  color: #9CA89E;
+  opacity: 1;
+}
+
+.greenInputBorder {
+  border: 1px solid #45903B;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.greenInputBorder:focus {
+  border-color: #45903B;
+  box-shadow: 0 0 0 2px rgba(69, 144, 59, 0.2);
+}
+
+.redInputBorder {
+  border: 1px solid #ff4d4f;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.redInputBorder:focus {
+  border-color: #ff4d4f;
+  box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.2);
+}
+
+.blockQuote{
+  color: #2F421F;
+}

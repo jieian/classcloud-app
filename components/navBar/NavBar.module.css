@@ -1,0 +1,340 @@
+/* components/NavBar.module.css */
+
+/* --- DESKTOP STYLES (768px and up) --- */
+@media (min-width: 768px) {
+  .navbar {
+    background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    height: 100vh;
+    width: 70px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+    position: relative;
+    transition: width 0.2s ease;
+  }
+
+  .logo {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 70px;
+    padding: var(--mantine-spacing-md);
+    border-bottom: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+    margin-bottom: var(--mantine-spacing-md);
+  }
+
+  .aside {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex-grow: 1;
+    padding: var(--mantine-spacing-xs) 0;
+    gap: 4px;
+  }
+
+  .spacer {
+    flex-grow: 1;
+  }
+
+  .mainLink {
+    width: 50px;
+    height: 50px;
+    border-radius: var(--mantine-radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-1));
+    transition: all 0.2s ease;
+    position: relative;
+    cursor: pointer;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: -2px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 0;
+      background-color: #4eae4a;
+      border-radius: 0 2px 2px 0;
+      transition: height 0.2s ease;
+    }
+
+    &:hover {
+      background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+      color: light-dark(var(--mantine-color-dark), var(--mantine-color-white));
+      transform: translateX(2px);
+    }
+
+    &[data-active] {
+      &,
+      &:hover {
+        background-color: light-dark(rgba(78, 174, 74, 0.1), rgba(78, 174, 74, 0.15));
+        color: #4eae4a;
+        transform: translateX(0);
+      }
+
+      &::before {
+        height: 24px;
+      }
+    }
+  }
+
+  .drawer {
+    position: absolute;
+    top: 0;
+    left: 70px;
+    width: 260px;
+    height: 100%;
+    background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.25s ease-out;
+    border-right: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+/* --- MOBILE STYLES (below 768px) --- */
+@media (max-width: 767.9px) {
+  .navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    background-color: light-dark(var(--mantine-color-white), var(--mantine-color-dark-7));
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.2);
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .navbar.open {
+    transform: translateX(0);
+  }
+
+  /* Logo and Close Button Container */
+  .logo {
+    padding: var(--mantine-spacing-lg);
+    border-bottom: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 70px;
+  }
+
+  .mobileCloseButton {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--mantine-radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2));
+    transition: all 0.2s ease;
+    cursor: pointer;
+
+    &:hover {
+      background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+    }
+
+    &:active {
+      transform: scale(0.95);
+    }
+  }
+
+  .aside {
+    flex-grow: 1;
+    padding: var(--mantine-spacing-md);
+    gap: 4px;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .spacer {
+    flex-grow: 1;
+    min-height: 20px;
+  }
+
+  .mainLink {
+    width: 100%;
+    height: 48px;
+    justify-content: flex-start;
+    padding: 0 var(--mantine-spacing-md);
+    border-radius: var(--mantine-radius-md);
+    gap: var(--mantine-spacing-md);
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
+    font-size: var(--mantine-font-size-sm);
+    font-weight: 500;
+
+    svg {
+      flex-shrink: 0;
+    }
+
+    &:hover {
+      background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-6));
+    }
+
+    &:active {
+      transform: scale(0.98);
+    }
+
+    &[data-active] {
+      background-color: light-dark(rgba(78, 174, 74, 0.12), rgba(78, 174, 74, 0.18));
+      color: #4eae4a;
+      font-weight: 600;
+    }
+  }
+
+  .drawer {
+    position: static;
+    width: 100%;
+    height: auto;
+    box-shadow: none;
+    border: none;
+    border-top: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+    margin-top: var(--mantine-spacing-xs);
+    background-color: light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-6));
+    border-radius: 0;
+    padding-top: var(--mantine-spacing-xs);
+  }
+
+  .drawerHeader {
+    padding: var(--mantine-spacing-sm) var(--mantine-spacing-md);
+    border-bottom: none;
+    min-height: auto;
+  }
+
+  .drawerCloseButton {
+    display: none;
+  }
+}
+
+/* --- SHARED STYLES (apply to both) --- */
+.drawerHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--mantine-spacing-lg) var(--mantine-spacing-md);
+  border-bottom: 1px solid light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+  min-height: 60px;
+}
+
+.drawerCloseButton {
+  color: light-dark(var(--mantine-color-gray-5), var(--mantine-color-gray-4));
+  border-radius: var(--mantine-radius-md);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+
+  &:hover {
+    background-color: light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-5));
+    color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-gray-2));
+  }
+}
+
+.drawerContent {
+  padding: var(--mantine-spacing-xs) 0;
+  flex-grow: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.link {
+  display: block;
+  text-decoration: none;
+  color: light-dark(var(--mantine-color-gray-7), var(--mantine-color-dark-0));
+  padding: 0 var(--mantine-spacing-md);
+  font-size: var(--mantine-font-size-sm);
+  margin: 2px var(--mantine-spacing-md);
+  font-weight: 500;
+  height: 40px;
+  line-height: 40px;
+  border-radius: var(--mantine-radius-md);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 3px;
+    height: 100%;
+    background-color: #4eae4a;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  &:hover {
+    background-color: light-dark(var(--mantine-color-gray-1), var(--mantine-color-dark-5));
+    color: light-dark(var(--mantine-color-dark), var(--mantine-color-white));
+    padding-left: calc(var(--mantine-spacing-md) + 4px);
+
+    &::before {
+      transform: translateX(0);
+    }
+  }
+
+  &[data-active] {
+    &,
+    &:hover {
+      background-color: #4eae4a;
+      color: var(--mantine-color-white);
+      font-weight: 600;
+      padding-left: var(--mantine-spacing-md);
+    }
+
+    &::before {
+      transform: translateX(-100%);
+    }
+  }
+}
+
+/* Smooth scrollbar */
+.drawerContent::-webkit-scrollbar,
+.aside::-webkit-scrollbar {
+  width: 6px;
+}
+
+.drawerContent::-webkit-scrollbar-track,
+.aside::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.drawerContent::-webkit-scrollbar-thumb,
+.aside::-webkit-scrollbar-thumb {
+  background: light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border-radius: 3px;
+}
+
+.drawerContent::-webkit-scrollbar-thumb:hover,
+.aside::-webkit-scrollbar-thumb:hover {
+  background: light-dark(var(--mantine-color-gray-4), var(--mantine-color-dark-3));
+}
