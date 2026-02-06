@@ -1,8 +1,8 @@
 // components/NavBar.tsx
 "use client";
-
 import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   IconHome2,
   IconUsers,
@@ -19,8 +19,24 @@ import { useMediaQuery } from "@mantine/hooks";
 import classes from "./NavBar.module.css";
 import { useAuth } from "@/context/AuthContext";
 
+// Add type definitions
+type Sublink = {
+  label: string;
+  key: string;
+  href: string;
+  requiredPermissions: string[];
+};
+
+type NavigationLink = {
+  icon: React.ComponentType<{ size?: number; stroke?: number }>;
+  label: string;
+  href: string;
+  sublinks: Sublink[];
+  requiredPermissions: string[];
+};
+
 // 1. DATA STRUCTURE (with hrefs and permissions)
-const navigationData = [
+const navigationData: NavigationLink[] = [
   {
     icon: IconHome2,
     label: "Home",
@@ -109,16 +125,12 @@ const navigationData = [
 ];
 
 export default function Navbar() {
+  const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const [activeMainLink, setActiveMainLink] = useState("Home");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState("");
-  const [drawerSublinks, setDrawerSublinks] = useState<
-    (typeof navigationData)[0]["sublinks"]
-  >([]);
-  const [activeSublink, setActiveSublink] = useState<string | null>(null);
+  const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
 
   const { signOut, permissions, loading } = useAuth();
 
@@ -131,34 +143,37 @@ export default function Navbar() {
     [permissions],
   );
 
-  // Filter navigation data based on user permissions
+  // Filter navigation data based on user permissions - optimized with reduce
   const filteredNavigationData = useMemo(() => {
-    return navigationData
-      .filter((link) => hasPermission(link.requiredPermissions))
-      .map((link) => ({
+    return navigationData.reduce<NavigationLink[]>((acc, link) => {
+      // Skip if user doesn't have permission for parent
+      if (!hasPermission(link.requiredPermissions)) return acc;
+
+      // Filter sublinks
+      const filteredSublinks = link.sublinks.filter((sublink) =>
+        hasPermission(sublink.requiredPermissions),
+      );
+
+      acc.push({
         ...link,
-        sublinks: link.sublinks.filter((sublink) =>
-          hasPermission(sublink.requiredPermissions),
-        ),
-      }));
-  }, [hasPermission]);
+        sublinks: filteredSublinks,
+      });
+
+      return acc;
+    }, []);
+  }, [hasPermission, permissions]);
 
   // HANDLERS
-  const handleMainLinkClick = (link: (typeof navigationData)[0]) => {
-    setActiveMainLink(link.label);
-    setActiveSublink(null);
-
+  const handleMainLinkClick = (link: NavigationLink) => {
     if (link.sublinks.length > 0) {
       setIsDrawerOpen(true);
       setDrawerTitle(link.label);
       setDrawerSublinks(link.sublinks);
-      setActiveSublink(link.sublinks[0].label);
     } else {
       setIsDrawerOpen(false);
-    }
-
-    if (isMobile && link.sublinks.length === 0) {
-      setIsMobileMenuOpen(false);
+      if (isMobile) {
+        setIsMobileMenuOpen(false);
+      }
     }
   };
 
@@ -170,8 +185,7 @@ export default function Navbar() {
     if (isMobile && isMobileMenuOpen) setIsMobileMenuOpen(false);
   };
 
-  const handleSimpleLinkClick = (label: string) => {
-    setActiveMainLink(label);
+  const handleSimpleLinkClick = () => {
     setIsDrawerOpen(false);
     if (isMobile) setIsMobileMenuOpen(false);
   };
@@ -181,42 +195,56 @@ export default function Navbar() {
     signOut();
   };
 
-  // JSX FOR LINKS
-  const mainLinks = filteredNavigationData.map((link) => (
-    <Tooltip
-      label={link.label}
-      position="right"
-      withArrow
-      disabled={isMobile}
-      key={link.label}
-    >
-      <Link href={link.href} style={{ textDecoration: "none" }}>
-        <UnstyledButton
-          onClick={() => handleMainLinkClick(link)}
-          className={classes.mainLink}
-          data-active={link.label === activeMainLink || undefined}
-        >
-          <link.icon size={22} stroke={1.5} />
-          {isMobile && <span>{link.label}</span>}
-        </UnstyledButton>
-      </Link>
-    </Tooltip>
-  ));
+  // Early return AFTER all hooks - this is the fix!
+  if (loading) {
+    return null;
+  }
 
-  const drawerLinks = drawerSublinks.map((sublink) => (
-    <Link
-      href={sublink.href}
-      key={sublink.key}
-      className={classes.link}
-      data-active={activeSublink === sublink.label || undefined}
-      onClick={() => {
-        setActiveSublink(sublink.label);
-        if (isMobile) setIsMobileMenuOpen(false);
-      }}
-    >
-      {sublink.label}
-    </Link>
-  ));
+  // JSX FOR LINKS - using pathname for active state
+  const mainLinks = filteredNavigationData.map((link) => {
+    const isActive =
+      pathname === link.href ||
+      (link.sublinks.length > 0 && pathname.startsWith(link.href + "/"));
+
+    return (
+      <Tooltip
+        label={link.label}
+        position="right"
+        withArrow
+        disabled={isMobile}
+        key={link.label}
+      >
+        <Link href={link.href} style={{ textDecoration: "none" }}>
+          <UnstyledButton
+            onClick={() => handleMainLinkClick(link)}
+            className={classes.mainLink}
+            data-active={isActive || undefined}
+          >
+            <link.icon size={22} stroke={1.5} />
+            {isMobile && <span>{link.label}</span>}
+          </UnstyledButton>
+        </Link>
+      </Tooltip>
+    );
+  });
+
+  const drawerLinks = drawerSublinks.map((sublink: Sublink) => {
+    const isActive = pathname === sublink.href;
+
+    return (
+      <Link
+        href={sublink.href}
+        key={sublink.key}
+        className={classes.link}
+        data-active={isActive || undefined}
+        onClick={() => {
+          if (isMobile) setIsMobileMenuOpen(false);
+        }}
+      >
+        {sublink.label}
+      </Link>
+    );
+  });
 
   return (
     <>
@@ -272,7 +300,6 @@ export default function Navbar() {
               style={{ height: "32px", width: "auto" }}
             />
           )}
-
           {isMobile && (
             <>
               <img
@@ -293,7 +320,6 @@ export default function Navbar() {
         {/* Main Navigation Links and Bottom Actions */}
         <div className={classes.aside}>
           {mainLinks}
-
           <div className={classes.spacer}></div>
 
           {/* Account Settings Link */}
@@ -305,9 +331,9 @@ export default function Navbar() {
           >
             <Link href="/settings" style={{ textDecoration: "none" }}>
               <UnstyledButton
-                onClick={() => handleSimpleLinkClick("Account Settings")}
+                onClick={handleSimpleLinkClick}
                 className={classes.mainLink}
-                data-active={"Account Settings" === activeMainLink || undefined}
+                data-active={pathname === "/settings" || undefined}
               >
                 <IconSettings size={22} stroke={1.5} />
                 {isMobile && <span>Account Settings</span>}

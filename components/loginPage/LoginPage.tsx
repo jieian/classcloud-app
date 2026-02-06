@@ -41,8 +41,6 @@ export default function LoginPage() {
         message: "Welcome Back!",
         type: "success",
       });
-
-      router.refresh();
     } catch (authError: any) {
       setError(true);
       notify({

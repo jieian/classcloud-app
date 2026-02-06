@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { MantineProvider } from "@mantine/core";
+import { ModalsProvider } from "@mantine/modals";
 import "@mantine/core/styles.css";
 import "./globals.css";
 
@@ -42,8 +43,10 @@ export default function RootLayout({
             headings: { fontFamily: "Geist, sans-serif" },
           }}
         >
-          <Notifications position="bottom-right" />
-          <AuthProvider>{children}</AuthProvider>
+          <ModalsProvider>
+            <Notifications position="bottom-right" />
+            <AuthProvider>{children}</AuthProvider>
+          </ModalsProvider>
         </MantineProvider>
       </body>
     </html>

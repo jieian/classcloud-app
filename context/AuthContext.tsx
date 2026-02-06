@@ -36,10 +36,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const fetchUserRoles = async (authUserId: string) => {
+  const fetchUserRoles = async (authUserId: string): Promise<Role[]> => {
     const { data, error } = await supabase
       .from("users")
-      .select("user_roles(role_id, roles(name))")
+      .select("user_roles(role_id, roles(role_id, name))")
       .eq("id", authUserId)
       .maybeSingle();
 
@@ -48,8 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    const roles = (data?.user_roles ?? []).map((r: any) => r.roles.name);
-    return roles;
+    return (data?.user_roles ?? []).map((r: any) => ({
+      role_id: r.roles.role_id,
+      name: r.roles.name,
+    }));
   };
 
   const fetchUserPermissions = async (authUserId: string) => {
@@ -113,17 +115,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-    if (error) throw error;
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (error) throw error;
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = "/login";
+    }
   };
 
   return (
