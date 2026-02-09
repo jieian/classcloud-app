@@ -195,10 +195,8 @@ export default function Navbar() {
     signOut();
   };
 
-  // Early return AFTER all hooks - this is the fix!
-  if (loading) {
-    return null;
-  }
+  // Don't hide navbar while loading - just show it with filtered navigation
+  // The permissions array will be empty initially, then populate when loaded
 
   // JSX FOR LINKS - using pathname for active state
   const mainLinks = filteredNavigationData.map((link) => {

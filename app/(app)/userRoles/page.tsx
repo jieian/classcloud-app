@@ -1,12 +1,19 @@
 // app/(app)/userRoles/page.tsx
 import ProtectedRoute from "@/components/ProtectedRoute";
-import UsersTableWrapper from "@/components/userRoles/UsersTableWrapper";
+import { PendingSection } from "./_components/PendingSection";
+import { ActiveUsersSection } from "./_components/ActiveUsersSection";
+import { Divider } from "@mantine/core";
 
 export default function UserRoles() {
   return (
     <ProtectedRoute requiredPermissions={["access_user_management"]}>
-      <h1 style={{ marginBottom: "var(--mantine-spacing-lg)" }}>User Roles</h1>
-      <UsersTableWrapper />
+      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
+        Users and Roles Management
+      </h1>
+      <Divider my="lg" />
+      <PendingSection />
+      <Divider my="lg" />
+      <ActiveUsersSection />
     </ProtectedRoute>
   );
 }

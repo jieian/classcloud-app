@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Login Page Component
+ * Updated to use Supabase client directly instead of AuthContext
+ * AuthContext is only available in authenticated routes
+ */
+
 import {
   Button,
   Checkbox,
@@ -18,29 +24,39 @@ import CircleBackground from "@/components/circleBackground/circleBackground";
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAuth } from "@/context/AuthContext";
+import { getSupabase } from "@/lib/supabase/client";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, loading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const supabase = getSupabase();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(false);
+    setLoading(true);
 
     try {
-      await signIn(email, password);
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-      // Just show the notification. The AuthContext will handle the redirect.
+      if (authError) throw authError;
+
+      // Show success notification
       notify({
         title: "Login successful",
         message: "Welcome Back!",
         type: "success",
       });
+
+      // Redirect to home
+      router.push("/");
     } catch (authError: any) {
       setError(true);
       notify({
@@ -48,6 +64,8 @@ export default function LoginPage() {
         message: authError.message,
         type: "error",
       });
+    } finally {
+      setLoading(false);
     }
   };
 

@@ -14,15 +14,15 @@ import {
   TextInput,
   Tooltip,
   ActionIcon,
+  Skeleton,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useEffect, useState } from "react";
 import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import type { UserWithRoles } from "@/lib/userRolesService";
-import { updateUser } from "@/lib/userUpdateService";
-import { fetchAllRoles } from "@/lib/userUpdateService";
+import type { UserWithRoles } from "../_lib";
+import { updateUser, fetchAllRoles } from "../_lib";
 
 interface EditUserDrawerProps {
   opened: boolean;
@@ -85,8 +85,14 @@ function PasswordRequirement({
   );
 }
 
+/**
+ * Converts string to Title Case and normalizes whitespace
+ * "  jOHN    DOE  " → "John Doe"
+ */
 function toTitleCase(str: string): string {
   return str
+    .trim()
+    .replace(/\s+/g, " ") // Collapse multiple spaces to single space
     .toLowerCase()
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -103,6 +109,7 @@ export default function EditUserDrawer({
     Array<{ role_id: number; name: string }>
   >([]);
   const [loading, setLoading] = useState(false);
+  const [loadingRoles, setLoadingRoles] = useState(false);
 
   const form = useForm<FormValues>({
     validateInputOnChange: true,
@@ -118,25 +125,37 @@ export default function EditUserDrawer({
     },
     validate: {
       first_name: (value) => {
-        if (!value.trim()) return "First name is required";
-        if (!/^[a-zA-Z\s]+$/.test(value))
-          return "First name must contain only letters";
+        const trimmed = value.trim();
+        if (!trimmed) return "First name is required";
+        if (trimmed.length > 100) return "First name must be 100 characters or less";
+        // No leading/trailing/consecutive spaces, letters only
+        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
+          return "First name must contain only letters (no extra spaces)";
         return null;
       },
       middle_name: (value) => {
-        if (value && !/^[a-zA-Z\s]+$/.test(value))
-          return "Middle name must contain only letters";
+        if (!value) return null; // Optional field
+        const trimmed = value.trim();
+        if (trimmed.length > 100) return "Middle name must be 100 characters or less";
+        // No leading/trailing/consecutive spaces, letters only
+        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
+          return "Middle name must contain only letters (no extra spaces)";
         return null;
       },
       last_name: (value) => {
-        if (!value.trim()) return "Last name is required";
-        if (!/^[a-zA-Z\s]+$/.test(value))
-          return "Last name must contain only letters";
+        const trimmed = value.trim();
+        if (!trimmed) return "Last name is required";
+        if (trimmed.length > 100) return "Last name must be 100 characters or less";
+        // No leading/trailing/consecutive spaces, letters only
+        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
+          return "Last name must contain only letters (no extra spaces)";
         return null;
       },
       email: (value) => {
-        if (!value.trim()) return "Email is required";
-        if (!/^\S+@\S+\.\S+$/.test(value)) return "Invalid email format";
+        const trimmed = value.trim();
+        if (!trimmed) return "Email is required";
+        if (trimmed.length > 255) return "Email must be 255 characters or less";
+        if (!/^\S+@\S+\.\S+$/.test(trimmed)) return "Invalid email format";
         return null;
       },
       newPassword: (value, values) => {
@@ -179,16 +198,38 @@ export default function EditUserDrawer({
     }
   }, [opened, user]);
 
+  // Warn user before leaving page with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (form.isDirty() && opened) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [form.isDirty(), opened]);
+
   async function loadRoles() {
     try {
+      setLoadingRoles(true);
       const roles = await fetchAllRoles();
       setAvailableRoles(roles);
     } catch (error) {
+      console.error("Failed to load roles:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to load roles. Please check console for details.";
       notifications.show({
-        title: "Error",
-        message: "Failed to load roles",
+        title: "Error Loading Roles",
+        message: errorMessage,
         color: "red",
+        autoClose: 10000, // Show for 10 seconds so user can read it
       });
+    } finally {
+      setLoadingRoles(false);
     }
   }
 
@@ -335,8 +376,10 @@ export default function EditUserDrawer({
               label="First Name"
               placeholder="Enter first name"
               required
+              maxLength={100}
               withErrorStyles
               {...form.getInputProps("first_name")}
+              description={`${form.values.first_name.length}/100 characters`}
               rightSection={
                 form.errors.first_name ? (
                   <Tooltip label={form.errors.first_name} position="top">
@@ -351,8 +394,10 @@ export default function EditUserDrawer({
             <TextInput
               label="Middle Name"
               placeholder="Enter middle name (optional)"
+              maxLength={100}
               withErrorStyles
               {...form.getInputProps("middle_name")}
+              description={`${form.values.middle_name.length}/100 characters`}
               rightSection={
                 form.errors.middle_name ? (
                   <Tooltip label={form.errors.middle_name} position="top">
@@ -368,8 +413,10 @@ export default function EditUserDrawer({
               label="Last Name"
               placeholder="Enter last name"
               required
+              maxLength={100}
               withErrorStyles
               {...form.getInputProps("last_name")}
+              description={`${form.values.last_name.length}/100 characters`}
               rightSection={
                 form.errors.last_name ? (
                   <Tooltip label={form.errors.last_name} position="top">
@@ -385,8 +432,10 @@ export default function EditUserDrawer({
               label="Email"
               placeholder="Enter email"
               required
+              maxLength={255}
               withErrorStyles
               {...form.getInputProps("email")}
+              description={`${form.values.email.length}/255 characters`}
               rightSection={
                 form.errors.email ? (
                   <Tooltip label={form.errors.email} position="top">
@@ -456,16 +505,25 @@ export default function EditUserDrawer({
             <Text size="sm" fw={600} mb="md">
               Roles
             </Text>
-            <Checkbox.Group {...form.getInputProps("role_ids")}>
-              {availableRoles.map((role) => (
-                <Checkbox
-                  key={role.role_id}
-                  value={role.role_id.toString()}
-                  label={role.name}
-                  mb="sm"
-                />
-              ))}
-            </Checkbox.Group>
+            {loadingRoles ? (
+              <>
+                <Skeleton height={24} mb="sm" />
+                <Skeleton height={24} mb="sm" />
+                <Skeleton height={24} mb="sm" />
+                <Skeleton height={24} mb="sm" />
+              </>
+            ) : (
+              <Checkbox.Group {...form.getInputProps("role_ids")}>
+                {availableRoles.map((role) => (
+                  <Checkbox
+                    key={role.role_id}
+                    value={role.role_id.toString()}
+                    label={role.name}
+                    mb="sm"
+                  />
+                ))}
+              </Checkbox.Group>
+            )}
           </Grid.Col>
         </Grid>
 

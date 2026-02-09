@@ -1,7 +1,12 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+/**
+ * Protected Route Component
+ * Server Component that checks permissions before rendering
+ * Uses new @supabase/ssr utilities
+ */
+
 import { redirect } from "next/navigation";
 import { ReactNode } from "react";
+import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
 
 type UserPermission = {
   permission_name: string;
@@ -16,19 +21,7 @@ export default async function ProtectedRoute({
   children,
   requiredPermissions,
 }: ProtectedRouteProps) {
-  const cookieStore = await cookies();
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-      },
-    },
-  );
+  const supabase = await createServerSupabaseClient();
 
   const {
     data: { user },
@@ -37,18 +30,8 @@ export default async function ProtectedRoute({
   // If user is not logged in
   if (!user) redirect("/login");
 
-  // Fetch permissions using the UID stored in users.id
-  const { data, error } = await supabase.rpc("get_user_permissions", {
-    user_uuid: user.id,
-  });
-
-  if (error) {
-    console.error("Error fetching permissions:", error);
-    redirect("/error");
-  }
-
-  const permissions = data as UserPermission[];
-  const userPermissions = permissions?.map((p) => p.permission_name) || [];
+  // Fetch permissions using centralized server utility
+  const userPermissions = await getUserPermissions(user.id);
 
   const hasPermission = requiredPermissions.every((p) =>
     userPermissions.includes(p),

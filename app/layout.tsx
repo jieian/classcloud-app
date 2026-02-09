@@ -9,8 +9,6 @@ import "./globals.css";
 import { Notifications } from "@mantine/notifications";
 import "@mantine/notifications/styles.css";
 
-import { AuthProvider } from "@/context/AuthContext";
-
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -45,7 +43,7 @@ export default function RootLayout({
         >
           <ModalsProvider>
             <Notifications position="bottom-right" />
-            <AuthProvider>{children}</AuthProvider>
+            {children}
           </ModalsProvider>
         </MantineProvider>
       </body>

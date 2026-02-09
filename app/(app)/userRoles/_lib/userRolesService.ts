@@ -1,4 +1,6 @@
-import { supabase } from "./supabase-client";
+import { getSupabase } from "@/lib/supabase/client";
+
+const supabase = getSupabase();
 
 export interface Role {
   role_id: number;
@@ -21,6 +23,22 @@ export interface UserWithRoles {
   last_name: string;
   email: string;
   roles: Role[];
+}
+
+export async function fetchPendingUserCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from("users")
+    .select("*", { count: "exact", head: true })
+    .eq("active_status", 0);
+
+  if (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error fetching pending user count:", error);
+    }
+    throw error;
+  }
+
+  return count ?? 0;
 }
 
 export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
@@ -50,10 +68,16 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
       .order("first_name", { ascending: true });
 
     const queryTime = performance.now() - startTime;
-    console.log(`[Performance] Users query took ${queryTime.toFixed(2)}ms`);
+
+    // Performance logging only in development
+    if (process.env.NODE_ENV === "development") {
+      console.log(`[Performance] Users query took ${queryTime.toFixed(2)}ms`);
+    }
 
     if (error) {
-      console.error("Error fetching users with roles:", error);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error fetching users with roles:", error);
+      }
       throw error;
     }
 
@@ -71,15 +95,21 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
     }));
 
     const transformTime = performance.now() - transformStart;
-    console.log(
-      `[Performance] Data transformation took ${transformTime.toFixed(2)}ms`
-    );
-    console.log(`[Performance] Total time: ${(queryTime + transformTime).toFixed(2)}ms`);
-    console.log(`[Performance] Fetched ${usersWithRoles.length} users`);
+
+    // Performance logging only in development
+    if (process.env.NODE_ENV === "development") {
+      console.log(
+        `[Performance] Data transformation took ${transformTime.toFixed(2)}ms`
+      );
+      console.log(`[Performance] Total time: ${(queryTime + transformTime).toFixed(2)}ms`);
+      console.log(`[Performance] Fetched ${usersWithRoles.length} users`);
+    }
 
     return usersWithRoles;
   } catch (error) {
-    console.error("Failed to fetch users:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Failed to fetch users:", error);
+    }
     throw error;
   }
 }

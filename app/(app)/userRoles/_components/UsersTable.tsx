@@ -1,4 +1,4 @@
-// components/userRoles/UsersTable.tsx
+// app/(app)/userRoles/_components/UsersTable.tsx
 import {
   Anchor,
   Badge,
@@ -13,7 +13,7 @@ import {
   Text,
   VisuallyHidden,
 } from "@mantine/core";
-import type { UserWithRoles } from "@/lib/userRolesService";
+import type { UserWithRoles } from "../_lib";
 import UserTableActions from "./UserTableActions";
 
 type UsersTableProps = {
