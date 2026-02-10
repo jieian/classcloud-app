@@ -83,24 +83,90 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
   }
 }
 
+/**
+ * Deletes a user atomically via RPC (user_roles + users in one transaction),
+ * then cleans up their auth.users entry via the API route.
+ */
 export async function deleteUser(userId: number): Promise<void> {
-  // Delete user_roles first (foreign key dependency), then the user
-  const { error: rolesError } = await supabase
-    .from("user_roles")
-    .delete()
-    .eq("user_id", userId);
-
-  if (rolesError) {
-    throw new Error("Failed to remove user roles. Please try again.");
-  }
-
-  const { error } = await supabase
-    .from("users")
-    .delete()
-    .eq("user_id", userId);
+  // Step 1: Atomic DB deletion — RPC returns the user's UUID
+  const { data: result, error } = await supabase.rpc("delete_user_atomic", {
+    p_user_id: userId,
+  });
 
   if (error) {
+    if (error.message.includes("not found")) {
+      throw new Error("User not found. Please refresh and try again.");
+    }
     throw new Error("Failed to delete user. Please try again.");
+  }
+
+  // Step 2: Clean up auth.users using the returned UUID
+  const uuid = result?.uuid;
+  if (uuid) {
+    await deleteAuthUser(uuid);
+  }
+}
+
+/**
+ * Activates a pending user atomically via RPC.
+ * Sets active_status = 1 and assigns roles in a single transaction.
+ */
+export async function activateUser(
+  userId: number,
+  roleIds: number[],
+): Promise<void> {
+  const { data: result, error } = await supabase.rpc("activate_user_atomic", {
+    p_user_id: userId,
+    p_role_ids: roleIds,
+  });
+
+  if (error) {
+    if (error.message.includes("not found") || error.message.includes("already active")) {
+      throw new Error("User not found or already active. Please refresh.");
+    }
+    throw new Error("Failed to activate user. Please try again.");
+  }
+
+  if (!result?.success) {
+    throw new Error("Activation did not complete successfully.");
+  }
+}
+
+/**
+ * Rejects a pending user: atomic DB deletion via RPC,
+ * then removes their auth.users entry.
+ */
+export async function rejectPendingUser(
+  userId: number,
+  uuid: string,
+): Promise<void> {
+  // Step 1: Atomic DB deletion
+  const { error } = await supabase.rpc("delete_user_atomic", {
+    p_user_id: userId,
+  });
+
+  if (error) {
+    throw new Error("Failed to delete user record. Please try again.");
+  }
+
+  // Step 2: Clean up auth.users
+  await deleteAuthUser(uuid);
+}
+
+/**
+ * Calls the server-side API route to delete a user from auth.users.
+ * Requires SUPABASE_SERVICE_ROLE_KEY on the server.
+ */
+async function deleteAuthUser(uuid: string): Promise<void> {
+  const response = await fetch("/api/users/delete-auth", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uuid }),
+  });
+
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || "Failed to remove auth account.");
   }
 }
 

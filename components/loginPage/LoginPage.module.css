@@ -1,10 +1,3 @@
-html, body {
-  background-color: #CFE3BE;
-  min-height: 100%;
-  margin: 0;
-  padding: 0;
-}
-
 .centerWrapper {
   display: flex;
   align-items: center;

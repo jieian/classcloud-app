@@ -25,6 +25,15 @@ export interface UserWithRoles {
   roles: Role[];
 }
 
+export interface PendingUser {
+  user_id: number;
+  id: string; // UUID linked to auth.users
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  email: string;
+}
+
 export async function fetchPendingUserCount(): Promise<number> {
   const { count, error } = await supabase
     .from("users")
@@ -39,6 +48,32 @@ export async function fetchPendingUserCount(): Promise<number> {
   }
 
   return count ?? 0;
+}
+
+/** Returns true if the value looks like a real name (letters/spaces only) */
+function isValidName(value: unknown): value is string {
+  return typeof value === "string" && value.trim() !== "" && /^[a-zA-Z\s]+$/.test(value.trim());
+}
+
+export async function fetchPendingUsers(): Promise<PendingUser[]> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("user_id, id, first_name, middle_name, last_name, email")
+    .eq("active_status", 0)
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
+
+  if (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error fetching pending users:", error);
+    }
+    throw error;
+  }
+
+  return (data || []).map((user: any) => ({
+    ...user,
+    middle_name: isValidName(user.middle_name) ? user.middle_name : undefined,
+  }));
 }
 
 export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
@@ -86,7 +121,7 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
     const usersWithRoles: UserWithRoles[] = (data || []).map((user: any) => ({
       user_id: user.user_id,
       first_name: user.first_name,
-      middle_name: user.middle_name,
+      middle_name: isValidName(user.middle_name) ? user.middle_name : undefined,
       last_name: user.last_name,
       email: user.email,
       roles: (user.user_roles || [])

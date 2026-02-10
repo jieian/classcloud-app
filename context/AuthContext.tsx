@@ -35,10 +35,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Hydrate from sessionStorage so NavBar has data immediately on reload
+function getCachedRoles(): Role[] {
+  try {
+    const cached = sessionStorage.getItem("cc_roles");
+    return cached ? JSON.parse(cached) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getCachedPermissions(): string[] {
+  try {
+    const cached = sessionStorage.getItem("cc_permissions");
+    return cached ? JSON.parse(cached) : [];
+  } catch {
+    return [];
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [permissions, setPermissions] = useState<string[]>([]);
+  const [roles, setRoles] = useState<Role[]>(getCachedRoles);
+  const [permissions, setPermissions] = useState<string[]>(getCachedPermissions);
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
@@ -90,6 +109,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setRoles(fetchedRoles);
     setPermissions(fetchedPermissions);
+
+    // Cache for instant hydration on reload
+    try {
+      sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
+      sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
+    } catch {
+      // sessionStorage unavailable (e.g. private browsing quota exceeded)
+    }
   };
 
   // Single subscription — onAuthStateChange fires INITIAL_SESSION on setup,

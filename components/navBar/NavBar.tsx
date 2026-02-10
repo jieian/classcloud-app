@@ -146,10 +146,8 @@ export default function Navbar() {
   // Filter navigation data based on user permissions - optimized with reduce
   const filteredNavigationData = useMemo(() => {
     return navigationData.reduce<NavigationLink[]>((acc, link) => {
-      // Skip if user doesn't have permission for parent
       if (!hasPermission(link.requiredPermissions)) return acc;
 
-      // Filter sublinks
       const filteredSublinks = link.sublinks.filter((sublink) =>
         hasPermission(sublink.requiredPermissions),
       );

@@ -1,7 +1,7 @@
 // app/(app)/userRoles/_components/PendingSection.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import {
   Group,
   Collapse,
@@ -12,17 +12,15 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { IconRefresh, IconChevronDown } from "@tabler/icons-react";
 import { SearchBar } from "./SearchBar";
-import { fetchPendingUserCount } from "../_lib";
+import PendingUsersTableWrapper, {
+  type PendingUsersTableWrapperRef,
+} from "./PendingUsersTableWrapper";
 
 export function PendingSection() {
   const [opened, { toggle }] = useDisclosure(false);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    fetchPendingUserCount()
-      .then(setPendingCount)
-      .catch(() => setPendingCount(null));
-  }, []);
+  const [search, setSearch] = useState("");
+  const tableRef = useRef<PendingUsersTableWrapperRef>(null);
 
   return (
     <div className="mb-6">
@@ -58,6 +56,8 @@ export function PendingSection() {
               ariaLabel="Search pending users"
               style={{ flex: 1, minWidth: 0 }}
               maw={600}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
             />
             <Tooltip label="Refresh" position="bottom" withArrow>
               <ActionIcon
@@ -66,11 +66,18 @@ export function PendingSection() {
                 size="lg"
                 radius="xl"
                 aria-label="Refresh pending users data"
+                onClick={() => tableRef.current?.refresh()}
               >
                 <IconRefresh size={18} stroke={1.5} />
               </ActionIcon>
             </Tooltip>
           </Group>
+
+          <PendingUsersTableWrapper
+            ref={tableRef}
+            search={search}
+            onCountChange={setPendingCount}
+          />
         </div>
       </Collapse>
     </div>

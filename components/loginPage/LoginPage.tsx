@@ -41,12 +41,43 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const { data: authData, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
       if (authError) throw authError;
+
+      // Check if the account is activated
+      const { data: userData } = await supabase
+        .from("users")
+        .select("active_status")
+        .eq("id", authData.user.id)
+        .maybeSingle();
+
+      if (!userData) {
+        await supabase.auth.signOut();
+        notify({
+          title: "Account Not Found",
+          message:
+            "No account found. Please contact your administrator.",
+          type: "error",
+        });
+        return;
+      }
+
+      if (userData.active_status === 0) {
+        await supabase.auth.signOut();
+        notify({
+          title: "Account Pending Approval",
+          message:
+            "Your account has not been activated yet. Please contact your administrator.",
+          type: "info",
+          autoClose: 8000,
+        });
+        return;
+      }
 
       // Show success notification
       notify({
@@ -58,6 +89,29 @@ export default function LoginPage() {
       // Redirect to home
       router.push("/");
     } catch (authError: any) {
+      // Check if this email belongs to a pending account
+      try {
+        const res = await fetch("/api/auth/check-pending", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim() }),
+        });
+        const { pending } = await res.json();
+
+        if (pending) {
+          notify({
+            title: "Account Pending Approval",
+            message:
+              "Your account has not been activated yet. Please contact your administrator.",
+            type: "info",
+            autoClose: 8000,
+          });
+          return;
+        }
+      } catch {
+        // If the check fails, fall through to the normal error
+      }
+
       setError(true);
       notify({
         title: "Login failed",
