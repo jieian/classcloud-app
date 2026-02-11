@@ -283,7 +283,7 @@ export default function Navbar() {
           radius="md"
           style={{
             position: "fixed",
-            top: 20,
+            bottom: 20,
             left: 20,
             zIndex: 2100,
             backgroundColor: "var(--mantine-color-white)",
@@ -323,7 +323,7 @@ export default function Navbar() {
             <img
               src="/logo/CCLogo.png"
               alt="ClassCloud Logo"
-              style={{ height: "32px", width: "auto" }}
+              style={{ height: "28px", width: "auto" }}
             />
           )}
           {isMobile && (

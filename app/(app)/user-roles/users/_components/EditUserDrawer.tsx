@@ -22,7 +22,7 @@ import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import type { UserWithRoles } from "../_lib";
-import { updateUser, fetchAllRoles } from "../_lib";
+import { updateUser, fetchAllRoles, checkEmailExists } from "../_lib";
 
 interface EditUserDrawerProps {
   opened: boolean;
@@ -291,6 +291,22 @@ export default function EditUserDrawer({
     try {
       setLoading(true);
 
+      const trimmedEmail = form.values.email.trim();
+
+      // Check email uniqueness before submitting
+      if (trimmedEmail !== user.email) {
+        const emailTaken = await checkEmailExists(trimmedEmail, user.user_id);
+        if (emailTaken) {
+          form.setFieldError("email", "This email is already in use by another user");
+          notifications.show({
+            title: "Email Already In Use",
+            message: "Please use a different email address.",
+            color: "red",
+          });
+          return;
+        }
+      }
+
       // Transform names to title case
       const formattedData = {
         user_id: user.user_id,
@@ -299,7 +315,7 @@ export default function EditUserDrawer({
           ? toTitleCase(form.values.middle_name.trim())
           : undefined,
         last_name: toTitleCase(form.values.last_name.trim()),
-        email: form.values.email.trim(),
+        email: trimmedEmail,
         password: form.values.changePassword
           ? form.values.newPassword
           : undefined,
@@ -318,9 +334,13 @@ export default function EditUserDrawer({
       onSuccess();
       onClose();
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to update user. Please try again.";
       notifications.show({
         title: "Error",
-        message: "Failed to update user. Please try again.",
+        message,
         color: "red",
       });
     } finally {

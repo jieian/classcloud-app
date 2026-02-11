@@ -76,6 +76,28 @@ export async function fetchPendingUsers(): Promise<PendingUser[]> {
   }));
 }
 
+/**
+ * Checks if an email is already in use by another user.
+ * Returns true if the email is taken (by a different user_id).
+ */
+export async function checkEmailExists(
+  email: string,
+  excludeUserId: number,
+): Promise<boolean> {
+  const { count, error } = await supabase
+    .from("users")
+    .select("*", { count: "exact", head: true })
+    .ilike("email", email.trim())
+    .neq("user_id", excludeUserId);
+
+  if (error) {
+    console.error("Error checking email uniqueness:", error);
+    throw new Error("Failed to verify email availability.");
+  }
+
+  return (count ?? 0) > 0;
+}
+
 export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
   try {
     const startTime = performance.now();
