@@ -127,7 +127,8 @@ export default function EditUserDrawer({
       first_name: (value) => {
         const trimmed = value.trim();
         if (!trimmed) return "First name is required";
-        if (trimmed.length > 100) return "First name must be 100 characters or less";
+        if (trimmed.length > 100)
+          return "First name must be 100 characters or less";
         // No leading/trailing/consecutive spaces, letters only
         if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
           return "First name must contain only letters (no extra spaces)";
@@ -136,7 +137,8 @@ export default function EditUserDrawer({
       middle_name: (value) => {
         if (!value) return null; // Optional field
         const trimmed = value.trim();
-        if (trimmed.length > 100) return "Middle name must be 100 characters or less";
+        if (trimmed.length > 100)
+          return "Middle name must be 100 characters or less";
         // No leading/trailing/consecutive spaces, letters only
         if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
           return "Middle name must contain only letters (no extra spaces)";
@@ -145,7 +147,8 @@ export default function EditUserDrawer({
       last_name: (value) => {
         const trimmed = value.trim();
         if (!trimmed) return "Last name is required";
-        if (trimmed.length > 100) return "Last name must be 100 characters or less";
+        if (trimmed.length > 100)
+          return "Last name must be 100 characters or less";
         // No leading/trailing/consecutive spaces, letters only
         if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
           return "Last name must contain only letters (no extra spaces)";
@@ -221,7 +224,10 @@ export default function EditUserDrawer({
       setAvailableRoles(roles);
     } catch (error) {
       console.error("Failed to load roles:", error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to load roles. Please check console for details.";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to load roles. Please check console for details.";
       notifications.show({
         title: "Error Loading Roles",
         message: errorMessage,

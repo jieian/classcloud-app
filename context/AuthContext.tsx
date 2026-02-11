@@ -35,30 +35,24 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Hydrate from sessionStorage so NavBar has data immediately on reload
-function getCachedRoles(): Role[] {
-  try {
-    const cached = sessionStorage.getItem("cc_roles");
-    return cached ? JSON.parse(cached) : [];
-  } catch {
-    return [];
-  }
-}
-
-function getCachedPermissions(): string[] {
-  try {
-    const cached = sessionStorage.getItem("cc_permissions");
-    return cached ? JSON.parse(cached) : [];
-  } catch {
-    return [];
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [roles, setRoles] = useState<Role[]>(getCachedRoles);
-  const [permissions, setPermissions] = useState<string[]>(getCachedPermissions);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Hydrate from sessionStorage on mount (client-only) so NavBar has
+  // cached permissions immediately while the fresh async fetch runs.
+  useEffect(() => {
+    try {
+      const cachedRoles = sessionStorage.getItem("cc_roles");
+      const cachedPermissions = sessionStorage.getItem("cc_permissions");
+      if (cachedRoles) setRoles(JSON.parse(cachedRoles));
+      if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
+    } catch {
+      // sessionStorage unavailable
+    }
+  }, []);
 
   const router = useRouter();
   const pathname = usePathname();

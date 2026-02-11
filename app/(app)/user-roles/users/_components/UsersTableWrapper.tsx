@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useEffect, useImperativeHandle, forwardRef, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useImperativeHandle,
+  forwardRef,
+  useMemo,
+} from "react";
 import { Alert } from "@mantine/core";
 import UsersTable from "./UsersTable";
 import UsersTableSkeleton from "./UsersTableSkeleton";
-import {
-  fetchActiveUsersWithRoles,
-  type UserWithRoles,
-} from "../_lib";
+import { fetchActiveUsersWithRoles, type UserWithRoles } from "../_lib";
 
 export interface UsersTableWrapperRef {
   refresh: () => void;
@@ -76,5 +79,5 @@ export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
     }
 
     return <UsersTable users={filteredUsers} onUpdate={handleUpdate} />;
-  }
+  },
 );

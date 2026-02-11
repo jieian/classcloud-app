@@ -54,8 +54,7 @@ export default forwardRef<
     if (!search.trim()) return users;
     const query = search.toLowerCase().trim();
     return users.filter((user) => {
-      const fullName =
-        `${user.first_name} ${user.last_name}`.toLowerCase();
+      const fullName = `${user.first_name} ${user.last_name}`.toLowerCase();
       return (
         fullName.includes(query) ||
         user.first_name.toLowerCase().includes(query) ||

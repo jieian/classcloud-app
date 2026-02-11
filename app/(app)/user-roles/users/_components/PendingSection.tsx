@@ -1,4 +1,4 @@
-// app/(app)/userRoles/_components/PendingSection.tsx
+// app/(app)/user-roles/_components/PendingSection.tsx
 "use client";
 
 import { useRef, useState } from "react";
@@ -55,7 +55,7 @@ export function PendingSection() {
               placeholder="Search pending users..."
               ariaLabel="Search pending users"
               style={{ flex: 1, minWidth: 0 }}
-              maw={600}
+              maw={700}
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
             />

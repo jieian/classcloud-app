@@ -1,4 +1,4 @@
-// app/(app)/userRoles/_components/UsersTable.tsx
+// app/(app)/user-roles/_components/UsersTable.tsx
 import {
   Anchor,
   Badge,

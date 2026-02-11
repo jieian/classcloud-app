@@ -14,8 +14,17 @@ import {
   IconSettings,
   IconMenu2,
 } from "@tabler/icons-react";
-import { Title, Tooltip, UnstyledButton, ActionIcon } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import {
+  Title,
+  Tooltip,
+  UnstyledButton,
+  ActionIcon,
+  Modal,
+  Text,
+  Button,
+  Group,
+} from "@mantine/core";
+import { useMediaQuery, useDisclosure } from "@mantine/hooks";
 import classes from "./NavBar.module.css";
 import { useAuth } from "@/context/AuthContext";
 
@@ -47,8 +56,21 @@ const navigationData: NavigationLink[] = [
   {
     icon: IconUsers,
     label: "Users and Roles",
-    href: "/userRoles",
-    sublinks: [],
+    href: "/user-roles/users",
+    sublinks: [
+      {
+        label: "User Management",
+        key: "user-management",
+        href: "/user-roles/users",
+        requiredPermissions: ["access_user_management"],
+      },
+      {
+        label: "Roles Management",
+        key: "roles-management",
+        href: "/user-roles/roles",
+        requiredPermissions: ["access_user_management"],
+      },
+    ],
     requiredPermissions: ["access_user_management"],
   },
   {
@@ -188,8 +210,16 @@ export default function Navbar() {
     if (isMobile) setIsMobileMenuOpen(false);
   };
 
+  const [logoutOpened, { open: openLogout, close: closeLogout }] =
+    useDisclosure(false);
+
   const handleLogout = () => {
     if (isMobile) setIsMobileMenuOpen(false);
+    openLogout();
+  };
+
+  const confirmLogout = () => {
+    closeLogout();
     signOut();
   };
 
@@ -369,6 +399,25 @@ export default function Navbar() {
           </div>
         )}
       </nav>
+
+      {/* LOGOUT CONFIRMATION MODAL */}
+      <Modal
+        opened={logoutOpened}
+        onClose={closeLogout}
+        title="Confirm Logout"
+        centered
+        size="sm"
+      >
+        <Text size="sm">Are you sure you want to log out?</Text>
+        <Group justify="flex-end" mt="lg">
+          <Button variant="default" onClick={closeLogout}>
+            Cancel
+          </Button>
+          <Button color="red" onClick={confirmLogout}>
+            Logout
+          </Button>
+        </Group>
+      </Modal>
     </>
   );
 }

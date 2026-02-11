@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ActionIcon, Group, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
 import { IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "./SearchBar";
 import UsersTableWrapper, {
@@ -15,13 +15,16 @@ export function ActiveUsersSection() {
 
   return (
     <>
-      <Group>
+      <Group justify="space-between">
         <h1 className="mb-3 text-2xl font-bold">
           Users{" "}
           {userCount !== null && (
             <span className="text-[#808898]">({userCount})</span>
           )}
         </h1>
+        <Button color="#4EAE4A" radius="md" mr="md">
+          Create User
+        </Button>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
         A user is an identity within an account that has long-term credentials
@@ -33,7 +36,7 @@ export function ActiveUsersSection() {
           placeholder="Search active users..."
           ariaLabel="Search active users"
           style={{ flex: 1, minWidth: 0 }}
-          maw={600}
+          maw={700}
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
