@@ -5,3 +5,4 @@
 
 export * from "./userRolesService";
 export * from "./userUpdateService";
+export type { CreateUserForm, CreateUserData } from "./types";

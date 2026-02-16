@@ -38,7 +38,7 @@ export default function PendingUsersTable({
       .join(" ");
 
     return (
-      <TableTr key={user.user_id}>
+      <TableTr key={user.uid}>
         <TableTd>
           <Group gap="sm">
             <Text fz="sm" fw={500}>

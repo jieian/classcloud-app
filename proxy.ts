@@ -1,32 +1,57 @@
 /**
- * Next.js Proxy (formerly Middleware) - Edge Runtime
- * Handles authentication and routing logic
+ * Next.js Proxy (formerly Middleware)
+ * Handles authentication and session refresh
  * Migrated to @supabase/ssr for Next.js 16 compatibility
- * Note: Next.js 16 renamed "middleware" to "proxy"
  */
 
-import { type NextRequest } from "next/server";
-import { createMiddlewareSupabaseClient } from "@/lib/supabase/middleware";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
 export async function proxy(request: NextRequest) {
-  const { supabase, response } = await createMiddlewareSupabaseClient(request);
+  // The response variable MUST live in the same scope as setAll so that
+  // when setAll reassigns it during a token refresh, the return statement
+  // below sees the updated response (with fresh auth cookies).
+  // Previously this was extracted into a helper, but destructuring broke
+  // the reference — the caller kept the stale response without new cookies.
+  let response = NextResponse.next({ request });
 
-  // Refresh session if it exists
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value),
+          );
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options),
+          );
+        },
+      },
+    },
+  );
+
+  // getUser() validates the JWT AND refreshes expired tokens.
+  // The refresh triggers setAll above, updating `response` with new cookies.
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 
   // Redirect to login if not authenticated (except for login page)
-  if (!session && pathname !== "/login") {
+  if (!user && pathname !== "/login") {
     const loginUrl = new URL("/login", request.url);
     return NextResponse.redirect(loginUrl);
   }
 
   // Redirect to home if already authenticated and trying to access login
-  if (session && pathname === "/login") {
+  if (user && pathname === "/login") {
     const homeUrl = new URL("/", request.url);
     return NextResponse.redirect(homeUrl);
   }

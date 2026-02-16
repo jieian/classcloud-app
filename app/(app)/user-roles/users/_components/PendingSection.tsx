@@ -11,7 +11,7 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconRefresh, IconChevronDown } from "@tabler/icons-react";
-import { SearchBar } from "./SearchBar";
+import { SearchBar } from "../../../../../components/searchBar/SearchBar";
 import PendingUsersTableWrapper, {
   type PendingUsersTableWrapperRef,
 } from "./PendingUsersTableWrapper";

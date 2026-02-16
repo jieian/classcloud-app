@@ -294,8 +294,9 @@ export default function EditUserDrawer({
       const trimmedEmail = form.values.email.trim();
 
       // Check email uniqueness before submitting
-      if (trimmedEmail !== user.email) {
-        const emailTaken = await checkEmailExists(trimmedEmail, user.user_id);
+      const emailChanged = trimmedEmail !== user.email;
+      if (emailChanged) {
+        const emailTaken = await checkEmailExists(trimmedEmail, user.uid);
         if (emailTaken) {
           form.setFieldError("email", "This email is already in use by another user");
           notifications.show({
@@ -309,14 +310,14 @@ export default function EditUserDrawer({
 
       // Transform names to title case
       const formattedData = {
-        user_id: user.user_id,
+        uid: user.uid,
         first_name: toTitleCase(form.values.first_name.trim()),
         middle_name: form.values.middle_name.trim()
           ? toTitleCase(form.values.middle_name.trim())
           : undefined,
         last_name: toTitleCase(form.values.last_name.trim()),
-        email: trimmedEmail,
-        password: form.values.changePassword
+        newEmail: emailChanged ? trimmedEmail : undefined,
+        newPassword: form.values.changePassword
           ? form.values.newPassword
           : undefined,
         role_ids: form.values.role_ids.map((id) => parseInt(id)),

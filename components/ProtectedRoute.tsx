@@ -1,44 +1,54 @@
+"use client";
+
 /**
  * Protected Route Component
- * Server Component that checks permissions before rendering
- * Uses new @supabase/ssr utilities
+ * Client Component that checks permissions from AuthContext
+ * instead of fetching from the database on every page load.
  */
 
-import { redirect } from "next/navigation";
 import { ReactNode } from "react";
-import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
-
-type UserPermission = {
-  permission_name: string;
-};
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredPermissions: string[];
 }
 
-export default async function ProtectedRoute({
+export default function ProtectedRoute({
   children,
   requiredPermissions,
 }: ProtectedRouteProps) {
-  const supabase = await createServerSupabaseClient();
+  const { user, permissions, loading } = useAuth();
+  const router = useRouter();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  useEffect(() => {
+    if (loading) return;
 
-  // If user is not logged in
-  if (!user) redirect("/login");
+    if (!user) {
+      router.push("/login");
+      return;
+    }
 
-  // Fetch permissions using centralized server utility
-  const userPermissions = await getUserPermissions(user.id);
+    const hasPermission = requiredPermissions.every((p) =>
+      permissions.includes(p),
+    );
+
+    if (!hasPermission) {
+      router.push("/unauthorized");
+    }
+  }, [user, permissions, loading, requiredPermissions, router]);
+
+  if (loading) return null;
+
+  if (!user) return null;
 
   const hasPermission = requiredPermissions.every((p) =>
-    userPermissions.includes(p),
+    permissions.includes(p),
   );
 
-  // If user does not have required permission
-  if (!hasPermission) redirect("/unauthorized");
+  if (!hasPermission) return null;
 
   return <>{children}</>;
 }

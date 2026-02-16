@@ -77,7 +77,13 @@ const navigationData: NavigationLink[] = [
     icon: IconSchool,
     label: "School",
     href: "/school",
-    requiredPermissions: ["access_school_management"],
+    requiredPermissions: [
+      "access_year_management",
+      "access_faculty_management",
+      "access_subject_management",
+      "access_student_management",
+      "access_section_management",
+    ],
     sublinks: [
       {
         label: "School Year",
@@ -184,8 +190,10 @@ export default function Navbar() {
   }, [hasPermission, permissions]);
 
   // HANDLERS
-  const handleMainLinkClick = (link: NavigationLink) => {
+  const handleMainLinkClick = (e: React.MouseEvent, link: NavigationLink) => {
     if (link.sublinks.length > 0) {
+      e.preventDefault();
+
       setIsDrawerOpen(true);
       setDrawerTitle(link.label);
       setDrawerSublinks(link.sublinks);
@@ -242,7 +250,7 @@ export default function Navbar() {
       >
         <Link href={link.href} style={{ textDecoration: "none" }}>
           <UnstyledButton
-            onClick={() => handleMainLinkClick(link)}
+            onClick={(e: React.MouseEvent) => handleMainLinkClick(e, link)}
             className={classes.mainLink}
             data-active={isActive || undefined}
           >

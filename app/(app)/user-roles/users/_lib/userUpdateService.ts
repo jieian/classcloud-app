@@ -1,56 +1,44 @@
 /**
- * User Update Service
+ * User Mutation Service
  * SECURITY: Uses atomic database transactions via RPC
- * PASSWORD: All passwords are hashed server-side with bcrypt
+ * AUTH: Email/password stored in auth.users, updated via API route
  * INTEGRITY: Rollback on any failure prevents data inconsistency
  */
 
 import { getSupabase } from "@/lib/supabase/client";
-
-const supabase = getSupabase();
+import type { CreateUserData } from "./types";
 
 export interface UpdateUserData {
-  user_id: number;
+  uid: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
-  email: string;
-  password?: string;
+  newEmail?: string;
+  newPassword?: string;
   role_ids: number[];
 }
 
 /**
- * Updates user with atomic transaction
- * Uses Postgres RPC function for:
- * - Atomic updates (all or nothing)
- * - Server-side password hashing (bcrypt)
- * - Data integrity (prevents partial updates)
+ * Updates user profile (names + roles) via RPC,
+ * then updates auth.users (email/password) via API route if needed.
  */
 export async function updateUser(data: UpdateUserData): Promise<void> {
+  const supabase = getSupabase();
   try {
-    // Call RPC function with atomic transaction
+    // Step 1: Update profile (names + roles) atomically via RPC
     const { data: result, error } = await supabase.rpc("update_user_atomic", {
-      p_user_id: data.user_id,
+      p_uid: data.uid,
       p_first_name: data.first_name,
       p_middle_name: data.middle_name || "",
       p_last_name: data.last_name,
-      p_email: data.email,
-      p_password: data.password || null,
       p_role_ids: data.role_ids,
     });
 
     if (error) {
       console.error("RPC Error:", error);
 
-      // Provide specific error messages
       if (error.message.includes("not found")) {
         throw new Error("User not found. Please refresh and try again.");
-      }
-
-      if (error.message.includes("email")) {
-        throw new Error(
-          "Email address is already in use. Please use a different email."
-        );
       }
 
       if (error.message.includes("role")) {
@@ -59,22 +47,22 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
         );
       }
 
-      // Generic fallback
       throw new Error(
         "Failed to update user. Please check your connection and try again."
       );
     }
 
-    // Verify success
     if (!result || !result.success) {
       throw new Error("Update operation did not complete successfully.");
     }
 
-    console.log("User updated successfully:", result);
+    // Step 2: Update auth.users (email/password) if needed
+    if (data.newEmail || data.newPassword) {
+      await updateAuthUser(data.uid, data.newEmail, data.newPassword);
+    }
   } catch (error) {
     console.error("Failed to update user:", error);
 
-    // Re-throw with user-friendly message if it's not already
     if (error instanceof Error) {
       throw error;
     }
@@ -84,27 +72,11 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
 }
 
 /**
- * Deletes a user atomically via RPC (user_roles + users in one transaction),
- * then cleans up their auth.users entry via the API route.
+ * Deletes a user by deleting from auth.users.
+ * ON DELETE CASCADE handles users + user_roles automatically.
  */
-export async function deleteUser(userId: number): Promise<void> {
-  // Step 1: Atomic DB deletion — RPC returns the user's UUID
-  const { data: result, error } = await supabase.rpc("delete_user_atomic", {
-    p_user_id: userId,
-  });
-
-  if (error) {
-    if (error.message.includes("not found")) {
-      throw new Error("User not found. Please refresh and try again.");
-    }
-    throw new Error("Failed to delete user. Please try again.");
-  }
-
-  // Step 2: Clean up auth.users using the returned UUID
-  const uuid = result?.uuid;
-  if (uuid) {
-    await deleteAuthUser(uuid);
-  }
+export async function deleteUser(uid: string): Promise<void> {
+  await deleteAuthUser(uid);
 }
 
 /**
@@ -112,11 +84,12 @@ export async function deleteUser(userId: number): Promise<void> {
  * Sets active_status = 1 and assigns roles in a single transaction.
  */
 export async function activateUser(
-  userId: number,
+  uid: string,
   roleIds: number[],
 ): Promise<void> {
+  const supabase = getSupabase();
   const { data: result, error } = await supabase.rpc("activate_user_atomic", {
-    p_user_id: userId,
+    p_uid: uid,
     p_role_ids: roleIds,
   });
 
@@ -133,24 +106,11 @@ export async function activateUser(
 }
 
 /**
- * Rejects a pending user: atomic DB deletion via RPC,
- * then removes their auth.users entry.
+ * Rejects a pending user by deleting from auth.users.
+ * ON DELETE CASCADE handles users + user_roles automatically.
  */
-export async function rejectPendingUser(
-  userId: number,
-  uuid: string,
-): Promise<void> {
-  // Step 1: Atomic DB deletion
-  const { error } = await supabase.rpc("delete_user_atomic", {
-    p_user_id: userId,
-  });
-
-  if (error) {
-    throw new Error("Failed to delete user record. Please try again.");
-  }
-
-  // Step 2: Clean up auth.users
-  await deleteAuthUser(uuid);
+export async function rejectPendingUser(uid: string): Promise<void> {
+  await deleteAuthUser(uid);
 }
 
 /**
@@ -171,33 +131,42 @@ async function deleteAuthUser(uuid: string): Promise<void> {
 }
 
 /**
- * Fetches all available roles
- * Cached on client for performance
+ * Calls the server-side API route to update email/password in auth.users.
  */
-export async function fetchAllRoles(): Promise<
-  Array<{ role_id: number; name: string }>
-> {
-  try {
-    const { data, error } = await supabase
-      .from("roles")
-      .select("role_id, name")
-      .order("name");
+async function updateAuthUser(
+  uid: string,
+  email?: string,
+  password?: string,
+): Promise<void> {
+  const response = await fetch("/api/users/update-auth", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, email, password }),
+  });
 
-    if (error) {
-      console.error("Error fetching roles:", error);
-      throw new Error(
-        "Failed to load roles. Please refresh the page and try again."
-      );
-    }
+  if (!response.ok) {
+    const data = await response.json();
+    throw new Error(data.error || "Failed to update auth account.");
+  }
+}
 
-    return data || [];
-  } catch (error) {
-    console.error("Failed to fetch roles:", error);
+/**
+ * Creates a new user by sending all data to the Secure API Route.
+ * The API handles Auth + Database + Roles + Rollback automatically.
+ */
+export async function createUser(data: CreateUserData): Promise<void> {
+  // 1. Send EVERYTHING to the server (Names, Email, Password, Roles)
+  const response = await fetch("/api/users/create-auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data), 
+  });
 
-    if (error instanceof Error) {
-      throw error;
-    }
+  const result = await response.json();
 
-    throw new Error("An unexpected error occurred while loading roles.");
+  // 2. Check for Server Errors
+  if (!response.ok) {
+    // Pass the specific error message from the API (e.g. "Email already exists")
+    throw new Error(result.error || "Failed to create user.");
   }
 }

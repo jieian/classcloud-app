@@ -76,7 +76,7 @@ export default function PendingTableActions({
     try {
       setApproving(true);
       const roleIds = selectedRoles.map((id) => parseInt(id));
-      await activateUser(user.user_id, roleIds);
+      await activateUser(user.uid, roleIds);
       notifications.show({
         title: "User Approved",
         message: `${fullName} has been activated successfully.`,
@@ -103,7 +103,7 @@ export default function PendingTableActions({
   const handleReject = async () => {
     try {
       setRejecting(true);
-      await rejectPendingUser(user.user_id, user.id);
+      await rejectPendingUser(user.uid);
       notifications.show({
         title: "User Rejected",
         message: `${fullName} has been removed from the system.`,

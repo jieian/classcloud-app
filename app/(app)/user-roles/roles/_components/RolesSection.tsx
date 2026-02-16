@@ -2,25 +2,25 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
+import { ActionIcon, Group, Tooltip, Button } from "@mantine/core";
 import { IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
-import UsersTableWrapper, {
-  type UsersTableWrapperRef,
-} from "./UsersTableWrapper";
+import RolesTableWrapper, {
+  type RolesTableWrapperRef,
+} from "./RolesTableWrapper";
 
-export function ActiveUsersSection() {
-  const [userCount, setUserCount] = useState<number | null>(null);
+export function RolesSection() {
+  const [roleCount, setRoleCount] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const tableRef = useRef<UsersTableWrapperRef>(null);
+  const tableRef = useRef<RolesTableWrapperRef>(null);
 
   return (
     <>
       <Group justify="space-between">
         <h1 className="mb-3 text-2xl font-bold">
-          Users{" "}
-          {userCount !== null && (
-            <span className="text-[#808898]">({userCount})</span>
+          Roles{" "}
+          {roleCount !== null && (
+            <span className="text-[#808898]">({roleCount})</span>
           )}
         </h1>
         <Button
@@ -28,20 +28,20 @@ export function ActiveUsersSection() {
           radius="md"
           mr="md"
           component={Link}
-          href="/user-roles/users/create"
+          href="/user-roles/roles/create"
         >
-          Create User
+          Create Role
         </Button>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
-        A user is an identity within an account that has long-term credentials
-        and is used to access ClassCloud.
+        A role defines a set of permissions that determine what actions a user
+        can perform within ClassCloud.
       </p>
       <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
         <SearchBar
-          id="search-active-users"
-          placeholder="Search active users..."
-          ariaLabel="Search active users"
+          id="search-roles"
+          placeholder="Search roles..."
+          ariaLabel="Search roles"
           style={{ flex: 1, minWidth: 0 }}
           maw={700}
           value={search}
@@ -53,17 +53,17 @@ export function ActiveUsersSection() {
             color="#808898"
             size="lg"
             radius="xl"
-            aria-label="Refresh active users data"
+            aria-label="Refresh roles data"
             onClick={() => tableRef.current?.refresh()}
           >
             <IconRefresh size={18} stroke={1.5} />
           </ActionIcon>
         </Tooltip>
       </Group>
-      <UsersTableWrapper
+      <RolesTableWrapper
         ref={tableRef}
         search={search}
-        onCountChange={setUserCount}
+        onCountChange={setRoleCount}
       />
     </>
   );

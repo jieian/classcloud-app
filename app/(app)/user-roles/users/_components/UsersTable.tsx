@@ -1,4 +1,4 @@
-// app/(app)/user-roles/_components/UsersTable.tsx
+// app/(app)/user-roles/users/_components/UsersTable.tsx
 import {
   Anchor,
   Badge,
@@ -34,7 +34,7 @@ export default function UsersTable({ users, onUpdate }: UsersTableProps) {
     const fullName = `${user.first_name} ${user.last_name}`;
 
     return (
-      <TableTr key={user.user_id}>
+      <TableTr key={user.uid}>
         <TableTd>
           <Group gap="sm">
             <Text fz="sm" fw={500}>

@@ -11,27 +11,25 @@ import {
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
-import type { UserWithRoles } from "../_lib";
-import { deleteUser } from "../_lib";
-import EditUserDrawer from "./EditUserDrawer";
+import type { RoleWithPermissions } from "../../users/_lib";
+import { deleteRole } from "../../users/_lib";
+import EditRoleDrawer from "./EditRoleDrawer";
 
-interface UserTableActionsProps {
-  user: UserWithRoles;
+interface RolesTableActionsProps {
+  role: RoleWithPermissions;
   onUpdate: () => void;
 }
 
-export default function UserTableActions({
-  user,
+export default function RolesTableActions({
+  role,
   onUpdate,
-}: UserTableActionsProps) {
+}: RolesTableActionsProps) {
   const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
     useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
-
-  const fullName = `${user.first_name} ${user.last_name}`;
 
   const handleSuccess = () => {
     onUpdate();
@@ -45,11 +43,11 @@ export default function UserTableActions({
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      await deleteUser(user.uid);
+      await deleteRole(role.role_id);
       handleCloseDelete();
       onUpdate();
     } catch (err) {
-      console.error("Failed to delete user:", err);
+      console.error("Failed to delete role:", err);
     } finally {
       setDeleting(false);
     }
@@ -61,7 +59,7 @@ export default function UserTableActions({
         <ActionIcon
           variant="subtle"
           color="gray"
-          aria-label="Edit user"
+          aria-label={`Edit ${role.name}`}
           onClick={openDrawer}
         >
           <IconPencil size={16} stroke={1.5} />
@@ -69,28 +67,28 @@ export default function UserTableActions({
         <ActionIcon
           variant="subtle"
           color="red"
-          aria-label="Delete user"
+          aria-label={`Delete ${role.name}`}
           onClick={openDelete}
         >
           <IconTrash size={16} stroke={1.5} />
         </ActionIcon>
       </Group>
 
-      <EditUserDrawer
+      <EditRoleDrawer
         opened={drawerOpened}
         onClose={closeDrawer}
-        user={user}
+        role={role}
         onSuccess={handleSuccess}
       />
 
       <Modal
         opened={deleteOpened}
         onClose={handleCloseDelete}
-        title="Delete User"
+        title="Delete Role"
         centered
       >
         <Text size="sm" mb="md">
-          Are you sure you want to delete <strong>{fullName}</strong>? This
+          Are you sure you want to delete <strong>{role.name}</strong>? This
           action cannot be undone.
         </Text>
         <Text size="sm" mb="md" c="dimmed">

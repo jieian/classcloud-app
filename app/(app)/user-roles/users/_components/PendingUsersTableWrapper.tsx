@@ -6,7 +6,9 @@ import {
   useImperativeHandle,
   forwardRef,
   useMemo,
+  useRef,
 } from "react";
+import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
 import PendingUsersTable from "./PendingUsersTable";
 import PendingUsersTableSkeleton from "./PendingUsersTableSkeleton";
@@ -28,12 +30,23 @@ export default forwardRef<
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const pathname = usePathname();
+  const hasMounted = useRef(false);
 
   useImperativeHandle(ref, () => ({ refresh: loadUsers }));
 
+  // Fetch on mount
   useEffect(() => {
     loadUsers();
+    hasMounted.current = true;
   }, []);
+
+  // Re-fetch when navigating back to this page (client-side)
+  useEffect(() => {
+    if (hasMounted.current) {
+      loadUsers();
+    }
+  }, [pathname]);
 
   async function loadUsers() {
     try {

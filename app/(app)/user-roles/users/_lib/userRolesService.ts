@@ -1,23 +1,32 @@
 import { getSupabase } from "@/lib/supabase/client";
 
-const supabase = getSupabase();
+export interface Permission {
+  permission_id: number;
+  name: string;
+  description: string;
+}
 
 export interface Role {
   role_id: number;
   name: string;
 }
 
+export interface RoleWithPermissions {
+  role_id: number;
+  name: string;
+  permissions: Permission[];
+}
+
 export interface User {
-  user_id: number;
+  uid: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
-  email: string;
   active_status: number;
 }
 
 export interface UserWithRoles {
-  user_id: number;
+  uid: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -26,8 +35,7 @@ export interface UserWithRoles {
 }
 
 export interface PendingUser {
-  user_id: number;
-  id: string; // UUID linked to auth.users
+  uid: string;
   first_name: string;
   middle_name?: string;
   last_name: string;
@@ -35,6 +43,7 @@ export interface PendingUser {
 }
 
 export async function fetchPendingUserCount(): Promise<number> {
+  const supabase = getSupabase();
   const { count, error } = await supabase
     .from("users")
     .select("*", { count: "exact", head: true })
@@ -55,13 +64,12 @@ function isValidName(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "" && /^[a-zA-Z\s]+$/.test(value.trim());
 }
 
+/**
+ * Fetches pending users with email from auth.users via RPC.
+ */
 export async function fetchPendingUsers(): Promise<PendingUser[]> {
-  const { data, error } = await supabase
-    .from("users")
-    .select("user_id, id, first_name, middle_name, last_name, email")
-    .eq("active_status", 0)
-    .order("last_name", { ascending: true })
-    .order("first_name", { ascending: true });
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("get_pending_users");
 
   if (error) {
     if (process.env.NODE_ENV === "development") {
@@ -77,56 +85,40 @@ export async function fetchPendingUsers(): Promise<PendingUser[]> {
 }
 
 /**
- * Checks if an email is already in use by another user.
- * Returns true if the email is taken (by a different user_id).
+ * Checks if an email is already in use in auth.users via RPC.
+ * Returns true if the email is taken.
+ * Pass excludeUid to ignore a specific user (for edit scenarios).
  */
 export async function checkEmailExists(
   email: string,
-  excludeUserId: number,
+  excludeUid?: string,
 ): Promise<boolean> {
-  const { count, error } = await supabase
-    .from("users")
-    .select("*", { count: "exact", head: true })
-    .ilike("email", email.trim())
-    .neq("user_id", excludeUserId);
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("check_email_exists", {
+    p_email: email.trim(),
+    p_exclude_uid: excludeUid ?? null,
+  });
 
   if (error) {
     console.error("Error checking email uniqueness:", error);
     throw new Error("Failed to verify email availability.");
   }
 
-  return (count ?? 0) > 0;
+  return data === true;
 }
 
+/**
+ * Fetches active users with email (from auth.users) and roles via RPC.
+ */
 export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
+  const supabase = getSupabase();
   try {
     const startTime = performance.now();
 
-    // Optimized query: Fetch active users with their associated roles through the join table
-    const { data, error } = await supabase
-      .from("users")
-      .select(
-        `
-        user_id,
-        first_name,
-        middle_name,
-        last_name,
-        email,
-        user_roles (
-          roles (
-            role_id,
-            name
-          )
-        )
-      `
-      )
-      .eq("active_status", 1)
-      .order("last_name", { ascending: true })
-      .order("first_name", { ascending: true });
+    const { data, error } = await supabase.rpc("get_active_users_with_roles");
 
     const queryTime = performance.now() - startTime;
 
-    // Performance logging only in development
     if (process.env.NODE_ENV === "development") {
       console.log(`[Performance] Users query took ${queryTime.toFixed(2)}ms`);
     }
@@ -138,27 +130,17 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
       throw error;
     }
 
-    // Transform the data to match our UserWithRoles interface
-    const transformStart = performance.now();
     const usersWithRoles: UserWithRoles[] = (data || []).map((user: any) => ({
-      user_id: user.user_id,
+      uid: user.uid,
       first_name: user.first_name,
       middle_name: isValidName(user.middle_name) ? user.middle_name : undefined,
       last_name: user.last_name,
       email: user.email,
-      roles: (user.user_roles || [])
-        .map((ur: any) => ur.roles)
-        .filter((role: any) => role !== null) as Role[],
+      roles: (user.roles || []) as Role[],
     }));
 
-    const transformTime = performance.now() - transformStart;
-
-    // Performance logging only in development
     if (process.env.NODE_ENV === "development") {
-      console.log(
-        `[Performance] Data transformation took ${transformTime.toFixed(2)}ms`
-      );
-      console.log(`[Performance] Total time: ${(queryTime + transformTime).toFixed(2)}ms`);
+      console.log(`[Performance] Total time: ${queryTime.toFixed(2)}ms`);
       console.log(`[Performance] Fetched ${usersWithRoles.length} users`);
     }
 
@@ -168,5 +150,172 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
       console.error("Failed to fetch users:", error);
     }
     throw error;
+  }
+}
+
+/**
+ * Fetches all available roles
+ */
+export async function fetchAllRoles(): Promise<
+  Array<{ role_id: number; name: string }>
+> {
+  const supabase = getSupabase();
+  try {
+    const { data, error } = await supabase
+      .from("roles")
+      .select("role_id, name")
+      .order("name");
+
+    if (error) {
+      console.error("Error fetching roles:", error);
+      throw new Error(
+        "Failed to load roles. Please refresh the page and try again."
+      );
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error("Failed to fetch roles:", error);
+
+    if (error instanceof Error) {
+      throw error;
+    }
+
+    throw new Error("An unexpected error occurred while loading roles.");
+  }
+}
+
+/**
+ * Fetches all roles with their assigned permissions via join table.
+ */
+export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("roles")
+    .select("role_id, name, role_permissions(permissions(permission_id, name, description))")
+    .order("name");
+
+  if (error) {
+    console.error("Error fetching roles with permissions:", error);
+    throw new Error("Failed to load roles.");
+  }
+
+  return (data || []).map((role: any) => ({
+    role_id: role.role_id,
+    name: role.name,
+    permissions: (role.role_permissions || []).map((rp: any) => rp.permissions),
+  }));
+}
+
+/**
+ * Fetches all available permissions.
+ */
+export async function fetchAllPermissions(): Promise<Permission[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("permissions")
+    .select("permission_id, name, description")
+    .order("name");
+
+  if (error) {
+    console.error("Error fetching permissions:", error);
+    throw new Error("Failed to load permissions.");
+  }
+
+  return data || [];
+}
+
+/**
+ * Checks if a role name already exists (case-insensitive).
+ * Pass excludeRoleId to ignore a specific role (for edit scenarios).
+ */
+export async function checkRoleNameExists(
+  name: string,
+  excludeRoleId?: number,
+): Promise<boolean> {
+  const supabase = getSupabase();
+  let query = supabase
+    .from("roles")
+    .select("role_id", { count: "exact", head: true })
+    .ilike("name", name.trim());
+
+  if (excludeRoleId) {
+    query = query.neq("role_id", excludeRoleId);
+  }
+
+  const { count, error } = await query;
+
+  if (error) {
+    console.error("Error checking role name:", error);
+    throw new Error("Failed to verify role name availability.");
+  }
+
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Deletes a role and its permission assignments.
+ * ON DELETE CASCADE on role_permissions handles cleanup.
+ */
+export async function deleteRole(roleId: number): Promise<void> {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("roles")
+    .delete()
+    .eq("role_id", roleId);
+
+  if (error) {
+    console.error("Error deleting role:", error);
+    throw new Error("Failed to delete role.");
+  }
+}
+
+/**
+ * Updates a role's name and permissions atomically.
+ * Replaces all existing permission assignments.
+ */
+export async function updateRole(
+  roleId: number,
+  name: string,
+  permissionIds: number[],
+): Promise<void> {
+  const supabase = getSupabase();
+
+  // Update role name
+  const { error: nameError } = await supabase
+    .from("roles")
+    .update({ name: name.trim() })
+    .eq("role_id", roleId);
+
+  if (nameError) {
+    console.error("Error updating role name:", nameError);
+    throw new Error("Failed to update role name.");
+  }
+
+  // Replace permissions: delete existing, then insert new
+  const { error: deleteError } = await supabase
+    .from("role_permissions")
+    .delete()
+    .eq("role_id", roleId);
+
+  if (deleteError) {
+    console.error("Error clearing role permissions:", deleteError);
+    throw new Error("Failed to update role permissions.");
+  }
+
+  if (permissionIds.length > 0) {
+    const rows = permissionIds.map((pid) => ({
+      role_id: roleId,
+      permission_id: pid,
+    }));
+
+    const { error: insertError } = await supabase
+      .from("role_permissions")
+      .insert(rows);
+
+    if (insertError) {
+      console.error("Error inserting role permissions:", insertError);
+      throw new Error("Failed to assign permissions to role.");
+    }
   }
 }

@@ -1,0 +1,248 @@
+"use client";
+
+import {
+  Alert,
+  Box,
+  Text,
+  Grid,
+  TextInput,
+  Radio,
+  PasswordInput,
+  Progress,
+  Group,
+  Center,
+} from "@mantine/core";
+import type { UseFormReturnType } from "@mantine/form";
+import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
+import {
+  toTitleCase,
+  getPasswordStrength,
+  passwordRequirements,
+} from "../_lib/utils";
+import type { CreateUserForm } from "../_lib/types";
+
+interface StepUserInfoProps {
+  form: UseFormReturnType<CreateUserForm>;
+}
+
+function PasswordRequirement({
+  meets,
+  label,
+}: {
+  meets: boolean;
+  label: string;
+}) {
+  return (
+    <Text component="div" c={meets ? "teal" : "red"} mt={5} size="sm">
+      <Center inline>
+        {meets ? (
+          <IconCheck size={14} stroke={1.5} />
+        ) : (
+          <IconX size={14} stroke={1.5} />
+        )}
+        <Box ml={7}>{label}</Box>
+      </Center>
+    </Text>
+  );
+}
+
+export default function StepUserInfo({ form }: StepUserInfoProps) {
+  const passwordStrength = getPasswordStrength(form.values.password);
+
+  const passwordChecks = passwordRequirements.map((requirement, index) => (
+    <PasswordRequirement
+      key={index}
+      label={requirement.label}
+      meets={requirement.re.test(form.values.password)}
+    />
+  ));
+
+  const passwordBars = Array(4)
+    .fill(0)
+    .map((_, index) => (
+      <Progress
+        key={index}
+        styles={{ section: { transitionDuration: "0ms" } }}
+        value={
+          form.values.password.length > 0 && index === 0
+            ? 100
+            : passwordStrength >= ((index + 1) / 4) * 100
+              ? 100
+              : 0
+        }
+        color={
+          passwordStrength > 80
+            ? "teal"
+            : passwordStrength > 50
+              ? "yellow"
+              : "red"
+        }
+        size={4}
+        aria-label={`Password strength segment ${index + 1}`}
+      />
+    ));
+
+  return (
+    <Box>
+      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
+        Specify User Information
+      </Text>
+
+      {/* Card wrapper */}
+      <Box
+        p="lg"
+        style={{
+          border: "1px solid #e0e0e0",
+          borderRadius: "8px",
+        }}
+      >
+        <Text size="md" fw={700} mb="md" c="#4EAE4A">
+          User Information
+        </Text>
+
+        {/* Demographic Profile */}
+        <Text size="sm" fw={600} mb="md">
+          Demographic Profile
+        </Text>
+
+        <Grid gutter="md">
+          <Grid.Col span={4}>
+            <TextInput
+              label="First Name"
+              placeholder="First Name"
+              required
+              maxLength={100}
+              withErrorStyles
+              {...form.getInputProps("first_name")}
+              description={`${form.values.first_name.length}/100 characters`}
+              onBlur={(e) => {
+                if (e.target.value.trim()) {
+                  form.setFieldValue("first_name", toTitleCase(e.target.value));
+                }
+                form.validateField("first_name");
+              }}
+            />
+          </Grid.Col>
+
+          <Grid.Col span={4}>
+            <TextInput
+              label="Middle Name"
+              placeholder="Optional"
+              maxLength={100}
+              withErrorStyles
+              {...form.getInputProps("middle_name")}
+              description={`${form.values.middle_name.length}/100 characters`}
+              onBlur={(e) => {
+                if (e.target.value.trim()) {
+                  form.setFieldValue(
+                    "middle_name",
+                    toTitleCase(e.target.value),
+                  );
+                }
+                form.validateField("middle_name");
+              }}
+            />
+          </Grid.Col>
+
+          <Grid.Col span={4}>
+            <TextInput
+              label="Last Name"
+              placeholder="Last Name"
+              required
+              maxLength={100}
+              withErrorStyles
+              {...form.getInputProps("last_name")}
+              description={`${form.values.last_name.length}/100 characters`}
+              onBlur={(e) => {
+                if (e.target.value.trim()) {
+                  form.setFieldValue("last_name", toTitleCase(e.target.value));
+                }
+                form.validateField("last_name");
+              }}
+            />
+          </Grid.Col>
+        </Grid>
+
+        {/* Account Information */}
+        <Text size="sm" fw={600} mt="xl" mb="md">
+          Account Information
+        </Text>
+
+        <TextInput
+          label="Email"
+          placeholder="your@gmail.com"
+          required
+          maxLength={255}
+          withErrorStyles
+          {...form.getInputProps("email")}
+          description={`${form.values.email.length}/255 characters`}
+          mb="md"
+        />
+
+        {/* Password */}
+        <Text size="sm" fw={500} mb="xs">
+          Password <span style={{ color: "red" }}>*</span>
+        </Text>
+
+        <Radio
+          label="Autogenerated Password"
+          checked={form.values.passwordType === "autogenerated"}
+          onChange={() => {
+            form.setFieldValue("passwordType", "autogenerated");
+            form.setFieldValue("password", "");
+            form.clearFieldError("password");
+          }}
+          mb="sm"
+        />
+
+        {form.values.passwordType === "autogenerated" && (
+          <Alert
+            icon={<IconInfoCircle size={18} />}
+            color="blue"
+            variant="light"
+            mb="sm"
+          >
+            A secure password will be automatically generated and sent to the
+            email address provided above.
+          </Alert>
+        )}
+
+        <Group align="flex-start" gap="sm" wrap="nowrap">
+          <Radio
+            checked={form.values.passwordType === "manual"}
+            onChange={() => form.setFieldValue("passwordType", "manual")}
+            mt={6}
+          />
+          <Box style={{ flex: 1 }}>
+            <PasswordInput
+              placeholder="Your password"
+              withErrorStyles
+              {...form.getInputProps("password")}
+              disabled={form.values.passwordType === "autogenerated"}
+              onFocus={() => {
+                if (form.values.passwordType !== "manual") {
+                  form.setFieldValue("passwordType", "manual");
+                }
+              }}
+            />
+          </Box>
+        </Group>
+
+        {/* Password strength (only when manual is selected) */}
+        {form.values.passwordType === "manual" && (
+          <Box mt="xs">
+            <Group gap={5} grow mb="md">
+              {passwordBars}
+            </Group>
+
+            <PasswordRequirement
+              label="Has at least 6 characters"
+              meets={form.values.password.length >= 8}
+            />
+            {passwordChecks}
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+}

@@ -53,7 +53,7 @@ export default function LoginPage() {
       const { data: userData } = await supabase
         .from("users")
         .select("active_status")
-        .eq("id", authData.user.id)
+        .eq("uid", authData.user.id)
         .maybeSingle();
 
       if (!userData) {
