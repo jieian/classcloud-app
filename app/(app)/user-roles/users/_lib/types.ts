@@ -25,7 +25,6 @@ export interface CreateUserData {
 
 export interface CreateRoleForm {
   name: string;
-  description: string;
   permission_ids: number[];
   activeStep: number;
 }

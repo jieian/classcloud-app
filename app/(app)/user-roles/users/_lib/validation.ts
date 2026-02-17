@@ -1,4 +1,5 @@
 import type { CreateUserForm } from "./types";
+import type { CreateRoleForm } from "./types";
 
 /**
  * Validation rules for Create User form
@@ -73,17 +74,17 @@ export const validateCreateRoleForm = {
     const trimmed = value.trim();
     if (!trimmed) return "Role Name is required";
     if (trimmed.length > 50) return "Name must be 50 characters or less";
-    return null;
-  },
-
-  description: (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed.length > 255) return "Role Description must be 255 characters or less";
+    
+    const nameRegex = /^[a-zA-Z0-9]+(?:\s[a-zA-Z0-9\-]+)*$/;
+    if (!nameRegex.test(trimmed))
+      return "Role Name contains invalid characters";
+      
     return null;
   },
 
   permission_ids: (value: number[]) => {
-    if (!value || value.length === 0) return "Select at least one permission";
+    if (!value || value.length === 0)
+      return "Please select at least one permission for this role";
     return null;
   },
 };

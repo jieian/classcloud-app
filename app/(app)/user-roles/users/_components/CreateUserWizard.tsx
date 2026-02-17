@@ -49,7 +49,6 @@ export default function CreateUserWizard() {
       const roles = await fetchAllRoles();
       setAvailableRoles(roles);
     } catch (error) {
-      console.error("Failed to load roles:", error);
       const errorMessage =
         error instanceof Error
           ? error.message
@@ -177,11 +176,13 @@ export default function CreateUserWizard() {
         confirmProps: { color: "red" },
         onConfirm: () => {
           form.reset();
-          router.push("/user-roles/users");
+          router.replace("/user-roles/users");
+          router.refresh();
         },
       });
     } else {
-      router.push("/user-roles/users");
+      router.replace("/user-roles/users");
+      router.refresh();
     }
   };
 
@@ -237,7 +238,8 @@ export default function CreateUserWizard() {
       });
 
       form.reset();
-      router.push("/user-roles/users");
+      router.replace("/user-roles/users");
+      router.refresh();
     } catch (error) {
       console.error("User creation error:", error);
       const message =
@@ -304,7 +306,7 @@ export default function CreateUserWizard() {
               />
             </Stepper.Step>
 
-            <Stepper.Step label="Step 3" description="Review and Create">
+            <Stepper.Step label="Step 3" description="Review and Create User">
               <StepReview form={form} availableRoles={availableRoles} />
             </Stepper.Step>
           </Stepper>
@@ -358,7 +360,10 @@ export default function CreateUserWizard() {
                 description="Specify user information"
               />
               <Stepper.Step label="Step 2" description="Assign Role" />
-              <Stepper.Step label="Step 3" description="Review and Create" />
+              <Stepper.Step
+                label="Step 3"
+                description="Review and Create User"
+              />
             </Stepper>
           </div>
 

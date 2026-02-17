@@ -11,8 +11,9 @@ import {
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import type { RoleWithPermissions } from "../../users/_lib";
-import { deleteRole } from "../../users/_lib";
+import { deleteRole, isRoleAttached } from "../../users/_lib";
 import EditRoleDrawer from "./EditRoleDrawer";
 
 interface RolesTableActionsProps {
@@ -28,11 +29,35 @@ export default function RolesTableActions({
     useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure(false);
+  const [attachedOpened, { open: openAttached, close: closeAttached }] =
+    useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const isAdmin = role.role_id === 1;
 
   const handleSuccess = () => {
     onUpdate();
+  };
+
+  const handleTrashClick = async () => {
+    try {
+      setChecking(true);
+      const attached = await isRoleAttached(role.role_id);
+      if (attached) {
+        openAttached();
+      } else {
+        openDelete();
+      }
+    } catch {
+      notifications.show({
+        title: "Error",
+        message: "Failed to check role status. Please try again.",
+        color: "red",
+      });
+    } finally {
+      setChecking(false);
+    }
   };
 
   const handleCloseDelete = () => {
@@ -46,8 +71,21 @@ export default function RolesTableActions({
       await deleteRole(role.role_id);
       handleCloseDelete();
       onUpdate();
+      notifications.show({
+        title: "Role Deleted",
+        message: `${role.name} has been deleted successfully.`,
+        color: "green",
+      });
     } catch (err) {
-      console.error("Failed to delete role:", err);
+      const message =
+        err instanceof Error && err.message.includes("assigned to users")
+          ? "Cannot delete role because it is currently assigned to one or more users. Please unassign the role from all users before deleting."
+          : "An error occurred while deleting the role. Please try again.";
+      notifications.show({
+        title: "Error",
+        message,
+        color: "red",
+      });
     } finally {
       setDeleting(false);
     }
@@ -61,6 +99,7 @@ export default function RolesTableActions({
           color="gray"
           aria-label={`Edit ${role.name}`}
           onClick={openDrawer}
+          disabled={isAdmin}
         >
           <IconPencil size={16} stroke={1.5} />
         </ActionIcon>
@@ -68,7 +107,9 @@ export default function RolesTableActions({
           variant="subtle"
           color="red"
           aria-label={`Delete ${role.name}`}
-          onClick={openDelete}
+          onClick={handleTrashClick}
+          loading={checking}
+          disabled={isAdmin}
         >
           <IconTrash size={16} stroke={1.5} />
         </ActionIcon>
@@ -115,6 +156,23 @@ export default function RolesTableActions({
             onClick={handleDelete}
           >
             Delete
+          </Button>
+        </Group>
+      </Modal>
+
+      <Modal
+        opened={attachedOpened}
+        onClose={closeAttached}
+        title="Cannot Delete Role"
+        centered
+      >
+        <Text size="sm" mb="lg">
+          <strong>{role.name}</strong> is currently assigned to one or more
+          users. Please unassign this role from all users before deleting it.
+        </Text>
+        <Group justify="flex-end">
+          <Button variant="default" onClick={closeAttached}>
+            Close
           </Button>
         </Group>
       </Modal>

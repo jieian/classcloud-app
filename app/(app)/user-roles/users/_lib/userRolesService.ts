@@ -254,10 +254,36 @@ export async function checkRoleNameExists(
 }
 
 /**
+ * Creates a new role with permissions via the secure API route.
+ * The API handles auth, permission checks, and rollback.
+ */
+export async function createRole(
+  name: string,
+  permissionIds: number[],
+): Promise<void> {
+  const response = await fetch("/api/roles/create-role", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, permission_ids: permissionIds }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to create role.");
+  }
+}
+
+/**
  * Deletes a role and its permission assignments.
  * ON DELETE CASCADE on role_permissions handles cleanup.
  */
 export async function deleteRole(roleId: number): Promise<void> {
+  const attached = await isRoleAttached(roleId);
+  if (attached) {
+    throw new Error("Cannot delete role that is assigned to users.");
+  }
+
   const supabase = getSupabase();
   const { error } = await supabase
     .from("roles")
@@ -265,9 +291,22 @@ export async function deleteRole(roleId: number): Promise<void> {
     .eq("role_id", roleId);
 
   if (error) {
-    console.error("Error deleting role:", error);
     throw new Error("Failed to delete role.");
   }
+}
+
+export async function isRoleAttached(roleId: number): Promise<boolean> {
+  const supabase = getSupabase();
+  const { count, error } = await supabase
+    .from("user_roles")
+    .select("*", { count: "exact", head: true })
+    .eq("role_id", roleId);
+
+  if (error) {
+    throw new Error("Failed to check role attachment status.");
+  }
+
+  return (count ?? 0) > 0;
 }
 
 /**

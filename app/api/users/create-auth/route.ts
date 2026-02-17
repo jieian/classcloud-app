@@ -3,6 +3,7 @@ import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
+import { sendWelcomeEmail } from "@/lib/email/templates";
 
 export async function POST(request: Request) {
   // 1. SECURITY: Verify the CALLER (the admin user clicking the button)
@@ -38,7 +39,6 @@ export async function POST(request: Request) {
   }
 
   // 4. ADMIN CLIENT: Initialize with Service Role Key (Bypasses RLS)
-  // Make sure SUPABASE_SERVICE_ROLE_KEY is in your .env file!
   const adminClient = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm so they can login immediately
+      email_confirm: true,
       user_metadata: {
         // Optional: Store basic name in metadata as a backup
         full_name: `${first_name} ${last_name}`, 
@@ -91,10 +91,23 @@ export async function POST(request: Request) {
         throw new Error(rpcResult.message || "Database insert failed logic check");
     }
 
+    // --- STEP C: Send Welcome Email (non-blocking) ---
+    // Don't let email failure roll back a successful user creation
+    try {
+      await sendWelcomeEmail({
+        to: email,
+        firstName: first_name,
+        lastName: last_name,
+        password,
+      });
+    } catch (emailError) {
+      console.error("Welcome email failed (user was still created):", emailError);
+    }
+
     // --- SUCCESS ---
-    return Response.json({ 
-      success: true, 
-      uuid: newAuthUserUuid 
+    return Response.json({
+      success: true,
+      uuid: newAuthUserUuid
     }, { status: 201 });
 
   } catch (error: any) {

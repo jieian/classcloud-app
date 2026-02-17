@@ -78,9 +78,7 @@ export default function EditRoleDrawer({
       loadPermissions();
       form.setValues({
         name: role.name,
-        permission_ids: role.permissions.map((p) =>
-          p.permission_id.toString(),
-        ),
+        permission_ids: role.permissions.map((p) => p.permission_id.toString()),
       });
       form.resetDirty();
       setPermPage(1);
@@ -180,18 +178,11 @@ export default function EditRoleDrawer({
       const trimmedName = form.values.name.trim();
 
       // Check name uniqueness before submitting
-      const nameChanged =
-        trimmedName.toLowerCase() !== role.name.toLowerCase();
+      const nameChanged = trimmedName.toLowerCase() !== role.name.toLowerCase();
       if (nameChanged) {
-        const nameTaken = await checkRoleNameExists(
-          trimmedName,
-          role.role_id,
-        );
+        const nameTaken = await checkRoleNameExists(trimmedName, role.role_id);
         if (nameTaken) {
-          form.setFieldError(
-            "name",
-            "This role name is already in use",
-          );
+          form.setFieldError("name", "This role name is already in use");
           notifications.show({
             title: "Role Name Already In Use",
             message: "Please use a different role name.",
@@ -296,8 +287,8 @@ export default function EditRoleDrawer({
                   </Text>
                 )}
                 <Text size="xs" c="dimmed" mb="xs">
-                  {form.values.permission_ids.length} of{" "}
-                  {allPermissions.length} selected
+                  {form.values.permission_ids.length} of {allPermissions.length}{" "}
+                  selected
                 </Text>
                 <Checkbox.Group {...form.getInputProps("permission_ids")}>
                   {paginatedPermissions.map((perm) => (

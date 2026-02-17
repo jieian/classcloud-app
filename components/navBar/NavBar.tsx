@@ -226,9 +226,8 @@ export default function Navbar() {
     openLogout();
   };
 
-  const confirmLogout = () => {
-    closeLogout();
-    signOut();
+  const confirmLogout = async () => {
+    await signOut();
   };
 
   // Don't hide navbar while loading - just show it with filtered navigation
