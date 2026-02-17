@@ -237,7 +237,7 @@ export default function Navbar() {
   const mainLinks = filteredNavigationData.map((link) => {
     const isActive =
       pathname === link.href ||
-      (link.sublinks.length > 0 && pathname.startsWith(link.href + "/"));
+      link.sublinks.some((sublink) => pathname.startsWith(sublink.href));
 
     return (
       <Tooltip

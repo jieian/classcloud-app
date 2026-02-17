@@ -176,15 +176,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (error) {
-      console.error("Logout error:", error);
-    } finally {
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.href = "/login";
-    }
+    localStorage.clear();
+    sessionStorage.clear();
+    supabase.auth.signOut({ scope: "global" }).catch((error: unknown) =>
+      console.error("Logout error:", error)
+    );
+    window.location.href = "/login";
   };
 
   return (
