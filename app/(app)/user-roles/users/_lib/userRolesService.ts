@@ -275,23 +275,20 @@ export async function createRole(
 }
 
 /**
- * Deletes a role and its permission assignments.
- * ON DELETE CASCADE on role_permissions handles cleanup.
+ * Deletes a role and its permission assignments via the secure API route.
+ * The API handles auth, permission checks, and uses the admin client.
  */
 export async function deleteRole(roleId: number): Promise<void> {
-  const attached = await isRoleAttached(roleId);
-  if (attached) {
-    throw new Error("Cannot delete role that is assigned to users.");
-  }
+  const response = await fetch("/api/roles/delete-role", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role_id: roleId }),
+  });
 
-  const supabase = getSupabase();
-  const { error } = await supabase
-    .from("roles")
-    .delete()
-    .eq("role_id", roleId);
+  const result = await response.json();
 
-  if (error) {
-    throw new Error("Failed to delete role.");
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to delete role.");
   }
 }
 

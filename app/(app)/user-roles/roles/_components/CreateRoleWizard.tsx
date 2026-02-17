@@ -178,8 +178,8 @@ export default function CreateRoleWizard() {
       children: (
         <Text size="sm">
           This will create a role named {""}
-          <strong>{form.values.name}</strong>
-          with {form.values.permission_ids.length} permission(s).
+          <strong>{form.values.name}</strong> with{" "}
+          {form.values.permission_ids.length} permission(s).
         </Text>
       ),
       labels: { confirm: "Create Role", cancel: "Cancel" },
