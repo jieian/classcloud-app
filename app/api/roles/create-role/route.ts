@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   // 2. PERMISSIONS: Verify caller has the right to manage roles
   const permissions = await getUserPermissions(caller.id);
-  if (!permissions.includes("access_role_management")) {
+  if (!permissions.includes("access_user_management")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

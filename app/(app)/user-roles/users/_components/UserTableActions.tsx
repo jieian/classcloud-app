@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ActionIcon,
   Button,
@@ -8,9 +8,11 @@ import {
   Modal,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
+import { getSupabase } from "@/lib/supabase/client";
 import type { UserWithRoles } from "../_lib";
 import { deleteUser } from "../_lib";
 import EditUserDrawer from "./EditUserDrawer";
@@ -30,6 +32,17 @@ export default function UserTableActions({
     useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUid = async () => {
+      const { data } = await getSupabase().auth.getUser();
+      setCurrentUid(data.user?.id ?? null);
+    };
+    fetchUid();
+  }, []);
+
+  const isSelf = currentUid === user.uid;
 
   const fullName = `${user.first_name} ${user.last_name}`;
 
@@ -66,14 +79,20 @@ export default function UserTableActions({
         >
           <IconPencil size={16} stroke={1.5} />
         </ActionIcon>
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          aria-label="Delete user"
-          onClick={openDelete}
+        <Tooltip
+          label="You cannot delete your own account"
+          disabled={!isSelf}
         >
-          <IconTrash size={16} stroke={1.5} />
-        </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label="Delete user"
+            onClick={openDelete}
+            disabled={isSelf}
+          >
+            <IconTrash size={16} stroke={1.5} />
+          </ActionIcon>
+        </Tooltip>
       </Group>
 
       <EditUserDrawer

@@ -310,51 +310,23 @@ export async function isRoleAttached(roleId: number): Promise<boolean> {
 }
 
 /**
- * Updates a role's name and permissions atomically.
- * Replaces all existing permission assignments.
+ * Updates a role's name and permissions via the secure API route.
+ * The API handles auth, permission checks, and uses the admin client.
  */
 export async function updateRole(
   roleId: number,
   name: string,
   permissionIds: number[],
 ): Promise<void> {
-  const supabase = getSupabase();
+  const response = await fetch("/api/roles/update-role", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role_id: roleId, name, permission_ids: permissionIds }),
+  });
 
-  // Update role name
-  const { error: nameError } = await supabase
-    .from("roles")
-    .update({ name: name.trim() })
-    .eq("role_id", roleId);
+  const result = await response.json();
 
-  if (nameError) {
-    console.error("Error updating role name:", nameError);
-    throw new Error("Failed to update role name.");
-  }
-
-  // Replace permissions: delete existing, then insert new
-  const { error: deleteError } = await supabase
-    .from("role_permissions")
-    .delete()
-    .eq("role_id", roleId);
-
-  if (deleteError) {
-    console.error("Error clearing role permissions:", deleteError);
-    throw new Error("Failed to update role permissions.");
-  }
-
-  if (permissionIds.length > 0) {
-    const rows = permissionIds.map((pid) => ({
-      role_id: roleId,
-      permission_id: pid,
-    }));
-
-    const { error: insertError } = await supabase
-      .from("role_permissions")
-      .insert(rows);
-
-    if (insertError) {
-      console.error("Error inserting role permissions:", insertError);
-      throw new Error("Failed to assign permissions to role.");
-    }
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to update role.");
   }
 }
