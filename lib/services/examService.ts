@@ -70,12 +70,18 @@ export async function createExamWithAssignments(
 // ─── Update ───────────────────────────────────────────────────────────────────
 
 export async function saveAnswerKey(examId: number, answerKey: AnswerKeyJsonb): Promise<boolean> {
-  const { error } = await supabase
-    .from('exams')
-    .update({ answer_key: answerKey })
-    .eq('exam_id', examId);
+  const res = await fetch('/api/exams/answer-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ examId, answerKey }),
+  });
 
-  if (error) { console.error('[examService] saveAnswerKey error:', error.message); return false; }
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
+    console.error('[examService] saveAnswerKey error:', payload?.error ?? 'Unknown error');
+    return false;
+  }
+
   return true;
 }
 

@@ -9,7 +9,7 @@ import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
 interface CreateAnswerKeyModalProps {
   exam: ExamWithRelations;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -118,7 +118,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
       const success = await saveAnswerKey(exam.exam_id, answerKeyData);
       if (!success) throw new Error('Failed to save');
 
-      onSuccess();
+      await onSuccess();
       onClose();
     } catch (error) {
       console.error('Error saving answer key:', error);

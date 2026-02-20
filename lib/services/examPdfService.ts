@@ -55,8 +55,9 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
 
   // Bottom-right: L-shaped notch (marks orientation — scanner detects this is BR)
   pdf.rect(CM_BR.x, CM_BR.y, CM_SIZE, CM_SIZE, 'F');
+  const notch = Math.round(CM_SIZE * 0.4);
   pdf.setFillColor(255, 255, 255);
-  pdf.rect(CM_BR.x + CM_SIZE - 8, CM_BR.y, 8, 8, 'F'); // white notch top-right of marker
+  pdf.rect(CM_BR.x + CM_SIZE - notch, CM_BR.y, notch, notch, 'F'); // white notch top-right of marker
 
   // ── QR Code ───────────────────────────────────────────────────────────────
   const qrData = `EXAM:${exam.exam_id}`;

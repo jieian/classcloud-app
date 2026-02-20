@@ -22,11 +22,12 @@ export const OMR = {
   // Solid black squares used for perspective detection.
   // Position = top-left of each square.
   // Center of each marker used as the reference point for homography.
-  CM_SIZE: 20,   // square side length in pt
-  CM_TL: { x: 25,  y: 25  },   // top-left marker
-  CM_TR: { x: 550, y: 25  },   // top-right marker
-  CM_BL: { x: 25,  y: 797 },   // bottom-left marker
-  CM_BR: { x: 550, y: 797 },   // bottom-right marker (L-shaped notch for orientation)
+  // Inset markers from paper edges so phone/webcam wide shots can include all corners more easily.
+  CM_SIZE: 24,   // square side length in pt
+  CM_TL: { x: 40,  y: 40  },   // top-left marker
+  CM_TR: { x: 531, y: 40  },   // top-right marker
+  CM_BL: { x: 40,  y: 778 },   // bottom-left marker
+  CM_BR: { x: 531, y: 778 },   // bottom-right marker (L-shaped notch for orientation)
 
   // Computed: center of each corner marker
   get CM_TL_C() { return { x: this.CM_TL.x + this.CM_SIZE / 2, y: this.CM_TL.y + this.CM_SIZE / 2 }; },

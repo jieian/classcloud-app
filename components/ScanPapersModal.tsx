@@ -37,6 +37,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   const [studentLrn, setStudentLrn] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
+  const [startingCamera, setStartingCamera] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -51,15 +52,64 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   // ── Camera management ─────────────────────────────────────────────────────
 
   const startCamera = async () => {
+    if (startingCamera) return;
+    setStartingCamera(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
-      });
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera API not available in this browser.');
+      }
+
+      const attempts: MediaStreamConstraints[] = [
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: true, audio: false },
+      ];
+
+      let stream: MediaStream | null = null;
+      for (const constraints of attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          break;
+        } catch {
+          // Try the next, less strict constraints.
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Unable to access camera.');
+      }
+
       streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
       setCameraActive(true);
-    } catch {
-      alert('Camera not available. Please use the upload option instead.');
+
+      // Ensure the video element is mounted before attaching the stream.
+      let videoEl: HTMLVideoElement | null = null;
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 25));
+        if (videoRef.current) {
+          videoEl = videoRef.current;
+          break;
+        }
+      }
+
+      if (!videoEl) {
+        throw new Error('Video element failed to mount.');
+      }
+
+      videoEl.srcObject = stream;
+      videoEl.muted = true;
+
+      await new Promise<void>((resolve) => {
+        videoEl!.onloadedmetadata = () => resolve();
+      });
+
+      await videoEl.play();
+    } catch (error) {
+      console.error('Failed to start camera:', error);
+      alert('Camera not available or blocked. Please allow camera permission, then try again. You can also use Upload Photo.');
+      stopCamera();
+    } finally {
+      setStartingCamera(false);
     }
   };
 
@@ -73,6 +123,11 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
 
   const captureFromCamera = () => {
     if (!videoRef.current) return;
+    if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
+      alert('Camera is still initializing. Please wait a moment and try capture again.');
+      return;
+    }
+
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
@@ -111,8 +166,9 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
       setConfidence(result.confidence);
       setCornersOk(result.cornersAutoDetected);
       setStep('review');
-    } catch (err: any) {
-      setProcessingError(err?.message ?? 'Processing failed');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Processing failed';
+      setProcessingError(message);
       setStep('capture');
     }
   };
@@ -238,9 +294,12 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
               </div>
 
               {/* Camera feed */}
-              {cameraActive && (
+              {(cameraActive || startingCamera) && (
                 <div className="relative">
                   <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
+                  {startingCamera && (
+                    <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>
+                  )}
                   <div className="mt-3 flex gap-3">
                     <button onClick={captureFromCamera} className="flex-1 btn-primary flex items-center justify-center gap-2">
                       <IconCamera className="w-4 h-4" /> Capture
@@ -286,11 +345,12 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                   </button>
                   <button
                     onClick={startCamera}
+                    disabled={startingCamera}
                     className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
                   >
                     <IconCamera className="w-8 h-8 text-gray-400" />
                     <div className="text-center">
-                      <p className="font-semibold text-gray-700">Use Camera</p>
+                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
                       <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
                     </div>
                   </button>
