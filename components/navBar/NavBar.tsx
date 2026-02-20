@@ -1,6 +1,6 @@
 // components/NavBar.tsx
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -217,6 +217,12 @@ export default function Navbar() {
     setIsDrawerOpen(false);
     if (isMobile) setIsMobileMenuOpen(false);
   };
+
+  // Close the drawer and mobile menu whenever the route changes
+  useEffect(() => {
+    setIsDrawerOpen(false);
+    if (isMobile) setIsMobileMenuOpen(false);
+  }, [pathname, isMobile]);
 
   const [logoutOpened, { open: openLogout, close: closeLogout }] =
     useDisclosure(false);
