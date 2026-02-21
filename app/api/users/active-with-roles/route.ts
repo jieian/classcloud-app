@@ -7,7 +7,7 @@ type Role = {
 };
 
 type UserRoleJoin = {
-  roles: Role | null;
+  roles: Role | Role[] | null;
 };
 
 type ActiveUserRow = {
@@ -63,15 +63,16 @@ export async function GET() {
     (authData?.users ?? []).map((u) => [u.id, u.email ?? ""]),
   );
 
-  const data = (users as ActiveUserRow[] | null ?? []).map((u) => ({
+  const data = ((users as ActiveUserRow[] | null) ?? []).map((u) => ({
     uid: u.uid,
     first_name: u.first_name,
     middle_name: u.middle_name,
     last_name: u.last_name,
     email: emailByUid.get(u.uid) ?? "",
-    roles: (u.user_roles ?? [])
-      .map((ur) => ur.roles)
-      .filter((role): role is Role => role !== null),
+    roles: (u.user_roles ?? []).flatMap((ur) => {
+      if (!ur.roles) return [];
+      return Array.isArray(ur.roles) ? ur.roles : [ur.roles];
+    }),
   }));
 
   return Response.json({ data });

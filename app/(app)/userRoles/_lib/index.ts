@@ -4,4 +4,10 @@
  */
 
 export * from "./userRolesService";
-export * from "./userUpdateService";
+export {
+  updateUser,
+  deleteUser,
+  activateUser,
+  rejectPendingUser,
+} from "./userUpdateService";
+export type { UpdateUserData } from "./userUpdateService";
