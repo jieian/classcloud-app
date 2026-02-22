@@ -86,12 +86,21 @@ export async function saveAnswerKey(examId: number, answerKey: AnswerKeyJsonb): 
 }
 
 export async function setExamLocked(examId: number, isLocked: boolean): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('exams')
     .update({ is_locked: isLocked })
-    .eq('exam_id', examId);
+    .eq('exam_id', examId)
+    .select('exam_id, is_locked')
+    .maybeSingle();
 
-  if (error) { console.error('[examService] setExamLocked error:', error.message); return false; }
+  if (error) {
+    console.error('[examService] setExamLocked error:', error.message);
+    return false;
+  }
+  if (!data || data.is_locked !== isLocked) {
+    console.error('[examService] setExamLocked no row updated or stale value for exam_id:', examId);
+    return false;
+  }
   return true;
 }
 

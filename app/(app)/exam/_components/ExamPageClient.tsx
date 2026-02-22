@@ -40,8 +40,8 @@ export default function ExamPageClient() {
     try {
       const data = await fetchExamsWithRelations();
       setExams(data);
-    } catch (error: any) {
-      setDbError(error?.message || 'Unknown error');
+    } catch (error: unknown) {
+      setDbError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
@@ -86,6 +86,13 @@ export default function ExamPageClient() {
         message: `Exam is now ${newStatus}`,
         color: 'green',
       });
+    } else {
+      notifications.show({
+        title: 'Status update failed',
+        message: 'Could not save exam status. Check permissions and try again.',
+        color: 'red',
+      });
+      await fetchExams();
     }
     setUpdatingStatus(null);
   };
