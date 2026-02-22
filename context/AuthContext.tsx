@@ -232,7 +232,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Handle post-login redirect separately so it doesn't affect the subscription
   useEffect(() => {
     if (user && pathname === "/login" && !isLoggingOut) {
-      router.replace("/");
+      const requestedNext =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      const safeNext =
+        requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+          ? requestedNext
+          : "/";
+      router.replace(safeNext);
     }
   }, [user, pathname, router, isLoggingOut]);
 
