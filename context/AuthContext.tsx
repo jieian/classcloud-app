@@ -126,9 +126,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Single subscription — onAuthStateChange fires INITIAL_SESSION on setup,
-  // so no need for a separate getSession() call.
+  // but on some tab-restore paths this can be delayed, so we also bootstrap
+  // with an explicit getSession() call.
   // Empty deps [] = subscribe once on mount, never tear down until unmount.
   useEffect(() => {
+    let alive = true;
+
+    const applySession = async (session: Session | null) => {
+      if (!alive) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        await fetchUserData(currentUser.id);
+      } else {
+        setRoles([]);
+        setPermissions([]);
+      }
+
+      if (alive) setLoading(false);
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
@@ -150,20 +168,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await fetchUserData(currentUser.id);
-      } else {
-        setRoles([]);
-        setPermissions([]);
-      }
-
-      setLoading(false);
+      await applySession(session);
     });
 
-    return () => subscription.unsubscribe();
+    // Bootstrap auth state in case INITIAL_SESSION is delayed/missed.
+    supabase.auth.getSession()
+      .then(async ({ data }) => {
+        await applySession(data.session ?? null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setUser(null);
+        setRoles([]);
+        setPermissions([]);
+        setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

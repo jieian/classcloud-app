@@ -10,6 +10,7 @@ import { ReactNode } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Center, Loader } from "@mantine/core";
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -40,7 +41,13 @@ export default function ProtectedRoute({
     }
   }, [user, permissions, loading, requiredPermissions, router]);
 
-  if (loading) return null;
+  if (loading) {
+    return (
+      <Center h="60vh">
+        <Loader size="md" />
+      </Center>
+    );
+  }
 
   if (!user) return null;
 
