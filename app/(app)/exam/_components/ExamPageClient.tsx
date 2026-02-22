@@ -243,7 +243,7 @@ export default function ExamPageClient() {
                           type="button"
                           onClick={() => handleStatusChange(exam, exam.is_locked ? 'active' : 'closed')}
                           disabled={updatingStatus === exam.exam_id}
-                          className={`min-w-[86px] px-4 py-1.5 rounded-xl text-sm font-medium text-white transition-all ${
+                          className={`min-w-21.5 px-4 py-1.5 rounded-xl text-sm font-medium text-white transition-all ${
                             exam.is_locked
                               ? 'bg-red-500 hover:bg-red-600'
                               : 'bg-green-500 hover:bg-green-600'

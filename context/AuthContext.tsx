@@ -194,18 +194,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let alive = true;
     let settled = false;
+    let applySessionInFlight = false;
 
     const applySession = async (session: Session | null) => {
-      if (!alive) return;
+      if (!alive || applySessionInFlight) return;
+      applySessionInFlight = true;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
       if (currentUser) {
+        // If cached roles/permissions exist, unblock the UI immediately
+        // and let the fresh fetch run silently in the background.
+        const hasCached = (() => {
+          try {
+            return !!(
+              sessionStorage.getItem("cc_roles") &&
+              sessionStorage.getItem("cc_permissions")
+            );
+          } catch {
+            return false;
+          }
+        })();
+
+        if (hasCached && alive) {
+          setLoading(false);
+          settled = true;
+        }
+
         try {
-          // Prevent indefinite loading state on flaky network/tab restore.
-          await withTimeout(fetchUserData(currentUser.id), 8000, "fetchUserData");
+          await withTimeout(fetchUserData(currentUser.id), 15000, "fetchUserData");
         } catch (error) {
-          console.error("[auth] fetchUserData fallback:", error);
+          // Non-fatal: cached data is already displayed.
+          console.warn("[auth] fetchUserData background refresh failed:", error);
         }
       } else {
         setRoles([]);
@@ -214,6 +234,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (alive) setLoading(false);
       settled = true;
+      applySessionInFlight = false;
     };
 
     const {
@@ -243,7 +264,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Bootstrap auth state in case INITIAL_SESSION is delayed/missed.
     withTimeout<{ data: { session: Session | null } }>(
       supabase.auth.getSession(),
-      6000,
+      10000,
       "getSession",
     )
       .then(async ({ data }: { data: { session: Session | null } }) => {
@@ -265,7 +286,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRoles([]);
       setPermissions([]);
       setLoading(false);
-    }, 12000);
+    }, 20000);
 
     return () => {
       alive = false;
