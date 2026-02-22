@@ -1,9 +1,10 @@
-import ProtectedRoute from "@/components/ProtectedRoute";
+﻿import ProtectedRoute from "@/components/ProtectedRoute";
+import ExamPageClient from "./_components/ExamPageClient";
 
 export default function Exam() {
   return (
     <ProtectedRoute requiredPermissions={["access_examinations"]}>
-      <h1>Examinations</h1>
+      <ExamPageClient />
     </ProtectedRoute>
   );
 }

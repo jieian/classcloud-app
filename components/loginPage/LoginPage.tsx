@@ -85,9 +85,18 @@ export default function LoginPage() {
         type: "success",
       });
 
-      // Redirect to home
-      router.push("/");
-    } catch (authError: any) {
+      const requestedNext =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      const safeNext =
+        requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+          ? requestedNext
+          : "/";
+
+      // Redirect back to requested page when provided.
+      router.push(safeNext);
+    } catch (authError: unknown) {
       // Check if this email belongs to a pending account
       try {
         const res = await fetch("/api/auth/check-pending", {
@@ -114,7 +123,7 @@ export default function LoginPage() {
       setError(true);
       notify({
         title: "Login failed",
-        message: authError.message,
+        message: authError instanceof Error ? authError.message : "Login failed",
         type: "error",
       });
     } finally {

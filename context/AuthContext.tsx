@@ -24,6 +24,75 @@ interface Role {
   name: string;
 }
 
+interface UserRoleJoinRow {
+  roles: Role | null;
+}
+
+interface PermissionRow {
+  permission_name: string;
+}
+
+function clearSupabaseClientAuthArtifacts() {
+  if (typeof window === "undefined") return;
+
+  // Clear Supabase auth entries from local/session storage.
+  try {
+    const localKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("sb-")) localKeys.push(key);
+    }
+    localKeys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore storage failures
+  }
+
+  try {
+    const sessionKeys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith("sb-")) sessionKeys.push(key);
+    }
+    sessionKeys.forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    // ignore storage failures
+  }
+
+  // Best-effort clear Supabase cookies on current host and parent domain.
+  try {
+    const host = window.location.hostname;
+    const parentDomain =
+      host.includes(".") ? `.${host.split(".").slice(-2).join(".")}` : undefined;
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+    cookies.forEach((cookie) => {
+      const name = cookie.split("=")[0]?.trim();
+      if (!name || !name.startsWith("sb-")) return;
+      document.cookie = `${name}=; Max-Age=0; path=/;`;
+      document.cookie = `${name}=; Max-Age=0; path=/; domain=${host};`;
+      if (parentDomain) {
+        document.cookie = `${name}=; Max-Age=0; path=/; domain=${parentDomain};`;
+      }
+    });
+  } catch {
+    // ignore cookie failures
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 interface AuthContextType {
   user: User | null;
   roles: Role[];
@@ -40,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Hydrate from sessionStorage on mount (client-only) so NavBar has
   // cached permissions immediately while the fresh async fetch runs.
@@ -71,10 +141,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    return (data?.user_roles ?? []).map((r: any) => ({
-      role_id: r.roles.role_id,
-      name: r.roles.name,
-    }));
+    const userRoles = (data?.user_roles ?? []) as UserRoleJoinRow[];
+    return userRoles
+      .filter((row) => row.roles !== null)
+      .map((row) => ({
+        role_id: row.roles!.role_id,
+        name: row.roles!.name,
+      }));
   };
 
   const fetchUserPermissions = async (authUserId: string) => {
@@ -87,7 +160,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    return data.map((p: any) => p.permission_name);
+    const permissionRows = (data ?? []) as PermissionRow[];
+    return permissionRows.map((p) => p.permission_name);
   };
 
   /**
@@ -114,9 +188,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // Single subscription — onAuthStateChange fires INITIAL_SESSION on setup,
-  // so no need for a separate getSession() call.
+  // but on some tab-restore paths this can be delayed, so we also bootstrap
+  // with an explicit getSession() call.
   // Empty deps [] = subscribe once on mount, never tear down until unmount.
   useEffect(() => {
+    let alive = true;
+    let settled = false;
+
+    const applySession = async (session: Session | null) => {
+      if (!alive) return;
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+
+      if (currentUser) {
+        try {
+          // Prevent indefinite loading state on flaky network/tab restore.
+          await withTimeout(fetchUserData(currentUser.id), 8000, "fetchUserData");
+        } catch (error) {
+          console.error("[auth] fetchUserData fallback:", error);
+        }
+      } else {
+        setRoles([]);
+        setPermissions([]);
+      }
+
+      if (alive) setLoading(false);
+      settled = true;
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
@@ -138,29 +237,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await fetchUserData(currentUser.id);
-      } else {
-        setRoles([]);
-        setPermissions([]);
-      }
-
-      setLoading(false);
+      await applySession(session);
     });
 
-    return () => subscription.unsubscribe();
+    // Bootstrap auth state in case INITIAL_SESSION is delayed/missed.
+    withTimeout<{ data: { session: Session | null } }>(
+      supabase.auth.getSession(),
+      6000,
+      "getSession",
+    )
+      .then(async ({ data }: { data: { session: Session | null } }) => {
+        await applySession(data.session ?? null);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setUser(null);
+        setRoles([]);
+        setPermissions([]);
+        setLoading(false);
+        settled = true;
+      });
+
+    // Absolute safety net: never allow infinite loading in restored/new tabs.
+    const watchdog = setTimeout(() => {
+      if (!alive || settled) return;
+      setUser(null);
+      setRoles([]);
+      setPermissions([]);
+      setLoading(false);
+    }, 12000);
+
+    return () => {
+      alive = false;
+      clearTimeout(watchdog);
+      subscription.unsubscribe();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle post-login redirect separately so it doesn't affect the subscription
   useEffect(() => {
-    if (user && pathname === "/login") {
-      router.push("/");
+    if (user && pathname === "/login" && !isLoggingOut) {
+      const requestedNext =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      const safeNext =
+        requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
+          ? requestedNext
+          : "/";
+      router.replace(safeNext);
     }
-  }, [user, pathname, router]);
+  }, [user, pathname, router, isLoggingOut]);
+
+  // Ensure authenticated app shell is never visible when signed out.
+  useEffect(() => {
+    if (!loading && !user && pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [loading, user, pathname, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -176,12 +311,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    supabase.auth.signOut({ scope: "global" }).catch((error: unknown) =>
-      console.error("Logout error:", error)
-    );
-    window.location.href = "/login";
+    setIsLoggingOut(true);
+
+    // Clear app-specific cached auth data immediately.
+    try {
+      sessionStorage.removeItem("cc_roles");
+      sessionStorage.removeItem("cc_permissions");
+    } catch {
+      // sessionStorage unavailable
+    }
+
+    // Optimistically clear in-memory state to prevent stale nav state.
+    setUser(null);
+    setRoles([]);
+    setPermissions([]);
+    setLoading(false);
+    clearSupabaseClientAuthArtifacts();
+
+    // Try to invalidate Supabase session token, but don't block forever.
+    try {
+      const result = await withTimeout<{ error: { message: string } | null }>(
+        supabase.auth.signOut({ scope: "global" }),
+        4000,
+        "signOut",
+      );
+      const error = result.error;
+      if (error && !/session.*missing/i.test(error.message)) {
+        console.error("Logout error:", error.message);
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      clearSupabaseClientAuthArtifacts();
+      setIsLoggingOut(false);
+      // Hard navigation guarantees app state resets fully.
+      if (typeof window !== "undefined") {
+        window.location.replace("/login?logout=1");
+      } else {
+        router.replace("/login?logout=1");
+      }
+    }
   };
 
   return (

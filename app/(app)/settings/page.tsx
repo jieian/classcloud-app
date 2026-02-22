@@ -1,3 +1,9 @@
+import ProtectedRoute from "@/components/ProtectedRoute";
+
 export default function Settings() {
-  return <div>Settings</div>;
+  return (
+    <ProtectedRoute requiredPermissions={[]}>
+      <div>Settings</div>
+    </ProtectedRoute>
+  );
 }

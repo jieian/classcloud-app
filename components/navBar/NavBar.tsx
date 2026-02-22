@@ -1,6 +1,6 @@
 // components/NavBar.tsx
 "use client";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -157,6 +157,7 @@ export default function Navbar() {
   const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState("");
   const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
 
@@ -205,6 +206,19 @@ export default function Navbar() {
     }
   };
 
+  const handleMainLinkHover = (link: NavigationLink) => {
+    if (isMobile) return;
+
+    if (link.sublinks.length > 0) {
+      setIsDrawerOpen(true);
+      setDrawerTitle(link.label);
+      setDrawerSublinks(link.sublinks);
+      return;
+    }
+
+    setIsDrawerOpen(false);
+  };
+
   const handleDrawerClose = () => setIsDrawerOpen(false);
 
   const handleMobileMenuToggle = () => setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -218,6 +232,15 @@ export default function Navbar() {
     if (isMobile) setIsMobileMenuOpen(false);
   };
 
+  // Close the drawer and mobile menu whenever the route changes
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsDrawerOpen(false);
+    if (isMobile) {
+      setIsMobileMenuOpen(false);
+    }
+  }, [pathname, isMobile]);
+
   const [logoutOpened, { open: openLogout, close: closeLogout }] =
     useDisclosure(false);
 
@@ -227,7 +250,14 @@ export default function Navbar() {
   };
 
   const confirmLogout = async () => {
-    await signOut();
+    if (loggingOut) return;
+    setLoggingOut(true);
+    closeLogout();
+    try {
+      await signOut();
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   // Don't hide navbar while loading - just show it with filtered navigation
@@ -250,6 +280,7 @@ export default function Navbar() {
         <Link href={link.href} style={{ textDecoration: "none" }}>
           <UnstyledButton
             onClick={(e: React.MouseEvent) => handleMainLinkClick(e, link)}
+            onMouseEnter={() => handleMainLinkHover(link)}
             className={classes.mainLink}
             data-active={isActive || undefined}
           >
@@ -324,6 +355,9 @@ export default function Navbar() {
         className={`${classes.navbar} ${
           isMobile && isMobileMenuOpen ? classes.open : ""
         }`}
+        onMouseLeave={() => {
+          if (!isMobile) setIsDrawerOpen(false);
+        }}
       >
         {/* Logo Section with Close Button for Mobile */}
         <div className={classes.logo}>
@@ -418,10 +452,10 @@ export default function Navbar() {
       >
         <Text size="sm">Are you sure you want to log out?</Text>
         <Group justify="flex-end" mt="lg">
-          <Button variant="default" onClick={closeLogout}>
+          <Button variant="default" onClick={closeLogout} disabled={loggingOut}>
             Cancel
           </Button>
-          <Button color="red" onClick={confirmLogout}>
+          <Button color="red" onClick={confirmLogout} loading={loggingOut} disabled={loggingOut}>
             Logout
           </Button>
         </Group>
