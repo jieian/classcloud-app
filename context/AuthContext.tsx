@@ -32,6 +32,21 @@ interface PermissionRow {
   permission_name: string;
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 interface AuthContextType {
   user: User | null;
   roles: Role[];
@@ -48,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Hydrate from sessionStorage on mount (client-only) so NavBar has
   // cached permissions immediately while the fresh async fetch runs.
@@ -138,7 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(currentUser);
 
       if (currentUser) {
-        await fetchUserData(currentUser.id);
+        try {
+          // Prevent indefinite loading state on flaky network/tab restore.
+          await withTimeout(fetchUserData(currentUser.id), 8000, "fetchUserData");
+        } catch (error) {
+          console.error("[auth] fetchUserData fallback:", error);
+        }
       } else {
         setRoles([]);
         setPermissions([]);
@@ -193,10 +214,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Handle post-login redirect separately so it doesn't affect the subscription
   useEffect(() => {
-    if (user && pathname === "/login") {
+    if (user && pathname === "/login" && !isLoggingOut) {
       router.replace("/");
     }
-  }, [user, pathname, router]);
+  }, [user, pathname, router, isLoggingOut]);
 
   // Ensure authenticated app shell is never visible when signed out.
   useEffect(() => {
@@ -219,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    setLoading(true);
+    setIsLoggingOut(true);
 
     // Clear app-specific cached auth data immediately.
     try {
@@ -233,19 +254,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setRoles([]);
     setPermissions([]);
+    setLoading(false);
 
-    try {
-      const { error } = await supabase.auth.signOut({ scope: "local" });
-      if (error && !/session.*missing/i.test(error.message)) {
-        console.error("Logout error:", error.message);
-      }
-    } catch (error) {
-      console.error("Logout error:", error);
-    } finally {
-      setLoading(false);
-      router.replace("/login");
-      router.refresh();
-    }
+    // Redirect first so user never gets trapped in protected loading view.
+    router.replace("/login");
+    router.refresh();
+
+    // Complete Supabase sign-out in background with timeout protection.
+    void withTimeout<{ error: { message: string } | null }>(
+      supabase.auth.signOut({ scope: "local" }),
+      5000,
+      "signOut",
+    )
+      .then((result) => {
+        const error = result.error;
+        if (error && !/session.*missing/i.test(error.message)) {
+          console.error("Logout error:", error.message);
+        }
+      })
+      .catch((error) => {
+        console.error("Logout error:", error);
+      })
+      .finally(() => {
+        setIsLoggingOut(false);
+        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
+          window.location.replace("/login");
+        }
+      });
   };
 
   return (
