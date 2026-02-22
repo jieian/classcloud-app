@@ -173,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Bootstrap auth state in case INITIAL_SESSION is delayed/missed.
     supabase.auth.getSession()
-      .then(async ({ data }) => {
+      .then(async ({ data }: { data: { session: Session | null } }) => {
         await applySession(data.session ?? null);
       })
       .catch(() => {
