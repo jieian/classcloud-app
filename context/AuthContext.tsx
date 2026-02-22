@@ -32,6 +32,52 @@ interface PermissionRow {
   permission_name: string;
 }
 
+function clearSupabaseClientAuthArtifacts() {
+  if (typeof window === "undefined") return;
+
+  // Clear Supabase auth entries from local/session storage.
+  try {
+    const localKeys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("sb-")) localKeys.push(key);
+    }
+    localKeys.forEach((k) => localStorage.removeItem(k));
+  } catch {
+    // ignore storage failures
+  }
+
+  try {
+    const sessionKeys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith("sb-")) sessionKeys.push(key);
+    }
+    sessionKeys.forEach((k) => sessionStorage.removeItem(k));
+  } catch {
+    // ignore storage failures
+  }
+
+  // Best-effort clear Supabase cookies on current host and parent domain.
+  try {
+    const host = window.location.hostname;
+    const parentDomain =
+      host.includes(".") ? `.${host.split(".").slice(-2).join(".")}` : undefined;
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+    cookies.forEach((cookie) => {
+      const name = cookie.split("=")[0]?.trim();
+      if (!name || !name.startsWith("sb-")) return;
+      document.cookie = `${name}=; Max-Age=0; path=/;`;
+      document.cookie = `${name}=; Max-Age=0; path=/; domain=${host};`;
+      if (parentDomain) {
+        document.cookie = `${name}=; Max-Age=0; path=/; domain=${parentDomain};`;
+      }
+    });
+  } catch {
+    // ignore cookie failures
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} timed out`)), timeoutMs);
@@ -280,32 +326,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles([]);
     setPermissions([]);
     setLoading(false);
+    clearSupabaseClientAuthArtifacts();
 
-    // Redirect first so user never gets trapped in protected loading view.
-    router.replace("/login?logout=1");
-    router.refresh();
-
-    // Complete Supabase sign-out in background with timeout protection.
-    void withTimeout<{ error: { message: string } | null }>(
-      supabase.auth.signOut({ scope: "local" }),
-      5000,
-      "signOut",
-    )
-      .then((result) => {
-        const error = result.error;
-        if (error && !/session.*missing/i.test(error.message)) {
-          console.error("Logout error:", error.message);
-        }
-      })
-      .catch((error) => {
-        console.error("Logout error:", error);
-      })
-      .finally(() => {
-        setIsLoggingOut(false);
-        if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-          window.location.replace("/login?logout=1");
-        }
-      });
+    // Try to invalidate Supabase session token, but don't block forever.
+    try {
+      const result = await withTimeout<{ error: { message: string } | null }>(
+        supabase.auth.signOut({ scope: "global" }),
+        4000,
+        "signOut",
+      );
+      const error = result.error;
+      if (error && !/session.*missing/i.test(error.message)) {
+        console.error("Logout error:", error.message);
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      clearSupabaseClientAuthArtifacts();
+      setIsLoggingOut(false);
+      // Hard navigation guarantees app state resets fully.
+      if (typeof window !== "undefined") {
+        window.location.replace("/login?logout=1");
+      } else {
+        router.replace("/login?logout=1");
+      }
+    }
   };
 
   return (
