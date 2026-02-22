@@ -6,7 +6,6 @@ import {
   useImperativeHandle,
   forwardRef,
   useMemo,
-  useRef,
 } from "react";
 import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
@@ -29,21 +28,12 @@ export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const pathname = usePathname();
-    const hasMounted = useRef(false);
 
     useImperativeHandle(ref, () => ({ refresh: loadUsers }));
 
-    // Fetch on mount
+    // Fetch on mount and re-fetch when navigating back to this page
     useEffect(() => {
       loadUsers();
-      hasMounted.current = true;
-    }, []);
-
-    // Re-fetch when navigating back to this page (client-side)
-    useEffect(() => {
-      if (hasMounted.current) {
-        loadUsers();
-      }
     }, [pathname]);
 
     async function loadUsers() {

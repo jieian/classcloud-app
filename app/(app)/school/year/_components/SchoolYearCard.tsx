@@ -5,13 +5,13 @@ import { IconSettings } from "@tabler/icons-react";
 interface SchoolYearCardProps {
   year_range: string;
   is_active: boolean;
-  sy_id: number;
+  onManage: () => void;
 }
 
 export default function SchoolYearCard({
   year_range,
   is_active,
-  sy_id,
+  onManage,
 }: SchoolYearCardProps) {
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder w="100%">
@@ -37,7 +37,7 @@ export default function SchoolYearCard({
         fullWidth
         radius="md"
         leftSection={<IconSettings size={16} />}
-        onClick={() => console.log(`Managing school year ID: ${sy_id}`)}
+        onClick={onManage}
       >
         Manage School Year
       </Button>

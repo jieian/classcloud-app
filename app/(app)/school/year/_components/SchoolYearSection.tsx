@@ -16,12 +16,22 @@ import { IconRefresh } from "@tabler/icons-react";
 import { getSchoolYears, SchoolYear } from "../_lib/yearService";
 import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
+import EditSchoolYearDrawer from "./EditSchoolYearDrawer";
+import CreateSchoolYearModal from "./CreateSchoolYearModal";
 
 export default function SchoolYearSection() {
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
+  const [drawerOpened, setDrawerOpened] = useState(false);
+  const [createModalOpened, setCreateModalOpened] = useState(false);
+
+  const handleManage = (sy: SchoolYear) => {
+    setSelectedYear(sy);
+    setDrawerOpened(true);
+  };
   const pathname = usePathname();
   const hasMounted = useRef(false);
 
@@ -66,7 +76,7 @@ export default function SchoolYearSection() {
             <span className="text-[#808898]">({schoolYears.length})</span>
           )}
         </h1>
-        <Button color="#4EAE4A" radius="md" mr="md">
+        <Button color="#4EAE4A" radius="md" mr="md" onClick={() => setCreateModalOpened(true)}>
           Create School Year
         </Button>
       </Group>
@@ -119,10 +129,33 @@ export default function SchoolYearSection() {
               key={sy.sy_id}
               year_range={sy.year_range}
               is_active={sy.is_active}
-              sy_id={sy.sy_id}
+              onManage={() => handleManage(sy)}
             />
           ))}
         </SimpleGrid>
+      )}
+
+      <CreateSchoolYearModal
+        opened={createModalOpened}
+        onClose={() => setCreateModalOpened(false)}
+        onSuccess={loadSchoolYears}
+        existingYears={schoolYears}
+      />
+
+      {selectedYear && (
+        <EditSchoolYearDrawer
+          opened={drawerOpened}
+          onClose={() => setDrawerOpened(false)}
+          onSuccess={() => {
+            setDrawerOpened(false);
+            loadSchoolYears();
+          }}
+          schoolYear={selectedYear}
+          isOnlyActiveYear={
+            schoolYears.filter((s) => s.is_active).length === 1 &&
+            selectedYear.is_active
+          }
+        />
       )}
     </>
   );

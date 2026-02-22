@@ -233,9 +233,9 @@ export default function EditRoleDrawer({
     <Drawer
       opened={opened}
       onClose={handleClose}
-      title="Update Role Details"
+      title="Manage Role Details"
       position="bottom"
-      size="xl"
+      size="lg"
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
     >
       <form>

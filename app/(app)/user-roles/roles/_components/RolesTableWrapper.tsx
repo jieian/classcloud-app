@@ -6,7 +6,6 @@ import {
   useImperativeHandle,
   forwardRef,
   useMemo,
-  useRef,
 } from "react";
 import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
@@ -32,21 +31,12 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const pathname = usePathname();
-    const hasMounted = useRef(false);
 
     useImperativeHandle(ref, () => ({ refresh: loadRoles }));
 
-    // Fetch on mount
+    // Fetch on mount and re-fetch when navigating back to this page
     useEffect(() => {
       loadRoles();
-      hasMounted.current = true;
-    }, []);
-
-    // Re-fetch when navigating back to this page (client-side)
-    useEffect(() => {
-      if (hasMounted.current) {
-        loadRoles();
-      }
     }, [pathname]);
 
     async function loadRoles() {

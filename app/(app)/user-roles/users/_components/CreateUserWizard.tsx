@@ -285,7 +285,7 @@ export default function CreateUserWizard() {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
   return (
-    <Container size="xl" py="xl">
+    <Container fluid py="xl" h="100%">
       {isMobile ? (
         // Mobile: Stacked layout
         <>
@@ -347,9 +347,9 @@ export default function CreateUserWizard() {
         </>
       ) : (
         // Desktop: Side-by-side layout
-        <div style={{ display: "flex", gap: rem(32) }}>
+        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
           {/* Left side: Stepper */}
-          <div style={{ flexShrink: 0, width: "250px" }}>
+          <div style={{ flexShrink: 0, width: "20%" }}>
             <Stepper
               active={form.values.activeStep}
               color="#4EAE4A"
@@ -368,7 +368,7 @@ export default function CreateUserWizard() {
           </div>
 
           {/* Right side: Content */}
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, width: "70%" }}>
             {form.values.activeStep === 0 && <StepUserInfo form={form} />}
             {form.values.activeStep === 1 && (
               <StepAssignRole

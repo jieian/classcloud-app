@@ -60,8 +60,7 @@ export default function LoginPage() {
         await supabase.auth.signOut();
         notify({
           title: "Account Not Found",
-          message:
-            "No account found. Please contact your administrator.",
+          message: "No account found. Please contact your administrator.",
           type: "error",
         });
         return;
@@ -149,7 +148,7 @@ export default function LoginPage() {
                 fw={750}
                 className={`${classes.greenColor} ${classes.welcomeText}`}
               >
-                Welcome back to ClassCloud!
+                Welcome to ClassCloud!
               </Text>
 
               <form onSubmit={handleLogin}>

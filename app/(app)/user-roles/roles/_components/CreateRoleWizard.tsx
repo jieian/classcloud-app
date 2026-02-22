@@ -237,7 +237,7 @@ export default function CreateRoleWizard() {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
   return (
-    <Container size="sm" py="xl">
+    <Container fluid py="xl" h="100%">
       {isMobile ? (
         // Mobile: Stacked layout
         <>
@@ -302,9 +302,9 @@ export default function CreateRoleWizard() {
         </>
       ) : (
         // Desktop: Side-by-side layout
-        <div style={{ display: "flex", gap: rem(32) }}>
-          {/* Left side: Stepper */}
-          <div style={{ flexShrink: 0, width: "250px" }}>
+        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
+          {/* Left side: Stepper (30%) */}
+          <div style={{ flexShrink: 0, width: "20%" }}>
             <Stepper
               active={form.values.activeStep}
               color="#4EAE4A"
@@ -322,8 +322,8 @@ export default function CreateRoleWizard() {
             </Stepper>
           </div>
 
-          {/* Right side: Content */}
-          <div style={{ flex: 1 }}>
+          {/* Right side: Content (70%) */}
+          <div style={{ width: "70%" }}>
             {form.values.activeStep === 0 && <StepRoleInfo form={form} />}
             {form.values.activeStep === 1 && (
               <StepAssignPerms

@@ -298,7 +298,10 @@ export default function EditUserDrawer({
       if (emailChanged) {
         const emailTaken = await checkEmailExists(trimmedEmail, user.uid);
         if (emailTaken) {
-          form.setFieldError("email", "This email is already in use by another user");
+          form.setFieldError(
+            "email",
+            "This email is already in use by another user",
+          );
           notifications.show({
             title: "Email Already In Use",
             message: "Please use a different email address.",
@@ -387,9 +390,9 @@ export default function EditUserDrawer({
     <Drawer
       opened={opened}
       onClose={handleClose}
-      title="Update User Details"
+      title="Manage User Details"
       position="bottom"
-      size="xl"
+      size="lg"
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
     >
       <form>

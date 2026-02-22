@@ -271,6 +271,7 @@ export default function Navbar() {
         className={classes.link}
         data-active={isActive || undefined}
         onClick={() => {
+          setIsDrawerOpen(false);
           if (isMobile) setIsMobileMenuOpen(false);
         }}
       >
