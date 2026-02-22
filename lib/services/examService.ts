@@ -86,21 +86,37 @@ export async function saveAnswerKey(examId: number, answerKey: AnswerKeyJsonb): 
 }
 
 export async function setExamLocked(examId: number, isLocked: boolean): Promise<boolean> {
-  const { data, error } = await supabase
+  const { data, error, count } = await supabase
     .from('exams')
     .update({ is_locked: isLocked })
     .eq('exam_id', examId)
-    .select('exam_id, is_locked')
-    .maybeSingle();
+    .select('exam_id, is_locked', { count: 'exact' });
 
   if (error) {
     console.error('[examService] setExamLocked error:', error.message);
     return false;
   }
-  if (!data || data.is_locked !== isLocked) {
-    console.error('[examService] setExamLocked no row updated or stale value for exam_id:', examId);
+
+  // Definitive failure: no rows matched the update filter.
+  if (count === 0) {
+    console.error('[examService] setExamLocked no matching exam row for exam_id:', examId);
     return false;
   }
+
+  // If rows are returned, verify value.
+  if (Array.isArray(data) && data.length > 0) {
+    const row = data[0];
+    if (row?.is_locked !== isLocked) {
+      console.error('[examService] setExamLocked stale returned value for exam_id:', examId);
+      return false;
+    }
+  }
+
+  // Some RLS/select-return combinations can produce null/empty data with successful update.
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    console.warn('[examService] setExamLocked update succeeded but no row data returned for exam_id:', examId);
+  }
+
   return true;
 }
 
