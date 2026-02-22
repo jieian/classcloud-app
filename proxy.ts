@@ -43,6 +43,7 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  const isLogoutFlow = pathname === "/login" && request.nextUrl.searchParams.get("logout") === "1";
 
   // Redirect to login if not authenticated (except for login page)
   if (!user && pathname !== "/login") {
@@ -51,7 +52,7 @@ export async function proxy(request: NextRequest) {
   }
 
   // Redirect to home if already authenticated and trying to access login
-  if (user && pathname === "/login") {
+  if (user && pathname === "/login" && !isLogoutFlow) {
     const homeUrl = new URL("/", request.url);
     return NextResponse.redirect(homeUrl);
   }

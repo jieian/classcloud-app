@@ -147,6 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Empty deps [] = subscribe once on mount, never tear down until unmount.
   useEffect(() => {
     let alive = true;
+    let settled = false;
 
     const applySession = async (session: Session | null) => {
       if (!alive) return;
@@ -166,6 +167,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (alive) setLoading(false);
+      settled = true;
     };
 
     const {
@@ -193,7 +195,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Bootstrap auth state in case INITIAL_SESSION is delayed/missed.
-    supabase.auth.getSession()
+    withTimeout<{ data: { session: Session | null } }>(
+      supabase.auth.getSession(),
+      6000,
+      "getSession",
+    )
       .then(async ({ data }: { data: { session: Session | null } }) => {
         await applySession(data.session ?? null);
       })
@@ -203,10 +209,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRoles([]);
         setPermissions([]);
         setLoading(false);
+        settled = true;
       });
+
+    // Absolute safety net: never allow infinite loading in restored/new tabs.
+    const watchdog = setTimeout(() => {
+      if (!alive || settled) return;
+      setUser(null);
+      setRoles([]);
+      setPermissions([]);
+      setLoading(false);
+    }, 12000);
 
     return () => {
       alive = false;
+      clearTimeout(watchdog);
       subscription.unsubscribe();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -257,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setLoading(false);
 
     // Redirect first so user never gets trapped in protected loading view.
-    router.replace("/login");
+    router.replace("/login?logout=1");
     router.refresh();
 
     // Complete Supabase sign-out in background with timeout protection.
@@ -278,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => {
         setIsLoggingOut(false);
         if (typeof window !== "undefined" && window.location.pathname !== "/login") {
-          window.location.replace("/login");
+          window.location.replace("/login?logout=1");
         }
       });
   };
