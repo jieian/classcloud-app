@@ -370,10 +370,24 @@ export default function EditSchoolYearDrawer({
             <Switch
               checked={form.values.is_active}
               onChange={(e) => handleToggleYearStatus(e.currentTarget.checked)}
-              color="green"
+              color={form.values.is_active ? "green" : "red"}
               size="xl"
               onLabel="Active"
               offLabel="Inactive"
+              styles={{
+                track: {
+                  backgroundColor: !form.values.is_active
+                    ? "var(--mantine-color-red-6)"
+                    : "var(--mantine-color-green-6)",
+                  borderColor: !form.values.is_active
+                    ? "var(--mantine-color-red-6)"
+                    : "var(--mantine-color-green-6)",
+                  color: "white",
+                  "--switch-bg": !form.values.is_active
+                    ? "var(--mantine-color-red-6)"
+                    : "var(--mantine-color-green-6)",
+                },
+              }}
             />
           </Group>
         </Group>
@@ -428,10 +442,24 @@ export default function EditSchoolYearDrawer({
                     <Switch
                       checked={quarter.is_active}
                       onChange={() => handleToggleQuarter(quarter.quarter_id)}
-                      color="green"
+                      color={quarter.is_active ? "green" : "red"}
                       size="xl"
                       onLabel="Active"
                       offLabel="Inactive"
+                      styles={{
+                        track: {
+                          backgroundColor: !quarter.is_active
+                            ? "var(--mantine-color-red-6)"
+                            : "var(--mantine-color-green-6)",
+                          borderColor: !quarter.is_active
+                            ? "var(--mantine-color-red-6)"
+                            : "var(--mantine-color-green-6)",
+                          color: "white",
+                          "--switch-bg": !quarter.is_active
+                            ? "var(--mantine-color-red-6)"
+                            : "var(--mantine-color-green-6)",
+                        },
+                      }}
                     />
                   </Table.Td>
                 </Table.Tr>

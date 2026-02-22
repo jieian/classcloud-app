@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
   Container, Title, Text, Card, TextInput, Select, Button, Badge, Group, Stack,
-  Grid, ActionIcon, Menu, Loader, Alert, Paper, Divider, Box
+  Grid, ActionIcon, Menu, Loader, Alert, Paper, Divider, Box, Switch
 } from '@mantine/core';
 import {
   IconSearch, IconPlus, IconFileText, IconDownload, IconEdit, IconTrash,
@@ -73,9 +73,9 @@ export default function ExamPageClient() {
     setFilteredExams(filtered);
   }, [exams, searchQuery, selectedSection, selectedSubject]);
 
-  const handleStatusChange = async (exam: ExamWithRelations, newStatus: 'active' | 'closed') => {
+  const handleStatusChange = async (exam: ExamWithRelations, newStatus: 'active' | 'inactive') => {
     setUpdatingStatus(exam.exam_id);
-    const isLocked = newStatus === 'closed';
+    const isLocked = newStatus === 'inactive';
     const success = await setExamLocked(exam.exam_id, isLocked);
     if (success) {
       setExams(prev => prev.map(e =>
@@ -119,7 +119,7 @@ export default function ExamPageClient() {
   };
 
   const activeCount = exams.filter(e => !e.is_locked).length;
-  const closedCount = exams.filter(e => e.is_locked).length;
+  const inactiveCount = exams.filter(e => e.is_locked).length;
 
   return (
     <Container fluid px="md" py="xl">
@@ -146,7 +146,7 @@ export default function ExamPageClient() {
           <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
             <Group gap="xs">
               <Box w={8} h={8} bg="red" style={{ borderRadius: '50%' }} />
-              <Text size="sm" fw={500} c="red">Closed: {closedCount}</Text>
+              <Text size="sm" fw={500} c="red">Inactive: {inactiveCount}</Text>
             </Group>
           </Paper>
           <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
@@ -239,18 +239,31 @@ export default function ExamPageClient() {
                             {exam.title}
                           </Text>
                         </Group>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(exam, exam.is_locked ? 'active' : 'closed')}
+                        <Switch
+                          checked={!exam.is_locked}
+                          onChange={(e) =>
+                            handleStatusChange(exam, e.currentTarget.checked ? 'active' : 'inactive')
+                          }
                           disabled={updatingStatus === exam.exam_id}
-                          className={`min-w-21.5 px-4 py-1.5 rounded-xl text-sm font-medium text-white transition-all ${
-                            exam.is_locked
-                              ? 'bg-red-500 hover:bg-red-600'
-                              : 'bg-green-500 hover:bg-green-600'
-                          } ${updatingStatus === exam.exam_id ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
-                        >
-                          {exam.is_locked ? 'Closed' : 'Active'}
-                        </button>
+                          color={!exam.is_locked ? "green" : "red"}
+                          size="xl"
+                          onLabel="Active"
+                          offLabel="Inactive"
+                          styles={{
+                            track: {
+                              backgroundColor: exam.is_locked
+                                ? "var(--mantine-color-red-6)"
+                                : "var(--mantine-color-green-6)",
+                              borderColor: exam.is_locked
+                                ? "var(--mantine-color-red-6)"
+                                : "var(--mantine-color-green-6)",
+                              color: "white",
+                              "--switch-bg": exam.is_locked
+                                ? "var(--mantine-color-red-6)"
+                                : "var(--mantine-color-green-6)",
+                            },
+                          }}
+                        />
                       </Group>
 
                       {/* Details */}
