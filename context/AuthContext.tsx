@@ -24,6 +24,14 @@ interface Role {
   name: string;
 }
 
+interface UserRoleJoinRow {
+  roles: Role | null;
+}
+
+interface PermissionRow {
+  permission_name: string;
+}
+
 interface AuthContextType {
   user: User | null;
   roles: Role[];
@@ -71,10 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    return (data?.user_roles ?? []).map((r: any) => ({
-      role_id: r.roles.role_id,
-      name: r.roles.name,
-    }));
+    const userRoles = (data?.user_roles ?? []) as UserRoleJoinRow[];
+    return userRoles
+      .filter((row) => row.roles !== null)
+      .map((row) => ({
+        role_id: row.roles!.role_id,
+        name: row.roles!.name,
+      }));
   };
 
   const fetchUserPermissions = async (authUserId: string) => {
@@ -87,7 +98,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    return data.map((p: any) => p.permission_name);
+    const permissionRows = (data ?? []) as PermissionRow[];
+    return permissionRows.map((p) => p.permission_name);
   };
 
   /**
@@ -158,9 +170,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Handle post-login redirect separately so it doesn't affect the subscription
   useEffect(() => {
     if (user && pathname === "/login") {
-      router.push("/");
+      router.replace("/");
     }
   }, [user, pathname, router]);
+
+  // Ensure authenticated app shell is never visible when signed out.
+  useEffect(() => {
+    if (!loading && !user && pathname !== "/login") {
+      router.replace("/login");
+    }
+  }, [loading, user, pathname, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -176,12 +195,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    localStorage.clear();
-    sessionStorage.clear();
-    supabase.auth.signOut({ scope: "global" }).catch((error: unknown) =>
-      console.error("Logout error:", error)
-    );
-    window.location.href = "/login";
+    setLoading(true);
+
+    // Clear app-specific cached auth data immediately.
+    try {
+      sessionStorage.removeItem("cc_roles");
+      sessionStorage.removeItem("cc_permissions");
+    } catch {
+      // sessionStorage unavailable
+    }
+
+    // Optimistically clear in-memory state to prevent stale nav state.
+    setUser(null);
+    setRoles([]);
+    setPermissions([]);
+
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error && !/session.*missing/i.test(error.message)) {
+        console.error("Logout error:", error.message);
+      }
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setLoading(false);
+      router.replace("/login");
+      router.refresh();
+    }
   };
 
   return (

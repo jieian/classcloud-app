@@ -157,6 +157,7 @@ export default function Navbar() {
   const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState("");
   const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
 
@@ -249,7 +250,14 @@ export default function Navbar() {
   };
 
   const confirmLogout = async () => {
-    await signOut();
+    if (loggingOut) return;
+    setLoggingOut(true);
+    closeLogout();
+    try {
+      await signOut();
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   // Don't hide navbar while loading - just show it with filtered navigation
@@ -443,10 +451,10 @@ export default function Navbar() {
       >
         <Text size="sm">Are you sure you want to log out?</Text>
         <Group justify="flex-end" mt="lg">
-          <Button variant="default" onClick={closeLogout}>
+          <Button variant="default" onClick={closeLogout} disabled={loggingOut}>
             Cancel
           </Button>
-          <Button color="red" onClick={confirmLogout}>
+          <Button color="red" onClick={confirmLogout} loading={loggingOut} disabled={loggingOut}>
             Logout
           </Button>
         </Group>

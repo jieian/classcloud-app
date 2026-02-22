@@ -30,7 +30,6 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
-  const [confidence, setConfidence] = useState<{ [item: number]: { [ch: string]: number } }>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [studentName, setStudentName] = useState('');
@@ -42,6 +41,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
 
   const ak = exam.answer_key as AnswerKeyJsonb | null;
   const totalItems = ak?.total_questions ?? exam.total_items ?? 30;
@@ -60,8 +60,15 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
       }
 
       const attempts: MediaStreamConstraints[] = [
-        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        {
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        },
+        { video: { width: { ideal: 1600 }, height: { ideal: 900 } }, audio: false },
         { video: true, audio: false },
       ];
 
@@ -80,6 +87,22 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
       }
 
       streamRef.current = stream;
+      videoTrackRef.current = stream.getVideoTracks()[0] ?? null;
+
+      if (videoTrackRef.current) {
+        try {
+          // Best-effort tuning for webcams; silently ignore unsupported constraints.
+          await videoTrackRef.current.applyConstraints({
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30 },
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any);
+        } catch {
+          // Unsupported by some devices/browsers.
+        }
+      }
+
       setCameraActive(true);
 
       // Ensure the video element is mounted before attaching the stream.
@@ -116,28 +139,50 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
+    videoTrackRef.current = null;
     setCameraActive(false);
   }, []);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const captureFromCamera = () => {
+  const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
       alert('Camera is still initializing. Please wait a moment and try capture again.');
       return;
     }
 
+    // Use still capture when available (usually sharper/higher-res than video frame grabs).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ImageCaptureCtor = (window as any).ImageCapture;
+    const track = videoTrackRef.current;
+    if (ImageCaptureCtor && track) {
+      try {
+        const ic = new ImageCaptureCtor(track);
+        const blob: Blob = await ic.takePhoto();
+        const file = new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' });
+        stopCamera();
+        handleFileSelected(file);
+        return;
+      } catch {
+        // Fall back to video frame extraction.
+      }
+    }
+
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
-    canvas.getContext('2d')!.drawImage(videoRef.current, 0, 0);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(videoRef.current, 0, 0);
     canvas.toBlob(blob => {
       if (!blob) return;
       const file = new File([blob], 'scan.jpg', { type: 'image/jpeg' });
       stopCamera();
       handleFileSelected(file);
-    }, 'image/jpeg', 0.92);
+    }, 'image/jpeg', 0.99);
   };
 
   // ── File handling ─────────────────────────────────────────────────────────
@@ -163,7 +208,6 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     try {
       const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
       setDetectedAnswers(result.answers);
-      setConfidence(result.confidence);
       setCornersOk(result.cornersAutoDetected);
       setStep('review');
     } catch (err: unknown) {
@@ -187,6 +231,14 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     Object.fromEntries(Object.entries(detectedAnswers).filter(([, v]) => v)) as { [k: number]: string },
     answerKey
   );
+  const hasAnswerKey = Object.keys(answerKey).length > 0;
+  const itemResults = Array.from({ length: totalItems }, (_, i) => {
+    const item = i + 1;
+    const student = detectedAnswers[item] ?? null;
+    const correct = answerKey[item] ?? null;
+    const isCorrect = Boolean(student && correct && student === correct);
+    return { item, student, correct, isCorrect };
+  });
 
   // ── Submit ────────────────────────────────────────────────────────────────
 
@@ -225,11 +277,16 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   // ── Confidence indicator color ────────────────────────────────────────────
 
   const confColor = (item: number, ch: string) => {
-    const c = confidence[item]?.[ch] ?? 0;
-    if (detectedAnswers[item] === ch) {
-      return c > 0.5 ? 'bg-primary border-primary text-white shadow' : 'bg-yellow-400 border-yellow-400 text-white';
+    const correct = answerKey[item];
+
+    if (correct === ch) {
+      return 'bg-green-200 border-green-400 text-green-900 shadow-sm ring-2 ring-green-200';
     }
-    return 'border-gray-300 text-gray-500 hover:border-primary hover:bg-green-50';
+
+    if (detectedAnswers[item] === ch) {
+      return 'bg-gray-300 border-gray-500 text-gray-900 shadow-sm ring-2 ring-gray-200';
+    }
+    return 'bg-white border-gray-300 text-gray-500 hover:border-blue-500 hover:bg-blue-50';
   };
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -401,8 +458,8 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               </div>
 
-              <p className="text-xs text-gray-400 text-center">
-                Click a bubble to correct a detected answer. Yellow = low confidence.
+              <p className="text-xs text-gray-500 text-center">
+                Student answer is gray. Correct answer key is light green. Click any bubble to correct.
               </p>
 
               {/* Answer grid */}
@@ -468,6 +525,43 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 <p className="text-green-600 text-sm mt-1">
                   {Math.round((score / totalItems) * 100)}% — {answeredCount} bubbles detected
                 </p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">Student vs Correct Answer</p>
+                  {!hasAnswerKey && <p className="text-xs text-amber-600">Set answer key to score correctness</p>}
+                </div>
+                <div className="max-h-56 overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white border-b border-gray-200">
+                      <tr className="text-left text-gray-500">
+                        <th className="px-4 py-2 font-semibold">#</th>
+                        <th className="px-4 py-2 font-semibold">Student</th>
+                        <th className="px-4 py-2 font-semibold">Correct</th>
+                        <th className="px-4 py-2 font-semibold">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {itemResults.map(r => (
+                        <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
+                          <td className="px-4 py-2 font-medium text-gray-700">{r.item}</td>
+                          <td className="px-4 py-2">{r.student ?? '-'}</td>
+                          <td className="px-4 py-2">{r.correct ?? '-'}</td>
+                          <td className="px-4 py-2">
+                            {!r.student
+                              ? <span className="text-orange-600">No answer</span>
+                              : !r.correct
+                                ? <span className="text-gray-500">No key</span>
+                                : r.isCorrect
+                                  ? <span className="text-green-700 font-medium">Correct</span>
+                                  : <span className="text-red-600 font-medium">Wrong</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               <div className="space-y-4">
