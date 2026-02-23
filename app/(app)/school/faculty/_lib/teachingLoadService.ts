@@ -115,14 +115,14 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
 
   // 3. Collect all external user IDs (advisers + teachers) and fetch names in one query
   const adviserIds = new Set(
-    (sectionsRaw ?? [])
-      .filter((s) => s.adviser_id && s.adviser_id !== facultyUid)
-      .map((s) => s.adviser_id as string),
+    ((sectionsRaw ?? []) as any[])
+      .filter((s: any) => s.adviser_id && s.adviser_id !== facultyUid)
+      .map((s: any) => s.adviser_id as string),
   );
   const teacherIds = new Set(
-    (allAssignmentsRaw ?? [])
-      .filter((a) => a.teacher_id !== facultyUid)
-      .map((a) => a.teacher_id),
+    ((allAssignmentsRaw ?? []) as any[])
+      .filter((a: any) => a.teacher_id !== facultyUid)
+      .map((a: any) => a.teacher_id as string),
   );
   const externalIds = [...new Set([...adviserIds, ...teacherIds])];
 
