@@ -133,7 +133,7 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
       .select("uid, first_name, last_name")
       .in("uid", externalIds);
     nameMap = Object.fromEntries(
-      (externalUsers ?? []).map((u) => [u.uid, `${u.first_name} ${u.last_name}`]),
+      (externalUsers ?? []).map((u: any) => [u.uid, `${u.first_name} ${u.last_name}`]),
     );
   }
 
