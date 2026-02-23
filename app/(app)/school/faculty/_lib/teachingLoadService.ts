@@ -138,7 +138,7 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
   }
 
   // 4. Build sections with adviser names
-  const sections: SectionWithAdviser[] = (sectionsRaw ?? []).map((s) => ({
+  const sections: SectionWithAdviser[] = ((sectionsRaw ?? []) as any[]).map((s: any) => ({
     section_id: s.section_id,
     name: s.name,
     grade_level_id: s.grade_level_id,
@@ -167,7 +167,7 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
   );
 
   // 5. All assignments with teacher names
-  const allAssignments: TeacherAssignment[] = (allAssignmentsRaw ?? []).map((a) => ({
+  const allAssignments: TeacherAssignment[] = ((allAssignmentsRaw ?? []) as any[]).map((a: any) => ({
     section_id: a.section_id,
     subject_id: a.subject_id,
     teacher_id: a.teacher_id,
@@ -185,7 +185,7 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
     subjects_by_grade_level: subjectsByGradeLevel,
     all_assignments: allAssignments,
     current_advisory_section_id: (currentAdvisory as any)?.section_id ?? null,
-    current_teaching_assignments: (currentTeaching ?? []).map((a) => ({
+    current_teaching_assignments: ((currentTeaching ?? []) as any[]).map((a: any) => ({
       section_id: a.section_id,
       subject_id: a.subject_id,
     })),
