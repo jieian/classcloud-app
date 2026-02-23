@@ -118,11 +118,6 @@ export default function StepAssignRole({
           </>
         )}
 
-        {form.errors.role_ids && (
-          <Text size="sm" c="red" mt="sm">
-            {form.errors.role_ids}
-          </Text>
-        )}
       </Box>
     </Box>
   );

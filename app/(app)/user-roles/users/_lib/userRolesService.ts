@@ -165,14 +165,12 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
 /**
  * Fetches all available roles
  */
-export async function fetchAllRoles(): Promise<
-  Array<{ role_id: number; name: string }>
-> {
+export async function fetchAllRoles(): Promise<Role[]> {
   const supabase = getSupabase();
   try {
     const { data, error } = await supabase
       .from("roles")
-      .select("role_id, name")
+      .select("role_id, name, is_faculty")
       .order("name");
 
     if (error) {
