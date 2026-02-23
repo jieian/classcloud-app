@@ -71,27 +71,28 @@ export default function UserTableActions({
   return (
     <>
       <Group gap={0} justify="flex-end">
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          aria-label="Edit user"
-          onClick={openDrawer}
-        >
-          <IconPencil size={16} stroke={1.5} />
-        </ActionIcon>
-        <Tooltip
-          label="You cannot delete your own account"
-          disabled={!isSelf}
-        >
+        <Tooltip label="Edit User">
           <ActionIcon
             variant="subtle"
-            color="red"
-            aria-label="Delete user"
-            onClick={openDelete}
-            disabled={isSelf}
+            color="gray"
+            aria-label="Edit user"
+            onClick={openDrawer}
           >
-            <IconTrash size={16} stroke={1.5} />
+            <IconPencil size={16} stroke={1.5} />
           </ActionIcon>
+        </Tooltip>
+        <Tooltip label="You cannot delete your own account" disabled={!isSelf}>
+          <Tooltip label="Delete User" disabled={isSelf}>
+            <ActionIcon
+              variant="subtle"
+              color="red"
+              aria-label="Delete user"
+              onClick={openDelete}
+              disabled={isSelf}
+            >
+              <IconTrash size={16} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
         </Tooltip>
       </Group>
 

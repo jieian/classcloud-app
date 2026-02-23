@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ActionIcon,
   Alert,
@@ -41,6 +42,7 @@ export default function AddFacultyDrawer({
   onClose,
   onSuccess: _onSuccess,
 }: AddFacultyDrawerProps) {
+  const router = useRouter();
   const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +94,11 @@ export default function AddFacultyDrawer({
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.currentTarget.value);
     setPage(1);
+  };
+
+  const handleAddFaculty = (uid: string) => {
+    onClose();
+    router.push(`/school/faculty/create?uid=${encodeURIComponent(uid)}`);
   };
 
   return (
@@ -192,7 +199,7 @@ export default function AddFacultyDrawer({
                       <TableTd>
                         <AddFacultyDrawerActions
                           user={user}
-                          onUpdate={loadUsers}
+                          onAdd={handleAddFaculty}
                         />
                       </TableTd>
                     </TableTr>

@@ -32,7 +32,12 @@ export function FacultySection() {
             <span className="text-[#808898]">({facultyCount})</span>
           )}
         </h1>
-        <Button color="#4EAE4A" radius="md" mr="md" onClick={() => setDrawerOpened(true)}>
+        <Button
+          color="#4EAE4A"
+          radius="md"
+          mr="md"
+          onClick={() => setDrawerOpened(true)}
+        >
           Add Faculty
         </Button>
       </Group>

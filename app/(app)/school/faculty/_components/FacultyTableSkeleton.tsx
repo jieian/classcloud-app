@@ -25,7 +25,7 @@ export default function FacultyTableSkeleton() {
         <TableTd>
           <Skeleton height={16} width={180} radius="sm" />
         </TableTd>
-        <TableTd>
+        <TableTd w={72}>
           <Group gap={0} justify="flex-end">
             <Skeleton height={28} width={28} radius="sm" mr={4} />
             <Skeleton height={28} width={28} radius="sm" />
@@ -35,14 +35,14 @@ export default function FacultyTableSkeleton() {
     ));
 
   return (
-    <TableScrollContainer minWidth={800}>
+    <TableScrollContainer minWidth={680}>
       <Table verticalSpacing="sm">
         <TableThead>
           <TableTr>
-            <TableTh>Employee</TableTh>
-            <TableTh>Advisory Class</TableTh>
-            <TableTh>Email</TableTh>
-            <TableTh>
+            <TableTh w="24%">Employee</TableTh>
+            <TableTh w="24%">Advisory Class</TableTh>
+            <TableTh w="42%">Email</TableTh>
+            <TableTh w={72} ta="right">
               <VisuallyHidden>Actions</VisuallyHidden>
             </TableTh>
           </TableTr>

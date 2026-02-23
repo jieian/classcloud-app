@@ -8,6 +8,7 @@ import {
   Modal,
   Text,
   TextInput,
+  Tooltip,
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
@@ -35,12 +36,19 @@ export default function RolesTableActions({
   const [deleting, setDeleting] = useState(false);
   const [checking, setChecking] = useState(false);
   const isAdmin = role.role_id === 1;
+  const isProtectedRole = ["class adviser", "subject teacher"].includes(
+    role.name.trim().toLowerCase(),
+  );
 
   const handleSuccess = () => {
     onUpdate();
   };
 
   const handleTrashClick = async () => {
+    if (isProtectedRole) {
+      return;
+    }
+
     try {
       setChecking(true);
       const attached = await isRoleAttached(role.role_id);
@@ -66,6 +74,10 @@ export default function RolesTableActions({
   };
 
   const handleDelete = async () => {
+    if (isProtectedRole) {
+      return;
+    }
+
     try {
       setDeleting(true);
       await deleteRole(role.role_id);
@@ -94,25 +106,35 @@ export default function RolesTableActions({
   return (
     <>
       <Group gap={0} justify="flex-end">
-        <ActionIcon
-          variant="subtle"
-          color="gray"
-          aria-label={`Edit ${role.name}`}
-          onClick={openDrawer}
-          disabled={isAdmin}
+        <Tooltip label="Edit Role">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label={`Edit ${role.name}`}
+            onClick={openDrawer}
+            disabled={isAdmin}
+          >
+            <IconPencil size={16} stroke={1.5} />
+          </ActionIcon>
+        </Tooltip>
+        <Tooltip
+          label={
+            isProtectedRole
+              ? "This role cannot be deleted"
+              : "Delete Role"
+          }
         >
-          <IconPencil size={16} stroke={1.5} />
-        </ActionIcon>
-        <ActionIcon
-          variant="subtle"
-          color="red"
-          aria-label={`Delete ${role.name}`}
-          onClick={handleTrashClick}
-          loading={checking}
-          disabled={isAdmin}
-        >
-          <IconTrash size={16} stroke={1.5} />
-        </ActionIcon>
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            aria-label={`Delete ${role.name}`}
+            onClick={handleTrashClick}
+            loading={checking}
+            disabled={isAdmin || isProtectedRole}
+          >
+            <IconTrash size={16} stroke={1.5} />
+          </ActionIcon>
+        </Tooltip>
       </Group>
 
       <EditRoleDrawer

@@ -54,7 +54,7 @@ export default function FacultyTable({ faculty, onUpdate }: FacultyTableProps) {
             {member.email}
           </Anchor>
         </TableTd>
-        <TableTd>
+        <TableTd w={72}>
           <FacultyTableActions faculty={member} onUpdate={onUpdate} />
         </TableTd>
       </TableTr>
@@ -62,14 +62,14 @@ export default function FacultyTable({ faculty, onUpdate }: FacultyTableProps) {
   });
 
   return (
-    <TableScrollContainer minWidth={800}>
+    <TableScrollContainer minWidth={680}>
       <Table verticalSpacing="sm">
         <TableThead>
           <TableTr>
-            <TableTh>Employee</TableTh>
-            <TableTh>Advisory Class</TableTh>
-            <TableTh>Email</TableTh>
-            <TableTh>
+            <TableTh w="24%">Employee</TableTh>
+            <TableTh w="24%">Advisory Class</TableTh>
+            <TableTh w="42%">Email</TableTh>
+            <TableTh w={72} ta="right">
               <VisuallyHidden>Actions</VisuallyHidden>
             </TableTh>
           </TableTr>

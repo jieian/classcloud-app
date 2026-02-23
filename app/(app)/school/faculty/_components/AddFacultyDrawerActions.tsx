@@ -1,21 +1,29 @@
 "use client";
 
-import { ActionIcon } from "@mantine/core";
+import { ActionIcon, Tooltip } from "@mantine/core";
 import { IconPlus } from "@tabler/icons-react";
 import type { UserWithRoles } from "@/app/(app)/user-roles/users/_lib";
 
 interface AddFacultyDrawerActionsProps {
   user: UserWithRoles;
-  onUpdate: () => void;
+  onAdd: (uid: string) => void;
 }
 
 export default function AddFacultyDrawerActions({
-  user: _user,
-  onUpdate: _onUpdate,
+  user,
+  onAdd,
 }: AddFacultyDrawerActionsProps) {
   return (
-    <ActionIcon variant="subtle" color="#4EAE4A" aria-label="Add as faculty">
-      <IconPlus size={16} stroke={1.5} />
-    </ActionIcon>
+    <Tooltip label="Add as faculty">
+      <ActionIcon
+        variant="filled"
+        color="#4EAE4A"
+        aria-label="Add as faculty"
+        style={{ backgroundColor: "#4EAE4A", color: "#FFFFFF" }}
+        onClick={() => onAdd(user.uid)}
+      >
+        <IconPlus size={16} stroke={1.8} color="#FFFFFF" />
+      </ActionIcon>
+    </Tooltip>
   );
 }
