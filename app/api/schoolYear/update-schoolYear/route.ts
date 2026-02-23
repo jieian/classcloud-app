@@ -53,7 +53,37 @@ export async function PUT(request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 5. Single atomic RPC call (includes uniqueness check inside the function)
+  // 5. Duplicate check — exclude soft-deleted rows and the current record
+  const { count: dupCount, error: dupError } = await adminClient
+    .from("school_years")
+    .select("sy_id", { count: "exact", head: true })
+    .eq("start_year", start_year)
+    .is("deleted_at", null)
+    .neq("sy_id", sy_id);
+
+  if (dupError) {
+    return Response.json({ error: dupError.message }, { status: 500 });
+  }
+  if ((dupCount ?? 0) > 0) {
+    return Response.json(
+      { error: "A school year with this range already exists." },
+      { status: 409 },
+    );
+  }
+
+  // 6. If activating, capture other currently active school years before the RPC
+  //    so we can deactivate their quarters afterward.
+  let otherActiveYearIds: number[] = [];
+  if (is_active) {
+    const { data: activeYears } = await adminClient
+      .from("school_years")
+      .select("sy_id")
+      .eq("is_active", true)
+      .neq("sy_id", sy_id);
+    otherActiveYearIds = (activeYears ?? []).map((y: { sy_id: number }) => y.sy_id);
+  }
+
+  // 7. Single atomic RPC call
   const { error } = await adminClient.rpc("update_school_year", {
     p_sy_id: sy_id,
     p_start_year: start_year,
@@ -74,6 +104,14 @@ export async function PUT(request: Request) {
       { error: error.message || "Internal Server Error" },
       { status: 500 },
     );
+  }
+
+  // 8. Deactivate quarters of the previously active school years
+  if (otherActiveYearIds.length > 0) {
+    await adminClient
+      .from("quarters")
+      .update({ is_active: false })
+      .in("sy_id", otherActiveYearIds);
   }
 
   return Response.json({ success: true }, { status: 200 });

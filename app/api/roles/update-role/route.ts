@@ -30,19 +30,15 @@ export async function PUT(request: Request) {
     user_uuid: caller.id,
   });
 
-  const hasPermission = permsData?.some(
-    (p: any) => p.permission_name === "access_user_management"
-  );
-
   if (permsError || !permsData?.some((p: any) => p.permission_name === "access_user_management")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   // 4. PAYLOAD: Parse role data
   const body = await request.json();
-  const { role_id, name, permission_ids } = body;
+  const { role_id, name, is_faculty, permission_ids } = body;
 
-  if (!role_id || !name || !permission_ids || !Array.isArray(permission_ids)) {
+  if (!role_id || !name || is_faculty === undefined || !permission_ids || !Array.isArray(permission_ids)) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
@@ -50,6 +46,7 @@ export async function PUT(request: Request) {
   const { error } = await adminClient.rpc("update_role_and_permissions", {
     p_role_id: role_id,
     p_name: name.trim(),
+    p_is_faculty: is_faculty,
     p_permission_ids: permission_ids,
   });
 

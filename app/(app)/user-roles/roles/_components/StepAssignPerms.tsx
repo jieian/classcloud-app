@@ -2,10 +2,10 @@
 
 import {
   Box,
-  Text,
   TextInput,
   Checkbox,
   Skeleton,
+  Text,
   Divider,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
@@ -117,11 +117,6 @@ export default function StepAssignPerms({
           </>
         )}
 
-        {form.errors.permission_ids && (
-          <Text size="sm" c="red" mt="sm">
-            {form.errors.permission_ids}
-          </Text>
-        )}
       </Box>
     </Box>
   );

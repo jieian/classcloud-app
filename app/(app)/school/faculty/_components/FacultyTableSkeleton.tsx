@@ -1,25 +1,26 @@
 import {
+  Group,
   Skeleton,
   Table,
   TableScrollContainer,
-  TableThead,
   TableTbody,
-  TableTr,
-  TableTh,
   TableTd,
-  Group,
+  TableTh,
+  TableThead,
+  TableTr,
   VisuallyHidden,
 } from "@mantine/core";
 
-export default function PendingUsersTableSkeleton() {
-  const skeletonRows = Array(3)
+export default function FacultyTableSkeleton() {
+  const skeletonRows = Array(5)
     .fill(0)
     .map((_, index) => (
       <TableTr key={index}>
         <TableTd>
-          <Group gap="sm">
-            <Skeleton height={20} width={150} radius="sm" />
-          </Group>
+          <Skeleton height={20} width={150} radius="sm" />
+        </TableTd>
+        <TableTd>
+          <Skeleton height={20} width={180} radius="sm" />
         </TableTd>
         <TableTd>
           <Skeleton height={16} width={180} radius="sm" />
@@ -34,11 +35,12 @@ export default function PendingUsersTableSkeleton() {
     ));
 
   return (
-    <TableScrollContainer minWidth={600}>
+    <TableScrollContainer minWidth={800}>
       <Table verticalSpacing="sm">
         <TableThead>
           <TableTr>
-            <TableTh>Full Name</TableTh>
+            <TableTh>Employee</TableTh>
+            <TableTh>Advisory Class</TableTh>
             <TableTh>Email</TableTh>
             <TableTh>
               <VisuallyHidden>Actions</VisuallyHidden>

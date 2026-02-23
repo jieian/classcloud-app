@@ -8,6 +8,7 @@ import {
   Group,
   Pagination,
   Skeleton,
+  Switch,
   Text,
   TextInput,
   Tooltip,
@@ -34,6 +35,7 @@ interface EditRoleDrawerProps {
 
 interface FormValues {
   name: string;
+  is_faculty: boolean;
   permission_ids: string[];
 }
 
@@ -54,6 +56,7 @@ export default function EditRoleDrawer({
     validateInputOnChange: true,
     initialValues: {
       name: role.name,
+      is_faculty: role.is_faculty,
       permission_ids: role.permissions.map((p) => p.permission_id.toString()),
     },
     validate: {
@@ -78,6 +81,7 @@ export default function EditRoleDrawer({
       loadPermissions();
       form.setValues({
         name: role.name,
+        is_faculty: role.is_faculty,
         permission_ids: role.permissions.map((p) => p.permission_id.toString()),
       });
       form.resetDirty();
@@ -195,6 +199,7 @@ export default function EditRoleDrawer({
       await updateRole(
         role.role_id,
         trimmedName,
+        form.values.is_faculty,
         form.values.permission_ids.map((id) => parseInt(id)),
       );
 
@@ -263,6 +268,14 @@ export default function EditRoleDrawer({
                 ) : null
               }
               mb="md"
+            />
+            <Switch
+              label="Faculty Role"
+              description="Assign role as teaching staff."
+              checked={form.values.is_faculty}
+              onChange={(e) =>
+                form.setFieldValue("is_faculty", e.currentTarget.checked)
+              }
             />
           </Grid.Col>
 

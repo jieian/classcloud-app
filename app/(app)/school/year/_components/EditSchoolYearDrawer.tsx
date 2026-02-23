@@ -21,6 +21,7 @@ import {
   deleteSchoolYear,
   DuplicateYearError,
   getQuartersByYear,
+  getSchoolYears,
   updateSchoolYear,
 } from "../_lib/yearService";
 
@@ -266,7 +267,7 @@ export default function EditSchoolYearDrawer({
   };
 
   // ----- Save -----
-  const handleSave = () => {
+  const handleSave = async () => {
     const validation = form.validate();
     if (validation.hasErrors) {
       notifications.show({
@@ -277,9 +278,28 @@ export default function EditSchoolYearDrawer({
       return;
     }
 
+    let otherActiveYear: SchoolYear | null = null;
+    if (form.values.is_active) {
+      try {
+        const allYears = await getSchoolYears();
+        otherActiveYear =
+          allYears.find(
+            (sy) => sy.is_active && sy.sy_id !== schoolYear.sy_id,
+          ) ?? null;
+      } catch {
+        // Non-blocking — proceed with default modal text
+      }
+    }
+
     modals.openConfirmModal({
       title: "Confirm updates?",
-      children: (
+      children: otherActiveYear ? (
+        <Text size="sm">
+          Activating <strong>{schoolYear.year_range}</strong> will deactivate{" "}
+          <strong>{otherActiveYear.year_range}</strong> and all its quarters.
+          Are you sure you want to proceed?
+        </Text>
+      ) : (
         <Text size="sm">
           Are you sure you want to save these changes to the school year?
         </Text>

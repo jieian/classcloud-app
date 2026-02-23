@@ -9,11 +9,13 @@ export interface Permission {
 export interface Role {
   role_id: number;
   name: string;
+  is_faculty: boolean;
 }
 
 export interface RoleWithPermissions {
   role_id: number;
   name: string;
+  is_faculty: boolean;
   permissions: Permission[];
 }
 
@@ -199,7 +201,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("roles")
-    .select("role_id, name, role_permissions(permissions(permission_id, name, description))")
+    .select("role_id, name, is_faculty, role_permissions(permissions(permission_id, name, description))")
     .order("name");
 
   if (error) {
@@ -210,6 +212,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
   return (data || []).map((role: any) => ({
     role_id: role.role_id,
     name: role.name,
+    is_faculty: role.is_faculty ?? false,
     permissions: (role.role_permissions || []).map((rp: any) => rp.permissions),
   }));
 }
@@ -266,12 +269,13 @@ export async function checkRoleNameExists(
  */
 export async function createRole(
   name: string,
+  isFaculty: boolean,
   permissionIds: number[],
 ): Promise<void> {
   const response = await fetch("/api/roles/create-role", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, permission_ids: permissionIds }),
+    body: JSON.stringify({ name, is_faculty: isFaculty, permission_ids: permissionIds }),
   });
 
   const result = await response.json();
@@ -320,12 +324,13 @@ export async function isRoleAttached(roleId: number): Promise<boolean> {
 export async function updateRole(
   roleId: number,
   name: string,
+  isFaculty: boolean,
   permissionIds: number[],
 ): Promise<void> {
   const response = await fetch("/api/roles/update-role", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, name, permission_ids: permissionIds }),
+    body: JSON.stringify({ role_id: roleId, name, is_faculty: isFaculty, permission_ids: permissionIds }),
   });
 
   const result = await response.json();

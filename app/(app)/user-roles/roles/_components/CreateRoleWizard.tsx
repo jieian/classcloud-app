@@ -31,6 +31,7 @@ export default function CreateRoleWizard() {
     validateInputOnChange: true,
     initialValues: {
       name: "",
+      is_faculty: false,
       permission_ids: [],
       activeStep: 0,
     },
@@ -194,7 +195,7 @@ export default function CreateRoleWizard() {
     try {
       setLoading(true);
 
-      await createRole(form.values.name.trim(), form.values.permission_ids);
+      await createRole(form.values.name.trim(), form.values.is_faculty, form.values.permission_ids);
 
       notifications.show({
         title: "Success",

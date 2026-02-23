@@ -50,7 +50,24 @@ export async function POST(request: Request) {
     );
   }
 
-  // 5. Atomic RPC — creates school year + 4 quarters in one transaction
+  // 5. Duplicate check — exclude soft-deleted rows
+  const { count: dupCount, error: dupError } = await adminClient
+    .from("school_years")
+    .select("sy_id", { count: "exact", head: true })
+    .eq("start_year", start_year)
+    .is("deleted_at", null);
+
+  if (dupError) {
+    return Response.json({ error: dupError.message }, { status: 500 });
+  }
+  if ((dupCount ?? 0) > 0) {
+    return Response.json(
+      { error: "A school year with this range already exists." },
+      { status: 409 },
+    );
+  }
+
+  // 6. Atomic RPC — creates school year + 4 quarters in one transaction
   const { error } = await adminClient.rpc("create_school_year", {
     p_start_year: start_year,
     p_end_year: end_year,

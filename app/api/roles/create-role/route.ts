@@ -23,9 +23,9 @@ export async function POST(request: Request) {
 
   // 3. PAYLOAD: Parse role data
   const body = await request.json();
-  const { name, permission_ids } = body;
+  const { name, is_faculty, permission_ids } = body;
 
-  if (!name || !permission_ids || !Array.isArray(permission_ids)) {
+  if (!name || is_faculty === undefined || !permission_ids || !Array.isArray(permission_ids)) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     "create_role_with_permissions",
     {
       role_name: name.trim(),
+      p_is_faculty: is_faculty,
       p_ids: permission_ids,
     }
   );

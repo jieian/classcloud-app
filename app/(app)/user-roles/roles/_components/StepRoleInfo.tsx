@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Text, TextInput } from "@mantine/core";
+import { Box, Switch, Text, TextInput } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { toTitleCase } from "../../users/_lib/utils";
 import { CreateRoleForm } from "../../users/_lib/types";
@@ -47,7 +47,16 @@ export default function StepRoleInfo({ form }: StepRoleInfoProps) {
             }
             form.validateField("name");
           }}
-        ></TextInput>
+          mb="md"
+        />
+        <Switch
+          label="Faculty Role"
+          description="Assign role as teaching staff."
+          checked={form.values.is_faculty}
+          onChange={(e) =>
+            form.setFieldValue("is_faculty", e.currentTarget.checked)
+          }
+        />
       </Box>
     </Box>
   );

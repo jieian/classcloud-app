@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 type Role = {
   role_id: number;
   name: string;
+  is_faculty: boolean;
 };
 
 type UserRoleJoin = {
@@ -42,7 +43,7 @@ export async function GET() {
       middle_name,
       last_name,
       user_roles(
-        roles(role_id, name)
+        roles(role_id, name, is_faculty)
       )
     `,
     )

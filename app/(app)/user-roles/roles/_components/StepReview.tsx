@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Text, Grid, Group } from "@mantine/core";
+import { Badge, Box, Text, Group } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { CreateRoleForm } from "../../users/_lib/types";
 import type { Permission } from "../../users/_lib/userRolesService";
@@ -38,7 +38,16 @@ export default function StepReview({
         <Text size="md" fw={700} mb="md" c="#4EAE4A">
           Role Information
         </Text>
-        <Text>Name: {form.values.name}</Text>
+        <Group gap="xs" mb="xs">
+          <Text>Name:</Text>
+          <Text>{form.values.name}</Text>
+        </Group>
+        <Group gap="xs">
+          <Text>Faculty Role:</Text>
+          <Badge color={form.values.is_faculty ? "green" : "gray"} variant="light">
+            {form.values.is_faculty ? "Yes" : "No"}
+          </Badge>
+        </Group>
       </Box>
 
       {/* Permissions Summary */}
