@@ -89,7 +89,8 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
       : Promise.resolve({ data: [] }),
     supabase
       .from("subject_grade_levels")
-      .select("grade_level_id, subjects(subject_id, name, code)"),
+      .select("grade_level_id, deleted_at, subjects(subject_id, name, code, deleted_at)")
+      .is("deleted_at", null),
     activeSyId
       ? supabase
           .from("teacher_class_assignments")
@@ -151,18 +152,20 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
         : null,
   }));
 
-  // 6. Flatten subjects by grade level
-  const subjectsByGradeLevel: SubjectForGradeLevel[] = (subjectGlRaw ?? []).flatMap(
+  // 6. Flatten subjects by grade level — exclude soft-deleted subjects
+  const subjectsByGradeLevel: SubjectForGradeLevel[] = ((subjectGlRaw ?? []) as any[]).flatMap(
     (sgl: any) => {
       const raw = sgl.subjects;
       if (!raw) return [];
-      const subjects = Array.isArray(raw) ? raw : [raw];
-      return subjects.map((s: any) => ({
-        subject_id: s.subject_id,
-        name: s.name,
-        code: s.code,
-        grade_level_id: sgl.grade_level_id,
-      }));
+      const subjects = (Array.isArray(raw) ? raw : [raw]) as any[];
+      return subjects
+        .filter((s: any) => s.deleted_at === null)
+        .map((s: any) => ({
+          subject_id: s.subject_id,
+          name: s.name,
+          code: s.code,
+          grade_level_id: sgl.grade_level_id,
+        }));
     },
   );
 

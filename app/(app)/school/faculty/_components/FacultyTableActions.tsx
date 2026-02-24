@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
-import { IconChalkboardTeacher, IconTrash } from "@tabler/icons-react";
+import { IconSettings, IconTrash } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { useRouter } from "next/navigation";
@@ -75,7 +75,7 @@ export default function FacultyTableActions({
             router.push(`/school/faculty/create?uid=${faculty.uid}`)
           }
         >
-          <IconChalkboardTeacher size={16} stroke={1.5} color="black" />
+          <IconSettings size={16} stroke={1.5} color="gray" />
         </ActionIcon>
       </Tooltip>
       <Tooltip label="Remove Academic Load">
