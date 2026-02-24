@@ -127,7 +127,7 @@ export default function EditSubjectDrawer({
 
       setGradeLevels(allLevels ?? []);
 
-      const ids = (linked ?? []).map((r) => String(r.grade_level_id));
+      const ids = (linked ?? []).map((r: { grade_level_id: number }) => String(r.grade_level_id));
       setSelectedGradeLevels(ids);
       initialGradeLevelIds.current = ids;
     } catch (err) {
