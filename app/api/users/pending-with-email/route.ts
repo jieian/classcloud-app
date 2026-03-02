@@ -20,6 +20,7 @@ export async function GET() {
     .from("users")
     .select("uid, first_name, middle_name, last_name")
     .eq("active_status", 0)
+    .is("deleted_at", null)
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 

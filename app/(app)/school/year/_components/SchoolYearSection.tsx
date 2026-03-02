@@ -1,8 +1,7 @@
 "use client";
 
 import { SearchBar } from "@/components/searchBar/SearchBar";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -32,17 +31,10 @@ export default function SchoolYearSection() {
     setSelectedYear(sy);
     setDrawerOpened(true);
   };
-  const pathname = usePathname();
-  const hasMounted = useRef(false);
 
   useEffect(() => {
     loadSchoolYears();
-    hasMounted.current = true;
   }, []);
-
-  useEffect(() => {
-    if (hasMounted.current) loadSchoolYears();
-  }, [pathname]);
 
   async function loadSchoolYears() {
     try {
@@ -155,6 +147,7 @@ export default function SchoolYearSection() {
             schoolYears.filter((s) => s.is_active).length === 1 &&
             selectedYear.is_active
           }
+          allYears={schoolYears}
         />
       )}
     </>

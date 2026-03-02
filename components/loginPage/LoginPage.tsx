@@ -34,6 +34,7 @@ export default function LoginPage() {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const supabase = getSupabase();
+  const invalidCredentialsMessage = "User credentials don't exist.";
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,18 +50,28 @@ export default function LoginPage() {
 
       if (authError) throw authError;
 
-      // Check if the account is activated
+      // Check if the account is activated and not soft-deleted
       const { data: userData } = await supabase
         .from("users")
-        .select("active_status")
+        .select("active_status, deleted_at")
         .eq("uid", authData.user.id)
         .maybeSingle();
 
       if (!userData) {
         await supabase.auth.signOut();
         notify({
-          title: "Account Not Found",
-          message: "No account found. Please contact your administrator.",
+          title: "Login failed",
+          message: invalidCredentialsMessage,
+          type: "error",
+        });
+        return;
+      }
+
+      if (userData.deleted_at) {
+        await supabase.auth.signOut();
+        notify({
+          title: "Login failed",
+          message: invalidCredentialsMessage,
           type: "error",
         });
         return;
@@ -121,9 +132,12 @@ export default function LoginPage() {
       }
 
       setError(true);
+      const errorMessage =
+        authError instanceof Error ? authError.message : "Login failed";
+      const isBannedError = errorMessage.toLowerCase().includes("banned");
       notify({
         title: "Login failed",
-        message: authError instanceof Error ? authError.message : "Login failed",
+        message: isBannedError ? invalidCredentialsMessage : errorMessage,
         type: "error",
       });
     } finally {

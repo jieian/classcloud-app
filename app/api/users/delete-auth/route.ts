@@ -21,7 +21,7 @@ export async function DELETE(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { uuid } = await request.json();
+  const { uuid, soft } = await request.json();
 
   if (!uuid || typeof uuid !== "string") {
     return Response.json({ error: "Invalid user UUID" }, { status: 400 });
@@ -41,6 +41,38 @@ export async function DELETE(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  if (soft) {
+    // Soft delete: atomically clean up assignments/roles and stamp deleted_at
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc(
+      "soft_delete_user_atomic",
+      { p_uid: uuid },
+    );
+
+    if (rpcError) {
+      return Response.json({ error: rpcError.message }, { status: 500 });
+    }
+
+    if (!rpcResult?.success) {
+      return Response.json(
+        { error: rpcResult?.message ?? "User not found or already deleted" },
+        { status: 404 },
+      );
+    }
+
+    // Ban for ~100 years — effectively permanent until explicitly restored
+    const { error: banError } = await adminClient.auth.admin.updateUserById(
+      uuid,
+      { ban_duration: "876000h" },
+    );
+
+    if (banError) {
+      return Response.json({ error: banError.message }, { status: 500 });
+    }
+
+    return Response.json({ success: true });
+  }
+
+  // Hard delete — used for rejecting pending (never-activated) users
   const { error } = await adminClient.auth.admin.deleteUser(uuid);
 
   if (error) {

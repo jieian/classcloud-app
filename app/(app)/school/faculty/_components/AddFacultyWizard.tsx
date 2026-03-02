@@ -2,11 +2,31 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Stepper, Button, Group, Text, Skeleton, Box, rem } from "@mantine/core";
+import {
+  Alert,
+  Container,
+  Stepper,
+  Button,
+  Group,
+  Stack,
+  Text,
+  ThemeIcon,
+  Title,
+  Skeleton,
+  Box,
+  rem,
+} from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
+import {
+  IconArrowLeft,
+  IconBookOff,
+  IconCalendarOff,
+  IconInfoCircle,
+  IconLayoutOff,
+} from "@tabler/icons-react";
 import StepAssignAdvisory from "./StepAssignAdvisory";
 import StepAssignGradeSection from "./StepAssignGradeSection";
 import StepAssignSubject from "./StepAssignSubject";
@@ -19,6 +39,54 @@ import type { AddFacultyForm, WizardData } from "../_lib/teachingLoadService";
 
 interface AddFacultyWizardProps {
   facultyUid: string;
+}
+
+// ─── Blocker ──────────────────────────────────────────────────────────────────
+
+function WizardBlocker({
+  icon,
+  title,
+  description,
+  hint,
+  onBack,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  hint: string;
+  onBack: () => void;
+}) {
+  return (
+    <Container fluid py="xl">
+      <Stack align="center" gap="md" py={48} maw={460} mx="auto">
+        <ThemeIcon size={64} radius="xl" color="gray" variant="light">
+          {icon}
+        </ThemeIcon>
+        <Title order={4} ta="center">
+          {title}
+        </Title>
+        <Text size="sm" c="dimmed" ta="center">
+          {description}
+        </Text>
+        <Alert
+          color="blue"
+          variant="light"
+          icon={<IconInfoCircle size={16} />}
+          w="100%"
+        >
+          {hint}
+        </Alert>
+        <Button
+          variant="light"
+          color="#597D37"
+          leftSection={<IconArrowLeft size={16} />}
+          onClick={onBack}
+        >
+          Back to Faculty
+        </Button>
+      </Stack>
+    </Container>
+  );
 }
 
 const TOTAL_STEPS = 4;
@@ -344,6 +412,47 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
   }
 
   if (!wizardData) return null;
+
+  const goBack = () => {
+    router.replace("/school/faculty");
+    router.refresh();
+  };
+
+  if (!wizardData.active_sy_id) {
+    return (
+      <WizardBlocker
+        icon={<IconCalendarOff size={30} />}
+        title="No Active School Year"
+        description="Academic load cannot be assigned without an active school year."
+        hint="Go to School → Year and set a school year as active."
+        onBack={goBack}
+      />
+    );
+  }
+
+  if (wizardData.sections.length === 0) {
+    return (
+      <WizardBlocker
+        icon={<IconLayoutOff size={30} />}
+        title="No Classes in Active School Year"
+        description="The active school year has no classes yet. Classes must exist before you can assign an academic load."
+        hint="Go to School → Classes and create at least one class for the active school year."
+        onBack={goBack}
+      />
+    );
+  }
+
+  if (wizardData.subjects_by_grade_level.length === 0) {
+    return (
+      <WizardBlocker
+        icon={<IconBookOff size={30} />}
+        title="No Subjects Configured"
+        description="There are no subjects assigned to any grade level. Subjects must exist before you can assign an academic load."
+        hint="Go to School → Subjects and add subjects to the relevant grade levels."
+        onBack={goBack}
+      />
+    );
+  }
 
   const facultyName = wizardData.faculty
     ? `${wizardData.faculty.first_name} ${wizardData.faculty.last_name}`

@@ -27,7 +27,8 @@ export function SubjectSection() {
   const [gradeLevels, setGradeLevels] = useState<GradeLevelWithCount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [modalOpened, { open: openModal, close: closeModal }] =
+    useDisclosure(false);
 
   useEffect(() => {
     loadData();
@@ -70,7 +71,7 @@ export function SubjectSection() {
           )}
         </h1>
         <Button color="#4EAE4A" radius="md" mr="md" onClick={openModal}>
-          Create Subject
+          Create a Subject
         </Button>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">

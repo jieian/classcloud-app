@@ -15,14 +15,21 @@ import { Center, Loader } from "@mantine/core";
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredPermissions: string[];
+  match?: "all" | "any";
 }
 
 export default function ProtectedRoute({
   children,
   requiredPermissions,
+  match = "all",
 }: ProtectedRouteProps) {
   const { user, permissions, loading } = useAuth();
   const router = useRouter();
+
+  const hasRequiredPermission =
+    match === "all"
+      ? requiredPermissions.every((p) => permissions.includes(p))
+      : requiredPermissions.some((p) => permissions.includes(p));
 
   useEffect(() => {
     if (loading) return;
@@ -32,14 +39,10 @@ export default function ProtectedRoute({
       return;
     }
 
-    const hasPermission = requiredPermissions.every((p) =>
-      permissions.includes(p),
-    );
-
-    if (!hasPermission) {
+    if (!hasRequiredPermission) {
       router.push("/unauthorized");
     }
-  }, [user, permissions, loading, requiredPermissions, router]);
+  }, [user, loading, hasRequiredPermission, router]);
 
   if (loading) {
     return (
@@ -51,11 +54,7 @@ export default function ProtectedRoute({
 
   if (!user) return null;
 
-  const hasPermission = requiredPermissions.every((p) =>
-    permissions.includes(p),
-  );
-
-  if (!hasPermission) return null;
+  if (!hasRequiredPermission) return null;
 
   return <>{children}</>;
 }

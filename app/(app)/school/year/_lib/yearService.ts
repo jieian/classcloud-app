@@ -1,14 +1,5 @@
 import { getSupabase } from "@/lib/supabase/client";
 
-export interface SchoolYear {
-  sy_id: number;
-  year_range: string;
-  start_year: number;
-  end_year: number;
-  is_active: boolean;
-  deleted_at: string | null;
-}
-
 export interface Quarter {
   quarter_id: number;
   name: string;
@@ -16,19 +7,35 @@ export interface Quarter {
   sy_id: number;
 }
 
+export interface SchoolYear {
+  sy_id: number;
+  year_range: string;
+  start_year: number;
+  end_year: number;
+  is_active: boolean;
+  deleted_at: string | null;
+  quarters: Quarter[];
+}
+
 /*
- * Fetches all school years from the database
+ * Fetches all school years with their quarters in a single query.
  */
 export async function getSchoolYears(): Promise<SchoolYear[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("school_years")
-    .select("*")
+    .select("sy_id, year_range, start_year, end_year, is_active, deleted_at, quarters(quarter_id, name, is_active, sy_id)")
     .is("deleted_at", null)
-    .order("year_range", { ascending: false });
+    .order("start_year", { ascending: false });
 
   if (error) throw new Error(error.message);
-  return (data as SchoolYear[]) ?? [];
+
+  return (data ?? []).map((sy: any) => ({
+    ...sy,
+    quarters: (Array.isArray(sy.quarters) ? sy.quarters : []).sort(
+      (a: Quarter, b: Quarter) => a.quarter_id - b.quarter_id,
+    ),
+  }));
 }
 
 /*

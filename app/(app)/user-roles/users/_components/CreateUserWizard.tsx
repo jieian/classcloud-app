@@ -11,7 +11,8 @@ import StepUserInfo from "./StepUserInfo";
 import StepAssignRole from "./StepAssignRole";
 import StepReview from "./StepReview";
 import { validateCreateUserForm } from "../_lib/validation";
-import { createUser, checkEmailExists, fetchAllRoles } from "../_lib";
+import { createUser, checkEmailStatus, fetchAllRoles } from "../_lib";
+import type { EmailStatus } from "../_lib/userRolesService";
 import { toTitleCase, generateSecurePassword } from "../_lib/utils";
 import type { CreateUserForm } from "../_lib/types";
 import type { Role } from "../_lib/userRolesService";
@@ -106,23 +107,34 @@ export default function CreateUserWizard() {
         return;
       }
 
-      // Check email uniqueness — skip if same email was already verified
+      // Check email status — skip if same email was already verified
       const trimmedEmail = form.values.email.trim();
       if (verifiedEmailRef.current !== trimmedEmail) {
         busyRef.current = true;
         setCheckingEmail(true);
         try {
-          const emailTaken = await checkEmailExists(trimmedEmail);
-          if (emailTaken) {
+          const emailStatus: EmailStatus = await checkEmailStatus(trimmedEmail);
+
+          if (emailStatus.status === "active") {
             form.setFieldError("email", "This email is already in use");
             notifications.show({
               title: "Email Already In Use",
-              message:
-                "This email is already registered. Please use a different email.",
+              message: "This email is already registered. Please use a different email.",
               color: "red",
             });
             return;
           }
+
+          if (emailStatus.status === "deleted") {
+            form.setFieldError("email", "This email belongs to a deleted account and cannot be reused");
+            notifications.show({
+              title: "Email Unavailable",
+              message: "This email belongs to a deleted account and cannot be reused.",
+              color: "red",
+            });
+            return;
+          }
+
           // Cache verified email so going back + forward skips the check
           verifiedEmailRef.current = trimmedEmail;
         } catch {
@@ -161,6 +173,8 @@ export default function CreateUserWizard() {
 
   const prevStep = () => {
     form.setFieldValue("activeStep", form.values.activeStep - 1);
+    // Clear cached email verification so the check runs again if the user edits it
+    verifiedEmailRef.current = null;
   };
 
   const handleCancel = () => {
@@ -191,11 +205,13 @@ export default function CreateUserWizard() {
       title: "Create New User?",
       children: (
         <Text size="sm">
-          This will create an account for{" "}
-          <strong>
-            {form.values.first_name} {form.values.last_name}
-          </strong>{" "}
-          with {form.values.role_ids.length} role(s).
+          <>
+            This will create an account for{" "}
+            <strong>
+              {form.values.first_name} {form.values.last_name}
+            </strong>{" "}
+            with {form.values.role_ids.length} role(s).
+          </>
         </Text>
       ),
       labels: { confirm: "Create User", cancel: "Cancel" },
@@ -419,3 +435,4 @@ export default function CreateUserWizard() {
     </Container>
   );
 }
+

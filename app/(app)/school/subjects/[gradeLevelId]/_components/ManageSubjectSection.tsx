@@ -22,7 +22,8 @@ export function ManageSubjectSection({
   const [subjectCount, setSubjectCount] = useState<number | null>(null);
   const [gradeLevelDisplay, setGradeLevelDisplay] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
+  const [modalOpened, { open: openModal, close: closeModal }] =
+    useDisclosure(false);
   const tableRef = useRef<SubjectTableWrapperRef>(null);
 
   return (
@@ -32,6 +33,7 @@ export function ManageSubjectSection({
         color="#597D37"
         leftSection={<IconArrowLeft size={16} />}
         mb="md"
+        size="md"
         onClick={() => router.push("/school/subjects")}
       >
         Back to Subjects

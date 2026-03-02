@@ -165,7 +165,8 @@ export async function fetchSubjectsByGradeLevel(gradeLevelId: number): Promise<{
   let teacherAssignments: TeacherAssignmentWithUser[] = [];
 
   if (activeSyId && subjectIds.length > 0) {
-    // One query: assignments for active SY and grade level, with joined user names.
+    // Filtering deleted_at IS NULL excludes soft-deleted assignments, which also
+    // covers soft-deleted teachers (soft_delete_user_atomic stamps both).
     const { data: assignmentData, error: assignmentError } = await supabase
       .from("teacher_class_assignments")
       .select(
@@ -173,7 +174,8 @@ export async function fetchSubjectsByGradeLevel(gradeLevelId: number): Promise<{
       )
       .eq("sy_id", activeSyId)
       .eq("sections.grade_level_id", gradeLevelId)
-      .in("subject_id", subjectIds);
+      .in("subject_id", subjectIds)
+      .is("deleted_at", null);
 
     if (assignmentError) throw new Error(assignmentError.message);
     teacherAssignments = (assignmentData ?? []) as TeacherAssignmentWithUser[];

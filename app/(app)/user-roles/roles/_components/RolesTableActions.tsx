@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   ActionIcon,
+  Alert,
   Button,
   Group,
   Modal,
@@ -10,11 +11,11 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { RoleWithPermissions } from "../../users/_lib";
-import { deleteRole, isRoleAttached } from "../../users/_lib";
+import { deleteRole, isRoleAttachedToActiveUsers } from "../../users/_lib";
 import EditRoleDrawer from "./EditRoleDrawer";
 
 interface RolesTableActionsProps {
@@ -30,33 +31,24 @@ export default function RolesTableActions({
     useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure(false);
-  const [attachedOpened, { open: openAttached, close: closeAttached }] =
-    useDisclosure(false);
+
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [isAttached, setIsAttached] = useState(false);
+
   const isAdmin = role.role_id === 1;
   const isProtectedRole = ["class adviser", "subject teacher"].includes(
     role.name.trim().toLowerCase(),
   );
 
-  const handleSuccess = () => {
-    onUpdate();
-  };
-
   const handleTrashClick = async () => {
-    if (isProtectedRole) {
-      return;
-    }
-
+    if (isProtectedRole) return;
     try {
       setChecking(true);
-      const attached = await isRoleAttached(role.role_id);
-      if (attached) {
-        openAttached();
-      } else {
-        openDelete();
-      }
+      const attached = await isRoleAttachedToActiveUsers(role.role_id);
+      setIsAttached(attached);
+      openDelete();
     } catch {
       notifications.show({
         title: "Error",
@@ -74,10 +66,7 @@ export default function RolesTableActions({
   };
 
   const handleDelete = async () => {
-    if (isProtectedRole) {
-      return;
-    }
-
+    if (isProtectedRole) return;
     try {
       setDeleting(true);
       await deleteRole(role.role_id);
@@ -89,13 +78,12 @@ export default function RolesTableActions({
         color: "green",
       });
     } catch (err) {
-      const message =
-        err instanceof Error && err.message.includes("assigned to users")
-          ? "Cannot delete role because it is currently assigned to one or more users. Please unassign the role from all users before deleting."
-          : "An error occurred while deleting the role. Please try again.";
       notifications.show({
         title: "Error",
-        message,
+        message:
+          err instanceof Error
+            ? err.message
+            : "An error occurred while deleting the role. Please try again.",
         color: "red",
       });
     } finally {
@@ -118,11 +106,7 @@ export default function RolesTableActions({
           </ActionIcon>
         </Tooltip>
         <Tooltip
-          label={
-            isProtectedRole
-              ? "This role cannot be deleted"
-              : "Delete Role"
-          }
+          label={isProtectedRole ? "This role cannot be deleted" : "Delete Role"}
         >
           <ActionIcon
             variant="subtle"
@@ -141,7 +125,7 @@ export default function RolesTableActions({
         opened={drawerOpened}
         onClose={closeDrawer}
         role={role}
-        onSuccess={handleSuccess}
+        onSuccess={onUpdate}
       />
 
       <Modal
@@ -149,7 +133,20 @@ export default function RolesTableActions({
         onClose={handleCloseDelete}
         title="Delete Role"
         centered
+        closeOnClickOutside={!deleting}
+        closeOnEscape={!deleting}
+        withCloseButton={!deleting}
       >
+        {isAttached && (
+          <Alert
+            icon={<IconAlertTriangle size={16} />}
+            color="orange"
+            mb="md"
+          >
+            This role is currently assigned to active users. Deleting it will
+            remove it from all of them.
+          </Alert>
+        )}
         <Text size="sm" mb="md">
           Are you sure you want to delete <strong>{role.name}</strong>? This
           action cannot be undone.
@@ -168,7 +165,7 @@ export default function RolesTableActions({
           mb="lg"
         />
         <Group justify="flex-end">
-          <Button variant="default" onClick={handleCloseDelete}>
+          <Button variant="default" onClick={handleCloseDelete} disabled={deleting}>
             Cancel
           </Button>
           <Button
@@ -178,23 +175,6 @@ export default function RolesTableActions({
             onClick={handleDelete}
           >
             Delete
-          </Button>
-        </Group>
-      </Modal>
-
-      <Modal
-        opened={attachedOpened}
-        onClose={closeAttached}
-        title="Cannot Delete Role"
-        centered
-      >
-        <Text size="sm" mb="lg">
-          <strong>{role.name}</strong> is currently assigned to one or more
-          users. Please unassign this role from all users before deleting it.
-        </Text>
-        <Group justify="flex-end">
-          <Button variant="default" onClick={closeAttached}>
-            Close
           </Button>
         </Group>
       </Modal>

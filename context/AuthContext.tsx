@@ -134,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select("user_roles(role_id, roles(role_id, name))")
       .eq("uid", authUserId)
       .eq("active_status", 1)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (error) {
@@ -141,7 +142,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
 
-    const userRoles = (data?.user_roles ?? []) as UserRoleJoinRow[];
+    // No row means the account is inactive, pending, or soft-deleted.
+    // Sign out immediately so they can't linger with cached credentials.
+    if (!data) {
+      supabase.auth.signOut({ scope: "global" }).catch(() => {});
+      return [];
+    }
+
+    const userRoles = (data.user_roles ?? []) as UserRoleJoinRow[];
     return userRoles
       .filter((row) => row.roles !== null)
       .map((row) => ({

@@ -49,7 +49,8 @@ export async function fetchPendingUserCount(): Promise<number> {
   const { count, error } = await supabase
     .from("users")
     .select("*", { count: "exact", head: true })
-    .eq("active_status", 0);
+    .eq("active_status", 0)
+    .is("deleted_at", null);
 
   if (error) {
     if (process.env.NODE_ENV === "development") {
@@ -111,6 +112,36 @@ export async function checkEmailExists(
   }
 
   return data === true;
+}
+
+export interface EmailStatus {
+  status: "available" | "active" | "deleted";
+  uid?: string;
+  first_name?: string;
+  last_name?: string;
+}
+
+/**
+ * Returns rich email status: "available", "active", or "deleted".
+ * Use this in the create-user wizard to detect soft-deleted accounts.
+ * Pass excludeUid to ignore a specific user (for edit scenarios).
+ */
+export async function checkEmailStatus(
+  email: string,
+  excludeUid?: string,
+): Promise<EmailStatus> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("check_email_status", {
+    p_email: email.trim(),
+    p_exclude_uid: excludeUid ?? null,
+  });
+
+  if (error) {
+    console.error("Error checking email status:", error);
+    throw new Error("Failed to verify email availability.");
+  }
+
+  return data as EmailStatus;
 }
 
 /**
@@ -301,12 +332,16 @@ export async function deleteRole(roleId: number): Promise<void> {
   }
 }
 
-export async function isRoleAttached(roleId: number): Promise<boolean> {
+/**
+ * Returns true if the role is assigned to at least one active (non-deleted) user.
+ */
+export async function isRoleAttachedToActiveUsers(roleId: number): Promise<boolean> {
   const supabase = getSupabase();
   const { count, error } = await supabase
     .from("user_roles")
-    .select("*", { count: "exact", head: true })
-    .eq("role_id", roleId);
+    .select("uid, users!inner(deleted_at)", { count: "exact", head: true })
+    .eq("role_id", roleId)
+    .is("users.deleted_at", null);
 
   if (error) {
     throw new Error("Failed to check role attachment status.");

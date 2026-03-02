@@ -15,6 +15,7 @@ import {
   IconMenu2,
 } from "@tabler/icons-react";
 import {
+  Badge,
   Title,
   Tooltip,
   UnstyledButton,
@@ -81,8 +82,9 @@ const navigationData: NavigationLink[] = [
       "access_year_management",
       "access_faculty_management",
       "access_subject_management",
-      "access_student_management",
-      "access_section_management",
+      "access_classes_management",
+      "partial_access_student_management",
+      "full_access_student_management",
     ],
     sublinks: [
       {
@@ -104,16 +106,14 @@ const navigationData: NavigationLink[] = [
         requiredPermissions: ["access_subject_management"],
       },
       {
-        label: "Students",
-        key: "students",
-        href: "/school/students",
-        requiredPermissions: ["access_student_management"],
-      },
-      {
-        label: "Sections",
-        key: "sections",
-        href: "/school/sections",
-        requiredPermissions: ["access_section_management"],
+        label: "Classes",
+        key: "classes",
+        href: "/school/classes",
+        requiredPermissions: [
+          "access_classes_management",
+          "partial_access_student_management",
+          "full_access_student_management",
+        ],
       },
     ],
   },
@@ -162,6 +162,27 @@ export default function Navbar() {
   const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
 
   const { signOut, permissions, loading } = useAuth();
+
+  // Pending transfer request count — drives the badge on the Classes sublink
+  const [pendingTransferCount, setPendingTransferCount] = useState(0);
+  const canReviewTransfers =
+    permissions.includes("full_access_student_management") ||
+    permissions.includes("partial_access_student_management");
+
+  useEffect(() => {
+    if (!canReviewTransfers) {
+      setPendingTransferCount(0);
+      return;
+    }
+    fetch("/api/classes/transfer-requests/count", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { count?: number }) => {
+        if (typeof d.count === "number") setPendingTransferCount(d.count);
+      })
+      .catch(() => {}); // Badge is non-critical — fail silently
+  // Re-check whenever the user navigates so the count stays fresh
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, canReviewTransfers]);
 
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(
@@ -294,6 +315,8 @@ export default function Navbar() {
 
   const drawerLinks = drawerSublinks.map((sublink: Sublink) => {
     const isActive = pathname === sublink.href;
+    const showBadge =
+      sublink.key === "classes" && pendingTransferCount > 0;
 
     return (
       <Link
@@ -306,7 +329,27 @@ export default function Navbar() {
           if (isMobile) setIsMobileMenuOpen(false);
         }}
       >
-        {sublink.label}
+        <span
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            width: "100%",
+            gap: "8px",
+          }}
+        >
+          <span>{sublink.label}</span>
+          {showBadge && (
+            <Badge
+              size="xs"
+              color="red"
+              variant="filled"
+              style={{ flexShrink: 0 }}
+            >
+              {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+            </Badge>
+          )}
+        </span>
       </Link>
     );
   });
@@ -322,7 +365,7 @@ export default function Navbar() {
           radius="md"
           style={{
             position: "fixed",
-            bottom: 20,
+            top: 20,
             left: 20,
             zIndex: 2100,
             backgroundColor: "var(--mantine-color-white)",
@@ -455,7 +498,12 @@ export default function Navbar() {
           <Button variant="default" onClick={closeLogout} disabled={loggingOut}>
             Cancel
           </Button>
-          <Button color="red" onClick={confirmLogout} loading={loggingOut} disabled={loggingOut}>
+          <Button
+            color="red"
+            onClick={confirmLogout}
+            loading={loggingOut}
+            disabled={loggingOut}
+          >
             Logout
           </Button>
         </Group>

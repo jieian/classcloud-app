@@ -72,11 +72,10 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
 }
 
 /**
- * Deletes a user by deleting from auth.users.
- * ON DELETE CASCADE handles users + user_roles automatically.
+ * Soft-deletes an active user: stamps deleted_at and bans their auth account.
  */
 export async function deleteUser(uid: string): Promise<void> {
-  await deleteAuthUser(uid);
+  await deleteAuthUser(uid, true);
 }
 
 /**
@@ -115,13 +114,14 @@ export async function rejectPendingUser(uid: string): Promise<void> {
 
 /**
  * Calls the server-side API route to delete a user from auth.users.
- * Requires SUPABASE_SERVICE_ROLE_KEY on the server.
+ * Pass soft=true for active users (stamps deleted_at + bans auth).
+ * Pass soft=false (default) for pending user rejection (hard delete).
  */
-async function deleteAuthUser(uuid: string): Promise<void> {
+async function deleteAuthUser(uuid: string, soft = false): Promise<void> {
   const response = await fetch("/api/users/delete-auth", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uuid }),
+    body: JSON.stringify({ uuid, soft }),
   });
 
   if (!response.ok) {
@@ -170,3 +170,4 @@ export async function createUser(data: CreateUserData): Promise<void> {
     throw new Error(result.error || "Failed to create user.");
   }
 }
+

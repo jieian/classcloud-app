@@ -48,6 +48,7 @@ export async function GET() {
     `,
     )
     .eq("active_status", 1)
+    .is("deleted_at", null)
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
 

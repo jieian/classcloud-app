@@ -53,6 +53,67 @@ export async function POST(request: Request) {
   let newAuthUserUuid: string | null = null;
 
   try {
+    // --- STEP 0: Check if email belongs to a soft-deleted user ---
+    const { data: emailStatus, error: emailCheckError } = await adminClient.rpc(
+      "check_email_status",
+      { p_email: email, p_exclude_uid: null },
+    );
+
+    if (!emailCheckError && emailStatus) {
+      // Active user already owns this email — reject
+      if (emailStatus.status === "active") {
+        return Response.json({ error: "Email already in use" }, { status: 409 });
+      }
+
+      // Soft-deleted user — restore instead of creating
+      if (emailStatus.status === "deleted") {
+        const restoredUid: string = emailStatus.uid;
+
+        // Restore profile + reassign roles atomically
+        const { data: restoreResult, error: restoreError } = await adminClient.rpc(
+          "restore_user_atomic",
+          {
+            p_uid: restoredUid,
+            p_first_name: first_name,
+            p_middle_name: middle_name || "",
+            p_last_name: last_name,
+            p_role_ids: role_ids,
+          },
+        );
+
+        if (restoreError || !restoreResult?.success) {
+          return Response.json(
+            { error: restoreError?.message || "Failed to restore user" },
+            { status: 500 },
+          );
+        }
+
+        // Unban in auth and reset password
+        const { error: unbanError } = await adminClient.auth.admin.updateUserById(
+          restoredUid,
+          { ban_duration: "none", password },
+        );
+
+        if (unbanError) {
+          // Rollback: re-stamp deleted_at so the record isn't left in a broken state
+          await adminClient
+            .from("users")
+            .update({ deleted_at: new Date().toISOString() })
+            .eq("uid", restoredUid);
+          return Response.json({ error: unbanError.message }, { status: 500 });
+        }
+
+        // Send welcome email (non-blocking)
+        try {
+          await sendWelcomeEmail({ to: email, firstName: first_name, lastName: last_name, password });
+        } catch (emailError) {
+          console.error("Welcome email failed (user was still restored):", emailError);
+        }
+
+        return Response.json({ success: true, uuid: restoredUid, restored: true }, { status: 200 });
+      }
+    }
+
     // --- STEP A: Create Auth User (Supabase Auth) ---
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
@@ -60,14 +121,14 @@ export async function POST(request: Request) {
       email_confirm: true,
       user_metadata: {
         // Optional: Store basic name in metadata as a backup
-        full_name: `${first_name} ${last_name}`, 
+        full_name: `${first_name} ${last_name}`,
       },
     });
 
     if (authError) throw authError;
-    
+
     // Store UUID for potential rollback
-    newAuthUserUuid = authData.user.id; 
+    newAuthUserUuid = authData.user.id;
 
     // --- STEP B: Atomic DB Insert (Profile + Roles via RPC) ---
     // We call the RPC *from the server* using the Service Role key.
@@ -126,7 +187,7 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { error: error.message || "Internal Server Error" }, 
+      { error: error.message || "Internal Server Error" },
       { status: 500 }
     );
   }

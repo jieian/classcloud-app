@@ -6,7 +6,6 @@ import {
   Drawer,
   Group,
   Modal,
-  Skeleton,
   Switch,
   Table,
   Text,
@@ -20,8 +19,6 @@ import type { Quarter, SchoolYear } from "../_lib/yearService";
 import {
   deleteSchoolYear,
   DuplicateYearError,
-  getQuartersByYear,
-  getSchoolYears,
   updateSchoolYear,
 } from "../_lib/yearService";
 
@@ -31,6 +28,7 @@ interface EditSchoolYearDrawerProps {
   onSuccess: () => void;
   schoolYear: SchoolYear;
   isOnlyActiveYear: boolean;
+  allYears: SchoolYear[];
 }
 
 interface FormValues {
@@ -44,10 +42,10 @@ export default function EditSchoolYearDrawer({
   onSuccess,
   schoolYear,
   isOnlyActiveYear,
+  allYears,
 }: EditSchoolYearDrawerProps) {
   const [loading, setLoading] = useState(false);
-  const [loadingQuarters, setLoadingQuarters] = useState(false);
-  const [quarters, setQuarters] = useState<Quarter[]>([]);
+  const [quarters, setQuarters] = useState<Quarter[]>(schoolYear.quarters);
   const [deleteModalOpened, setDeleteModalOpened] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -87,7 +85,9 @@ export default function EditSchoolYearDrawer({
       openedValuesRef.current = vals;
       form.setValues(vals);
       form.resetDirty(vals);
-      loadQuarters();
+      const initialQuarters = schoolYear.quarters.map((q) => ({ ...q }));
+      openedQuartersRef.current = initialQuarters;
+      setQuarters(initialQuarters);
     }
   }, [opened, schoolYear]);
 
@@ -102,27 +102,6 @@ export default function EditSchoolYearDrawer({
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [opened]);
-
-  async function loadQuarters() {
-    try {
-      setLoadingQuarters(true);
-      const data = await getQuartersByYear(schoolYear.sy_id);
-      openedQuartersRef.current = data.map((q) => ({ ...q }));
-      setQuarters(data);
-    } catch (error) {
-      notifications.show({
-        title: "Error Loading Quarters",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to load quarters. Please try again.",
-        color: "red",
-        autoClose: 10000,
-      });
-    } finally {
-      setLoadingQuarters(false);
-    }
-  }
 
   const quartersChanged = quarters.some(
     (q, i) => q.is_active !== openedQuartersRef.current[i]?.is_active,
@@ -278,18 +257,9 @@ export default function EditSchoolYearDrawer({
       return;
     }
 
-    let otherActiveYear: SchoolYear | null = null;
-    if (form.values.is_active) {
-      try {
-        const allYears = await getSchoolYears();
-        otherActiveYear =
-          allYears.find(
-            (sy) => sy.is_active && sy.sy_id !== schoolYear.sy_id,
-          ) ?? null;
-      } catch {
-        // Non-blocking — proceed with default modal text
-      }
-    }
+    const otherActiveYear = form.values.is_active
+      ? (allYears.find((sy) => sy.is_active && sy.sy_id !== schoolYear.sy_id) ?? null)
+      : null;
 
     modals.openConfirmModal({
       title: "Confirm updates?",
@@ -435,14 +405,7 @@ export default function EditSchoolYearDrawer({
         <Text size="sm" fw={600} mb="md">
           Quarter
         </Text>
-        {loadingQuarters ? (
-          <>
-            <Skeleton height={40} mb="sm" />
-            <Skeleton height={40} mb="sm" />
-            <Skeleton height={40} mb="sm" />
-            <Skeleton height={40} mb="sm" />
-          </>
-        ) : quarters.length === 0 ? (
+        {quarters.length === 0 ? (
           <Text size="sm" c="dimmed">
             No quarters found for this school year.
           </Text>
