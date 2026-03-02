@@ -117,7 +117,7 @@ export async function POST(
   try {
     // Newer @types/node made Buffer generic (Buffer<ArrayBuffer>) which is
     // incompatible with ExcelJS's Buffer type; pass ArrayBuffer directly.
-    await workbook.xlsx.load(arrayBuffer as unknown as Buffer);
+    await workbook.xlsx.load(arrayBuffer);
   } catch {
     return Response.json(
       { error: "Could not read file. Make sure it is a valid .xlsx file." },
