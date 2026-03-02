@@ -295,7 +295,7 @@ export async function POST(
 
   // ── Map each row to a final ReviewRow ──────────────────────────────────────
   const reviewRows: ReviewRow[] = withDedupe.map((r) => {
-    const base: ReviewRow = {
+    const base = {
       rowNum: r.rowNum,
       lrn: r.lrn,
       rawName: r.rawName,
