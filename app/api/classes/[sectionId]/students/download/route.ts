@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import ExcelJS from "exceljs";
+import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
@@ -92,207 +92,132 @@ export async function GET(
   const females = allStudents
     .filter((s) => s.sex === "F")
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
   // ── Build Excel ────────────────────────────────────────────────────────────
 
-  const workbook = new ExcelJS.Workbook();
-  const ws = workbook.addWorksheet("Roster");
+  const wb = XLSXStyle.utils.book_new();
+  const ws: XLSXStyle.WorkSheet = {};
 
-  ws.pageSetup = {
-    paperSize: 9, // A4
-    orientation: "portrait",
-  };
-  ws.pageSetup.margins = {
-    left: 0.7,
-    right: 0.7,
-    top: 0.75,
-    bottom: 0.75,
-    header: 0.3,
-    footer: 0.3,
-  };
+  const thin = { style: "thin", color: { rgb: "000000" } };
+  const allBorders = { top: thin, bottom: thin, left: thin, right: thin };
+  const centerMid = { horizontal: "center", vertical: "center" };
+  const leftMid = { horizontal: "left", vertical: "center" };
 
-  // Column widths (match template exactly)
-  ws.getColumn(1).width = 18.71; // A – LRN
-  ws.getColumn(2).width = 35; // B – Name
-  ws.getColumn(3).width = 24; // C – Sex
-  ws.getColumn(4).width = 18.71; // D
-  ws.getColumn(5).width = 24.71; // E
-  ws.getColumn(6).width = 18.71; // F
-  ws.getColumn(7).width = 14.29; // G
-  ws.getColumn(8).width = 36; // H
+  const labelFont = { name: "Sans Serif", sz: 12, bold: true };
+  const valueFont = { name: "Sans Serif", sz: 12 };
+  const headerFont = { name: "Sans Serif", sz: 11, bold: true };
+  const dataFont = { name: "Sans Serif", sz: 11 };
+  const groupHeaderFont = { name: "Sans Serif", sz: 11, bold: true };
+  const groupFill = { patternType: "solid", fgColor: { rgb: "E9ECEF" } };
 
-  const thin: ExcelJS.Border = { style: "thin", color: { argb: "FF000000" } };
-  const allBorders: Partial<ExcelJS.Borders> = {
-    top: thin,
-    bottom: thin,
-    left: thin,
-    right: thin,
-  };
+  // Column widths
+  ws["!cols"] = [
+    { wch: 18.71 }, // A
+    { wch: 35 },    // B
+    { wch: 24 },    // C
+    { wch: 18.71 }, // D
+    { wch: 24.71 }, // E
+    { wch: 18.71 }, // F
+    { wch: 14.29 }, // G
+    { wch: 36 },    // H
+  ];
+
+  const wsRows: XLSXStyle.RowInfo[] = [];
+  wsRows[0] = { hpt: 37.5 };  // Row 1: title
+  wsRows[1] = { hpt: 24.95 }; // Row 2: spacer
+  wsRows[2] = { hpt: 24 };    // Row 3: metadata
+  wsRows[3] = { hpt: 24.95 }; // Row 4: spacer
+  wsRows[4] = { hpt: 50.25 }; // Row 5: column headers
+
+  const merges: XLSXStyle.Range[] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }, // A1:H1
+    { s: { r: 2, c: 3 }, e: { r: 2, c: 4 } }, // D3:E3
+    { s: { r: 2, c: 6 }, e: { r: 2, c: 7 } }, // G3:H3
+  ];
 
   // ── Row 1: Title ──────────────────────────────────────────────────────────
-  ws.mergeCells("A1:H1");
-  const titleCell = ws.getCell("A1");
-  titleCell.value = "E-Class Record";
-  titleCell.font = { name: "Sans Serif", size: 21, bold: true };
-  titleCell.alignment = { horizontal: "center", vertical: "middle" };
-  ws.getRow(1).height = 37.5;
-
-  // ── Row 2: Spacer ─────────────────────────────────────────────────────────
-  ws.getRow(2).height = 24.95;
+  ws["A1"] = {
+    v: "E-Class Record", t: "s",
+    s: { font: { name: "Sans Serif", sz: 21, bold: true }, alignment: centerMid },
+  };
 
   // ── Row 3: Metadata ───────────────────────────────────────────────────────
-  ws.getRow(3).height = 24;
-
-  const labelFont: Partial<ExcelJS.Font> = {
-    name: "Sans Serif",
-    size: 12,
-    bold: true,
-  };
-  const valueFont: Partial<ExcelJS.Font> = { name: "Sans Serif", size: 12 };
-  const leftMid: Partial<ExcelJS.Alignment> = {
-    horizontal: "left",
-    vertical: "middle",
-  };
-  const centerMid: Partial<ExcelJS.Alignment> = {
-    horizontal: "center",
-    vertical: "middle",
-  };
-
-  function fillMeta(
-    ref: string,
-    value: string,
-    font: Partial<ExcelJS.Font>,
-    align: Partial<ExcelJS.Alignment>,
-  ) {
-    const c = ws.getCell(ref);
-    c.value = value;
-    c.font = font;
-    c.alignment = align;
-    c.border = allBorders;
-  }
-
-  // School Year
-  fillMeta("A3", "School Year:", labelFont, leftMid);
-  fillMeta("B3", schoolYear, valueFont, centerMid);
-
-  // Grade & Section — merge D3:F3 for a wider value cell
-  fillMeta("C3", "Grade & Section:", labelFont, leftMid);
-  ws.mergeCells("D3:E3");
-  const gradeSectionCell = ws.getCell("D3");
-  gradeSectionCell.value = `${gradeLevel} - ${sec.name}`;
-  gradeSectionCell.font = valueFont;
-  gradeSectionCell.alignment = centerMid;
-  gradeSectionCell.border = allBorders;
-
-  // Adviser
-  fillMeta("F3", "Adviser:", labelFont, leftMid);
-  fillMeta("G3", adviserName, valueFont, centerMid);
-  ws.mergeCells("G3:H3");
-
-  // ── Row 4: Spacer ─────────────────────────────────────────────────────────
-  ws.getRow(4).height = 24.95;
+  ws["A3"] = { v: "School Year:", t: "s", s: { font: labelFont, alignment: leftMid, border: allBorders } };
+  ws["B3"] = { v: schoolYear, t: "s", s: { font: valueFont, alignment: centerMid, border: allBorders } };
+  ws["C3"] = { v: "Grade & Section:", t: "s", s: { font: labelFont, alignment: leftMid, border: allBorders } };
+  ws["D3"] = { v: `${gradeLevel} - ${sec.name}`, t: "s", s: { font: valueFont, alignment: centerMid, border: allBorders } };
+  ws["E3"] = { v: "", t: "s", s: { border: allBorders } };
+  ws["F3"] = { v: "Adviser:", t: "s", s: { font: labelFont, alignment: leftMid, border: allBorders } };
+  ws["G3"] = { v: adviserName, t: "s", s: { font: valueFont, alignment: centerMid, border: allBorders } };
+  ws["H3"] = { v: "", t: "s", s: { border: allBorders } };
 
   // ── Row 5: Column headers ─────────────────────────────────────────────────
-  ws.getRow(5).height = 50.25;
-
-  const headerFont: Partial<ExcelJS.Font> = {
-    name: "Sans Serif",
-    size: 11,
-    bold: true,
-  };
-
-  const lrnHeader = ws.getCell("A5");
-  lrnHeader.value = "LRN";
-  lrnHeader.font = headerFont;
-  lrnHeader.alignment = centerMid;
-  lrnHeader.border = allBorders;
-
-  const nameHeader = ws.getCell("B5");
-  nameHeader.value = "NAME (Last Name, First Name, Middle Name)";
-  nameHeader.font = headerFont;
-  nameHeader.alignment = { ...centerMid, wrapText: true };
-  nameHeader.border = allBorders;
-
-  const sexHeader = ws.getCell("C5");
-  sexHeader.value = "Sex (M/F)";
-  sexHeader.font = headerFont;
-  sexHeader.alignment = centerMid;
-  sexHeader.border = allBorders;
+  ws["A5"] = { v: "LRN", t: "s", s: { font: headerFont, alignment: centerMid, border: allBorders } };
+  ws["B5"] = { v: "NAME (Last Name, First Name, Middle Name)", t: "s", s: { font: headerFont, alignment: { ...centerMid, wrapText: true }, border: allBorders } };
+  ws["C5"] = { v: "Sex (M/F)", t: "s", s: { font: headerFont, alignment: centerMid, border: allBorders } };
 
   // ── Rows 6+: Group headers + student data ────────────────────────────────
-  const dataFont: Partial<ExcelJS.Font> = { name: "Sans Serif", size: 11 };
-  const groupHeaderFont: Partial<ExcelJS.Font> = {
-    name: "Sans Serif",
-    size: 11,
-    bold: true,
-  };
-  const groupFill: ExcelJS.Fill = {
-    type: "pattern",
-    pattern: "solid",
-    fgColor: { argb: "FFE9ECEF" }, // light gray
-  };
+  let currentRowIdx = 5; // 0-indexed; rowIdx=5 → Excel row 6
 
-  function addGroupHeader(rowNum: number, label: string) {
-    ws.mergeCells(`A${rowNum}:C${rowNum}`);
-    const cell = ws.getCell(`A${rowNum}`);
-    cell.value = label;
-    cell.font = groupHeaderFont;
-    cell.alignment = centerMid;
-    cell.fill = groupFill;
-    cell.border = allBorders;
+  function addGroupHeader(rowIdx: number, label: string) {
+    const rowRef = rowIdx + 1;
+    ws[`A${rowRef}`] = { v: label, t: "s", s: { font: groupHeaderFont, alignment: centerMid, fill: groupFill, border: allBorders } };
+    ws[`B${rowRef}`] = { v: "", t: "s", s: { fill: groupFill, border: allBorders } };
+    ws[`C${rowRef}`] = { v: "", t: "s", s: { fill: groupFill, border: allBorders } };
+    merges.push({ s: { r: rowIdx, c: 0 }, e: { r: rowIdx, c: 2 } });
+    wsRows[rowIdx] = { hpt: 18 };
   }
 
-  function addStudentRow(
-    rowNum: number,
-    student: { lrn: string; full_name: string; sex: string },
-  ) {
-    const cellA = ws.getCell(`A${rowNum}`);
-    cellA.value = student.lrn;
-    cellA.numFmt = "@"; // force text — prevents scientific notation
-    cellA.font = dataFont;
-    cellA.alignment = { vertical: "middle" };
-    cellA.border = allBorders;
-
-    const cellB = ws.getCell(`B${rowNum}`);
-    cellB.value = student.full_name.toUpperCase();
-    cellB.font = dataFont;
-    cellB.alignment = { vertical: "middle" };
-    cellB.border = allBorders;
-
-    const cellC = ws.getCell(`C${rowNum}`);
-    cellC.value = student.sex;
-    cellC.font = dataFont;
-    cellC.alignment = centerMid;
-    cellC.border = allBorders;
+  function addStudentRow(rowIdx: number, student: { lrn: string; full_name: string; sex: string }) {
+    const rowRef = rowIdx + 1;
+    ws[`A${rowRef}`] = {
+      v: student.lrn, t: "s", z: "@",
+      s: { font: dataFont, alignment: { vertical: "center" }, border: allBorders },
+    };
+    ws[`B${rowRef}`] = {
+      v: student.full_name.toUpperCase(), t: "s",
+      s: { font: dataFont, alignment: { vertical: "center" }, border: allBorders },
+    };
+    ws[`C${rowRef}`] = {
+      v: student.sex, t: "s",
+      s: { font: dataFont, alignment: centerMid, border: allBorders },
+    };
+    wsRows[rowIdx] = { hpt: 18 };
   }
-
-  let currentRow = 6;
 
   if (males.length > 0) {
-    addGroupHeader(currentRow, `Male (${males.length})`);
-    currentRow++;
+    addGroupHeader(currentRowIdx, `Male (${males.length})`);
+    currentRowIdx++;
     for (const student of males) {
-      addStudentRow(currentRow, student);
-      currentRow++;
+      addStudentRow(currentRowIdx, student);
+      currentRowIdx++;
     }
   }
 
   if (females.length > 0) {
-    addGroupHeader(currentRow, `Female (${females.length})`);
-    currentRow++;
+    addGroupHeader(currentRowIdx, `Female (${females.length})`);
+    currentRowIdx++;
     for (const student of females) {
-      addStudentRow(currentRow, student);
-      currentRow++;
+      addStudentRow(currentRowIdx, student);
+      currentRowIdx++;
     }
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
+  ws["!rows"] = wsRows;
+  ws["!merges"] = merges;
+  ws["!ref"] = `A1:H${currentRowIdx}`;
+  ws["!pageSetup"] = { paperSize: 9, orientation: "portrait" } as any;
+  ws["!margins"] = { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 };
+
+  XLSXStyle.utils.book_append_sheet(wb, ws, "Roster");
+  const buffer = XLSXStyle.write(wb, { type: "buffer", bookType: "xlsx" });
 
   const safeName = `${gradeLevel} - ${sec.name} Roster.xlsx`.replace(
     /[<>:"/\\|?*]/g,
     "_",
   );
 
-  return new Response(buffer as unknown as ArrayBuffer, {
+  return new Response(buffer, {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

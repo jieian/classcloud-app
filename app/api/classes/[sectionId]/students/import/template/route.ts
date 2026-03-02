@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import ExcelJS from "exceljs";
+import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
@@ -50,90 +50,83 @@ export async function GET(
 
   // ── Build Template Excel ────────────────────────────────────────────────────
 
-  const workbook = new ExcelJS.Workbook();
-  const ws = workbook.addWorksheet("Roster");
+  const wb = XLSXStyle.utils.book_new();
+  const ws: XLSXStyle.WorkSheet = {};
 
-  ws.pageSetup = { paperSize: 9, orientation: "portrait" };
-  ws.pageSetup.margins = {
-    left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3,
-  };
+  const thin = { style: "thin", color: { rgb: "000000" } };
+  const allBorders = { top: thin, bottom: thin, left: thin, right: thin };
+  const centerMid = { horizontal: "center", vertical: "center" };
 
-  // Column widths — match Download Roster (cols A-C only)
-  ws.getColumn(1).width = 18.71; // A – LRN
-  ws.getColumn(2).width = 35;    // B – Name
-  ws.getColumn(3).width = 24;    // C – Sex
+  // Column widths
+  ws["!cols"] = [
+    { wch: 18.71 }, // A – LRN
+    { wch: 35 },    // B – Name
+    { wch: 24 },    // C – Sex
+  ];
 
-  const thin: ExcelJS.Border = { style: "thin", color: { argb: "FF000000" } };
-  const allBorders: Partial<ExcelJS.Borders> = {
-    top: thin, bottom: thin, left: thin, right: thin,
-  };
-  const centerMid: Partial<ExcelJS.Alignment> = {
-    horizontal: "center", vertical: "middle",
-  };
+  // Row heights (0-indexed, hpt = points)
+  const wsRows: XLSXStyle.RowInfo[] = [];
+  wsRows[0] = { hpt: 37.5 };  // Row 1: title
+  wsRows[1] = { hpt: 12 };    // Row 2: spacer
+  wsRows[2] = { hpt: 50.25 }; // Row 3: headers
+  for (let r = 3; r <= 52; r++) wsRows[r] = { hpt: 18 }; // Rows 4–53: data
+  ws["!rows"] = wsRows;
+
+  // Merged cells
+  ws["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, // A1:C1
+  ];
 
   // ── Row 1: Title ──────────────────────────────────────────────────────────
-  ws.mergeCells("A1:C1");
-  const titleCell = ws.getCell("A1");
-  titleCell.value = "E-Class Record";
-  titleCell.font = { name: "Sans Serif", size: 21, bold: true };
-  titleCell.alignment = centerMid;
-  ws.getRow(1).height = 37.5;
-
-  // ── Row 2: Spacer ─────────────────────────────────────────────────────────
-  ws.getRow(2).height = 12;
-
-  // ── Row 3: Column headers ─────────────────────────────────────────────────
-  ws.getRow(3).height = 50.25;
-
-  const headerFont: Partial<ExcelJS.Font> = {
-    name: "Sans Serif", size: 11, bold: true,
+  ws["A1"] = {
+    v: "E-Class Record",
+    t: "s",
+    s: {
+      font: { name: "Sans Serif", sz: 21, bold: true },
+      alignment: centerMid,
+    },
   };
 
-  const lrnHeader = ws.getCell("A3");
-  lrnHeader.value = "LRN";
-  lrnHeader.font = headerFont;
-  lrnHeader.alignment = { ...centerMid, wrapText: true };
-  lrnHeader.border = allBorders;
-
-  const nameHeader = ws.getCell("B3");
-  nameHeader.value = "NAME (Last Name, First Name, Middle Name)";
-  nameHeader.font = headerFont;
-  nameHeader.alignment = { ...centerMid, wrapText: true };
-  nameHeader.border = allBorders;
-
-  const sexHeader = ws.getCell("C3");
-  sexHeader.value = "Sex (M/F)";
-  sexHeader.font = headerFont;
-  sexHeader.alignment = { ...centerMid, wrapText: true };
-  sexHeader.border = allBorders;
+  // ── Row 3: Column headers ─────────────────────────────────────────────────
+  const headerStyle = {
+    font: { name: "Sans Serif", sz: 11, bold: true },
+    alignment: { ...centerMid, wrapText: true },
+    border: allBorders,
+  };
+  ws["A3"] = { v: "LRN", t: "s", s: headerStyle };
+  ws["B3"] = { v: "NAME (Last Name, First Name, Middle Name)", t: "s", s: headerStyle };
+  ws["C3"] = { v: "Sex (M/F)", t: "s", s: headerStyle };
 
   // ── Rows 4–53: Blank data rows ────────────────────────────────────────────
-  const dataFont: Partial<ExcelJS.Font> = { name: "Sans Serif", size: 11 };
+  const dataFont = { name: "Sans Serif", sz: 11 };
   for (let r = 4; r <= 53; r++) {
-    ws.getRow(r).height = 18;
-    const cellA = ws.getCell(`A${r}`);
-    cellA.numFmt = "@"; // force text for LRN
-    cellA.font = dataFont;
-    cellA.border = allBorders;
-
-    const cellB = ws.getCell(`B${r}`);
-    cellB.font = dataFont;
-    cellB.border = allBorders;
-
-    const cellC = ws.getCell(`C${r}`);
-    cellC.font = dataFont;
-    cellC.alignment = centerMid;
-    cellC.border = allBorders;
+    ws[`A${r}`] = {
+      v: "", t: "s", z: "@", // force text format for LRN
+      s: { font: dataFont, border: allBorders },
+    };
+    ws[`B${r}`] = {
+      v: "", t: "s",
+      s: { font: dataFont, border: allBorders },
+    };
+    ws[`C${r}`] = {
+      v: "", t: "s",
+      s: { font: dataFont, alignment: centerMid, border: allBorders },
+    };
   }
 
-  const buffer = await workbook.xlsx.writeBuffer();
+  ws["!ref"] = "A1:C53";
+  ws["!pageSetup"] = { paperSize: 9, orientation: "portrait" } as any;
+  ws["!margins"] = { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 };
+
+  XLSXStyle.utils.book_append_sheet(wb, ws, "Roster");
+  const buffer = XLSXStyle.write(wb, { type: "buffer", bookType: "xlsx" });
 
   const safeName = `${gradeLevel} - ${sec.name} Roster Template.xlsx`.replace(
     /[<>:"/\\|?*]/g,
     "_",
   );
 
-  return new Response(buffer as unknown as ArrayBuffer, {
+  return new Response(buffer, {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

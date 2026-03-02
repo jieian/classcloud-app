@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import ExcelJS from "exceljs";
+import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
@@ -113,11 +113,9 @@ export async function POST(
   const arrayBuffer = await fileEntry.arrayBuffer();
 
   // ── Parse Excel ─────────────────────────────────────────────────────────────
-  const workbook = new ExcelJS.Workbook();
+  let workbook: XLSXStyle.WorkBook;
   try {
-    // Newer @types/node made Buffer generic (Buffer<ArrayBuffer>) which is
-    // incompatible with ExcelJS's Buffer type; pass ArrayBuffer directly.
-    await workbook.xlsx.load(arrayBuffer);
+    workbook = XLSXStyle.read(new Uint8Array(arrayBuffer), { type: "array" });
   } catch {
     return Response.json(
       { error: "Could not read file. Make sure it is a valid .xlsx file." },
@@ -125,9 +123,11 @@ export async function POST(
     );
   }
 
-  const ws = workbook.worksheets[0];
-  if (!ws)
+  const wsName = workbook.SheetNames[0];
+  if (!wsName)
     return Response.json({ error: "The file has no worksheets." }, { status: 400 });
+
+  const ws = workbook.Sheets[wsName];
 
   // ── Extract data rows (row 4 onward, skip fully-blank rows) ─────────────────
   const rawRows: Array<{
@@ -137,21 +137,22 @@ export async function POST(
     sex: string;
   }> = [];
 
-  ws.eachRow((row, rowNum) => {
-    if (rowNum < 4) return; // skip header rows
-    const lrnCell = row.getCell(1);
-    const nameCell = row.getCell(2);
-    const sexCell = row.getCell(3);
+  const range = XLSXStyle.utils.decode_range(ws["!ref"] ?? "A1");
+  for (let r = 3; r <= range.e.r; r++) {
+    // r is 0-indexed; r=3 corresponds to row 4 in Excel
+    const lrnCell = ws[XLSXStyle.utils.encode_cell({ r, c: 0 })];
+    const nameCell = ws[XLSXStyle.utils.encode_cell({ r, c: 1 })];
+    const sexCell = ws[XLSXStyle.utils.encode_cell({ r, c: 2 })];
 
-    const lrnRaw = String(lrnCell.text ?? lrnCell.value ?? "").trim();
-    const nameRaw = String(nameCell.text ?? nameCell.value ?? "").trim();
-    const sexRaw = String(sexCell.text ?? sexCell.value ?? "").trim();
+    const lrnRaw = lrnCell ? String(lrnCell.w ?? lrnCell.v ?? "").trim() : "";
+    const nameRaw = nameCell ? String(nameCell.w ?? nameCell.v ?? "").trim() : "";
+    const sexRaw = sexCell ? String(sexCell.w ?? sexCell.v ?? "").trim() : "";
 
     // Skip fully blank rows
-    if (!lrnRaw && !nameRaw && !sexRaw) return;
+    if (!lrnRaw && !nameRaw && !sexRaw) continue;
 
-    rawRows.push({ rowNum, lrn: lrnRaw, name: nameRaw, sex: sexRaw });
-  });
+    rawRows.push({ rowNum: r + 1, lrn: lrnRaw, name: nameRaw, sex: sexRaw });
+  }
 
   if (rawRows.length === 0)
     return Response.json({ error: "The file contains no data rows." }, { status: 400 });
