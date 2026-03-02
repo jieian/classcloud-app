@@ -1,0 +1,11 @@
+.main {
+  flex-grow: 1;
+  padding: var(--mantine-spacing-lg);
+  overflow-y: auto;
+}
+
+@media (max-width: 767.9px) {
+  .main {
+    padding-top: calc(56px + var(--mantine-spacing-lg));
+  }
+}

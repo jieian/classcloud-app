@@ -111,6 +111,42 @@
 
 /* --- MOBILE STYLES (below 768px) --- */
 @media (max-width: 767.9px) {
+  .topBar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    background-color: #358432;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--mantine-spacing-xs);
+    z-index: 1900;
+  }
+
+  .topBarTitle {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    color: white;
+    font-size: var(--mantine-font-size-md);
+    font-weight: 600;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  .backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 1950;
+    cursor: pointer;
+  }
+
   .navbar {
     position: fixed;
     top: 0;
@@ -205,6 +241,12 @@
       color: #4eae4a;
       font-weight: 600;
     }
+  }
+
+  .inlineSublinks {
+    margin: 2px 0 4px;
+    margin-left: 36px;
+    border-left: 2px solid rgba(78, 174, 74, 0.35);
   }
 
   .drawer {

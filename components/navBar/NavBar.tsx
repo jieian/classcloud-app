@@ -193,6 +193,23 @@ export default function Navbar() {
     [permissions],
   );
 
+  // Current page label for mobile top bar
+  const currentPageLabel = useMemo(() => {
+    if (pathname === "/settings") return "Account Settings";
+    // Check sublinks first (more specific) — e.g. /user-roles/users → "User Management"
+    for (const link of navigationData) {
+      for (const sub of link.sublinks) {
+        if (pathname.startsWith(sub.href)) return sub.label;
+      }
+    }
+    // Then check main links
+    for (const link of navigationData) {
+      if (pathname === link.href) return link.label;
+      if (link.href !== "/" && pathname.startsWith(link.href)) return link.label;
+    }
+    return "Home";
+  }, [pathname]);
+
   // Filter navigation data based on user permissions - optimized with reduce
   const filteredNavigationData = useMemo(() => {
     return navigationData.reduce<NavigationLink[]>((acc, link) => {
@@ -289,27 +306,74 @@ export default function Navbar() {
     const isActive =
       pathname === link.href ||
       link.sublinks.some((sublink) => pathname.startsWith(sublink.href));
+    const isExpanded = isMobile && isDrawerOpen && drawerTitle === link.label;
 
     return (
-      <Tooltip
-        label={link.label}
-        position="right"
-        withArrow
-        disabled={isMobile}
-        key={link.label}
-      >
-        <Link href={link.href} style={{ textDecoration: "none" }}>
-          <UnstyledButton
-            onClick={(e: React.MouseEvent) => handleMainLinkClick(e, link)}
-            onMouseEnter={() => handleMainLinkHover(link)}
-            className={classes.mainLink}
-            data-active={isActive || undefined}
-          >
-            <link.icon size={22} stroke={1.5} />
-            {isMobile && <span>{link.label}</span>}
-          </UnstyledButton>
-        </Link>
-      </Tooltip>
+      <div key={link.label}>
+        <Tooltip
+          label={link.label}
+          position="right"
+          withArrow
+          disabled={isMobile}
+        >
+          <Link href={link.href} style={{ textDecoration: "none" }}>
+            <UnstyledButton
+              onClick={(e: React.MouseEvent) => handleMainLinkClick(e, link)}
+              onMouseEnter={() => handleMainLinkHover(link)}
+              className={classes.mainLink}
+              data-active={isActive || undefined}
+            >
+              <link.icon size={22} stroke={1.5} />
+              {isMobile && <span>{link.label}</span>}
+            </UnstyledButton>
+          </Link>
+        </Tooltip>
+
+        {/* Inline sublinks — mobile only, expands directly below parent */}
+        {isMobile && isExpanded && link.sublinks.length > 0 && (
+          <div className={classes.inlineSublinks}>
+            {link.sublinks.map((sublink) => {
+              const isSubActive = pathname.startsWith(sublink.href);
+              const showBadge =
+                sublink.key === "classes" && pendingTransferCount > 0;
+              return (
+                <Link
+                  href={sublink.href}
+                  key={sublink.key}
+                  className={classes.link}
+                  data-active={isSubActive || undefined}
+                  onClick={() => {
+                    setIsDrawerOpen(false);
+                    setIsMobileMenuOpen(false);
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      width: "100%",
+                      gap: "8px",
+                    }}
+                  >
+                    <span>{sublink.label}</span>
+                    {showBadge && (
+                      <Badge
+                        size="xs"
+                        color="red"
+                        variant="filled"
+                        style={{ flexShrink: 0 }}
+                      >
+                        {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+                      </Badge>
+                    )}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
     );
   });
 
@@ -356,41 +420,25 @@ export default function Navbar() {
 
   return (
     <>
-      {/* HAMBURGER BUTTON FOR MOBILE */}
-      {isMobile && !isMobileMenuOpen && (
-        <ActionIcon
-          onClick={handleMobileMenuToggle}
-          variant="subtle"
-          size="xl"
-          radius="md"
-          style={{
-            position: "fixed",
-            top: 20,
-            left: 20,
-            zIndex: 2100,
-            backgroundColor: "var(--mantine-color-white)",
-            boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-          }}
-        >
-          <IconMenu2 size={24} stroke={1.5} color="#4eae4a" />
-        </ActionIcon>
+      {/* MOBILE TOP BAR — always visible on mobile */}
+      {isMobile && (
+        <div className={classes.topBar}>
+          <ActionIcon
+            onClick={handleMobileMenuToggle}
+            variant="transparent"
+            size="xl"
+            aria-label="Open navigation"
+          >
+            <IconMenu2 size={24} stroke={1.5} color="white" />
+          </ActionIcon>
+          <span className={classes.topBarTitle}>{currentPageLabel}</span>
+          <div style={{ width: 44 }} />
+        </div>
       )}
 
       {/* BACKDROP OVERLAY FOR MOBILE */}
       {isMobile && isMobileMenuOpen && (
-        <div
-          onClick={handleBackdropClick}
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0, 0, 0, 0.5)",
-            zIndex: 1999,
-            cursor: "pointer",
-          }}
-        />
+        <div className={classes.backdrop} onClick={handleBackdropClick} />
       )}
 
       {/* THE NAVBAR ITSELF */}
@@ -466,8 +514,8 @@ export default function Navbar() {
           </Tooltip>
         </div>
 
-        {/* THE DRAWER (shows sublinks when available) */}
-        {isDrawerOpen && (
+        {/* THE DRAWER (desktop only — mobile uses inline sublinks above) */}
+        {!isMobile && isDrawerOpen && (
           <div className={classes.drawer}>
             <div className={classes.drawerHeader}>
               <Title order={5}>{drawerTitle}</Title>
