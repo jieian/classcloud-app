@@ -111,12 +111,13 @@ export async function POST(
     return Response.json({ error: "No file provided." }, { status: 400 });
 
   const arrayBuffer = await fileEntry.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
 
   // ── Parse Excel ─────────────────────────────────────────────────────────────
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(buffer);
+    // Newer @types/node made Buffer generic (Buffer<ArrayBuffer>) which is
+    // incompatible with ExcelJS's Buffer type; pass ArrayBuffer directly.
+    await workbook.xlsx.load(arrayBuffer as unknown as Buffer);
   } catch {
     return Response.json(
       { error: "Could not read file. Make sure it is a valid .xlsx file." },

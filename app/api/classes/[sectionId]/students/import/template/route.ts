@@ -133,7 +133,7 @@ export async function GET(
     "_",
   );
 
-  return new Response(buffer as ArrayBuffer, {
+  return new Response(buffer as unknown as ArrayBuffer, {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
