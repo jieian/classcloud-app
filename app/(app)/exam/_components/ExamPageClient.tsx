@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Container,
   Title,
@@ -38,7 +39,6 @@ import Image from "next/image";
 import { notifications } from "@mantine/notifications";
 import CreateExamModal from "@/components/CreateExamModal";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
-import ScanPapersModal from "@/components/ScanPapersModal";
 import ItemAnalysisModal from "@/components/ItemAnalysisModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
@@ -46,9 +46,14 @@ import {
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
+import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
+import { useAuth } from "@/context/AuthContext";
+import { fetchTeacherClassAssignments } from "@/app/(app)/school/classes/_lib/classService";
 
 export default function ExamPageClient() {
+  const router = useRouter();
+  const { user, permissions, loading: authLoading } = useAuth();
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,7 +61,6 @@ export default function ExamPageClient() {
   const [selectedSubject, setSelectedSubject] = useState<string | null>("All");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
-  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
     null,
@@ -65,12 +69,32 @@ export default function ExamPageClient() {
   const [dbError, setDbError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
 
+  const hasFullAccess = permissions.includes("full_access_examinations");
+
+  // Allowed section/subject IDs for teachers with partial access (null = no filter)
+  const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+
+  // Exam IDs that have at least one scanned/saved score
+  const [examIdsWithScores, setExamIdsWithScores] = useState<Set<number>>(new Set());
+
   const fetchExams = async () => {
     setLoading(true);
     setDbError(null);
     try {
-      const data = await fetchExamsWithRelations();
+      const teacherId = hasFullAccess ? undefined : user?.id;
+      const data = await fetchExamsWithRelations(teacherId);
       setExams(data);
+
+      // Build assignmentId → examId map from the loaded data
+      const assignmentIdToExamId = new Map<number, number>();
+      for (const exam of data) {
+        for (const a of exam.exam_assignments ?? []) {
+          assignmentIdToExamId.set(a.id, exam.exam_id);
+        }
+      }
+      const withScores = await fetchExamIdsWithScores(assignmentIdToExamId);
+      setExamIdsWithScores(withScores);
     } catch (error: unknown) {
       setDbError(error instanceof Error ? error.message : "Unknown error");
     } finally {
@@ -79,8 +103,19 @@ export default function ExamPageClient() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     fetchExams();
-  }, []);
+    if (!hasFullAccess && user?.id) {
+      fetchTeacherClassAssignments(user.id).then((assignments) => {
+        setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
+        setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+      });
+    } else {
+      setAllowedSectionIds(null);
+      setAllowedSubjectIds(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id, hasFullAccess]);
 
   const sectionOptions = [
     "All",
@@ -89,6 +124,7 @@ export default function ExamPageClient() {
         exams.flatMap(
           (e) =>
             (e.exam_assignments ?? [])
+              .filter((a) => !allowedSectionIds || allowedSectionIds.has(a.sections?.section_id!))
               .map((a) => a.sections?.name)
               .filter(Boolean) as string[],
         ),
@@ -99,7 +135,12 @@ export default function ExamPageClient() {
   const subjectOptions = [
     "All",
     ...Array.from(
-      new Set(exams.map((e) => e.subjects?.name).filter(Boolean) as string[]),
+      new Set(
+        exams
+          .filter((e) => !allowedSubjectIds || allowedSubjectIds.has(e.subject_id!))
+          .map((e) => e.subjects?.name)
+          .filter(Boolean) as string[]
+      ),
     ),
   ];
 
@@ -446,10 +487,8 @@ export default function ExamPageClient() {
                               fullWidth
                               size="sm"
                               leftSection={<IconFileText size={14} />}
-                              onClick={() => {
-                                setSelectedExam(exam);
-                                setIsScanModalOpen(true);
-                              }}
+                              disabled={!exam.answer_key}
+                              onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
                             >
                               Scan Papers
                             </Button>
@@ -459,6 +498,7 @@ export default function ExamPageClient() {
                               fullWidth
                               size="sm"
                               leftSection={<IconEye size={14} />}
+                              disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)}
                               onClick={() => {
                                 setSelectedExam(exam);
                                 setIsAnalysisModalOpen(true);
@@ -503,16 +543,7 @@ export default function ExamPageClient() {
             onSuccess={fetchExams}
           />
         )}
-        {isScanModalOpen && selectedExam && (
-          <ScanPapersModal
-            exam={selectedExam}
-            onClose={() => {
-              setIsScanModalOpen(false);
-              setSelectedExam(null);
-            }}
-            onSuccess={fetchExams}
-          />
-        )}
+
         {isAnalysisModalOpen && selectedExam && (
           <ItemAnalysisModal
             exam={selectedExam}

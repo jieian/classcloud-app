@@ -18,7 +18,7 @@
  */
 
 import { supabase } from '@/lib/exam-supabase';
-import type { ExamAttempt, ItemStatistic } from '@/lib/exam-supabase';
+import type { ExamScore, ItemStatistic } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,14 +52,14 @@ export interface ExamSummary {
  * @param totalItems Number of items (some may have no responses)
  */
 export function computeItemStatistics(
-  attempts: ExamAttempt[],
+  attempts: ExamScore[],
   answerKey: { [item: number]: string | null },
   totalItems: number
 ): ComputedItemStat[] {
   if (attempts.length === 0) return [];
 
   // Sort attempts by score ascending (needed for discrimination index)
-  const sorted = [...attempts].sort((a, b) => a.score - b.score);
+  const sorted = [...attempts].sort((a, b) => a.calculated_score - b.calculated_score);
   const n = sorted.length;
 
   // Top 27% and bottom 27% groups
@@ -115,7 +115,7 @@ export function computeItemStatistics(
  * Computes overall exam summary statistics from a list of attempts.
  */
 export function computeExamSummary(
-  attempts: ExamAttempt[],
+  attempts: ExamScore[],
   itemStats: ComputedItemStat[],
   totalItems: number
 ): ExamSummary {
@@ -127,7 +127,7 @@ export function computeExamSummary(
     };
   }
 
-  const scores = attempts.map(a => a.score);
+  const scores = attempts.map(a => a.calculated_score);
   const passMark = totalItems * 0.5;
   const passCount = scores.filter(s => s >= passMark).length;
 

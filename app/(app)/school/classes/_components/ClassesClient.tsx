@@ -6,6 +6,7 @@ import {
   Accordion,
   Alert,
   Box,
+  Container,
   Group,
   SimpleGrid,
   Skeleton,
@@ -200,6 +201,11 @@ export default function ClassesClient() {
 
   return (
     <>
+      <h1 className="mb-3 text-2xl font-bold">Classes</h1>
+      <p className="mb-3 text-sm text-[#808898]">
+        Manage and track all classes
+      </p>
+      <Container fluid px="md" py="xl">
       <CreateClassModal
         opened={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
@@ -334,6 +340,7 @@ export default function ClassesClient() {
           )}
         </>
       )}
+      </Container>
     </>
   );
 }

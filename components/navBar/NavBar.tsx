@@ -122,7 +122,7 @@ const navigationData: NavigationLink[] = [
     label: "Examinations",
     href: "/exam",
     sublinks: [],
-    requiredPermissions: ["access_examinations"],
+    requiredPermissions: ["full_access_examinations", "partial_access_examinations"],
   },
   {
     icon: IconFileReport,

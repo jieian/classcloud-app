@@ -6,6 +6,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { getSupabasePublicEnv } from "./env";
 
 /**
  * Creates a Supabase client for Middleware
@@ -16,10 +17,11 @@ export async function createMiddlewareSupabaseClient(request: NextRequest) {
   let response = NextResponse.next({
     request,
   });
+  const { url, anonOrPublishableKey } = getSupabasePublicEnv();
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonOrPublishableKey,
     {
       cookies: {
         getAll() {

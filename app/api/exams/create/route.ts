@@ -1,6 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+function getAutoTotalItems(levelNumber: number | null | undefined): number {
+  if (!levelNumber) return 30;
+  if (levelNumber <= 2) return 30;
+  if (levelNumber <= 4) return 40;
+  if (levelNumber <= 6) return 50;
+  return 50;
+}
+
 export async function POST(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -18,13 +26,48 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
+  const selectedSectionIds = Array.isArray(sectionIds)
+    ? sectionIds.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0)
+    : [];
+
+  if (selectedSectionIds.length === 0) {
+    return Response.json({ error: "At least one section is required" }, { status: 400 });
+  }
+
+  const { data: sectionRows, error: sectionError } = await adminClient
+    .from("sections")
+    .select("section_id, grade_levels(level_number)")
+    .in("section_id", selectedSectionIds);
+
+  if (sectionError) {
+    return Response.json({ error: sectionError.message }, { status: 500 });
+  }
+
+  const levelNumbers = new Set<number>();
+  for (const row of (sectionRows ?? []) as Array<{ grade_levels: { level_number: number } | { level_number: number }[] | null }>) {
+    const gl = row.grade_levels;
+    const level =
+      Array.isArray(gl) ? gl[0]?.level_number : gl?.level_number;
+    if (typeof level === "number") levelNumbers.add(level);
+  }
+
+  if (levelNumbers.size > 1) {
+    return Response.json(
+      { error: "Selected sections must belong to the same grade level." },
+      { status: 400 },
+    );
+  }
+
+  const gradeLevelNumber = levelNumbers.size === 1 ? [...levelNumbers][0] : null;
+  const resolvedTotalItems = getAutoTotalItems(gradeLevelNumber);
+
   const creatorTeacherId = payload.creator_teacher_id ?? user.id;
 
   const { data: examRow, error: examError } = await adminClient
     .from("exams")
     .insert({
       title: payload.title,
-      total_items: payload.total_items,
+      total_items: resolvedTotalItems,
       exam_date: payload.exam_date,
       subject_id: payload.subject_id ?? null,
       quarter_id: payload.quarter_id ?? null,
@@ -39,7 +82,7 @@ export async function POST(request: Request) {
     return Response.json({ error: examError?.message ?? "Failed to create exam" }, { status: 500 });
   }
 
-  const assignments = (sectionIds as number[]).map((sectionId) => ({
+  const assignments = selectedSectionIds.map((sectionId) => ({
     exam_id: examRow.exam_id,
     section_id: sectionId,
   }));

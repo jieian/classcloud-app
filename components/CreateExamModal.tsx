@@ -5,19 +5,32 @@ import { Modal, TextInput, Select, Button, Stack, Group, Paper, Text, Badge, Ale
 import { IconCheck, IconLink, IconAlertCircle } from '@tabler/icons-react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { fetchSubjects } from '@/lib/services/subjectService';
+import { fetchSubjectsWithGradeLevels, SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { createExamWithAssignments } from '@/lib/services/examService';
-import type { Subject, Section, GradeLevel, Quarter } from '@/lib/exam-supabase';
+import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { useAuth } from '@/context/AuthContext';
+import type { Section, GradeLevel, Quarter } from '@/lib/exam-supabase';
 
 interface CreateExamModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
 
+function getAutoTotalItems(levelNumber: number | null | undefined): number {
+  if (!levelNumber) return 30;
+  if (levelNumber <= 2) return 30;
+  if (levelNumber <= 4) return 40;
+  if (levelNumber <= 6) return 50;
+  return 50;
+}
+
 export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalProps) {
+  const { user, permissions } = useAuth();
+  const hasFullAccess = permissions.includes('full_access_examinations');
+
   const [examName, setExamName] = useState('');
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -25,15 +38,18 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
   const [loading, setLoading] = useState(false);
 
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<SubjectWithGradeLevel[]>([]);
   const [allSections, setAllSections] = useState<Section[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
+  const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+
   useEffect(() => {
-    Promise.all([
+    const baseLoad = Promise.all([
       fetchGradeLevels(),
-      fetchSubjects(),
+      fetchSubjectsWithGradeLevels(),
       fetchActiveSections(),
       fetchActiveQuarters(),
     ]).then(([gl, sub, sec, q]) => {
@@ -41,17 +57,47 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
       setSubjects(sub);
       setAllSections(sec);
       setQuarters(q);
-      setDataLoading(false);
     });
+
+    const assignmentLoad = !hasFullAccess && user?.id
+      ? fetchTeacherClassAssignments(user.id).then((assignments) => {
+          setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
+          setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+        })
+      : Promise.resolve();
+
+    Promise.all([baseLoad, assignmentLoad]).then(() => setDataLoading(false));
   }, []);
 
   useEffect(() => {
     setSelectedSectionIds([]);
+    setSelectedSubjectId(null);
   }, [selectedGradeLevelId]);
 
-  const filteredSections = selectedGradeLevelId
-    ? allSections.filter(s => s.grade_level_id === Number(selectedGradeLevelId))
-    : allSections;
+  // Derive allowed grade levels from the teacher's assigned sections
+  const allowedGradeLevelIds = allowedSectionIds
+    ? new Set(
+        allSections
+          .filter(s => s.grade_level_id !== null && allowedSectionIds.has(s.section_id))
+          .map(s => s.grade_level_id as number)
+      )
+    : null;
+
+  const filteredGradeLevels = gradeLevels
+    .filter(g => !allowedGradeLevelIds || allowedGradeLevelIds.has(g.grade_level_id));
+
+  const filteredSections = allSections
+    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+    .filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id));
+
+  const filteredSubjects = subjects
+    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+    .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id));
+
+  const selectedGradeLevel = selectedGradeLevelId
+    ? gradeLevels.find((g) => g.grade_level_id === Number(selectedGradeLevelId)) ?? null
+    : null;
+  const autoTotalItems = getAutoTotalItems(selectedGradeLevel?.level_number);
 
   const toggleSection = (sectionId: number) => {
     setSelectedSectionIds(prev =>
@@ -77,7 +123,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
           subject_id: Number(selectedSubjectId),
           quarter_id: autoQuarterId,
           exam_date: today,
-          total_items: 30,
+          total_items: autoTotalItems,
         },
         selectedSectionIds
       );
@@ -124,7 +170,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
                 label="Grade Level"
                 placeholder="Select grade"
                 required
-                data={gradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
+                data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
                 value={selectedGradeLevelId}
                 onChange={setSelectedGradeLevelId}
               />
@@ -132,11 +178,15 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
                 label="Subject"
                 placeholder="Select subject"
                 required
-                data={subjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
+                data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
               />
             </Group>
+
+            <Text size="xs" c="dimmed">
+              Total items (auto): <Text span fw={600}>{autoTotalItems}</Text>
+            </Text>
 
             <div>
               <Text size="sm" fw={500} mb={4}>

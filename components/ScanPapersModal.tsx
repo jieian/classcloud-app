@@ -1,17 +1,20 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { IconX, IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle, IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft } from '@tabler/icons-react';
+import {
+  IconX, IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
+  IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft, IconSearch,
+} from '@tabler/icons-react';
 import Image from 'next/image';
 import { processAnswerSheet } from '@/lib/services/omrService';
-import { createAttempt, scoreResponses } from '@/lib/services/attemptService';
+import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
-import { fetchAttemptsForExam } from '@/lib/services/attemptService';
-import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import { fetchStudentRoster } from '@/app/(app)/school/classes/_lib/classService';
+import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = 'capture' | 'processing' | 'review' | 'submit';
+type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
 
 interface DetectedAnswers { [item: number]: string | null; }
 
@@ -21,22 +24,69 @@ interface ScanPapersModalProps {
   onSuccess: () => void;
 }
 
+interface RosterStudent {
+  enrollment_id: number;
+  lrn: string;
+  full_name: string;
+  sex: 'M' | 'F';
+  section_id: number;
+  section_name: string;
+  grade_level_display: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 const CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+function getMpl(score: number, totalItems: number): number {
+  if (!totalItems) return 0;
+  return Math.round((score / totalItems) * 100);
+}
+
+function getProficiency(mpl: number): string {
+  if (mpl >= 90) return 'Highly Proficient';
+  if (mpl >= 75) return 'Proficient';
+  if (mpl >= 50) return 'Nearly';
+  if (mpl >= 25) return 'Low';
+  return 'Not';
+}
+
+function proficiencyBadge(mpl: number): string {
+  if (mpl >= 90) return 'bg-green-100 text-green-800';
+  if (mpl >= 75) return 'bg-lime-100 text-lime-800';
+  if (mpl >= 50) return 'bg-yellow-100 text-yellow-800';
+  if (mpl >= 25) return 'bg-orange-100 text-orange-800';
+  return 'bg-red-100 text-red-800';
+}
+
+const STEP_LABELS: Record<string, string> = {
+  students: 'Students',
+  capture: 'Scan',
+  review: 'Review',
+  submit: 'Save',
+};
+const STEP_ORDER = ['students', 'capture', 'review', 'submit'] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapersModalProps) {
-  const [step, setStep] = useState<Step>('capture');
+  const [step, setStep] = useState<Step>('students');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
-  const [studentName, setStudentName] = useState('');
-  const [studentLrn, setStudentLrn] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
+
+  // ── Roster & attempts state ───────────────────────────────────────────────
+  const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [existingAttempts, setExistingAttempts] = useState<ExamScore[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<RosterStudent | null>(null);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [sectionFilter, setSectionFilter] = useState<number | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -59,73 +109,40 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
         throw new Error('Camera API not available in this browser.');
       }
 
-      const attempts: MediaStreamConstraints[] = [
-        {
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-          audio: false,
-        },
+      const constraints: MediaStreamConstraints[] = [
+        { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false },
         { video: { width: { ideal: 1600 }, height: { ideal: 900 } }, audio: false },
         { video: true, audio: false },
       ];
 
       let stream: MediaStream | null = null;
-      for (const constraints of attempts) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia(constraints);
-          break;
-        } catch {
-          // Try the next, less strict constraints.
-        }
+      for (const c of constraints) {
+        try { stream = await navigator.mediaDevices.getUserMedia(c); break; } catch { /* try next */ }
       }
-
-      if (!stream) {
-        throw new Error('Unable to access camera.');
-      }
+      if (!stream) throw new Error('Unable to access camera.');
 
       streamRef.current = stream;
       videoTrackRef.current = stream.getVideoTracks()[0] ?? null;
 
       if (videoTrackRef.current) {
         try {
-          // Best-effort tuning for webcams; silently ignore unsupported constraints.
-          await videoTrackRef.current.applyConstraints({
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30 },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          } as any);
-        } catch {
-          // Unsupported by some devices/browsers.
-        }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await videoTrackRef.current.applyConstraints({ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } as any);
+        } catch { /* unsupported */ }
       }
 
       setCameraActive(true);
 
-      // Ensure the video element is mounted before attaching the stream.
       let videoEl: HTMLVideoElement | null = null;
       for (let i = 0; i < 20; i++) {
-        await new Promise(resolve => setTimeout(resolve, 25));
-        if (videoRef.current) {
-          videoEl = videoRef.current;
-          break;
-        }
+        await new Promise(r => setTimeout(r, 25));
+        if (videoRef.current) { videoEl = videoRef.current; break; }
       }
-
-      if (!videoEl) {
-        throw new Error('Video element failed to mount.');
-      }
+      if (!videoEl) throw new Error('Video element failed to mount.');
 
       videoEl.srcObject = stream;
       videoEl.muted = true;
-
-      await new Promise<void>((resolve) => {
-        videoEl!.onloadedmetadata = () => resolve();
-      });
-
+      await new Promise<void>(resolve => { videoEl!.onloadedmetadata = () => resolve(); });
       await videoEl.play();
     } catch (error) {
       console.error('Failed to start camera:', error);
@@ -145,14 +162,69 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
+  // ── Fetch roster + existing attempts on mount ─────────────────────────────
+  useEffect(() => {
+    fetchAttemptsForExam(exam.exam_id)
+      .then(setExistingAttempts)
+      .catch(err => console.error('[ScanPapersModal] Failed to load attempts:', err));
+
+    const sectionIds = (exam.exam_assignments ?? [])
+      .map(a => a.sections?.section_id)
+      .filter((id): id is number => id != null);
+
+    if (sectionIds.length === 0) return;
+
+    setRosterLoading(true);
+    Promise.all(sectionIds.map(id => fetchStudentRoster(id)))
+      .then(results => {
+        const all: RosterStudent[] = results.flatMap(r =>
+          r.students.map(s => ({
+            enrollment_id: s.enrollment_id,
+            lrn: s.lrn,
+            full_name: s.full_name,
+            sex: s.sex,
+            section_id: r.section.section_id,
+            section_name: r.section.name,
+            grade_level_display: r.section.grade_level_display,
+          }))
+        );
+        all.sort((a, b) => a.full_name.localeCompare(b.full_name));
+        setRosterStudents(all);
+        // Auto-select the first section so the table always opens focused
+        if (all.length > 0) setSectionFilter(all[0].section_id);
+      })
+      .catch(err => console.error('[ScanPapersModal] Failed to load roster:', err))
+      .finally(() => setRosterLoading(false));
+  }, [exam]);
+
+  // ── Attempt lookup map (by enrollment_id) ────────────────────────────────
+  const attemptByEnrollment = new Map<number, ExamScore>();
+  for (const a of existingAttempts) {
+    if (a.enrollment_id != null) attemptByEnrollment.set(a.enrollment_id, a);
+  }
+  const getStudentAttempt = (s: RosterStudent): ExamScore | undefined =>
+    attemptByEnrollment.get(s.enrollment_id);
+
+  // ── Unique sections for filter tabs ──────────────────────────────────────
+  const sections = Array.from(
+    new Map(rosterStudents.map(s => [s.section_id, { section_id: s.section_id, section_name: s.section_name, grade_level_display: s.grade_level_display }]))
+      .values()
+  );
+
+  const filteredStudents = rosterStudents.filter(s => {
+    const q = studentSearch.toLowerCase();
+    const matchesSearch = !q || s.full_name.toLowerCase().includes(q) || s.lrn.includes(q);
+    const matchesSection = sectionFilter == null || s.section_id === sectionFilter;
+    return matchesSearch && matchesSection;
+  });
+
+  // ── Camera capture ────────────────────────────────────────────────────────
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
-      alert('Camera is still initializing. Please wait a moment and try capture again.');
+      alert('Camera is still initializing. Please wait a moment and try again.');
       return;
     }
-
-    // Use still capture when available (usually sharper/higher-res than video frame grabs).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const ImageCaptureCtor = (window as any).ImageCapture;
     const track = videoTrackRef.current;
@@ -160,15 +232,11 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
       try {
         const ic = new ImageCaptureCtor(track);
         const blob: Blob = await ic.takePhoto();
-        const file = new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' });
         stopCamera();
-        handleFileSelected(file);
+        handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
-      } catch {
-        // Fall back to video frame extraction.
-      }
+      } catch { /* fall back */ }
     }
-
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
@@ -179,18 +247,15 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     ctx.drawImage(videoRef.current, 0, 0);
     canvas.toBlob(blob => {
       if (!blob) return;
-      const file = new File([blob], 'scan.jpg', { type: 'image/jpeg' });
       stopCamera();
-      handleFileSelected(file);
+      handleFileSelected(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.99);
   };
 
   // ── File handling ─────────────────────────────────────────────────────────
-
   const handleFileSelected = (file: File) => {
     setCapturedFile(file);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setPreviewUrl(URL.createObjectURL(file));
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -199,31 +264,24 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   };
 
   // ── OMR Processing ────────────────────────────────────────────────────────
-
   const runProcessing = async () => {
     if (!capturedFile) return;
     setStep('processing');
     setProcessingError(null);
-
     try {
       const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
       setStep('review');
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Processing failed';
-      setProcessingError(message);
+      setProcessingError(err instanceof Error ? err.message : 'Processing failed');
       setStep('capture');
     }
   };
 
-  // ── Review: manual answer override ────────────────────────────────────────
-
+  // ── Review ────────────────────────────────────────────────────────────────
   const toggleAnswer = (item: number, choice: string) => {
-    setDetectedAnswers(prev => ({
-      ...prev,
-      [item]: prev[item] === choice ? null : choice,
-    }));
+    setDetectedAnswers(prev => ({ ...prev, [item]: prev[item] === choice ? null : choice }));
   };
 
   const answeredCount = Object.values(detectedAnswers).filter(Boolean).length;
@@ -236,36 +294,38 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     const item = i + 1;
     const student = detectedAnswers[item] ?? null;
     const correct = answerKey[item] ?? null;
-    const isCorrect = Boolean(student && correct && student === correct);
-    return { item, student, correct, isCorrect };
+    return { item, student, correct, isCorrect: Boolean(student && correct && student === correct) };
   });
 
+  const scoreMpl = getMpl(score, totalItems);
+
   // ── Submit ────────────────────────────────────────────────────────────────
-
   const handleSubmit = async () => {
-    if (!studentName.trim()) { alert('Please enter the student name.'); return; }
-    setSubmitting(true);
+    if (!selectedStudent) { alert('No student selected.'); return; }
 
+    const examAssignmentId = (exam.exam_assignments ?? [])
+      .find(a => a.sections?.section_id === selectedStudent.section_id)?.id;
+
+    if (!examAssignmentId) {
+      alert('Could not find exam assignment for this student\'s section.');
+      return;
+    }
+
+    setSubmitting(true);
     const cleanedResponses: { [item: number]: string } = {};
-    Object.entries(detectedAnswers).forEach(([k, v]) => {
-      if (v) cleanedResponses[parseInt(k)] = v;
-    });
+    Object.entries(detectedAnswers).forEach(([k, v]) => { if (v) cleanedResponses[parseInt(k)] = v; });
 
     const attempt = await createAttempt({
-      exam_id: exam.exam_id,
-      student_name: studentName.trim(),
-      student_lrn: studentLrn.trim() || null,
+      enrollment_id: selectedStudent.enrollment_id,
+      exam_assignment_id: examAssignmentId,
       responses: cleanedResponses,
-      score,
-      total_items: totalItems,
+      calculated_score: score,
     });
 
     if (attempt) {
-      // Recompute item statistics with all attempts including this one
       const allAttempts = await fetchAttemptsForExam(exam.exam_id);
       const itemStats = computeItemStatistics(allAttempts, answerKey, totalItems);
       await saveItemStatistics(exam.exam_id, itemStats);
-
       onSuccess();
       onClose();
     } else {
@@ -274,20 +334,16 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     setSubmitting(false);
   };
 
-  // ── Confidence indicator color ────────────────────────────────────────────
-
+  // ── Answer bubble color ───────────────────────────────────────────────────
   const confColor = (item: number, ch: string) => {
-    const correct = answerKey[item];
-
-    if (correct === ch) {
-      return 'bg-green-200 border-green-400 text-green-900 shadow-sm ring-2 ring-green-200';
-    }
-
-    if (detectedAnswers[item] === ch) {
-      return 'bg-gray-300 border-gray-500 text-gray-900 shadow-sm ring-2 ring-gray-200';
-    }
+    if (answerKey[item] === ch) return 'bg-green-200 border-green-400 text-green-900 shadow-sm ring-2 ring-green-200';
+    if (detectedAnswers[item] === ch) return 'bg-gray-300 border-gray-500 text-gray-900 shadow-sm ring-2 ring-gray-200';
     return 'bg-white border-gray-300 text-gray-500 hover:border-blue-500 hover:bg-blue-50';
   };
+
+  // ── Step indicator index ──────────────────────────────────────────────────
+  const activeStep = step === 'processing' ? 'capture' : step;
+  const stepIndex = STEP_ORDER.indexOf(activeStep as typeof STEP_ORDER[number]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -302,18 +358,18 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
               <Image src="/logo.png" alt="Logo" fill className="object-contain" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">Scan Answer Sheet</h2>
+              <h2 className="text-xl font-bold text-gray-900">Scan Papers</h2>
               <p className="text-gray-500 text-xs mt-0.5">{exam.title}</p>
             </div>
           </div>
 
           {/* Step indicator */}
           <div className="hidden md:flex items-center gap-1 text-xs font-medium">
-            {(['capture', 'review', 'submit'] as const).map((s, i) => (
+            {STEP_ORDER.map((s, i) => (
               <div key={s} className="flex items-center gap-1">
                 {i > 0 && <IconChevronRight className="w-3 h-3 text-gray-300" />}
-                <span className={`px-2 py-1 rounded-full ${step === s || (step === 'processing' && s === 'capture') ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500'}`}>
-                  {i + 1}. {s.charAt(0).toUpperCase() + s.slice(1)}
+                <span className={`px-2 py-1 rounded-full ${i <= stepIndex ? 'bg-primary text-white' : 'bg-gray-100 text-gray-500'}`}>
+                  {i + 1}. {STEP_LABELS[s]}
                 </span>
               </div>
             ))}
@@ -326,9 +382,176 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
 
         <div className="p-6">
 
+          {/* ── STEP: STUDENTS ────────────────────────────────────────────── */}
+          {step === 'students' && (
+            <div className="space-y-4">
+              {/* Exam info */}
+              <div className="grid grid-cols-2 gap-x-6 text-sm">
+                <div>
+                  <span className="font-semibold text-gray-600">Examination Name</span>
+                  <p className="text-gray-800 mt-0.5">{exam.title}</p>
+                </div>
+                <div>
+                  <span className="font-semibold text-gray-600">Subject</span>
+                  <p className="text-gray-800 mt-0.5">{exam.subjects?.name ?? '—'}</p>
+                </div>
+              </div>
+
+              <hr />
+
+              {/* Section selector cards */}
+              {sections.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Section</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {sections.map(sec => {
+                      const secStudents = rosterStudents.filter(s => s.section_id === sec.section_id);
+                      const scannedCount = secStudents.filter(s => getStudentAttempt(s) != null).length;
+                      const isActive = sectionFilter === sec.section_id;
+                      return (
+                        <button
+                          key={sec.section_id}
+                          onClick={() => { setSectionFilter(sec.section_id); setStudentSearch(''); }}
+                          className={`text-left p-3 rounded-xl border-2 transition-all ${
+                            isActive
+                              ? 'border-primary bg-primary/5'
+                              : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <p className={`text-sm font-bold leading-tight ${isActive ? 'text-primary' : 'text-gray-800'}`}>
+                            {sec.section_name}
+                          </p>
+                          <p className={`text-xs mt-0.5 ${isActive ? 'text-primary/70' : 'text-gray-400'}`}>
+                            {sec.grade_level_display}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {scannedCount} / {secStudents.length} scanned
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <p className="text-sm font-semibold text-gray-700">Students</p>
+
+              {/* Search */}
+              <div className="relative">
+                <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <input
+                  type="text"
+                  className="input-field pl-9 w-full"
+                  placeholder="Search students…"
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Student table */}
+              {rosterLoading ? (
+                <div className="text-center py-12">
+                  <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-gray-400">Loading students…</p>
+                </div>
+              ) : rosterStudents.length === 0 ? (
+                <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
+                  <p className="text-sm font-semibold text-gray-600">No students found</p>
+                  <p className="text-xs text-gray-400 mt-1">No roster is linked to the sections assigned to this exam.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr className="text-left text-gray-500 text-xs font-semibold uppercase tracking-wide">
+                        <th className="px-4 py-3">Name of Pupil</th>
+                        <th className="px-4 py-3 text-center">Test Score</th>
+                        <th className="px-4 py-3 text-center">MPL</th>
+                        <th className="px-4 py-3 text-center">Level of Proficiency</th>
+                        <th className="px-4 py-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {filteredStudents.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-6 text-center text-sm text-gray-400">No matching students</td>
+                        </tr>
+                      ) : filteredStudents.map(student => {
+                        const attempt = getStudentAttempt(student);
+                        const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
+                        const proficiency = mpl != null ? getProficiency(mpl) : null;
+                        const hasScanned = attempt != null;
+
+                        return (
+                          <tr key={student.enrollment_id} className="hover:bg-gray-50 transition-colors">
+                            <td className="px-4 py-3">
+                              <p className="font-medium text-gray-800">{student.full_name}</p>
+                              {sectionFilter == null && (
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {student.grade_level_display} – {student.section_name}
+                                </p>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center font-medium text-gray-700">
+                              {attempt ? `${attempt.calculated_score} / ${totalItems}` : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-center font-medium text-gray-700">
+                              {mpl != null ? mpl : <span className="text-gray-300">—</span>}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {proficiency ? (
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
+                                  {proficiency}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <button
+                                onClick={() => {
+                                  setSelectedStudent(student);
+                                  setCapturedFile(null);
+                                  setPreviewUrl(null);
+                                  setDetectedAnswers({});
+                                  setProcessingError(null);
+                                  setStep('capture');
+                                }}
+                                className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                  hasScanned
+                                    ? 'bg-amber-400 hover:bg-amber-500 text-white'
+                                    : 'bg-green-500 hover:bg-green-600 text-white'
+                                }`}
+                              >
+                                {hasScanned ? 'Rescan' : 'Scan'}
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ── STEP: CAPTURE ─────────────────────────────────────────────── */}
-          {(step === 'capture') && (
+          {step === 'capture' && (
             <div className="space-y-5">
+              {/* Selected student banner */}
+              {selectedStudent && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <IconCircleCheck className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
+                    <p className="text-xs text-blue-500">
+                      {selectedStudent.grade_level_display} – {selectedStudent.section_name} · LRN: {selectedStudent.lrn}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {processingError && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
                   <IconAlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
@@ -339,9 +562,8 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               )}
 
-              {/* Tip banner */}
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                <p className="font-semibold mb-1">📷 Tips for best results:</p>
+                <p className="font-semibold mb-1">Tips for best results:</p>
                 <ul className="space-y-0.5 list-disc list-inside text-xs">
                   <li>Place sheet on a dark, flat surface with good lighting</li>
                   <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
@@ -350,34 +572,25 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </ul>
               </div>
 
-              {/* Camera feed */}
               {(cameraActive || startingCamera) && (
-                <div className="relative">
+                <div>
                   <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                  {startingCamera && (
-                    <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>
-                  )}
+                  {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing camera…</p>}
                   <div className="mt-3 flex gap-3">
                     <button onClick={captureFromCamera} className="flex-1 btn-primary flex items-center justify-center gap-2">
                       <IconCamera className="w-4 h-4" /> Capture
                     </button>
-                    <button onClick={stopCamera} className="btn-secondary">
-                      Cancel
-                    </button>
+                    <button onClick={stopCamera} className="btn-secondary">Cancel</button>
                   </div>
                 </div>
               )}
 
-              {/* Preview of uploaded/captured image */}
               {previewUrl && !cameraActive && (
                 <div className="space-y-3">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
                   <div className="flex gap-3">
-                    <button
-                      onClick={() => { setPreviewUrl(null); setCapturedFile(null); }}
-                      className="btn-secondary flex items-center gap-2"
-                    >
+                    <button onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} className="btn-secondary flex items-center gap-2">
                       <IconRefresh className="w-4 h-4" /> Retake
                     </button>
                     <button onClick={runProcessing} className="flex-1 btn-primary flex items-center justify-center gap-2">
@@ -387,7 +600,6 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               )}
 
-              {/* Upload / Camera buttons */}
               {!cameraActive && !previewUrl && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button
@@ -407,7 +619,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                   >
                     <IconCamera className="w-8 h-8 text-gray-400" />
                     <div className="text-center">
-                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
+                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera…' : 'Use Camera'}</p>
                       <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
                     </div>
                   </button>
@@ -415,6 +627,12 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
               )}
 
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
+
+              <div className="pt-2 border-t">
+                <button onClick={() => setStep('students')} className="btn-secondary flex items-center gap-2">
+                  <IconChevronLeft className="w-4 h-4" /> Back to Students
+                </button>
+              </div>
             </div>
           )}
 
@@ -430,7 +648,16 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
           {/* ── STEP: REVIEW ──────────────────────────────────────────────── */}
           {step === 'review' && (
             <div className="space-y-5">
-              {/* Detection quality notice */}
+              {selectedStudent && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                  <IconCircleCheck className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
+                    <p className="text-xs text-blue-500">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</p>
+                  </div>
+                </div>
+              )}
+
               <div className={`rounded-xl p-3 flex items-start gap-3 text-sm ${cornersOk ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
                 {cornersOk
                   ? <IconCircleCheck className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
@@ -438,11 +665,10 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 <p className={cornersOk ? 'text-green-700' : 'text-yellow-700'}>
                   {cornersOk
                     ? 'Corner markers detected automatically — high confidence detection.'
-                    : 'Corner markers not found — results may be less accurate. Review carefully and correct any wrong answers.'}
+                    : 'Corner markers not found — results may be less accurate. Review and correct any wrong answers.'}
                 </p>
               </div>
 
-              {/* Progress summary */}
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-blue-50 rounded-xl p-3">
                   <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
@@ -462,7 +688,6 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 Student answer is gray. Correct answer key is light green. Click any bubble to correct.
               </p>
 
-              {/* Answer grid */}
               <div className={`grid gap-4 ${totalItems > 20 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                 {[1, 2].map(col => {
                   const start = col === 1 ? 1 : 21;
@@ -470,12 +695,9 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                   if (start > totalItems) return null;
                   return (
                     <div key={col} className="space-y-0.5">
-                      {/* Column header */}
                       <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
                         <span className="text-xs font-semibold text-gray-400 w-7">#</span>
-                        {choices.map(ch => (
-                          <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>
-                        ))}
+                        {choices.map(ch => <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>)}
                         <span className="text-xs font-semibold text-gray-400 w-5 text-center">✓</span>
                       </div>
                       {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(item => {
@@ -520,13 +742,26 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
           {/* ── STEP: SUBMIT ──────────────────────────────────────────────── */}
           {step === 'submit' && (
             <div className="space-y-5">
+              {/* Student info */}
+              {selectedStudent && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                  <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Student</p>
+                  <p className="text-base font-bold text-blue-800">{selectedStudent.full_name}</p>
+                  <p className="text-xs text-blue-500 mt-0.5">
+                    LRN: {selectedStudent.lrn} · {selectedStudent.grade_level_display} – {selectedStudent.section_name}
+                  </p>
+                </div>
+              )}
+
+              {/* Score summary */}
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-green-700">{score} / {totalItems}</p>
                 <p className="text-green-600 text-sm mt-1">
-                  {Math.round((score / totalItems) * 100)}% — {answeredCount} bubbles detected
+                  MPL: {scoreMpl}% — {getProficiency(scoreMpl)} · {answeredCount} bubbles detected
                 </p>
               </div>
 
+              {/* Answer table */}
               <div className="rounded-xl border border-gray-200 overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
                   <p className="text-sm font-semibold text-gray-700">Student vs Correct Answer</p>
@@ -564,42 +799,15 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Student Name *</label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="e.g., Juan Dela Cruz"
-                    value={studentName}
-                    onChange={e => setStudentName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    LRN <span className="text-gray-400 font-normal">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="12-digit Learner Reference Number"
-                    value={studentLrn}
-                    onChange={e => setStudentLrn(e.target.value)}
-                  />
-                </div>
-              </div>
-
               <div className="flex gap-3 pt-4 border-t">
                 <button onClick={() => setStep('review')} className="btn-secondary flex items-center gap-2">
                   <IconChevronLeft className="w-4 h-4" /> Back
                 </button>
                 <button
                   onClick={handleSubmit}
-                  disabled={submitting || !studentName.trim()}
+                  disabled={submitting}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all ${
-                    !submitting && studentName.trim()
-                      ? 'bg-primary hover:bg-primary-dark text-white shadow-md'
-                      : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    !submitting ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   }`}
                 >
                   <IconDeviceFloppy className="w-4 h-4" />
@@ -608,6 +816,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
               </div>
             </div>
           )}
+
         </div>
       </div>
     </div>

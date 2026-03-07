@@ -19,7 +19,38 @@ export type CreateExamPayload = {
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
-export async function fetchExamsWithRelations(): Promise<ExamWithRelations[]> {
+export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamWithRelations[]> {
+  let query = supabase
+    .from('exams')
+    .select(`
+      *,
+      subjects ( name, code ),
+      quarters ( name ),
+      exam_assignments (
+        id,
+        sections (
+          section_id,
+          name,
+          grade_levels ( display_name, level_number )
+        )
+      )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (teacherId) {
+    query = query.eq('creator_teacher_id', teacherId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('[examService] fetchExamsWithRelations error:', error.message);
+    return [];
+  }
+  return (data as ExamWithRelations[]) ?? [];
+}
+
+export async function fetchExamById(examId: number): Promise<ExamWithRelations | null> {
   const { data, error } = await supabase
     .from('exams')
     .select(`
@@ -31,17 +62,18 @@ export async function fetchExamsWithRelations(): Promise<ExamWithRelations[]> {
         sections (
           section_id,
           name,
-          grade_levels ( display_name )
+          grade_levels ( display_name, level_number )
         )
       )
     `)
-    .order('created_at', { ascending: false });
+    .eq('exam_id', examId)
+    .single();
 
   if (error) {
-    console.error('[examService] fetchExamsWithRelations error:', error.message);
-    return [];
+    console.error('[examService] fetchExamById error:', error.message);
+    return null;
   }
-  return (data as ExamWithRelations[]) ?? [];
+  return data as ExamWithRelations;
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────

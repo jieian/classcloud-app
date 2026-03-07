@@ -11,9 +11,7 @@ export default function Classes() {
         "full_access_student_management",
       ]}
     >
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
-        Classes Management
-      </h1>
+      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Classes</h1>
       <ClassesClient />
     </ProtectedRoute>
   );

@@ -76,24 +76,20 @@ export interface ExamWithRelations extends Exam {
     sections: {
       section_id: number;
       name: string;
-      grade_levels: { display_name: string } | null;
+      grade_levels: { display_name: string; level_number?: number } | null;
     } | null;
   }[];
 }
 
 // ─── Scan / Analysis interfaces ───────────────────────────────────────────────
 
-export interface ExamAttempt {
-  attempt_id: number;
-  exam_id: number;
-  student_lrn: string | null;
-  student_name: string | null;
+export interface ExamScore {
+  score_id: number;
   enrollment_id: number | null;
-  section_id: number | null;
+  exam_assignment_id: number;
   responses: { [item: number]: string };
-  score: number;
-  total_items: number;
-  scanned_at: string;
+  calculated_score: number;
+  graded_at: string;
 }
 
 export interface ItemStatistic {
