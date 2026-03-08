@@ -7,7 +7,6 @@ import {
   Title,
   Text,
   Card,
-  TextInput,
   Select,
   Button,
   Badge,
@@ -24,7 +23,6 @@ import {
   Switch,
 } from "@mantine/core";
 import {
-  IconSearch,
   IconPlus,
   IconFileText,
   IconDownload,
@@ -50,6 +48,7 @@ import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
 import { fetchTeacherClassAssignments } from "@/app/(app)/school/classes/_lib/classService";
+import { SearchBar } from "@/components/searchBar/SearchBar";
 
 export default function ExamPageClient() {
   const router = useRouter();
@@ -228,11 +227,10 @@ export default function ExamPageClient() {
 
   return (
     <>
-      <h1 className="mb-3 text-2xl font-bold">Examinations</h1>
       <p className="mb-3 text-sm text-[#808898]">
         Manage and track all examinations
       </p>
-      <Container fluid px="md" py="xl">
+      <Container fluid px="md" py="md">
         <Stack gap="xl">
           {/* Stats */}
           <Group gap="md">
@@ -286,9 +284,9 @@ export default function ExamPageClient() {
           <Card padding="lg" radius="md" withBorder>
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
+                <SearchBar
                   placeholder="Search examinations..."
-                  leftSection={<IconSearch size={16} />}
+                  ariaLabel="Search examinations"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.currentTarget.value)}
                 />
@@ -312,6 +310,8 @@ export default function ExamPageClient() {
               <Grid.Col span={{ base: 12, md: 2 }}>
                 <Button
                   fullWidth
+                  color="#4EAE4A"
+                  radius="md"
                   leftSection={<IconPlus size={16} />}
                   onClick={() => setIsCreateModalOpen(true)}
                 >
@@ -448,7 +448,9 @@ export default function ExamPageClient() {
 
                         {/* Download */}
                         <Button
-                          variant="light"
+                          variant="outline"
+                          color="#4EAE4A"
+                          radius="md"
                           fullWidth
                           leftSection={<IconDownload size={16} />}
                           onClick={() => handleDownloadAnswerSheet(exam)}
@@ -470,9 +472,11 @@ export default function ExamPageClient() {
                           </Text>
                           <Stack gap={6}>
                             <Button
-                              variant="filled"
+                              variant="light"
+                              color="#4EAE4A"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconEdit size={14} />}
                               onClick={() => {
                                 setSelectedExam(exam);
@@ -482,10 +486,11 @@ export default function ExamPageClient() {
                               Edit Answer Key
                             </Button>
                             <Button
-                              variant="filled"
+                              variant="light"
                               color="blue"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconFileText size={14} />}
                               disabled={!exam.answer_key}
                               onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
@@ -493,10 +498,11 @@ export default function ExamPageClient() {
                               Scan Papers
                             </Button>
                             <Button
-                              variant="filled"
-                              color="violet"
+                              variant="light"
+                              color="teal"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconEye size={14} />}
                               disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)}
                               onClick={() => {
@@ -507,10 +513,11 @@ export default function ExamPageClient() {
                               Review Papers
                             </Button>
                             <Button
-                              variant="subtle"
+                              variant="light"
                               color="red"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconTrash size={14} />}
                               onClick={() => handleDeleteExam(exam)}
                             >
