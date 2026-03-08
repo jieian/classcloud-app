@@ -2,11 +2,11 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Paper, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
+import { Button, Group, Paper, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
   IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
-  IconSearch, IconDownload,
+  IconDownload,
 } from '@tabler/icons-react';
 import { processAnswerSheet } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
@@ -14,6 +14,8 @@ import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analys
 import { fetchStudentRoster } from '@/app/(app)/school/classes/_lib/classService';
 import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
+import BackButton from '@/components/BackButton';
+import { SearchBar } from '@/components/searchBar/SearchBar';
 import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -422,7 +424,7 @@ export default function ScanPapersPage() {
     return (
       <div className="text-center py-20">
         <p className="text-gray-500 font-medium">You do not have permission to access this page.</p>
-        <button onClick={() => router.push('/exam')} className="mt-4 btn-secondary">Back to Examinations</button>
+        <BackButton mt="md" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
     );
   }
@@ -431,7 +433,7 @@ export default function ScanPapersPage() {
     return (
       <div className="text-center py-20">
         <p className="text-gray-500 font-medium">Exam not found.</p>
-        <button onClick={() => router.push('/exam')} className="mt-4 btn-secondary">Back to Examinations</button>
+        <BackButton mt="md" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
     );
   }
@@ -445,27 +447,7 @@ export default function ScanPapersPage() {
           <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
           <p className="mt-1 text-sm text-[#597D37]">{exam.title}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => router.push('/exam')}
-            className="inline-flex items-center gap-2 rounded-md border border-[#d3e9d0] bg-[#f0f7ee] px-4 py-2 text-sm font-semibold text-[#597D37] transition-colors hover:bg-[#e8f3e2]"
-          >
-            <IconChevronLeft className="w-4 h-4" />
-            Back to Examinations
-          </button>
-          <button
-            onClick={handleExportCsv}
-            disabled={exportingCsv}
-            className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-              exportingCsv
-                ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-500'
-                : 'border-green-300 bg-white text-[#597D37] hover:bg-green-50'
-            }`}
-          >
-            <IconDownload className="w-4 h-4" />
-            {exportingCsv ? 'Exporting...' : 'Export CSV'}
-          </button>
-        </div>
+        <BackButton onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6">
@@ -537,16 +519,25 @@ export default function ScanPapersPage() {
               </span>
             </div>
 
-            <div className="relative">
-              <IconSearch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                className="input-field pl-9 w-full"
-                placeholder="Search students..."
+            <Group gap="sm">
+              <SearchBar
+                placeholder="Search student name or LRN..."
+                ariaLabel="Search students"
+                style={{ flex: 1 }}
                 value={studentSearch}
                 onChange={e => setStudentSearch(e.target.value)}
               />
-            </div>
+              <Button
+                variant="outline"
+                color="gray"
+                leftSection={<IconDownload size={16} />}
+                size="sm"
+                loading={exportingCsv}
+                onClick={handleExportCsv}
+              >
+                Export CSV
+              </Button>
+            </Group>
 
             {rosterLoading ? (
               <div className="text-center py-12">

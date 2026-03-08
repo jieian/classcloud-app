@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import BackButton from "@/components/BackButton";
 import {
   Alert,
   Container,
@@ -21,7 +22,6 @@ import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
-  IconArrowLeft,
   IconBookOff,
   IconCalendarOff,
   IconInfoCircle,
@@ -76,14 +76,7 @@ function WizardBlocker({
         >
           {hint}
         </Alert>
-        <Button
-          variant="light"
-          color="#597D37"
-          leftSection={<IconArrowLeft size={16} />}
-          onClick={onBack}
-        >
-          Back to Faculty
-        </Button>
+        <BackButton onClick={onBack}>Back to Faculty</BackButton>
       </Stack>
     </Container>
   );
