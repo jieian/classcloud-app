@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, Group, Paper, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
+import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
   IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
@@ -364,6 +364,10 @@ export default function ScanPapersPage() {
 
   const handleExportCsv = async () => {
     if (!exam) return;
+    if (scannedStudentsCount === 0) {
+      alert('No scanned student results to export yet.');
+      return;
+    }
     setExportingCsv(true);
     try {
       const response = await fetch(`/api/exams/${exam.exam_id}/download`, {
@@ -414,8 +418,17 @@ export default function ScanPapersPage() {
 
   if (examLoading || authLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Skeleton height={36} width={220} radius="md" />
+          <Skeleton height={14} width={160} radius="md" />
+        </div>
+        <Paper withBorder radius="md" p="md">
+          <Skeleton height={42} radius="md" mb="md" />
+          <Skeleton height={16} radius="md" mb="xs" />
+          <Skeleton height={16} radius="md" mb="xs" />
+          <Skeleton height={16} width="72%" radius="md" />
+        </Paper>
       </div>
     );
   }
@@ -533,17 +546,27 @@ export default function ScanPapersPage() {
                 leftSection={<IconDownload size={16} />}
                 size="sm"
                 loading={exportingCsv}
+                disabled={exportingCsv || scannedStudentsCount === 0}
                 onClick={handleExportCsv}
               >
-                Export CSV
+                Download Results (CSV)
               </Button>
             </Group>
 
             {rosterLoading ? (
-              <div className="text-center py-12">
-                <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-3" />
-                <p className="text-sm text-gray-400">Loading students...</p>
-              </div>
+              <Paper withBorder radius="md" p="md">
+                <div className="space-y-3">
+                  <Skeleton height={18} width={180} radius="md" />
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <Group key={n} justify="space-between" wrap="nowrap">
+                      <Skeleton height={16} width="40%" radius="md" />
+                      <Skeleton height={16} width={90} radius="md" />
+                      <Skeleton height={16} width={150} radius="md" />
+                      <Skeleton height={28} width={90} radius="md" />
+                    </Group>
+                  ))}
+                </div>
+              </Paper>
             ) : rosterStudents.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
                 <p className="text-sm font-semibold text-gray-600">No students found</p>
@@ -585,7 +608,14 @@ export default function ScanPapersPage() {
                             return (
                               <TableTr key={student.enrollment_id}>
                                 <TableTd>
-                                  <Text fz="sm" fw={500}>{student.full_name}</Text>
+                                  <Text
+                                    fz="sm"
+                                    fw={500}
+                                    c={hasScanned ? undefined : "dimmed"}
+                                    style={!hasScanned ? { opacity: 0.75 } : undefined}
+                                  >
+                                    {student.full_name}
+                                  </Text>
                                   {sectionFilter == null && (
                                     <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
                                   )}
@@ -638,7 +668,14 @@ export default function ScanPapersPage() {
                             return (
                               <TableTr key={student.enrollment_id}>
                                 <TableTd>
-                                  <Text fz="sm" fw={500}>{student.full_name}</Text>
+                                  <Text
+                                    fz="sm"
+                                    fw={500}
+                                    c={hasScanned ? undefined : "dimmed"}
+                                    style={!hasScanned ? { opacity: 0.75 } : undefined}
+                                  >
+                                    {student.full_name}
+                                  </Text>
                                   {sectionFilter == null && (
                                     <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
                                   )}
@@ -786,10 +823,21 @@ export default function ScanPapersPage() {
 
         {/* â”€â”€ STEP: PROCESSING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {step === 'processing' && (
-          <div className="text-center py-16">
-            <div className="inline-block w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-lg font-semibold text-gray-700">Processing answer sheetâ€¦</p>
-            <p className="text-sm text-gray-400 mt-2">Detecting corners â†’ Correcting perspective â†’ Reading bubbles</p>
+          <div className="py-10 space-y-4">
+            <div className="flex justify-center">
+              <Skeleton height={20} width={220} radius="md" />
+            </div>
+            <div className="flex justify-center">
+              <Skeleton height={14} width={360} radius="md" />
+            </div>
+            <Paper withBorder radius="md" p="md">
+              <Skeleton height={180} radius="md" mb="md" />
+              <Group grow>
+                <Skeleton height={10} radius="md" />
+                <Skeleton height={10} radius="md" />
+                <Skeleton height={10} radius="md" />
+              </Group>
+            </Paper>
           </div>
         )}
 

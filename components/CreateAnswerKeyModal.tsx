@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { IconX, IconDeviceFloppy, IconAlertTriangle, IconPlus, IconMinus } from '@tabler/icons-react';
 import Image from 'next/image';
+import { notifications } from '@mantine/notifications';
 import { saveAnswerKey } from '@/lib/services/examService';
 import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
 
@@ -143,10 +144,22 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
       if (!success) throw new Error('Failed to save');
 
       await onSuccess();
+      notifications.show({
+        title: 'Answer Key Saved',
+        message: 'Your answer key has been updated successfully.',
+        color: 'teal',
+        withBorder: true,
+        autoClose: 2500,
+      });
       onClose();
     } catch (error) {
       console.error('Error saving answer key:', error);
-      alert('Failed to save answer key. Please try again.');
+      notifications.show({
+        title: 'Save Failed',
+        message: 'Failed to save answer key. Please try again.',
+        color: 'red',
+        withBorder: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -156,7 +169,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
   const columns = Math.ceil(totalQuestions / questionsPerColumn);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-slide-in">
 
         {/* Sticky Header */}
@@ -177,11 +190,19 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
           </div>
 
           {/* Assigned sections notice */}
-          {assignedSections.length > 0 && (
+          {assignedSections.length > 1 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
               <p className="text-xs text-blue-700">
                 <span className="font-semibold">Shared answer key</span> — applies to:{' '}
                 <span className="font-semibold">{assignedSections.join(', ')}</span>
+              </p>
+            </div>
+          )}
+          {assignedSections.length === 1 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-3">
+              <p className="text-xs text-green-700">
+                <span className="font-semibold">Test for:</span>{' '}
+                <span className="font-semibold">{assignedSections[0]}</span>
               </p>
             </div>
           )}

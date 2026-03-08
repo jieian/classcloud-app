@@ -16,12 +16,14 @@ interface ProtectedRouteProps {
   children: ReactNode;
   requiredPermissions: string[];
   match?: "all" | "any";
+  loadingFallback?: ReactNode;
 }
 
 export default function ProtectedRoute({
   children,
   requiredPermissions,
   match = "all",
+  loadingFallback,
 }: ProtectedRouteProps) {
   const { user, permissions, loading } = useAuth();
   const router = useRouter();
@@ -45,6 +47,7 @@ export default function ProtectedRoute({
   }, [user, loading, hasRequiredPermission, router]);
 
   if (loading) {
+    if (loadingFallback) return <>{loadingFallback}</>;
     return (
       <Center h="60vh">
         <Loader size="md" />

@@ -348,7 +348,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto animate-slide-in">
 
         {/* Header */}

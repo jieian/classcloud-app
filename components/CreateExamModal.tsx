@@ -98,6 +98,11 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
     ? gradeLevels.find((g) => g.grade_level_id === Number(selectedGradeLevelId)) ?? null
     : null;
   const autoTotalItems = getAutoTotalItems(selectedGradeLevel?.level_number);
+  const canCreateExam =
+    examName.trim().length > 0 &&
+    Boolean(selectedGradeLevelId) &&
+    Boolean(selectedSubjectId) &&
+    selectedSectionIds.length > 0;
 
   const toggleSection = (sectionId: number) => {
     setSelectedSectionIds(prev =>
@@ -106,10 +111,10 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
   };
 
   const handleSubmit = async () => {
-    if (!examName.trim()) { notifications.show({ title: 'Error', message: 'Enter exam name', color: 'red' }); return; }
-    if (!selectedGradeLevelId) { notifications.show({ title: 'Error', message: 'Select grade level', color: 'red' }); return; }
-    if (!selectedSubjectId) { notifications.show({ title: 'Error', message: 'Select subject', color: 'red' }); return; }
-    if (selectedSectionIds.length === 0) { notifications.show({ title: 'Error', message: 'Select at least one section', color: 'red' }); return; }
+    if (!examName.trim()) { notifications.show({ title: 'Missing Information', message: 'Please enter an examination name.', color: 'red' }); return; }
+    if (!selectedGradeLevelId) { notifications.show({ title: 'Missing Information', message: 'Please select a grade level.', color: 'red' }); return; }
+    if (!selectedSubjectId) { notifications.show({ title: 'Missing Information', message: 'Please select a subject.', color: 'red' }); return; }
+    if (selectedSectionIds.length === 0) { notifications.show({ title: 'Missing Information', message: 'Please select at least one section.', color: 'red' }); return; }
 
     setLoading(true);
     try {
@@ -130,11 +135,25 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
 
       if (!result) throw new Error('Failed');
 
-      notifications.show({ title: 'Success', message: 'Exam created', color: 'green' });
+      notifications.show({
+        title: 'Examination Created',
+        message:
+          selectedSectionIds.length > 1
+            ? `${selectedSectionIds.length} examinations were created successfully.`
+            : 'Examination was created successfully.',
+        color: 'teal',
+        withBorder: true,
+        autoClose: 2500,
+      });
       onSuccess();
       onClose();
     } catch {
-      notifications.show({ title: 'Error', message: 'Failed to create exam', color: 'red' });
+      notifications.show({
+        title: 'Creation Failed',
+        message: 'Unable to create examination. Please try again.',
+        color: 'red',
+        withBorder: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -145,7 +164,13 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
     .map(s => s.name);
 
   return (
-    <Modal opened onClose={onClose} title="Create Examination" size="lg">
+    <Modal
+      opened
+      onClose={onClose}
+      title="Create Examination"
+      size="lg"
+      overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
+    >
       <Stack gap="md">
         <Alert color="blue" icon={<IconAlertCircle size={16} />}>
           New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
@@ -253,7 +278,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
               <Button
                 onClick={handleSubmit}
                 loading={loading}
-                disabled={selectedSectionIds.length === 0}
+                disabled={!canCreateExam || loading || dataLoading}
               >
                 {selectedSectionIds.length > 1
                   ? `Create ${selectedSectionIds.length} Examinations`

@@ -15,12 +15,14 @@ import {
   Grid,
   ActionIcon,
   Menu,
-  Loader,
+  Skeleton,
   Alert,
   Paper,
   Divider,
   Box,
   Switch,
+  Modal,
+  TextInput,
 } from "@mantine/core";
 import {
   IconPlus,
@@ -67,6 +69,10 @@ export default function ExamPageClient() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
+  const [deleteOpened, setDeleteOpened] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(null);
 
   const hasFullAccess = permissions.includes("full_access_examinations");
 
@@ -209,17 +215,39 @@ export default function ExamPageClient() {
     });
   };
 
-  const handleDeleteExam = async (exam: ExamWithRelations) => {
-    if (!confirm("Are you sure you want to delete this examination?")) return;
-    const success = await deleteExamWithAssignments(exam.exam_id);
+  const handleOpenDeleteModal = (exam: ExamWithRelations) => {
+    setExamToDelete(exam);
+    setConfirmText("");
+    setDeleteOpened(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+    setDeleteOpened(false);
+    setExamToDelete(null);
+    setConfirmText("");
+  };
+
+  const handleDeleteExam = async () => {
+    if (!examToDelete) return;
+    setDeleting(true);
+    const success = await deleteExamWithAssignments(examToDelete.exam_id);
     if (success) {
       notifications.show({
-        title: "Deleted",
-        message: "Exam removed",
+        title: "Examination Deleted",
+        message: `${examToDelete.title} has been deleted successfully.`,
+        color: "green",
+      });
+      handleCloseDeleteModal();
+      await fetchExams();
+    } else {
+      notifications.show({
+        title: "Delete Failed",
+        message: "Unable to delete examination. Please try again.",
         color: "red",
       });
-      fetchExams();
     }
+    setDeleting(false);
   };
 
   const activeCount = exams.filter((e) => !e.is_locked).length;
@@ -233,32 +261,125 @@ export default function ExamPageClient() {
       <Container fluid px="md" py="md">
         <Stack gap="xl">
           {/* Stats */}
-          <Group gap="md">
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <Box w={8} h={8} bg="green" style={{ borderRadius: "50%" }} />
-                <Text size="sm" fw={500} c="green">
-                  Active: {activeCount}
+          <Grid gutter="md">
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #1f8f3a 0%, #4EAE4A 100%)",
+                  border: "1px solid #3f9f46",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="white">
+                    Active Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.2)",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    A
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="white">
+                  {activeCount}
                 </Text>
-              </Group>
-            </Paper>
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <Box w={8} h={8} bg="red" style={{ borderRadius: "50%" }} />
-                <Text size="sm" fw={500} c="red">
-                  Inactive: {inactiveCount}
+                <Text size="xs" mt={6} c="rgba(255,255,255,0.9)">
+                  Currently active exams
                 </Text>
-              </Group>
-            </Paper>
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <IconFileText size={16} color="blue" />
-                <Text size="sm" fw={500} c="blue">
-                  Total: {exams.length}
+              </Paper>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #fff1f1 0%, #ffe3e3 100%)",
+                  border: "1px solid #ffc9c9",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="#c92a2a">
+                    Inactive Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "#ffe3e3",
+                      color: "#e03131",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    I
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="#a61e4d">
+                  {inactiveCount}
                 </Text>
-              </Group>
-            </Paper>
-          </Group>
+                <Text size="xs" mt={6} c="#c92a2a">
+                  Exams currently locked
+                </Text>
+              </Paper>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #eef7ff 0%, #e7f5ff 100%)",
+                  border: "1px solid #b6ddff",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="#1864ab">
+                    Total Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "#d0ebff",
+                      color: "#1c7ed6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <IconFileText size={14} />
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="#1971c2">
+                  {exams.length}
+                </Text>
+                <Text size="xs" mt={6} c="#1864ab">
+                  Overall exam records
+                </Text>
+              </Paper>
+            </Grid.Col>
+          </Grid>
 
           {/* Error */}
           {dbError && (
@@ -327,10 +448,29 @@ export default function ExamPageClient() {
 
           {/* Content */}
           {loading ? (
-            <Stack align="center" py={60}>
-              <Loader size="lg" />
-              <Text c="dimmed">Loading examinations...</Text>
-            </Stack>
+            <Grid>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Grid.Col key={`exam-skeleton-${i}`} span={{ base: 12, sm: 6, md: 4 }}>
+                  <Card padding="lg" radius="md" withBorder style={{ height: "100%" }}>
+                    <Stack gap="md">
+                      <Group gap="sm">
+                        <Skeleton height={40} width={40} radius="md" />
+                        <Skeleton height={14} style={{ flex: 1 }} />
+                      </Group>
+                      <Skeleton height={68} radius="md" />
+                      <Skeleton height={34} radius="md" />
+                      <Skeleton height={1} />
+                      <Stack gap={6}>
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                      </Stack>
+                    </Stack>
+                  </Card>
+                </Grid.Col>
+              ))}
+            </Grid>
           ) : dbError ? null : filteredExams.length === 0 ? (
             <Card padding={60} radius="md" withBorder>
               <Stack align="center">
@@ -519,7 +659,7 @@ export default function ExamPageClient() {
                               size="sm"
                               radius="md"
                               leftSection={<IconTrash size={14} />}
-                              onClick={() => handleDeleteExam(exam)}
+                              onClick={() => handleOpenDeleteModal(exam)}
                             >
                               Delete
                             </Button>
@@ -560,6 +700,52 @@ export default function ExamPageClient() {
             }}
           />
         )}
+
+        <Modal
+          opened={deleteOpened}
+          onClose={handleCloseDeleteModal}
+          title="Delete Examination"
+          centered
+          closeOnClickOutside={!deleting}
+          closeOnEscape={!deleting}
+          withCloseButton={!deleting}
+          overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
+        >
+          <Text size="sm" mb="md">
+            Are you sure you want to delete{" "}
+            <Text span fw={700}>
+              {examToDelete?.title ?? "this examination"}
+            </Text>
+            ? This action cannot be undone.
+          </Text>
+          <Text size="sm" mb="md" c="dimmed">
+            Type{" "}
+            <Text span fw={700} c="var(--mantine-color-text)">
+              delete
+            </Text>{" "}
+            to confirm.
+          </Text>
+          <TextInput
+            placeholder="Type delete to confirm"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.currentTarget.value)}
+            mb="lg"
+            disabled={deleting}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={handleCloseDeleteModal} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              disabled={confirmText.toLowerCase() !== "delete"}
+              loading={deleting}
+              onClick={handleDeleteExam}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Modal>
       </Container>
     </>
   );
