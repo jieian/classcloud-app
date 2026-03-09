@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Container,
   Title,
   Text,
   Card,
-  TextInput,
   Select,
   Button,
   Badge,
@@ -15,15 +15,16 @@ import {
   Grid,
   ActionIcon,
   Menu,
-  Loader,
+  Skeleton,
   Alert,
   Paper,
   Divider,
   Box,
   Switch,
+  Modal,
+  TextInput,
 } from "@mantine/core";
 import {
-  IconSearch,
   IconPlus,
   IconFileText,
   IconDownload,
@@ -38,7 +39,6 @@ import Image from "next/image";
 import { notifications } from "@mantine/notifications";
 import CreateExamModal from "@/components/CreateExamModal";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
-import ScanPapersModal from "@/components/ScanPapersModal";
 import ItemAnalysisModal from "@/components/ItemAnalysisModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
@@ -46,9 +46,15 @@ import {
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
+import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
+import { useAuth } from "@/context/AuthContext";
+import { fetchTeacherClassAssignments } from "@/app/(app)/school/classes/_lib/classService";
+import { SearchBar } from "@/components/searchBar/SearchBar";
 
 export default function ExamPageClient() {
+  const router = useRouter();
+  const { user, permissions, loading: authLoading } = useAuth();
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,7 +62,6 @@ export default function ExamPageClient() {
   const [selectedSubject, setSelectedSubject] = useState<string | null>("All");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
-  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
     null,
@@ -64,13 +69,37 @@ export default function ExamPageClient() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
+  const [deleteOpened, setDeleteOpened] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(null);
+
+  const hasFullAccess = permissions.includes("full_access_examinations");
+
+  // Allowed section/subject IDs for teachers with partial access (null = no filter)
+  const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+
+  // Exam IDs that have at least one scanned/saved score
+  const [examIdsWithScores, setExamIdsWithScores] = useState<Set<number>>(new Set());
 
   const fetchExams = async () => {
     setLoading(true);
     setDbError(null);
     try {
-      const data = await fetchExamsWithRelations();
+      const teacherId = hasFullAccess ? undefined : user?.id;
+      const data = await fetchExamsWithRelations(teacherId);
       setExams(data);
+
+      // Build assignmentId → examId map from the loaded data
+      const assignmentIdToExamId = new Map<number, number>();
+      for (const exam of data) {
+        for (const a of exam.exam_assignments ?? []) {
+          assignmentIdToExamId.set(a.id, exam.exam_id);
+        }
+      }
+      const withScores = await fetchExamIdsWithScores(assignmentIdToExamId);
+      setExamIdsWithScores(withScores);
     } catch (error: unknown) {
       setDbError(error instanceof Error ? error.message : "Unknown error");
     } finally {
@@ -79,8 +108,19 @@ export default function ExamPageClient() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
     fetchExams();
-  }, []);
+    if (!hasFullAccess && user?.id) {
+      fetchTeacherClassAssignments(user.id).then((assignments) => {
+        setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
+        setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+      });
+    } else {
+      setAllowedSectionIds(null);
+      setAllowedSubjectIds(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user?.id, hasFullAccess]);
 
   const sectionOptions = [
     "All",
@@ -89,6 +129,7 @@ export default function ExamPageClient() {
         exams.flatMap(
           (e) =>
             (e.exam_assignments ?? [])
+              .filter((a) => !allowedSectionIds || allowedSectionIds.has(a.sections?.section_id!))
               .map((a) => a.sections?.name)
               .filter(Boolean) as string[],
         ),
@@ -99,7 +140,12 @@ export default function ExamPageClient() {
   const subjectOptions = [
     "All",
     ...Array.from(
-      new Set(exams.map((e) => e.subjects?.name).filter(Boolean) as string[]),
+      new Set(
+        exams
+          .filter((e) => !allowedSubjectIds || allowedSubjectIds.has(e.subject_id!))
+          .map((e) => e.subjects?.name)
+          .filter(Boolean) as string[]
+      ),
     ),
   ];
 
@@ -169,17 +215,39 @@ export default function ExamPageClient() {
     });
   };
 
-  const handleDeleteExam = async (exam: ExamWithRelations) => {
-    if (!confirm("Are you sure you want to delete this examination?")) return;
-    const success = await deleteExamWithAssignments(exam.exam_id);
+  const handleOpenDeleteModal = (exam: ExamWithRelations) => {
+    setExamToDelete(exam);
+    setConfirmText("");
+    setDeleteOpened(true);
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+    setDeleteOpened(false);
+    setExamToDelete(null);
+    setConfirmText("");
+  };
+
+  const handleDeleteExam = async () => {
+    if (!examToDelete) return;
+    setDeleting(true);
+    const success = await deleteExamWithAssignments(examToDelete.exam_id);
     if (success) {
       notifications.show({
-        title: "Deleted",
-        message: "Exam removed",
+        title: "Examination Deleted",
+        message: `${examToDelete.title} has been deleted successfully.`,
+        color: "green",
+      });
+      handleCloseDeleteModal();
+      await fetchExams();
+    } else {
+      notifications.show({
+        title: "Delete Failed",
+        message: "Unable to delete examination. Please try again.",
         color: "red",
       });
-      fetchExams();
     }
+    setDeleting(false);
   };
 
   const activeCount = exams.filter((e) => !e.is_locked).length;
@@ -187,39 +255,131 @@ export default function ExamPageClient() {
 
   return (
     <>
-      <h1 className="mb-3 text-2xl font-bold">Examinations</h1>
       <p className="mb-3 text-sm text-[#808898]">
         Manage and track all examinations
       </p>
-      <Container fluid px="md" py="xl">
+      <Container fluid px="md" py="md">
         <Stack gap="xl">
           {/* Stats */}
-          <Group gap="md">
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <Box w={8} h={8} bg="green" style={{ borderRadius: "50%" }} />
-                <Text size="sm" fw={500} c="green">
-                  Active: {activeCount}
+          <Grid gutter="md">
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #1f8f3a 0%, #4EAE4A 100%)",
+                  border: "1px solid #3f9f46",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="white">
+                    Active Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "rgba(255,255,255,0.2)",
+                      color: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    A
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="white">
+                  {activeCount}
                 </Text>
-              </Group>
-            </Paper>
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <Box w={8} h={8} bg="red" style={{ borderRadius: "50%" }} />
-                <Text size="sm" fw={500} c="red">
-                  Inactive: {inactiveCount}
+                <Text size="xs" mt={6} c="rgba(255,255,255,0.9)">
+                  Currently active exams
                 </Text>
-              </Group>
-            </Paper>
-            <Paper p="md" radius="md" withBorder style={{ flex: 1 }}>
-              <Group gap="xs">
-                <IconFileText size={16} color="blue" />
-                <Text size="sm" fw={500} c="blue">
-                  Total: {exams.length}
+              </Paper>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #fff1f1 0%, #ffe3e3 100%)",
+                  border: "1px solid #ffc9c9",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="#c92a2a">
+                    Inactive Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "#ffe3e3",
+                      color: "#e03131",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    I
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="#a61e4d">
+                  {inactiveCount}
                 </Text>
-              </Group>
-            </Paper>
-          </Group>
+                <Text size="xs" mt={6} c="#c92a2a">
+                  Exams currently locked
+                </Text>
+              </Paper>
+            </Grid.Col>
+
+            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
+              <Paper
+                p="lg"
+                radius="md"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #eef7ff 0%, #e7f5ff 100%)",
+                  border: "1px solid #b6ddff",
+                }}
+              >
+                <Group justify="space-between" mb={10}>
+                  <Text size="xs" fw={700} c="#1864ab">
+                    Total Examinations
+                  </Text>
+                  <Box
+                    w={24}
+                    h={24}
+                    style={{
+                      borderRadius: 999,
+                      background: "#d0ebff",
+                      color: "#1c7ed6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <IconFileText size={14} />
+                  </Box>
+                </Group>
+                <Text size="2.25rem" fw={800} lh={1} c="#1971c2">
+                  {exams.length}
+                </Text>
+                <Text size="xs" mt={6} c="#1864ab">
+                  Overall exam records
+                </Text>
+              </Paper>
+            </Grid.Col>
+          </Grid>
 
           {/* Error */}
           {dbError && (
@@ -245,9 +405,9 @@ export default function ExamPageClient() {
           <Card padding="lg" radius="md" withBorder>
             <Grid>
               <Grid.Col span={{ base: 12, md: 6 }}>
-                <TextInput
+                <SearchBar
                   placeholder="Search examinations..."
-                  leftSection={<IconSearch size={16} />}
+                  ariaLabel="Search examinations"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.currentTarget.value)}
                 />
@@ -271,6 +431,8 @@ export default function ExamPageClient() {
               <Grid.Col span={{ base: 12, md: 2 }}>
                 <Button
                   fullWidth
+                  color="#4EAE4A"
+                  radius="md"
                   leftSection={<IconPlus size={16} />}
                   onClick={() => setIsCreateModalOpen(true)}
                 >
@@ -286,10 +448,29 @@ export default function ExamPageClient() {
 
           {/* Content */}
           {loading ? (
-            <Stack align="center" py={60}>
-              <Loader size="lg" />
-              <Text c="dimmed">Loading examinations...</Text>
-            </Stack>
+            <Grid>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <Grid.Col key={`exam-skeleton-${i}`} span={{ base: 12, sm: 6, md: 4 }}>
+                  <Card padding="lg" radius="md" withBorder style={{ height: "100%" }}>
+                    <Stack gap="md">
+                      <Group gap="sm">
+                        <Skeleton height={40} width={40} radius="md" />
+                        <Skeleton height={14} style={{ flex: 1 }} />
+                      </Group>
+                      <Skeleton height={68} radius="md" />
+                      <Skeleton height={34} radius="md" />
+                      <Skeleton height={1} />
+                      <Stack gap={6}>
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                        <Skeleton height={30} radius="md" />
+                      </Stack>
+                    </Stack>
+                  </Card>
+                </Grid.Col>
+              ))}
+            </Grid>
           ) : dbError ? null : filteredExams.length === 0 ? (
             <Card padding={60} radius="md" withBorder>
               <Stack align="center">
@@ -407,7 +588,9 @@ export default function ExamPageClient() {
 
                         {/* Download */}
                         <Button
-                          variant="light"
+                          variant="outline"
+                          color="#4EAE4A"
+                          radius="md"
                           fullWidth
                           leftSection={<IconDownload size={16} />}
                           onClick={() => handleDownloadAnswerSheet(exam)}
@@ -429,9 +612,11 @@ export default function ExamPageClient() {
                           </Text>
                           <Stack gap={6}>
                             <Button
-                              variant="filled"
+                              variant="light"
+                              color="#4EAE4A"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconEdit size={14} />}
                               onClick={() => {
                                 setSelectedExam(exam);
@@ -441,24 +626,25 @@ export default function ExamPageClient() {
                               Edit Answer Key
                             </Button>
                             <Button
-                              variant="filled"
+                              variant="light"
                               color="blue"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconFileText size={14} />}
-                              onClick={() => {
-                                setSelectedExam(exam);
-                                setIsScanModalOpen(true);
-                              }}
+                              disabled={!exam.answer_key}
+                              onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
                             >
                               Scan Papers
                             </Button>
                             <Button
-                              variant="filled"
-                              color="violet"
+                              variant="light"
+                              color="teal"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconEye size={14} />}
+                              disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)}
                               onClick={() => {
                                 setSelectedExam(exam);
                                 setIsAnalysisModalOpen(true);
@@ -467,12 +653,13 @@ export default function ExamPageClient() {
                               Review Papers
                             </Button>
                             <Button
-                              variant="subtle"
+                              variant="light"
                               color="red"
                               fullWidth
                               size="sm"
+                              radius="md"
                               leftSection={<IconTrash size={14} />}
-                              onClick={() => handleDeleteExam(exam)}
+                              onClick={() => handleOpenDeleteModal(exam)}
                             >
                               Delete
                             </Button>
@@ -503,16 +690,7 @@ export default function ExamPageClient() {
             onSuccess={fetchExams}
           />
         )}
-        {isScanModalOpen && selectedExam && (
-          <ScanPapersModal
-            exam={selectedExam}
-            onClose={() => {
-              setIsScanModalOpen(false);
-              setSelectedExam(null);
-            }}
-            onSuccess={fetchExams}
-          />
-        )}
+
         {isAnalysisModalOpen && selectedExam && (
           <ItemAnalysisModal
             exam={selectedExam}
@@ -522,6 +700,52 @@ export default function ExamPageClient() {
             }}
           />
         )}
+
+        <Modal
+          opened={deleteOpened}
+          onClose={handleCloseDeleteModal}
+          title="Delete Examination"
+          centered
+          closeOnClickOutside={!deleting}
+          closeOnEscape={!deleting}
+          withCloseButton={!deleting}
+          overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
+        >
+          <Text size="sm" mb="md">
+            Are you sure you want to delete{" "}
+            <Text span fw={700}>
+              {examToDelete?.title ?? "this examination"}
+            </Text>
+            ? This action cannot be undone.
+          </Text>
+          <Text size="sm" mb="md" c="dimmed">
+            Type{" "}
+            <Text span fw={700} c="var(--mantine-color-text)">
+              delete
+            </Text>{" "}
+            to confirm.
+          </Text>
+          <TextInput
+            placeholder="Type delete to confirm"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.currentTarget.value)}
+            mb="lg"
+            disabled={deleting}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={handleCloseDeleteModal} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              disabled={confirmText.toLowerCase() !== "delete"}
+              loading={deleting}
+              onClick={handleDeleteExam}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Modal>
       </Container>
     </>
   );

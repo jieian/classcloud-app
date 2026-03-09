@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import {
   ActionIcon,
   Alert,
@@ -28,7 +28,6 @@ import {
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
-  IconArrowLeft,
   IconDownload,
   IconPencil,
   IconPlus,
@@ -256,16 +255,7 @@ export default function StudentRosterClient({ sectionId }: Props) {
     return (
       <Stack gap="md" maw={950}>
         <Box>
-          <Button
-            variant="light"
-            color="#597D37"
-            leftSection={<IconArrowLeft size={16} />}
-            component={Link}
-            href={`/school/classes/${sectionId}`}
-            size="md"
-          >
-            Back to Class
-          </Button>
+          <BackButton href={`/school/classes/${sectionId}`}>Back to Class</BackButton>
         </Box>
         <Alert color="red" icon={<IconAlertCircle size={16} />}>
           {error}
@@ -278,17 +268,7 @@ export default function StudentRosterClient({ sectionId }: Props) {
     <Stack gap="md" maw={1000}>
       {/* Back */}
       <Box>
-        <Button
-          variant="light"
-          color="#597D37"
-          leftSection={<IconArrowLeft size={16} />}
-          component={Link}
-          href={`/school/classes/${sectionId}`}
-          size="md"
-          mb="sm"
-        >
-          Back to Class Details
-        </Button>
+        <BackButton href={`/school/classes/${sectionId}`} mb="sm">Back to Class Details</BackButton>
       </Box>
 
       {/* Header */}

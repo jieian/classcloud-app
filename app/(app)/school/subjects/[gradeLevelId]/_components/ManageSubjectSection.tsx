@@ -4,8 +4,9 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconArrowLeft, IconRefresh } from "@tabler/icons-react";
+import { IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
+import BackButton from "@/components/BackButton";
 import CreateSubjectModal from "../../_components/CreateSubjectModal";
 import SubjectTableWrapper, {
   type SubjectTableWrapperRef,
@@ -28,16 +29,7 @@ export function ManageSubjectSection({
 
   return (
     <>
-      <Button
-        variant="light"
-        color="#597D37"
-        leftSection={<IconArrowLeft size={16} />}
-        mb="md"
-        size="md"
-        onClick={() => router.push("/school/subjects")}
-      >
-        Back to Subjects
-      </Button>
+      <BackButton mb="md" onClick={() => router.push("/school/subjects")}>Back to Subjects</BackButton>
       <Group justify="space-between">
         <h1 className="mb-3 text-2xl font-bold">
           Subjects{" "}

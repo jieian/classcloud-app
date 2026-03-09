@@ -466,6 +466,20 @@ export async function fetchTeacherAssignedSectionIds(
   );
 }
 
+export async function fetchTeacherClassAssignments(
+  uid: string,
+): Promise<{ section_id: number; subject_id: number }[]> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("teacher_class_assignments")
+    .select("section_id, subject_id")
+    .eq("teacher_id", uid)
+    .is("deleted_at", null);
+
+  if (error) return [];
+  return (data ?? []) as { section_id: number; subject_id: number }[];
+}
+
 export async function fetchAvailableAdviserCandidates(
   includeAssigned = false,
 ): Promise<AdviserCandidate[]> {

@@ -6,6 +6,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
 export async function proxy(request: NextRequest) {
   // The response variable MUST live in the same scope as setAll so that
@@ -15,9 +16,11 @@ export async function proxy(request: NextRequest) {
   // the reference — the caller kept the stale response without new cookies.
   let response = NextResponse.next({ request });
 
+  const { url, anonOrPublishableKey } = getSupabasePublicEnv();
+
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    anonOrPublishableKey,
     {
       cookies: {
         getAll() {

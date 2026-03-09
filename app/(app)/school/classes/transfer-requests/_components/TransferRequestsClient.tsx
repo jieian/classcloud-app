@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import {
   ActionIcon,
   Alert,
@@ -24,7 +24,6 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
-  IconArrowLeft,
   IconArrowRight,
   IconCheck,
   IconClock,
@@ -736,17 +735,7 @@ export default function TransferRequestsClient() {
   return (
     <>
       {/* Page header */}
-      <Button
-        variant="light"
-        color="#597D37"
-        leftSection={<IconArrowLeft size={16} />}
-        mb="md"
-        component={Link}
-        href="/school/classes"
-        size="md"
-      >
-        Back to Classes
-      </Button>
+      <BackButton href="/school/classes" mb="md">Back to Classes</BackButton>
       <Group mb="xs" align="center" gap="xs">
         <Text size="xl" fw={700}>
           Transfer Requests

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { IconX, IconDeviceFloppy, IconAlertTriangle, IconPlus, IconMinus } from '@tabler/icons-react';
 import Image from 'next/image';
+import { notifications } from '@mantine/notifications';
 import { saveAnswerKey } from '@/lib/services/examService';
 import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
 
@@ -14,10 +15,22 @@ interface CreateAnswerKeyModalProps {
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
+function getAutoTotalItems(levelNumber: number | null | undefined): number {
+  if (!levelNumber) return 30;
+  if (levelNumber <= 2) return 30;
+  if (levelNumber <= 4) return 40;
+  if (levelNumber <= 6) return 50;
+  return 50;
+}
+
 export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: CreateAnswerKeyModalProps) {
+  const detectedLevelNumber =
+    exam.exam_assignments?.[0]?.sections?.grade_levels?.level_number ?? null;
+  const autoTotalQuestions = getAutoTotalItems(detectedLevelNumber);
+
   const [answers, setAnswers] = useState<{ [key: number]: string | null }>({});
-  const [totalQuestions, setTotalQuestions] = useState(exam.total_items || 30);
-  const [inputValue, setInputValue] = useState(String(exam.total_items || 30));
+  const [totalQuestions, setTotalQuestions] = useState(autoTotalQuestions);
+  const [inputValue, setInputValue] = useState(String(autoTotalQuestions));
   const [numChoices, setNumChoices] = useState(4);
   const [loading, setLoading] = useState(false);
   const [loadingAnswers, setLoadingAnswers] = useState(true);
@@ -34,18 +47,24 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
   useEffect(() => {
     // Load existing answer key from the JSONB column
     const existing = exam.answer_key as AnswerKeyJsonb | null;
+    const initialTotal = existing?.total_questions ?? autoTotalQuestions;
+    setTotalQuestions(initialTotal);
+    setInputValue(String(initialTotal));
     if (existing?.answers) {
-      setAnswers(existing.answers);
-      if (existing.total_questions) {
-        setTotalQuestions(existing.total_questions);
-        setInputValue(String(existing.total_questions));
-      }
+      const nextAnswers: { [key: number]: string | null } = {};
+      Object.entries(existing.answers).forEach(([k, v]) => {
+        const qNum = Number(k);
+        if (Number.isInteger(qNum) && qNum >= 1 && qNum <= initialTotal) {
+          nextAnswers[qNum] = v;
+        }
+      });
+      setAnswers(nextAnswers);
       if (existing.num_choices) {
-        setNumChoices(Math.max(4, existing.num_choices));
+        setNumChoices(Math.max(2, Math.min(ALL_CHOICES.length, existing.num_choices)));
       }
     }
     setLoadingAnswers(false);
-  }, [exam]);
+  }, [exam, autoTotalQuestions]);
 
   const applyTotal = (val: number) => {
     const clamped = Math.max(10, Math.min(200, val));
@@ -59,10 +78,16 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value;
-    setInputValue(raw);
-    const parsed = parseInt(raw);
-    if (!isNaN(parsed)) applyTotal(parsed);
+    setInputValue(e.target.value);
+  };
+
+  const commitInputValue = () => {
+    const parsed = Number(inputValue);
+    if (Number.isFinite(parsed)) {
+      applyTotal(parsed);
+      return;
+    }
+    setInputValue(String(totalQuestions));
   };
 
   const handleNumChoicesChange = (newNum: number) => {
@@ -119,10 +144,22 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
       if (!success) throw new Error('Failed to save');
 
       await onSuccess();
+      notifications.show({
+        title: 'Answer Key Saved',
+        message: 'Your answer key has been updated successfully.',
+        color: 'teal',
+        withBorder: true,
+        autoClose: 2500,
+      });
       onClose();
     } catch (error) {
       console.error('Error saving answer key:', error);
-      alert('Failed to save answer key. Please try again.');
+      notifications.show({
+        title: 'Save Failed',
+        message: 'Failed to save answer key. Please try again.',
+        color: 'red',
+        withBorder: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -132,7 +169,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
   const columns = Math.ceil(totalQuestions / questionsPerColumn);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-y-auto animate-slide-in">
 
         {/* Sticky Header */}
@@ -153,11 +190,19 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
           </div>
 
           {/* Assigned sections notice */}
-          {assignedSections.length > 0 && (
+          {assignedSections.length > 1 && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
               <p className="text-xs text-blue-700">
                 <span className="font-semibold">Shared answer key</span> — applies to:{' '}
                 <span className="font-semibold">{assignedSections.join(', ')}</span>
+              </p>
+            </div>
+          )}
+          {assignedSections.length === 1 && (
+            <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 mb-3">
+              <p className="text-xs text-green-700">
+                <span className="font-semibold">Test for:</span>{' '}
+                <span className="font-semibold">{assignedSections[0]}</span>
               </p>
             </div>
           )}
@@ -201,7 +246,13 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
                     <div className="flex items-center gap-2">
                       <input type="number" min={10} max={200} value={inputValue}
                         onChange={handleInputChange}
-                        onBlur={() => applyTotal(parseInt(inputValue) || 30)}
+                        onBlur={commitInputValue}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitInputValue();
+                          }
+                        }}
                         className="w-20 text-center text-2xl font-bold text-gray-900 border-2 border-gray-300 rounded-xl px-2 py-1.5 focus:outline-none focus:border-primary" />
                       <span className="text-sm text-gray-400">items</span>
                     </div>
@@ -210,7 +261,9 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
                       <IconPlus className="w-4 h-4" />
                     </button>
                   </div>
-                  <p className="text-xs text-gray-400 text-center mt-2">Min: 10 · Max: 200</p>
+                  <p className="text-xs text-gray-400 text-center mt-2">
+                    Auto default by grade level (G1-2: 30, G3-4: 40, G5-6: 50) - editable
+                  </p>
                 </div>
 
                 {/* Choices per item */}

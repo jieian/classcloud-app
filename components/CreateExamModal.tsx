@@ -5,19 +5,32 @@ import { Modal, TextInput, Select, Button, Stack, Group, Paper, Text, Badge, Ale
 import { IconCheck, IconLink, IconAlertCircle } from '@tabler/icons-react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { fetchSubjects } from '@/lib/services/subjectService';
+import { fetchSubjectsWithGradeLevels, SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { createExamWithAssignments } from '@/lib/services/examService';
-import type { Subject, Section, GradeLevel, Quarter } from '@/lib/exam-supabase';
+import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { useAuth } from '@/context/AuthContext';
+import type { Section, GradeLevel, Quarter } from '@/lib/exam-supabase';
 
 interface CreateExamModalProps {
   onClose: () => void;
   onSuccess: () => void;
 }
 
+function getAutoTotalItems(levelNumber: number | null | undefined): number {
+  if (!levelNumber) return 30;
+  if (levelNumber <= 2) return 30;
+  if (levelNumber <= 4) return 40;
+  if (levelNumber <= 6) return 50;
+  return 50;
+}
+
 export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalProps) {
+  const { user, permissions } = useAuth();
+  const hasFullAccess = permissions.includes('full_access_examinations');
+
   const [examName, setExamName] = useState('');
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
@@ -25,15 +38,18 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
   const [loading, setLoading] = useState(false);
 
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<SubjectWithGradeLevel[]>([]);
   const [allSections, setAllSections] = useState<Section[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
+  const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+
   useEffect(() => {
-    Promise.all([
+    const baseLoad = Promise.all([
       fetchGradeLevels(),
-      fetchSubjects(),
+      fetchSubjectsWithGradeLevels(),
       fetchActiveSections(),
       fetchActiveQuarters(),
     ]).then(([gl, sub, sec, q]) => {
@@ -41,17 +57,52 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
       setSubjects(sub);
       setAllSections(sec);
       setQuarters(q);
-      setDataLoading(false);
     });
+
+    const assignmentLoad = !hasFullAccess && user?.id
+      ? fetchTeacherClassAssignments(user.id).then((assignments) => {
+          setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
+          setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+        })
+      : Promise.resolve();
+
+    Promise.all([baseLoad, assignmentLoad]).then(() => setDataLoading(false));
   }, []);
 
   useEffect(() => {
     setSelectedSectionIds([]);
+    setSelectedSubjectId(null);
   }, [selectedGradeLevelId]);
 
-  const filteredSections = selectedGradeLevelId
-    ? allSections.filter(s => s.grade_level_id === Number(selectedGradeLevelId))
-    : allSections;
+  // Derive allowed grade levels from the teacher's assigned sections
+  const allowedGradeLevelIds = allowedSectionIds
+    ? new Set(
+        allSections
+          .filter(s => s.grade_level_id !== null && allowedSectionIds.has(s.section_id))
+          .map(s => s.grade_level_id as number)
+      )
+    : null;
+
+  const filteredGradeLevels = gradeLevels
+    .filter(g => !allowedGradeLevelIds || allowedGradeLevelIds.has(g.grade_level_id));
+
+  const filteredSections = allSections
+    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+    .filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id));
+
+  const filteredSubjects = subjects
+    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+    .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id));
+
+  const selectedGradeLevel = selectedGradeLevelId
+    ? gradeLevels.find((g) => g.grade_level_id === Number(selectedGradeLevelId)) ?? null
+    : null;
+  const autoTotalItems = getAutoTotalItems(selectedGradeLevel?.level_number);
+  const canCreateExam =
+    examName.trim().length > 0 &&
+    Boolean(selectedGradeLevelId) &&
+    Boolean(selectedSubjectId) &&
+    selectedSectionIds.length > 0;
 
   const toggleSection = (sectionId: number) => {
     setSelectedSectionIds(prev =>
@@ -60,10 +111,10 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
   };
 
   const handleSubmit = async () => {
-    if (!examName.trim()) { notifications.show({ title: 'Error', message: 'Enter exam name', color: 'red' }); return; }
-    if (!selectedGradeLevelId) { notifications.show({ title: 'Error', message: 'Select grade level', color: 'red' }); return; }
-    if (!selectedSubjectId) { notifications.show({ title: 'Error', message: 'Select subject', color: 'red' }); return; }
-    if (selectedSectionIds.length === 0) { notifications.show({ title: 'Error', message: 'Select at least one section', color: 'red' }); return; }
+    if (!examName.trim()) { notifications.show({ title: 'Missing Information', message: 'Please enter an examination name.', color: 'red' }); return; }
+    if (!selectedGradeLevelId) { notifications.show({ title: 'Missing Information', message: 'Please select a grade level.', color: 'red' }); return; }
+    if (!selectedSubjectId) { notifications.show({ title: 'Missing Information', message: 'Please select a subject.', color: 'red' }); return; }
+    if (selectedSectionIds.length === 0) { notifications.show({ title: 'Missing Information', message: 'Please select at least one section.', color: 'red' }); return; }
 
     setLoading(true);
     try {
@@ -77,18 +128,32 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
           subject_id: Number(selectedSubjectId),
           quarter_id: autoQuarterId,
           exam_date: today,
-          total_items: 30,
+          total_items: autoTotalItems,
         },
         selectedSectionIds
       );
 
       if (!result) throw new Error('Failed');
 
-      notifications.show({ title: 'Success', message: 'Exam created', color: 'green' });
+      notifications.show({
+        title: 'Examination Created',
+        message:
+          selectedSectionIds.length > 1
+            ? `${selectedSectionIds.length} examinations were created successfully.`
+            : 'Examination was created successfully.',
+        color: 'teal',
+        withBorder: true,
+        autoClose: 2500,
+      });
       onSuccess();
       onClose();
     } catch {
-      notifications.show({ title: 'Error', message: 'Failed to create exam', color: 'red' });
+      notifications.show({
+        title: 'Creation Failed',
+        message: 'Unable to create examination. Please try again.',
+        color: 'red',
+        withBorder: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -99,7 +164,13 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
     .map(s => s.name);
 
   return (
-    <Modal opened onClose={onClose} title="Create Examination" size="lg">
+    <Modal
+      opened
+      onClose={onClose}
+      title="Create Examination"
+      size="lg"
+      overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
+    >
       <Stack gap="md">
         <Alert color="blue" icon={<IconAlertCircle size={16} />}>
           New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
@@ -124,7 +195,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
                 label="Grade Level"
                 placeholder="Select grade"
                 required
-                data={gradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
+                data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
                 value={selectedGradeLevelId}
                 onChange={setSelectedGradeLevelId}
               />
@@ -132,11 +203,15 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
                 label="Subject"
                 placeholder="Select subject"
                 required
-                data={subjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
+                data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
               />
             </Group>
+
+            <Text size="xs" c="dimmed">
+              Total items (auto): <Text span fw={600}>{autoTotalItems}</Text>
+            </Text>
 
             <div>
               <Text size="sm" fw={500} mb={4}>
@@ -203,7 +278,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
               <Button
                 onClick={handleSubmit}
                 loading={loading}
-                disabled={selectedSectionIds.length === 0}
+                disabled={!canCreateExam || loading || dataLoading}
               >
                 {selectedSectionIds.length > 1
                   ? `Create ${selectedSectionIds.length} Examinations`

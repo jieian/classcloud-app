@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import BackButton from "@/components/BackButton";
 import {
   ActionIcon,
   Alert,
@@ -20,7 +21,6 @@ import {
 import {
   IconAlertCircle,
   IconArchive,
-  IconArrowLeft,
   IconBadge,
   IconBook,
   IconPencil,
@@ -110,17 +110,7 @@ export default function ClassDetailClient({ sectionId }: Props) {
     <Stack gap="md" maw={1000}>
       {/* Back */}
       <Box>
-        <Button
-          variant="light"
-          color="#597D37"
-          leftSection={<IconArrowLeft size={16} />}
-          mb="md"
-          component={Link}
-          href="/school/classes"
-          size="md"
-        >
-          Back to Classes
-        </Button>
+        <BackButton href="/school/classes" mb="md">Back to Classes</BackButton>
       </Box>
 
       {/* Heading */}

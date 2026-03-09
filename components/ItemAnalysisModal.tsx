@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IconX, IconRefresh, IconTrash, IconTrendingUp, IconTrendingDown, IconUsers, IconTarget } from '@tabler/icons-react';
+import { IconX, IconRefresh, IconTrendingUp, IconTrendingDown, IconUsers, IconTarget } from '@tabler/icons-react';
 import Image from 'next/image';
-import { fetchAttemptsForExam, deleteAttempt } from '@/lib/services/attemptService';
+import { fetchAttemptsForExam } from '@/lib/services/attemptService';
 import {
   computeItemStatistics, computeExamSummary, saveItemStatistics,
   fetchItemStatistics, difficultyLabel, discriminationLabel,
   ComputedItemStat,
 } from '@/lib/services/analysisService';
-import type { ExamWithRelations, ExamAttempt, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import type { ExamWithRelations, ExamScore, AnswerKeyJsonb } from '@/lib/exam-supabase';
 
 interface ItemAnalysisModalProps {
   exam: ExamWithRelations;
@@ -17,7 +17,7 @@ interface ItemAnalysisModalProps {
 }
 
 export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalProps) {
-  const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [attempts, setAttempts] = useState<ExamScore[]>([]);
   const [itemStats, setItemStats] = useState<ComputedItemStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'summary' | 'items' | 'students'>('summary');
@@ -45,11 +45,6 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
 
   const summary = computeExamSummary(attempts, itemStats, totalItems);
 
-  const handleDeleteAttempt = async (attemptId: number) => {
-    if (!confirm('Remove this student\'s result?')) return;
-    await deleteAttempt(attemptId);
-    loadData();
-  };
 
   // ── Mini bar component ────────────────────────────────────────────────────
   const Bar = ({ value, color, max = 1 }: { value: number; color: string; max?: number }) => (
@@ -62,7 +57,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto animate-slide-in">
 
         {/* Header */}
@@ -286,26 +281,23 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-gray-500 border-b border-gray-200">
-                          <th className="text-left py-2 px-3 font-semibold">Student</th>
-                          <th className="text-left py-2 px-3 font-semibold">LRN</th>
+                          <th className="text-left py-2 px-3 font-semibold">Enrollment ID</th>
                           <th className="text-left py-2 px-3 font-semibold">Score</th>
                           <th className="text-left py-2 px-3 font-semibold">%</th>
-                          <th className="text-left py-2 px-3 font-semibold">Scanned</th>
-                          <th className="py-2 px-3" />
+                          <th className="text-left py-2 px-3 font-semibold">Graded</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {[...attempts]
-                          .sort((a, b) => b.score - a.score)
+                          .sort((a, b) => b.calculated_score - a.calculated_score)
                           .map(attempt => {
-                            const pct = Math.round((attempt.score / totalItems) * 100);
+                            const pct = Math.round((attempt.calculated_score / totalItems) * 100);
                             return (
-                              <tr key={attempt.attempt_id} className="hover:bg-gray-50">
-                                <td className="py-2.5 px-3 font-medium text-gray-800">{attempt.student_name ?? '—'}</td>
-                                <td className="py-2.5 px-3 text-gray-400 text-xs font-mono">{attempt.student_lrn ?? '—'}</td>
+                              <tr key={attempt.score_id} className="hover:bg-gray-50">
+                                <td className="py-2.5 px-3 font-medium text-gray-800">{attempt.enrollment_id ?? '—'}</td>
                                 <td className="py-2.5 px-3">
                                   <span className={`font-bold ${pct >= 75 ? 'text-green-600' : pct >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>
-                                    {attempt.score}/{totalItems}
+                                    {attempt.calculated_score}/{totalItems}
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3">
@@ -320,16 +312,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                                   </div>
                                 </td>
                                 <td className="py-2.5 px-3 text-xs text-gray-400">
-                                  {new Date(attempt.scanned_at).toLocaleDateString()}
-                                </td>
-                                <td className="py-2.5 px-3">
-                                  <button
-                                    onClick={() => handleDeleteAttempt(attempt.attempt_id)}
-                                    className="p-1 text-gray-300 hover:text-red-500 transition-colors"
-                                    title="Remove"
-                                  >
-                                    <IconTrash className="w-4 h-4" />
-                                  </button>
+                                  {new Date(attempt.graded_at).toLocaleDateString()}
                                 </td>
                               </tr>
                             );
