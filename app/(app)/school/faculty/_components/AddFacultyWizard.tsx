@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import {
@@ -13,8 +13,6 @@ import {
   Text,
   ThemeIcon,
   Title,
-  Skeleton,
-  Box,
   rem,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -32,13 +30,13 @@ import StepAssignGradeSection from "./StepAssignGradeSection";
 import StepAssignSubject from "./StepAssignSubject";
 import StepReview from "./StepReview";
 import {
-  fetchWizardData,
   assignAcademicLoad,
 } from "../_lib/teachingLoadService";
 import type { AddFacultyForm, WizardData } from "../_lib/teachingLoadService";
 
 interface AddFacultyWizardProps {
   facultyUid: string;
+  initialData: WizardData;
 }
 
 // ─── Blocker ──────────────────────────────────────────────────────────────────
@@ -84,161 +82,32 @@ function WizardBlocker({
 
 const TOTAL_STEPS = 4;
 
-function StepperItemSkeleton() {
-  return (
-    <Group align="flex-start" gap="sm" mb="xl" wrap="nowrap">
-      <Skeleton height={36} width={36} circle />
-      <Box pt={4}>
-        <Skeleton height={12} width={60} mb={6} radius="sm" />
-        <Skeleton height={10} width={100} radius="sm" />
-      </Box>
-    </Group>
-  );
-}
-
-function GradeLevelBarSkeleton() {
-  return (
-    <Box mb="xs">
-      <Skeleton height={40} radius={8} mb={6} />
-    </Box>
-  );
-}
-
-function WizardSkeleton({ isMobile }: { isMobile: boolean | undefined }) {
-  const stepperColumn = (
-    <Box>
-      <StepperItemSkeleton />
-      <StepperItemSkeleton />
-      <StepperItemSkeleton />
-      <StepperItemSkeleton />
-    </Box>
-  );
-
-  const contentColumn = (
-    <Box>
-      {/* Title */}
-      <Skeleton height={24} width="45%" mb="xs" radius="sm" />
-      {/* Subtitle */}
-      <Skeleton height={14} width="65%" mb="lg" radius="sm" />
-
-      {/* Card */}
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
-        <GradeLevelBarSkeleton />
-        {/* Rows under first bar */}
-        <Box pl="md" mb="md">
-          {[1, 2, 3].map((i) => (
-            <Group key={i} mb="xs" gap="xs" align="center">
-              <Skeleton height={16} width={16} radius="sm" />
-              <Skeleton height={14} width={120} radius="sm" />
-            </Group>
-          ))}
-        </Box>
-
-        <GradeLevelBarSkeleton />
-        <Box pl="md" mb="md">
-          {[1, 2].map((i) => (
-            <Group key={i} mb="xs" gap="xs" align="center">
-              <Skeleton height={16} width={16} radius="sm" />
-              <Skeleton height={14} width={100} radius="sm" />
-            </Group>
-          ))}
-        </Box>
-
-        <GradeLevelBarSkeleton />
-      </Box>
-
-      {/* Nav buttons */}
-      <Group justify="flex-end" mt="xl" gap="sm">
-        <Skeleton height={36} width={80} radius="sm" />
-        <Skeleton height={36} width={80} radius="sm" />
-      </Group>
-    </Box>
-  );
-
-  if (isMobile) {
-    return (
-      <Container fluid py="xl">
-        {stepperColumn}
-        {contentColumn}
-      </Container>
-    );
-  }
-
-  return (
-    <Container fluid py="xl">
-      <div style={{ display: "flex", gap: rem(32) }}>
-        <div style={{ flexShrink: 0, width: "20%" }}>{stepperColumn}</div>
-        <div style={{ flex: 1, width: "70%" }}>{contentColumn}</div>
-      </div>
-    </Container>
-  );
-}
-
-export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) {
+export default function AddFacultyWizard({ facultyUid, initialData }: AddFacultyWizardProps) {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 768px)");
 
-  const [wizardData, setWizardData] = useState<WizardData | null>(null);
-  const [loadingData, setLoadingData] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+
+  // Pre-populate form from server-fetched data
+  const advisoryId = initialData.current_advisory_section_id;
+  const currentSections = [
+    ...new Set(initialData.current_teaching_assignments.map((a) => a.section_id)),
+  ];
+  const currentSubjectAssignments = currentSections.map((sectionId) => ({
+    section_id: sectionId,
+    subject_ids: initialData.current_teaching_assignments
+      .filter((a) => a.section_id === sectionId)
+      .map((a) => a.subject_id),
+  }));
 
   const form = useForm<AddFacultyForm>({
     initialValues: {
       activeStep: 0,
-      advisory_section_id: null,
-      selected_sections: [],
-      subject_assignments: [],
+      advisory_section_id: advisoryId,
+      selected_sections: currentSections,
+      subject_assignments: currentSubjectAssignments,
     },
   });
-
-  useEffect(() => {
-    loadData();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facultyUid]);
-
-  async function loadData() {
-    try {
-      setLoadingData(true);
-      const data = await fetchWizardData(facultyUid);
-      setWizardData(data);
-
-      // Pre-populate with current assignments
-      const advisoryId = data.current_advisory_section_id;
-      const currentSections = [
-        ...new Set(data.current_teaching_assignments.map((a) => a.section_id)),
-      ];
-      const currentSubjectAssignments = currentSections.map((sectionId) => ({
-        section_id: sectionId,
-        subject_ids: data.current_teaching_assignments
-          .filter((a) => a.section_id === sectionId)
-          .map((a) => a.subject_id),
-      }));
-
-      form.setValues({
-        activeStep: 0,
-        advisory_section_id: advisoryId,
-        selected_sections: currentSections,
-        subject_assignments: currentSubjectAssignments,
-      });
-      form.resetDirty({
-        activeStep: 0,
-        advisory_section_id: advisoryId,
-        selected_sections: currentSections,
-        subject_assignments: currentSubjectAssignments,
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to load faculty data.";
-      notifications.show({
-        title: "Error",
-        message,
-        color: "red",
-        autoClose: false,
-      });
-    } finally {
-      setLoadingData(false);
-    }
-  }
 
   // Sync subject_assignments when selected_sections changes (add/remove rows)
   function syncSubjectAssignments(selectedSections: number[]) {
@@ -312,10 +181,10 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
   };
 
   const handleAssign = () => {
-    if (!wizardData?.active_sy_id) return;
+    if (!initialData?.active_sy_id) return;
 
-    const facultyName = wizardData.faculty
-      ? `${wizardData.faculty.first_name} ${wizardData.faculty.last_name}`
+    const facultyName = initialData.faculty
+      ? `${initialData.faculty.first_name} ${initialData.faculty.last_name}`
       : "this faculty";
 
     const totalSubjects = form.values.subject_assignments.reduce(
@@ -344,7 +213,7 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
   };
 
   const submitForm = async () => {
-    if (!wizardData?.active_sy_id) return;
+    if (!initialData?.active_sy_id) return;
 
     try {
       setSubmitting(true);
@@ -359,7 +228,7 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
 
       await assignAcademicLoad({
         faculty_id: facultyUid,
-        sy_id: wizardData.active_sy_id,
+        sy_id: initialData.active_sy_id,
         advisory_section_id: form.values.advisory_section_id,
         subject_assignments: flatSubjectAssignments,
       });
@@ -400,18 +269,12 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
     return false;
   })();
 
-  if (loadingData) {
-    return <WizardSkeleton isMobile={isMobile} />;
-  }
-
-  if (!wizardData) return null;
-
   const goBack = () => {
     router.replace("/school/faculty");
     router.refresh();
   };
 
-  if (!wizardData.active_sy_id) {
+  if (!initialData.active_sy_id) {
     return (
       <WizardBlocker
         icon={<IconCalendarOff size={30} />}
@@ -423,7 +286,7 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
     );
   }
 
-  if (wizardData.sections.length === 0) {
+  if (initialData.sections.length === 0) {
     return (
       <WizardBlocker
         icon={<IconLayoutOff size={30} />}
@@ -435,7 +298,7 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
     );
   }
 
-  if (wizardData.subjects_by_grade_level.length === 0) {
+  if (initialData.subjects_by_grade_level.length === 0) {
     return (
       <WizardBlocker
         icon={<IconBookOff size={30} />}
@@ -447,8 +310,8 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
     );
   }
 
-  const facultyName = wizardData.faculty
-    ? `${wizardData.faculty.first_name} ${wizardData.faculty.last_name}`
+  const facultyName = initialData.faculty
+    ? `${initialData.faculty.first_name} ${initialData.faculty.last_name}`
     : "";
 
   const stepContent = (() => {
@@ -457,8 +320,8 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
         return (
           <StepAssignAdvisory
             form={form}
-            gradeLevels={wizardData.grade_levels}
-            sections={wizardData.sections}
+            gradeLevels={initialData.grade_levels}
+            sections={initialData.sections}
             facultyUid={facultyUid}
           />
         );
@@ -466,10 +329,10 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
         return (
           <StepAssignGradeSection
             form={form}
-            gradeLevels={wizardData.grade_levels}
-            sections={wizardData.sections}
-            subjectsByGradeLevel={wizardData.subjects_by_grade_level}
-            allAssignments={wizardData.all_assignments}
+            gradeLevels={initialData.grade_levels}
+            sections={initialData.sections}
+            subjectsByGradeLevel={initialData.subjects_by_grade_level}
+            allAssignments={initialData.all_assignments}
             facultyUid={facultyUid}
           />
         );
@@ -477,10 +340,10 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
         return (
           <StepAssignSubject
             form={form}
-            gradeLevels={wizardData.grade_levels}
-            sections={wizardData.sections}
-            subjectsByGradeLevel={wizardData.subjects_by_grade_level}
-            allAssignments={wizardData.all_assignments}
+            gradeLevels={initialData.grade_levels}
+            sections={initialData.sections}
+            subjectsByGradeLevel={initialData.subjects_by_grade_level}
+            allAssignments={initialData.all_assignments}
             facultyUid={facultyUid}
           />
         );
@@ -489,9 +352,9 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
           <StepReview
             form={form}
             facultyName={facultyName}
-            gradeLevels={wizardData.grade_levels}
-            sections={wizardData.sections}
-            subjectsByGradeLevel={wizardData.subjects_by_grade_level}
+            gradeLevels={initialData.grade_levels}
+            sections={initialData.sections}
+            subjectsByGradeLevel={initialData.subjects_by_grade_level}
           />
         );
       default:
@@ -523,8 +386,8 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
         <Button
           onClick={handleAssign}
           loading={submitting}
-          disabled={!wizardData.active_sy_id}
-          style={wizardData.active_sy_id ? { backgroundColor: "#4EAE4A" } : undefined}
+          disabled={!initialData.active_sy_id}
+          style={initialData.active_sy_id ? { backgroundColor: "#4EAE4A" } : undefined}
         >
           Assign Academic Load
         </Button>
@@ -544,28 +407,28 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
             <Stepper.Step label="Step 1" description="Advisory Class">
               <StepAssignAdvisory
                 form={form}
-                gradeLevels={wizardData.grade_levels}
-                sections={wizardData.sections}
+                gradeLevels={initialData.grade_levels}
+                sections={initialData.sections}
                 facultyUid={facultyUid}
               />
             </Stepper.Step>
             <Stepper.Step label="Step 2" description="Grade & Section">
               <StepAssignGradeSection
                 form={form}
-                gradeLevels={wizardData.grade_levels}
-                sections={wizardData.sections}
-                subjectsByGradeLevel={wizardData.subjects_by_grade_level}
-                allAssignments={wizardData.all_assignments}
+                gradeLevels={initialData.grade_levels}
+                sections={initialData.sections}
+                subjectsByGradeLevel={initialData.subjects_by_grade_level}
+                allAssignments={initialData.all_assignments}
                 facultyUid={facultyUid}
               />
             </Stepper.Step>
             <Stepper.Step label="Step 3" description="Assign Subjects">
               <StepAssignSubject
                 form={form}
-                gradeLevels={wizardData.grade_levels}
-                sections={wizardData.sections}
-                subjectsByGradeLevel={wizardData.subjects_by_grade_level}
-                allAssignments={wizardData.all_assignments}
+                gradeLevels={initialData.grade_levels}
+                sections={initialData.sections}
+                subjectsByGradeLevel={initialData.subjects_by_grade_level}
+                allAssignments={initialData.all_assignments}
                 facultyUid={facultyUid}
               />
             </Stepper.Step>
@@ -573,9 +436,9 @@ export default function AddFacultyWizard({ facultyUid }: AddFacultyWizardProps) 
               <StepReview
                 form={form}
                 facultyName={facultyName}
-                gradeLevels={wizardData.grade_levels}
-                sections={wizardData.sections}
-                subjectsByGradeLevel={wizardData.subjects_by_grade_level}
+                gradeLevels={initialData.grade_levels}
+                sections={initialData.sections}
+                subjectsByGradeLevel={initialData.subjects_by_grade_level}
               />
             </Stepper.Step>
           </Stepper>

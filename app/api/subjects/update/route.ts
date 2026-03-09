@@ -42,7 +42,7 @@ export async function PATCH(request: Request) {
 
   // 4. Parse payload
   const body = await request.json();
-  const { subject_id, code, name, description, grade_level_ids } = body;
+  const { subject_id, code, name, description, section_type, grade_level_ids } = body;
 
   const subjectId = parseInt(String(subject_id), 10);
   if (isNaN(subjectId) || subjectId <= 0) {
@@ -53,6 +53,9 @@ export async function PATCH(request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  const sectionType: "REGULAR" | "SSES" =
+    section_type === "SSES" ? "SSES" : "REGULAR";
+
   // 5. Atomic RPC — duplicate check + update + grade level replacement in one transaction
   // The duplicate check (excluding this subject) is handled inside the RPC itself
   const { error } = await adminClient.rpc("update_subject_with_grade_levels", {
@@ -60,6 +63,7 @@ export async function PATCH(request: Request) {
     p_code: code.trim(),
     p_name: name.trim(),
     p_description: description.trim(),
+    p_section_type: sectionType,
     p_grade_level_ids: Array.isArray(grade_level_ids) ? grade_level_ids : [],
   });
 

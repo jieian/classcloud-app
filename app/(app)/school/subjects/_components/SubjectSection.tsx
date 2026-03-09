@@ -25,6 +25,7 @@ export function SubjectSection() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [gradeLevels, setGradeLevels] = useState<GradeLevelWithCount[]>([]);
+  const [totalSubjectCount, setTotalSubjectCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalOpened, { open: openModal, close: closeModal }] =
@@ -38,8 +39,9 @@ export function SubjectSection() {
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchGradeLevelsWithSubjectCount();
+      const { gradeLevels: data, totalSubjectCount: total } = await fetchGradeLevelsWithSubjectCount();
       setGradeLevels(data);
+      setTotalSubjectCount(total);
     } catch (err) {
       setError("Failed to load subjects. Please try again.");
       console.error(err);
@@ -47,11 +49,6 @@ export function SubjectSection() {
       setLoading(false);
     }
   }
-
-  const totalSubjectCount = gradeLevels.reduce(
-    (sum, gl) => sum + gl.subject_count,
-    0,
-  );
 
   const filteredGradeLevels = useMemo(() => {
     if (!search.trim()) return gradeLevels;

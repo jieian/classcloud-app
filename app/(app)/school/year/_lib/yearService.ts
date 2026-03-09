@@ -72,7 +72,7 @@ export async function getQuartersByYear(sy_id: number): Promise<Quarter[]> {
  * Throws a DuplicateYearError if another school year with the same range exists.
  */
 /*
- * Soft-deletes a school year and inactivates all its quarters atomically
+ * Soft-deletes a school year and inactivates all its terms atomically
  * via the secure API route (uses service role + RPC).
  */
 export async function deleteSchoolYear(sy_id: number): Promise<void> {
@@ -97,8 +97,8 @@ export class DuplicateYearError extends Error {
 }
 
 /*
- * Creates a new school year and 4 default quarters atomically via RPC.
- * Both the year and all quarters are inactive by default.
+ * Creates a new school year and 3 default terms atomically via RPC.
+ * Both the year and all terms are inactive by default.
  * Throws a DuplicateYearError if the year range already exists.
  */
 export async function createSchoolYear(

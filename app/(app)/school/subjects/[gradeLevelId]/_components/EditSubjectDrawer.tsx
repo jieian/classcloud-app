@@ -8,6 +8,7 @@ import {
   Drawer,
   Grid,
   Group,
+  SegmentedControl,
   Skeleton,
   Stack,
   Text,
@@ -18,7 +19,7 @@ import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { getSupabase } from "@/lib/supabase/client";
-import type { SubjectRow } from "../../_lib/subjectService";
+import type { SubjectRow, SectionType } from "../../_lib/subjectService";
 
 interface EditSubjectDrawerProps {
   opened: boolean;
@@ -53,11 +54,13 @@ export default function EditSubjectDrawer({
 }: EditSubjectDrawerProps) {
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
+  const [sectionType, setSectionType] = useState<SectionType>("REGULAR");
   const [loadingGradeLevels, setLoadingGradeLevels] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Track initial grade levels to detect dirty state
+  // Track initial values to detect dirty state
   const initialGradeLevelIds = useRef<string[]>([]);
+  const initialSectionType = useRef<SectionType>("REGULAR");
 
   const form = useForm({
     initialValues: {
@@ -99,6 +102,8 @@ export default function EditSubjectDrawer({
         name: subject.name,
         description: subject.description ?? "",
       });
+      setSectionType(subject.section_type);
+      initialSectionType.current = subject.section_type;
       loadGradeLevels(subject.subject_id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,7 +146,7 @@ export default function EditSubjectDrawer({
     JSON.stringify([...selectedGradeLevels].sort()) !==
     JSON.stringify([...initialGradeLevelIds.current].sort());
 
-  const isAnythingDirty = form.isDirty() || gradeLevelsDirty;
+  const isAnythingDirty = form.isDirty() || gradeLevelsDirty || sectionType !== initialSectionType.current;
 
   function handleClose() {
     if (isAnythingDirty) {
@@ -178,6 +183,7 @@ export default function EditSubjectDrawer({
       description: subject.description ?? "",
     });
     setSelectedGradeLevels([...initialGradeLevelIds.current]);
+    setSectionType(initialSectionType.current);
   }
 
   function handleSave() {
@@ -220,6 +226,7 @@ export default function EditSubjectDrawer({
           code: form.values.code.trim(),
           name: toTitleCase(form.values.name),
           description: form.values.description.trim(),
+          section_type: sectionType,
           grade_level_ids: selectedGradeLevels.map(Number),
         }),
       });
@@ -305,7 +312,23 @@ export default function EditSubjectDrawer({
             required
             autosize
             minRows={3}
+            mb="md"
             {...form.getInputProps("description")}
+          />
+
+          <Text size="sm" fw={500} mb={6}>
+            Curriculum
+          </Text>
+          <SegmentedControl
+            value={sectionType}
+            onChange={(val) => setSectionType(val as SectionType)}
+            data={[
+              { label: "Regular", value: "REGULAR" },
+              { label: "SSES", value: "SSES" },
+            ]}
+            color={sectionType === "SSES" ? "blue" : "gray"}
+            radius="md"
+            fullWidth
           />
         </Grid.Col>
 

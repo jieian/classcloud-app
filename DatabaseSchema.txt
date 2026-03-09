@@ -1,0 +1,230 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.enrollments (
+  enrollment_id integer NOT NULL DEFAULT nextval('enrollments_enrollment_id_seq'::regclass),
+  section_id integer,
+  sy_id integer,
+  lrn text,
+  deleted_at timestamp with time zone,
+  CONSTRAINT enrollments_pkey PRIMARY KEY (enrollment_id),
+  CONSTRAINT enrollments_lrn_fkey FOREIGN KEY (lrn) REFERENCES public.students(lrn),
+  CONSTRAINT enrollments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
+  CONSTRAINT enrollments_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.exam_assignments (
+  id integer NOT NULL DEFAULT nextval('exam_assignments_id_seq'::regclass),
+  exam_id integer,
+  section_id integer,
+  CONSTRAINT exam_assignments_pkey PRIMARY KEY (id),
+  CONSTRAINT exam_assignments_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
+  CONSTRAINT exam_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
+);
+CREATE TABLE public.exams (
+  exam_id integer NOT NULL DEFAULT nextval('exams_exam_id_seq'::regclass),
+  title character varying NOT NULL,
+  description text,
+  total_items integer NOT NULL,
+  answer_key jsonb,
+  exam_date date NOT NULL,
+  is_locked boolean DEFAULT false,
+  subject_id integer,
+  creator_teacher_id uuid,
+  quarter_id integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT exams_pkey PRIMARY KEY (exam_id),
+  CONSTRAINT exams_creator_teacher_id_fkey FOREIGN KEY (creator_teacher_id) REFERENCES public.users(uid),
+  CONSTRAINT exams_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
+  CONSTRAINT exams_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
+);
+CREATE TABLE public.grade_level_coordinators (
+  glc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  grade_level_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT grade_level_coordinators_pkey PRIMARY KEY (glc_id),
+  CONSTRAINT grade_level_coordinators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT grade_level_coordinators_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT grade_level_coordinators_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.grade_levels (
+  grade_level_id integer NOT NULL DEFAULT nextval('grade_levels_grade_level_id_seq'::regclass),
+  level_number integer NOT NULL UNIQUE,
+  display_name character varying NOT NULL,
+  CONSTRAINT grade_levels_pkey PRIMARY KEY (grade_level_id)
+);
+CREATE TABLE public.permissions (
+  permission_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name character varying NOT NULL UNIQUE,
+  description text,
+  CONSTRAINT permissions_pkey PRIMARY KEY (permission_id)
+);
+CREATE TABLE public.quarters (
+  quarter_id integer NOT NULL DEFAULT nextval('quarters_quarter_id_seq'::regclass),
+  name character varying NOT NULL,
+  sy_id integer NOT NULL,
+  is_active boolean NOT NULL DEFAULT false,
+  CONSTRAINT quarters_pkey PRIMARY KEY (quarter_id),
+  CONSTRAINT quarters_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.role_permissions (
+  role_id integer NOT NULL,
+  permission_id integer NOT NULL,
+  CONSTRAINT role_permissions_pkey PRIMARY KEY (role_id, permission_id),
+  CONSTRAINT role_permissions_permission_id_fkey FOREIGN KEY (permission_id) REFERENCES public.permissions(permission_id),
+  CONSTRAINT role_permissions_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id)
+);
+CREATE TABLE public.roles (
+  role_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name character varying NOT NULL DEFAULT '50'::character varying UNIQUE,
+  is_faculty boolean NOT NULL DEFAULT false,
+  CONSTRAINT roles_pkey PRIMARY KEY (role_id)
+);
+CREATE TABLE public.school_years (
+  sy_id integer NOT NULL DEFAULT nextval('school_years_sy_id_seq'::regclass),
+  is_active boolean NOT NULL DEFAULT false,
+  end_year integer NOT NULL,
+  start_year integer NOT NULL,
+  year_range character varying DEFAULT ((start_year || '-'::text) || end_year),
+  deleted_at timestamp with time zone,
+  CONSTRAINT school_years_pkey PRIMARY KEY (sy_id)
+);
+CREATE TABLE public.scores (
+  score_id integer NOT NULL DEFAULT nextval('scores_score_id_seq'::regclass),
+  enrollment_id integer,
+  exam_assignment_id integer,
+  responses jsonb NOT NULL,
+  calculated_score integer NOT NULL,
+  graded_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT scores_pkey PRIMARY KEY (score_id),
+  CONSTRAINT scores_enrollment_id_fkey FOREIGN KEY (enrollment_id) REFERENCES public.enrollments(enrollment_id),
+  CONSTRAINT scores_exam_assignment_id_fkey FOREIGN KEY (exam_assignment_id) REFERENCES public.exam_assignments(id)
+);
+CREATE TABLE public.section_transfer_requests (
+  request_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  lrn text NOT NULL,
+  from_section_id integer NOT NULL,
+  to_section_id integer NOT NULL,
+  requested_by uuid NOT NULL,
+  reviewed_by uuid,
+  originally_intended_reviewer uuid,
+  status USER-DEFINED NOT NULL DEFAULT 'PENDING'::transfer_request_status,
+  cancellation_reason USER-DEFINED,
+  expires_at timestamp with time zone NOT NULL DEFAULT (now() + '30 days'::interval),
+  requested_at timestamp with time zone NOT NULL DEFAULT now(),
+  reviewed_at timestamp with time zone,
+  notes text,
+  CONSTRAINT section_transfer_requests_pkey PRIMARY KEY (request_id),
+  CONSTRAINT section_transfer_requests_from_section_id_fkey FOREIGN KEY (from_section_id) REFERENCES public.sections(section_id),
+  CONSTRAINT section_transfer_requests_lrn_fkey FOREIGN KEY (lrn) REFERENCES public.students(lrn),
+  CONSTRAINT section_transfer_requests_originally_intended_reviewer_fkey FOREIGN KEY (originally_intended_reviewer) REFERENCES public.users(uid),
+  CONSTRAINT section_transfer_requests_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES public.users(uid),
+  CONSTRAINT section_transfer_requests_reviewed_by_fkey FOREIGN KEY (reviewed_by) REFERENCES public.users(uid),
+  CONSTRAINT section_transfer_requests_to_section_id_fkey FOREIGN KEY (to_section_id) REFERENCES public.sections(section_id)
+);
+CREATE TABLE public.sections (
+  section_id integer NOT NULL DEFAULT nextval('sections_section_id_seq'::regclass),
+  name character varying NOT NULL,
+  grade_level_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  adviser_id uuid,
+  section_type USER-DEFINED NOT NULL DEFAULT 'REGULAR'::section_type_enum,
+  deleted_at timestamp with time zone,
+  CONSTRAINT sections_pkey PRIMARY KEY (section_id),
+  CONSTRAINT sections_adviser_id_fkey FOREIGN KEY (adviser_id) REFERENCES public.users(uid),
+  CONSTRAINT sections_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT sections_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.students (
+  lrn text NOT NULL,
+  last_name character varying NOT NULL,
+  first_name character varying NOT NULL,
+  middle_name character varying,
+  full_name character varying DEFAULT ((((last_name)::text || ', '::text) || (first_name)::text) ||
+CASE
+    WHEN (middle_name IS NOT NULL) THEN (', '::text || (middle_name)::text)
+    ELSE ''::text
+END),
+  sex character NOT NULL CHECK (sex = ANY (ARRAY['M'::bpchar, 'F'::bpchar])),
+  deleted_at timestamp with time zone,
+  CONSTRAINT students_pkey PRIMARY KEY (lrn)
+);
+CREATE TABLE public.subject_coordinators (
+  sc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  subject_group_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT subject_coordinators_pkey PRIMARY KEY (sc_id),
+  CONSTRAINT subject_coordinators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT subject_coordinators_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
+  CONSTRAINT subject_coordinators_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.subject_grade_levels (
+  subject_id integer NOT NULL,
+  grade_level_id integer NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT subject_grade_levels_pkey PRIMARY KEY (subject_id, grade_level_id),
+  CONSTRAINT subject_grade_levels_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT subject_grade_levels_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
+);
+CREATE TABLE public.subject_group_members (
+  subject_group_id integer NOT NULL,
+  subject_id integer NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, subject_id),
+  CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
+  CONSTRAINT subject_group_members_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
+);
+CREATE TABLE public.subject_groups (
+  subject_group_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name character varying NOT NULL UNIQUE,
+  description text,
+  deleted_at timestamp with time zone,
+  CONSTRAINT subject_groups_pkey PRIMARY KEY (subject_group_id)
+);
+CREATE TABLE public.subjects (
+  subject_id integer NOT NULL DEFAULT nextval('subjects_subject_id_seq'::regclass),
+  name character varying NOT NULL UNIQUE,
+  code character varying NOT NULL UNIQUE,
+  description text,
+  section_type USER-DEFINED NOT NULL DEFAULT 'REGULAR'::section_type_enum,
+  deleted_at timestamp with time zone,
+  CONSTRAINT subjects_pkey PRIMARY KEY (subject_id)
+);
+CREATE TABLE public.teacher_class_assignments (
+  id integer NOT NULL DEFAULT nextval('teacher_class_assignments_id_seq'::regclass),
+  teacher_id uuid,
+  section_id integer,
+  subject_id integer,
+  sy_id integer,
+  deleted_at timestamp with time zone,
+  CONSTRAINT teacher_class_assignments_pkey PRIMARY KEY (id),
+  CONSTRAINT teacher_class_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
+  CONSTRAINT teacher_class_assignments_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id),
+  CONSTRAINT teacher_class_assignments_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
+  CONSTRAINT teacher_class_assignments_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid)
+);
+CREATE TABLE public.user_roles (
+  uid uuid NOT NULL,
+  role_id integer NOT NULL,
+  CONSTRAINT user_roles_pkey PRIMARY KEY (uid, role_id),
+  CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id),
+  CONSTRAINT user_roles_uid_fkey FOREIGN KEY (uid) REFERENCES public.users(uid)
+);
+CREATE TABLE public.users (
+  uid uuid NOT NULL,
+  last_name character varying NOT NULL,
+  first_name character varying NOT NULL,
+  middle_name character varying,
+  active_status smallint NOT NULL DEFAULT 0 CHECK (active_status = ANY (ARRAY[0, 1])),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT users_pkey PRIMARY KEY (uid),
+  CONSTRAINT users_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
+);

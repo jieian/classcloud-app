@@ -2,7 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
+import {
+  Text,
+  ActionIcon,
+  Button,
+  Group,
+  SegmentedControl,
+  Tooltip,
+} from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
@@ -11,6 +18,7 @@ import CreateSubjectModal from "../../_components/CreateSubjectModal";
 import SubjectTableWrapper, {
   type SubjectTableWrapperRef,
 } from "./SubjectTableWrapper";
+import type { SectionType } from "../../_lib/subjectService";
 
 interface ManageSubjectSectionProps {
   gradeLevelId: number;
@@ -23,13 +31,16 @@ export function ManageSubjectSection({
   const [subjectCount, setSubjectCount] = useState<number | null>(null);
   const [gradeLevelDisplay, setGradeLevelDisplay] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [sectionType, setSectionType] = useState<SectionType>("REGULAR");
   const [modalOpened, { open: openModal, close: closeModal }] =
     useDisclosure(false);
   const tableRef = useRef<SubjectTableWrapperRef>(null);
 
   return (
     <>
-      <BackButton mb="md" onClick={() => router.push("/school/subjects")}>Back to Subjects</BackButton>
+      <BackButton mb="md" onClick={() => router.push("/school/subjects")}>
+        Back to Subjects
+      </BackButton>
       <Group justify="space-between">
         <h1 className="mb-3 text-2xl font-bold">
           Subjects{" "}
@@ -56,6 +67,7 @@ export function ManageSubjectSection({
           value={search}
           onChange={(e) => setSearch(e.currentTarget.value)}
         />
+
         <Tooltip label="Refresh" position="bottom" withArrow>
           <ActionIcon
             variant="outline"
@@ -69,17 +81,32 @@ export function ManageSubjectSection({
           </ActionIcon>
         </Tooltip>
       </Group>
+      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+        <Text>Curriculum:</Text>
+        <SegmentedControl
+          value={sectionType}
+          onChange={(val) => setSectionType(val as SectionType)}
+          data={[
+            { label: "Regular", value: "REGULAR" },
+            { label: "SSES", value: "SSES" },
+          ]}
+          color={sectionType === "SSES" ? "blue" : "gray"}
+          radius="md"
+        />
+      </Group>
 
       <CreateSubjectModal
         opened={modalOpened}
         onClose={closeModal}
         onSuccess={() => tableRef.current?.refresh()}
         preselectedGradeLevelId={gradeLevelId}
+        preselectedSectionType={sectionType}
       />
 
       <SubjectTableWrapper
         ref={tableRef}
         gradeLevelId={gradeLevelId}
+        sectionType={sectionType}
         search={search}
         onCountChange={setSubjectCount}
         onGradeLevelDisplay={setGradeLevelDisplay}

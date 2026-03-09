@@ -8,6 +8,7 @@ import {
   Collapse,
   Group,
   Modal,
+  SegmentedControl,
   Skeleton,
   Stack,
   Text,
@@ -19,6 +20,7 @@ import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconChevronDown } from "@tabler/icons-react";
 import { getSupabase } from "@/lib/supabase/client";
+import type { SectionType } from "../_lib/subjectService";
 
 interface GradeLevel {
   grade_level_id: number;
@@ -31,6 +33,7 @@ interface CreateSubjectModalProps {
   onClose: () => void;
   onSuccess: () => void;
   preselectedGradeLevelId?: number;
+  preselectedSectionType?: SectionType;
 }
 
 // Only letters, numbers, and spaces — no symbols
@@ -50,10 +53,12 @@ export default function CreateSubjectModal({
   onClose,
   onSuccess,
   preselectedGradeLevelId,
+  preselectedSectionType = "REGULAR",
 }: CreateSubjectModalProps) {
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [gradeLevelsExpanded, setGradeLevelsExpanded] = useState(false);
   const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
+  const [sectionType, setSectionType] = useState<SectionType>(preselectedSectionType);
   const [loadingGradeLevels, setLoadingGradeLevels] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkingCode, setCheckingCode] = useState(false);
@@ -92,6 +97,7 @@ export default function CreateSubjectModal({
       setSelectedGradeLevels(
         preselectedGradeLevelId ? [String(preselectedGradeLevelId)] : [],
       );
+      setSectionType(preselectedSectionType);
       setGradeLevelsExpanded(false);
       loadGradeLevels();
     }
@@ -126,7 +132,7 @@ export default function CreateSubjectModal({
     const res = await fetch("/api/subjects/check-code", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, section_type: sectionType }),
     });
 
     if (res.ok) return true;
@@ -194,6 +200,7 @@ export default function CreateSubjectModal({
           code: form.values.code.trim(),
           name: toTitleCase(form.values.name),
           description: form.values.description.trim(),
+          section_type: sectionType,
           grade_level_ids: selectedGradeLevels.map(Number),
         }),
       });
@@ -275,6 +282,23 @@ export default function CreateSubjectModal({
           minRows={3}
           {...form.getInputProps("description")}
         />
+
+        <Box>
+          <Text size="sm" fw={500} mb={6}>
+            Curriculum
+          </Text>
+          <SegmentedControl
+            value={sectionType}
+            onChange={(val) => setSectionType(val as SectionType)}
+            data={[
+              { label: "Regular", value: "REGULAR" },
+              { label: "SSES", value: "SSES" },
+            ]}
+            color={sectionType === "SSES" ? "blue" : "gray"}
+            radius="md"
+            fullWidth
+          />
+        </Box>
 
         <Box
           style={{

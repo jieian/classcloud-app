@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Text, Table, Group, Pagination } from "@mantine/core";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { UseFormReturnType } from "@mantine/form";
 import type {
   AddFacultyForm,
@@ -37,6 +37,7 @@ export default function StepReview({
   subjectsByGradeLevel,
 }: StepReviewProps) {
   const [page, setPage] = useState(1);
+  useEffect(() => { setPage(1); }, [form.values.subject_assignments]);
 
   // O(1) lookup maps built once from static props
   const sectionMap = useMemo(
@@ -60,20 +61,31 @@ export default function StepReview({
     ? gradeLevelMap.get(advisorySection.grade_level_id) ?? null
     : null;
 
-  const academicLoadRows = form.values.subject_assignments.map((assignment) => {
-    const section = sectionMap.get(assignment.section_id);
-    const gradeLevel = section ? gradeLevelMap.get(section.grade_level_id) : null;
-    const subjectNames = assignment.subject_ids.map((sid) => {
-      const subj = subjectMap.get(sid);
-      return subj ? subj.name : `Subject ${sid}`;
-    });
-    return {
-      key: assignment.section_id,
-      grade_level: gradeLevel?.display_name ?? "—",
-      section_name: section?.name ?? "—",
-      subjects: formatSubjects(subjectNames),
-    };
-  });
+  const academicLoadRows = useMemo(() => {
+    return [...form.values.subject_assignments]
+      .sort((a, b) => {
+        const sa = sectionMap.get(a.section_id);
+        const sb = sectionMap.get(b.section_id);
+        const glA = sa ? (gradeLevelMap.get(sa.grade_level_id)?.level_number ?? 0) : 0;
+        const glB = sb ? (gradeLevelMap.get(sb.grade_level_id)?.level_number ?? 0) : 0;
+        if (glA !== glB) return glA - glB;
+        return (sa?.name ?? "").localeCompare(sb?.name ?? "");
+      })
+      .map((assignment) => {
+        const section = sectionMap.get(assignment.section_id);
+        const gradeLevel = section ? gradeLevelMap.get(section.grade_level_id) : null;
+        const subjectNames = assignment.subject_ids.map((sid) => {
+          const subj = subjectMap.get(sid);
+          return subj ? subj.name : `Subject ${sid}`;
+        });
+        return {
+          key: assignment.section_id,
+          grade_level: gradeLevel?.display_name ?? "—",
+          section_name: section?.name ?? "—",
+          subjects: formatSubjects(subjectNames),
+        };
+      });
+  }, [form.values.subject_assignments, sectionMap, gradeLevelMap, subjectMap]);
 
   const totalPages = Math.max(1, Math.ceil(academicLoadRows.length / PAGE_SIZE));
   const paginatedRows = academicLoadRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);

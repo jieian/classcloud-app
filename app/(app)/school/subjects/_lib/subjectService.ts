@@ -1,5 +1,7 @@
 import { getSupabase } from "@/lib/supabase/client";
 
+export type SectionType = "REGULAR" | "SSES";
+
 export interface GradeLevelWithCount {
   grade_level_id: number;
   level_number: number;
@@ -7,11 +9,17 @@ export interface GradeLevelWithCount {
   subject_count: number;
 }
 
+export interface GradeLevelsWithSubjectCountResult {
+  gradeLevels: GradeLevelWithCount[];
+  totalSubjectCount: number;
+}
+
 export interface SubjectRow {
   subject_id: number;
   code: string;
   name: string;
   description: string | null;
+  section_type: SectionType;
   teachers: string[];
 }
 
@@ -21,38 +29,24 @@ interface GradeLevelRow {
   display_name: string;
 }
 
-interface SubjectBaseRow {
-  subject_id: number;
-  code: string;
-  name: string;
-  description: string | null;
-}
 
 interface SubjectRecord {
   subject_id: number;
   name: string;
   code: string;
   description: string | null;
+  section_type: SectionType;
   deleted_at: string | null;
 }
 
 interface SubjectGradeLevelCountRecord {
   grade_level_id: number | null;
-  subjects: Pick<SubjectRecord, "deleted_at"> | Pick<SubjectRecord, "deleted_at">[] | null;
-}
-
-interface SubjectGradeLevelDetailRecord {
   subject_id: number;
-  subjects: SubjectRecord | SubjectRecord[] | null;
-}
-
-interface ActiveSchoolYearRecord {
-  sy_id: number;
+  subjects: Pick<SubjectRecord, "deleted_at"> | Pick<SubjectRecord, "deleted_at">[] | null;
 }
 
 interface TeacherAssignmentWithUser {
   subject_id: number;
-  teacher_id: string;
   users:
     | {
         first_name: string | null;
@@ -65,149 +59,141 @@ interface TeacherAssignmentWithUser {
     | null;
 }
 
-export async function fetchGradeLevelsWithSubjectCount(): Promise<GradeLevelWithCount[]> {
+export async function fetchGradeLevelsWithSubjectCount(): Promise<GradeLevelsWithSubjectCountResult> {
   const supabase = getSupabase();
 
-  const [{ data: gradeLevels, error: glError }, { data: sglData, error: sglError }] =
-    await Promise.all([
-      supabase
-        .from("grade_levels")
-        .select("grade_level_id, level_number, display_name")
-        .order("level_number"),
-      supabase
-        .from("subject_grade_levels")
-        .select("grade_level_id, subjects(deleted_at)")
-        .is("deleted_at", null),
-    ]);
+  const [
+    { data: gradeLevels, error: glError },
+    { data: sglData, error: sglError },
+    { count: totalCount, error: totalError },
+  ] = await Promise.all([
+    supabase
+      .from("grade_levels")
+      .select("grade_level_id, level_number, display_name")
+      .order("level_number"),
+    supabase
+      .from("subject_grade_levels")
+      .select("grade_level_id, subject_id, subjects(deleted_at)")
+      .is("deleted_at", null),
+    supabase
+      .from("subjects")
+      .select("*", { count: "exact", head: true })
+      .is("deleted_at", null),
+  ]);
 
   if (glError) throw new Error(glError.message);
   if (sglError) throw new Error(sglError.message);
+  if (totalError) throw new Error(totalError.message);
 
-  // Count non-deleted subjects per grade level
-  const countMap: Record<number, number> = {};
+  // Count unique non-deleted subjects per grade level (deduplicate across section types)
+  const seenMap: Record<number, Set<number>> = {};
   for (const sgl of (sglData ?? []) as SubjectGradeLevelCountRecord[]) {
     if (typeof sgl.grade_level_id !== "number") continue;
-
     const raw = sgl.subjects;
     if (!raw) continue;
     const subjects = Array.isArray(raw) ? raw : [raw];
-    for (const s of subjects) {
-      if (s?.deleted_at !== null) continue;
-      countMap[sgl.grade_level_id] = (countMap[sgl.grade_level_id] ?? 0) + 1;
-    }
+    const subject = subjects[0];
+    if (!subject || subject.deleted_at !== null) continue;
+    if (!seenMap[sgl.grade_level_id]) seenMap[sgl.grade_level_id] = new Set();
+    seenMap[sgl.grade_level_id].add(sgl.subject_id);
+  }
+
+  const countMap: Record<number, number> = {};
+  for (const [glId, ids] of Object.entries(seenMap)) {
+    countMap[Number(glId)] = ids.size;
   }
 
   const gradeLevelRows = (gradeLevels ?? []) as GradeLevelRow[];
 
-  return gradeLevelRows.map((gl) => ({
-    grade_level_id: gl.grade_level_id,
-    level_number: gl.level_number,
-    display_name: gl.display_name,
-    subject_count: countMap[gl.grade_level_id] ?? 0,
-  }));
+  return {
+    gradeLevels: gradeLevelRows.map((gl) => ({
+      grade_level_id: gl.grade_level_id,
+      level_number: gl.level_number,
+      display_name: gl.display_name,
+      subject_count: countMap[gl.grade_level_id] ?? 0,
+    })),
+    totalSubjectCount: totalCount ?? 0,
+  };
 }
 
-export async function fetchSubjectsByGradeLevel(gradeLevelId: number): Promise<{
+// Phase 1: fast fetch — grade level name + subjects only (no teacher joins).
+export async function fetchSubjectsByGradeLevel(
+  gradeLevelId: number,
+  sectionType: SectionType = "REGULAR",
+): Promise<{
   gradeLevelDisplay: string;
   subjects: SubjectRow[];
 }> {
   const supabase = getSupabase();
 
-  // Fetch grade level display name, subjects, and active school year in parallel
+  // Two parallel queries: grade level name + subjects filtered in DB
   const [
     { data: glData, error: glError },
-    { data: sglData, error: sglError },
-    { data: syData, error: syError },
-  ] =
-    await Promise.all([
-      supabase
-        .from("grade_levels")
-        .select("display_name")
-        .eq("grade_level_id", gradeLevelId)
-        .maybeSingle(),
-      supabase
-        .from("subject_grade_levels")
-        .select("subject_id, subjects(subject_id, name, code, description, deleted_at)")
-        .eq("grade_level_id", gradeLevelId)
-        .is("deleted_at", null),
-      supabase
-        .from("school_years")
-        .select("sy_id")
-        .eq("is_active", true)
-        .maybeSingle(),
-    ]);
+    { data: subjectsData, error: subjectsError },
+  ] = await Promise.all([
+    supabase
+      .from("grade_levels")
+      .select("display_name")
+      .eq("grade_level_id", gradeLevelId)
+      .maybeSingle(),
+    // Query subjects directly: DB-side section_type + deleted_at filters,
+    // !inner join to subject_grade_levels to restrict to this grade level only,
+    // sorted in DB to avoid a JS sort pass.
+    supabase
+      .from("subjects")
+      .select("subject_id, name, code, description, section_type, subject_grade_levels!inner(grade_level_id)")
+      .eq("subject_grade_levels.grade_level_id", gradeLevelId)
+      .is("subject_grade_levels.deleted_at", null)
+      .eq("section_type", sectionType)
+      .is("deleted_at", null)
+      .order("code"),
+  ]);
 
   if (glError) throw new Error(glError.message);
-  if (sglError) throw new Error(sglError.message);
-  if (syError) throw new Error(syError.message);
+  if (subjectsError) throw new Error(subjectsError.message);
 
-  const subjects: SubjectBaseRow[] = ((sglData ?? []) as SubjectGradeLevelDetailRecord[]).flatMap((sgl) => {
-    const raw = sgl.subjects;
-    if (!raw) return [];
-    const arr = Array.isArray(raw) ? raw : [raw];
-    return arr
-      .filter((s) => s.deleted_at === null)
-      .map((s) => ({
-        subject_id: s.subject_id,
-        code: s.code,
-        name: s.name,
-        description: s.description ?? null,
-      }));
-  });
-
-  if (subjects.length === 0) {
-    return { gradeLevelDisplay: glData?.display_name ?? "", subjects: [] };
-  }
-
-  const activeSyId = (syData as ActiveSchoolYearRecord | null)?.sy_id ?? null;
-  const subjectIds = subjects.map((s) => s.subject_id);
-
-  let teacherAssignments: TeacherAssignmentWithUser[] = [];
-
-  if (activeSyId && subjectIds.length > 0) {
-    // Filtering deleted_at IS NULL excludes soft-deleted assignments, which also
-    // covers soft-deleted teachers (soft_delete_user_atomic stamps both).
-    const { data: assignmentData, error: assignmentError } = await supabase
-      .from("teacher_class_assignments")
-      .select(
-        "subject_id, teacher_id, users(first_name, last_name), sections!inner(grade_level_id)",
-      )
-      .eq("sy_id", activeSyId)
-      .eq("sections.grade_level_id", gradeLevelId)
-      .in("subject_id", subjectIds)
-      .is("deleted_at", null);
-
-    if (assignmentError) throw new Error(assignmentError.message);
-    teacherAssignments = (assignmentData ?? []) as TeacherAssignmentWithUser[];
-  }
-
-  // Map teachers to subjects with O(1) dedupe per subject.
-  const teachersBySubject = new Map<number, Set<string>>();
-  for (const assignment of teacherAssignments) {
-    const user = Array.isArray(assignment.users)
-      ? assignment.users[0]
-      : assignment.users;
-    const firstName = user?.first_name?.trim() ?? "";
-    const lastName = user?.last_name?.trim() ?? "";
-    const fullName = `${firstName} ${lastName}`.trim();
-    if (!fullName) continue;
-
-    if (!teachersBySubject.has(assignment.subject_id)) {
-      teachersBySubject.set(assignment.subject_id, new Set());
-    }
-    teachersBySubject.get(assignment.subject_id)?.add(fullName);
-  }
-
-  const rows: SubjectRow[] = subjects.map((s) => ({
+  const subjects: SubjectRow[] = (subjectsData ?? []).map((s: SubjectRecord) => ({
     subject_id: s.subject_id,
     code: s.code,
     name: s.name,
     description: s.description,
-    teachers: Array.from(teachersBySubject.get(s.subject_id) ?? []),
+    section_type: s.section_type as SectionType,
+    teachers: [],
   }));
 
-  return {
-    gradeLevelDisplay: glData?.display_name ?? "",
-    subjects: rows,
-  };
+  return { gradeLevelDisplay: glData?.display_name ?? "", subjects };
+}
+
+// Phase 2: background fetch — teacher assignments for the given subjects.
+// Filtered by grade_level (via sections join) and active school year (via school_years join).
+// deleted_at IS NULL covers soft-deleted assignments and soft-deleted teachers.
+export async function fetchTeachersForSubjects(
+  gradeLevelId: number,
+  subjectIds: number[],
+): Promise<Map<number, string[]>> {
+  if (subjectIds.length === 0) return new Map();
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("teacher_class_assignments")
+    .select(
+      "subject_id, users(first_name, last_name), sections!inner(grade_level_id), school_years!inner(is_active)",
+    )
+    .eq("sections.grade_level_id", gradeLevelId)
+    .eq("school_years.is_active", true)
+    .in("subject_id", subjectIds)
+    .is("deleted_at", null);
+
+  if (error) throw new Error(error.message);
+
+  const bySubject = new Map<number, Set<string>>();
+  for (const assignment of (data ?? []) as TeacherAssignmentWithUser[]) {
+    const user = Array.isArray(assignment.users) ? assignment.users[0] : assignment.users;
+    const fullName = `${user?.first_name?.trim() ?? ""} ${user?.last_name?.trim() ?? ""}`.trim();
+    if (!fullName) continue;
+    if (!bySubject.has(assignment.subject_id)) bySubject.set(assignment.subject_id, new Set());
+    bySubject.get(assignment.subject_id)!.add(fullName);
+  }
+
+  return new Map(Array.from(bySubject.entries()).map(([id, names]) => [id, Array.from(names)]));
 }

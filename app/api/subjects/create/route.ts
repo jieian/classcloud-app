@@ -42,25 +42,46 @@ export async function POST(request: Request) {
 
   // 4. Parse payload
   const body = await request.json();
-  const { code, name, description, grade_level_ids } = body;
+  const { code, name, description, section_type, grade_level_ids } = body;
 
   if (!code?.trim() || !name?.trim() || !description?.trim()) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 5. Duplicate subject code check (case-insensitive, exclude soft-deleted)
-  const { count: dupCount, error: dupError } = await adminClient
-    .from("subjects")
-    .select("subject_id", { count: "exact", head: true })
-    .ilike("code", code.trim())
-    .is("deleted_at", null);
+  const sectionType: "REGULAR" | "SSES" =
+    section_type === "SSES" ? "SSES" : "REGULAR";
 
-  if (dupError) {
-    return Response.json({ error: dupError.message }, { status: 500 });
-  }
-  if ((dupCount ?? 0) > 0) {
+  // 5. Duplicate check: same (code OR name) + same section_type (case-insensitive, exclude soft-deleted)
+  const [
+    { count: codeCount, error: codeError },
+    { count: nameCount, error: nameError },
+  ] = await Promise.all([
+    adminClient
+      .from("subjects")
+      .select("subject_id", { count: "exact", head: true })
+      .ilike("code", code.trim())
+      .eq("section_type", sectionType)
+      .is("deleted_at", null),
+    adminClient
+      .from("subjects")
+      .select("subject_id", { count: "exact", head: true })
+      .ilike("name", name.trim())
+      .eq("section_type", sectionType)
+      .is("deleted_at", null),
+  ]);
+
+  if (codeError) return Response.json({ error: codeError.message }, { status: 500 });
+  if (nameError) return Response.json({ error: nameError.message }, { status: 500 });
+
+  if ((codeCount ?? 0) > 0) {
     return Response.json(
-      { error: "A subject with this code already exists." },
+      { error: `A ${sectionType} subject with this code already exists.` },
+      { status: 409 },
+    );
+  }
+  if ((nameCount ?? 0) > 0) {
+    return Response.json(
+      { error: `A ${sectionType} subject with this name already exists.` },
       { status: 409 },
     );
   }
@@ -72,14 +93,17 @@ export async function POST(request: Request) {
       p_code: code.trim(),
       p_name: name.trim(),
       p_description: description.trim(),
+      p_section_type: sectionType,
       p_grade_level_ids: Array.isArray(grade_level_ids) ? grade_level_ids : [],
     },
   );
 
   if (error) {
     if (error.code === "23505") {
+      const msg = error.message ?? "";
+      const field = msg.includes("name") ? "name" : "code";
       return Response.json(
-        { error: "A subject with this code already exists." },
+        { error: `A ${sectionType} subject with this ${field} already exists.` },
         { status: 409 },
       );
     }

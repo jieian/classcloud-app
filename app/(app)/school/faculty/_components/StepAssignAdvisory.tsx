@@ -10,7 +10,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { IconChevronDown, IconUser } from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
 import type { AddFacultyForm, GradeLevel, SectionWithAdviser } from "../_lib/teachingLoadService";
@@ -87,15 +87,25 @@ export default function StepAssignAdvisory({
     );
   };
 
-  const getSectionsForGradeLevel = (gradeLevelId: number) =>
-    sections.filter((s) => s.grade_level_id === gradeLevelId);
+  // Pre-group sections by grade level — rebuilt only when sections change
+  const sectionsByGl = useMemo(() => {
+    const map = new Map<number, SectionWithAdviser[]>();
+    for (const s of sections) {
+      const existing = map.get(s.grade_level_id);
+      if (existing) existing.push(s);
+      else map.set(s.grade_level_id, [s]);
+    }
+    return map;
+  }, [sections]);
 
-  const isGradeLevelHighlighted = (gradeLevelId: number) => {
-    if (selectedSectionId === null) return false;
-    return sections.some(
-      (s) => s.section_id === selectedSectionId && s.grade_level_id === gradeLevelId,
-    );
-  };
+  // Grade level ID of the selected section — O(1) via map
+  const selectedGlId = useMemo(
+    () =>
+      selectedSectionId !== null
+        ? (sections.find((s) => s.section_id === selectedSectionId)?.grade_level_id ?? null)
+        : null,
+    [selectedSectionId, sections],
+  );
 
   return (
     <Box>
@@ -114,9 +124,9 @@ export default function StepAssignAdvisory({
           <Radio value="none" label="No Advisory Class" mb="md" />
 
           {gradeLevels.map((gl) => {
-            const glSections = getSectionsForGradeLevel(gl.grade_level_id);
-            if (glSections.length === 0) return null;
-            const highlighted = isGradeLevelHighlighted(gl.grade_level_id);
+            const glSections = sectionsByGl.get(gl.grade_level_id);
+            if (!glSections || glSections.length === 0) return null;
+            const highlighted = selectedGlId === gl.grade_level_id;
 
             return (
               <GradeLevelBar

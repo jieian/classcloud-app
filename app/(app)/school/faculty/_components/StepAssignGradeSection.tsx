@@ -77,6 +77,7 @@ export default function StepAssignGradeSection({
   facultyUid,
 }: StepAssignGradeSectionProps) {
   const selectedSections = form.values.selected_sections;
+  const advisorySectionId = form.values.advisory_section_id;
 
   const toggleSection = (sectionId: number) => {
     if (selectedSections.includes(sectionId)) {
@@ -103,20 +104,22 @@ export default function StepAssignGradeSection({
     [allAssignments, facultyUid],
   );
 
-  // Map: grade_level_id → subject_ids for that grade (built once)
+  // Map: "grade_level_id-section_type" → subject_ids (built once)
   const subjectIdsByGl = useMemo(() => {
-    const map = new Map<number, number[]>();
+    const map = new Map<string, number[]>();
     for (const s of subjectsByGradeLevel) {
-      const existing = map.get(s.grade_level_id);
+      const key = `${s.grade_level_id}-${s.section_type}`;
+      const existing = map.get(key);
       if (existing) existing.push(s.subject_id);
-      else map.set(s.grade_level_id, [s.subject_id]);
+      else map.set(key, [s.subject_id]);
     }
     return map;
   }, [subjectsByGradeLevel]);
 
   // O(1) lookup: is every subject in this section taken by someone else?
   const isAllSubjectsTaken = (section: SectionWithAdviser): boolean => {
-    const subjectIds = subjectIdsByGl.get(section.grade_level_id);
+    const key = `${section.grade_level_id}-${section.section_type}`;
+    const subjectIds = subjectIdsByGl.get(key);
     if (!subjectIds || subjectIds.length === 0) return false;
     return subjectIds.every((sid) => takenKeys.has(`${section.section_id}-${sid}`));
   };
@@ -147,6 +150,8 @@ export default function StepAssignGradeSection({
                 const allTaken = isAllSubjectsTaken(section);
                 const isChecked = selectedSections.includes(section.section_id);
 
+                const isAdvisory = section.section_id === advisorySectionId;
+
                 return (
                   <Group key={section.section_id} mb="xs" gap="xs" align="center">
                     <Checkbox
@@ -162,6 +167,11 @@ export default function StepAssignGradeSection({
                     >
                       {section.section_type === "SSES" ? "SSES" : "Regular"}
                     </Badge>
+                    {isAdvisory && (
+                      <Badge size="xs" variant="filled" style={{ backgroundColor: "#4EAE4A" }}>
+                        Advisory
+                      </Badge>
+                    )}
                     {allTaken && (
                       <Tooltip
                         label="All subjects in this section are already assigned to other teachers."

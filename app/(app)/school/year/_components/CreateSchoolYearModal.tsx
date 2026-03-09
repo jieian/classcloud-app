@@ -4,7 +4,11 @@ import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useState } from "react";
 import { notifications } from "@mantine/notifications";
-import { createSchoolYear, DuplicateYearError, SchoolYear } from "../_lib/yearService";
+import {
+  createSchoolYear,
+  DuplicateYearError,
+  SchoolYear,
+} from "../_lib/yearService";
 
 interface CreateSchoolYearModalProps {
   opened: boolean;
@@ -40,7 +44,8 @@ export default function CreateSchoolYearModal({
         const trimmed = value.trim();
         if (!trimmed) return "Start year is required";
         if (/\s/.test(value)) return "Start year cannot contain spaces";
-        if (!/^\d+$/.test(trimmed)) return "Start year must contain numbers only";
+        if (!/^\d+$/.test(trimmed))
+          return "Start year must contain numbers only";
         if (trimmed.length !== 4) return "Start year must be exactly 4 digits";
         return null;
       },
@@ -119,14 +124,14 @@ export default function CreateSchoolYearModal({
       {hasExisting ? (
         // Auto-derive from latest — simple confirmation
         <Text size="sm" mb="xl">
-          This will create school year <strong>{nextRange}</strong> with 4
-          quarters. Everything will start as inactive.
+          This will create school year <strong>{nextRange}</strong> with 3
+          terms. Everything will start as inactive.
         </Text>
       ) : (
         // No existing years — manual form
         <>
           <Text size="sm" c="dimmed" mb="md">
-            The school year and its quarters will start as inactive.
+            The school year and its terms will start as inactive.
           </Text>
           <Group align="flex-start" mb="lg" gap="md">
             <TextInput

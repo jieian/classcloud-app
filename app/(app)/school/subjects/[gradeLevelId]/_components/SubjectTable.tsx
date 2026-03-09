@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   ActionIcon,
   Group,
+  Loader,
   Table,
   TableScrollContainer,
   TableTbody,
@@ -17,26 +18,34 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
-import type { SubjectRow } from "../../_lib/subjectService";
+import type { SubjectRow, SectionType } from "../../_lib/subjectService";
 import DeleteSubjectModal from "./DeleteSubjectModal";
 import EditSubjectDrawer from "./EditSubjectDrawer";
 
 interface SubjectTableProps {
   subjects: SubjectRow[];
   gradeLevelDisplay: string;
+  sectionType?: SectionType;
+  teachersLoading?: boolean;
   onUpdate: () => void;
 }
 
 export default function SubjectTable({
   subjects,
   gradeLevelDisplay,
+  sectionType = "REGULAR",
+  teachersLoading = false,
   onUpdate,
 }: SubjectTableProps) {
-  const [selectedSubject, setSelectedSubject] = useState<SubjectRow | null>(null);
-  const [drawerOpened, { open: openDrawer, close: closeDrawer }] = useDisclosure(false);
+  const [selectedSubject, setSelectedSubject] = useState<SubjectRow | null>(
+    null,
+  );
+  const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
+    useDisclosure(false);
 
   const [deleteSubject, setDeleteSubject] = useState<SubjectRow | null>(null);
-  const [deleteOpened, { open: openDelete, close: closeDelete }] = useDisclosure(false);
+  const [deleteOpened, { open: openDelete, close: closeDelete }] =
+    useDisclosure(false);
 
   function handleEditClick(subject: SubjectRow) {
     setSelectedSubject(subject);
@@ -121,7 +130,7 @@ export default function SubjectTable({
                 colSpan={5}
                 ta="center"
                 style={{
-                  backgroundColor: "#67AF64",
+                  backgroundColor: sectionType === "SSES" ? "#248ce6" : "gray",
                   color: "#ffffff",
                   fontWeight: 700,
                   fontSize: "0.9rem",
@@ -134,7 +143,12 @@ export default function SubjectTable({
               <TableTh w="10%">Subject Code</TableTh>
               <TableTh w="22%">Name</TableTh>
               <TableTh w="38%">Description</TableTh>
-              <TableTh w="22%">Teacher</TableTh>
+              <TableTh w="22%">
+                <Group gap={6} align="center" wrap="nowrap">
+                  Teacher
+                  {teachersLoading && <Loader size={12} color="gray" />}
+                </Group>
+              </TableTh>
               <TableTh w={80} ta="right">
                 <VisuallyHidden>Actions</VisuallyHidden>
               </TableTh>

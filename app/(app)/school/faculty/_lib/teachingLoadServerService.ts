@@ -1,56 +1,13 @@
-import { getSupabase } from "@/lib/supabase/client";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type {
+  WizardData,
+  SectionWithAdviser,
+  TeacherAssignment,
+  SubjectForGradeLevel,
+} from "./teachingLoadService";
 
-export interface AddFacultyForm {
-  activeStep: number;
-  advisory_section_id: number | null;
-  selected_sections: number[];
-  subject_assignments: { section_id: number; subject_ids: number[] }[];
-}
-
-export interface GradeLevel {
-  grade_level_id: number;
-  level_number: number;
-  display_name: string;
-}
-
-export interface SectionWithAdviser {
-  section_id: number;
-  name: string;
-  grade_level_id: number;
-  sy_id: number;
-  adviser_id: string | null;
-  section_type: "SSES" | "REGULAR";
-  adviser_name: string | null;
-}
-
-export interface SubjectForGradeLevel {
-  subject_id: number;
-  name: string;
-  code: string;
-  grade_level_id: number;
-  section_type: "SSES" | "REGULAR";
-}
-
-export interface TeacherAssignment {
-  section_id: number;
-  subject_id: number;
-  teacher_id: string;
-  teacher_name: string;
-}
-
-export interface WizardData {
-  active_sy_id: number | null;
-  faculty: { uid: string; first_name: string; last_name: string } | null;
-  grade_levels: GradeLevel[];
-  sections: SectionWithAdviser[];
-  subjects_by_grade_level: SubjectForGradeLevel[];
-  all_assignments: TeacherAssignment[];
-  current_advisory_section_id: number | null;
-  current_teaching_assignments: { section_id: number; subject_id: number }[];
-}
-
-export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
-  const supabase = getSupabase();
+export async function fetchWizardDataServer(facultyUid: string): Promise<WizardData> {
+  const supabase = await createServerSupabaseClient();
 
   // Round 1: active SY + SY-independent data all in parallel
   const [
@@ -83,12 +40,8 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
 
   const activeSyId = syData?.sy_id ?? null;
 
-  // Round 2: SY-dependent queries only — currentAdvisory and currentTeaching
-  // are derived from these results, eliminating 2 redundant round-trips
-  const [
-    { data: sectionsRaw },
-    { data: allAssignmentsRaw },
-  ] = await Promise.all([
+  // Round 2: SY-dependent queries
+  const [{ data: sectionsRaw }, { data: allAssignmentsRaw }] = await Promise.all([
     activeSyId
       ? supabase
           .from("sections")
@@ -110,7 +63,6 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
       : Promise.resolve({ data: [] }),
   ]);
 
-  // Build sections — adviser name comes from join; if soft-deleted treat as unadvised
   const sections: SectionWithAdviser[] = ((sectionsRaw ?? []) as any[]).map((s: any) => {
     const adviser = s.adviser as {
       first_name: string;
@@ -133,7 +85,6 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
     };
   });
 
-  // Build allAssignments — exclude assignments where subject is soft-deleted
   const allAssignments: TeacherAssignment[] = ((allAssignmentsRaw ?? []) as any[])
     .filter((a: any) => {
       const subject = a.subject as { section_type: string; deleted_at: string | null } | null;
@@ -154,7 +105,6 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
       };
     });
 
-  // Flatten subjects — exclude soft-deleted
   const subjectsByGradeLevel: SubjectForGradeLevel[] = (
     (subjectGlRaw ?? []) as any[]
   ).flatMap((sgl: any) => {
@@ -181,11 +131,10 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
           last_name: facultyRaw.last_name,
         }
       : null,
-    grade_levels: (gradeLevelsRaw ?? []) as GradeLevel[],
+    grade_levels: (gradeLevelsRaw ?? []) as any[],
     sections,
     subjects_by_grade_level: subjectsByGradeLevel,
     all_assignments: allAssignments,
-    // Derived from already-fetched data — no extra queries needed
     current_advisory_section_id:
       sections.find((s) => s.adviser_id === facultyUid)?.section_id ?? null,
     current_teaching_assignments: (() => {
@@ -200,22 +149,4 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
         .map((a: any) => ({ section_id: a.section_id, subject_id: a.subject_id }));
     })(),
   };
-}
-
-export async function assignAcademicLoad(payload: {
-  faculty_id: string;
-  sy_id: number;
-  advisory_section_id: number | null;
-  subject_assignments: { section_id: number; subject_id: number }[];
-}): Promise<void> {
-  const response = await fetch("/api/faculty/assign-load", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result.error || "Failed to assign academic load.");
-  }
 }

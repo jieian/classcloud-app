@@ -85,7 +85,7 @@ export async function GET(
         : Promise.resolve({ data: [] }),
       admin
         .from("subject_grade_levels")
-        .select("subjects(subject_id, name, code, deleted_at)")
+        .select("subjects(subject_id, name, code, section_type, deleted_at)")
         .eq("grade_level_id", gradeLevelId)
         .is("deleted_at", null),
       activeSyId
@@ -115,7 +115,7 @@ export async function GET(
       if (!raw) return [];
       const arr: any[] = Array.isArray(raw) ? raw : [raw];
       return arr
-        .filter((sub: any) => sub.deleted_at === null)
+        .filter((sub: any) => sub.deleted_at === null && sub.section_type === s.section_type)
         .map((sub: any) => ({
           subject_id: sub.subject_id as number,
           code: sub.code as string,

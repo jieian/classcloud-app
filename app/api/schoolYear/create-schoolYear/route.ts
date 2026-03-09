@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     );
   }
 
-  // 6. Atomic RPC — creates school year + 4 quarters in one transaction
+  // 6. Atomic RPC — creates school year + 3 terms in one transaction
   const { error } = await adminClient.rpc("create_school_year", {
     p_start_year: start_year,
     p_end_year: end_year,

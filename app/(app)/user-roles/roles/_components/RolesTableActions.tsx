@@ -38,9 +38,12 @@ export default function RolesTableActions({
   const [isAttached, setIsAttached] = useState(false);
 
   const isAdmin = role.role_id === 1;
-  const isProtectedRole = ["class adviser", "subject teacher"].includes(
-    role.name.trim().toLowerCase(),
-  );
+  const isProtectedRole = [
+    "class adviser",
+    "subject teacher",
+    "grade level coordinator",
+    "subject coordinator",
+  ].includes(role.name.trim().toLowerCase());
 
   const handleTrashClick = async () => {
     if (isProtectedRole) return;
@@ -106,7 +109,9 @@ export default function RolesTableActions({
           </ActionIcon>
         </Tooltip>
         <Tooltip
-          label={isProtectedRole ? "This role cannot be deleted" : "Delete Role"}
+          label={
+            isProtectedRole ? "This role cannot be deleted" : "Delete Role"
+          }
         >
           <ActionIcon
             variant="subtle"
@@ -126,6 +131,7 @@ export default function RolesTableActions({
         onClose={closeDrawer}
         role={role}
         onSuccess={onUpdate}
+        isProtectedRole={isProtectedRole}
       />
 
       <Modal
@@ -138,11 +144,7 @@ export default function RolesTableActions({
         withCloseButton={!deleting}
       >
         {isAttached && (
-          <Alert
-            icon={<IconAlertTriangle size={16} />}
-            color="orange"
-            mb="md"
-          >
+          <Alert icon={<IconAlertTriangle size={16} />} color="orange" mb="md">
             This role is currently assigned to active users. Deleting it will
             remove it from all of them.
           </Alert>
@@ -165,7 +167,11 @@ export default function RolesTableActions({
           mb="lg"
         />
         <Group justify="flex-end">
-          <Button variant="default" onClick={handleCloseDelete} disabled={deleting}>
+          <Button
+            variant="default"
+            onClick={handleCloseDelete}
+            disabled={deleting}
+          >
             Cancel
           </Button>
           <Button

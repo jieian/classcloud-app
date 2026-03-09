@@ -39,6 +39,8 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const code = body?.code?.trim();
+  const sectionType: "REGULAR" | "SSES" =
+    body?.section_type === "SSES" ? "SSES" : "REGULAR";
 
   if (!code) {
     return Response.json({ error: "Subject code is required." }, { status: 400 });
@@ -48,6 +50,7 @@ export async function POST(request: Request) {
     .from("subjects")
     .select("subject_id", { count: "exact", head: true })
     .ilike("code", code)
+    .eq("section_type", sectionType)
     .is("deleted_at", null);
 
   if (dupError) {
@@ -58,7 +61,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         available: false,
-        error: "A subject with this code already exists.",
+        error: `A ${sectionType} subject with this code already exists.`,
       },
       { status: 409 },
     );

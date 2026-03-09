@@ -31,6 +31,7 @@ interface EditRoleDrawerProps {
   onClose: () => void;
   role: RoleWithPermissions;
   onSuccess: () => void;
+  isProtectedRole?: boolean;
 }
 
 interface FormValues {
@@ -46,6 +47,7 @@ export default function EditRoleDrawer({
   onClose,
   role,
   onSuccess,
+  isProtectedRole = false,
 }: EditRoleDrawerProps) {
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(false);
@@ -256,8 +258,13 @@ export default function EditRoleDrawer({
               required
               maxLength={50}
               withErrorStyles
+              disabled={isProtectedRole}
+              description={
+                isProtectedRole
+                  ? "Protected role names cannot be changed."
+                  : `${form.values.name.length}/50 characters`
+              }
               {...form.getInputProps("name")}
-              description={`${form.values.name.length}/50 characters`}
               rightSection={
                 form.errors.name ? (
                   <Tooltip label={form.errors.name} position="top">
@@ -273,6 +280,7 @@ export default function EditRoleDrawer({
               label="Faculty Role"
               description="Assign role as teaching staff."
               checked={form.values.is_faculty}
+              disabled={isProtectedRole}
               onChange={(e) =>
                 form.setFieldValue("is_faculty", e.currentTarget.checked)
               }
