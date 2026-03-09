@@ -34,15 +34,18 @@ import {
   IconRefreshDot,
   IconDots,
   IconEye,
+  IconBookmark,
 } from "@tabler/icons-react";
 import Image from "next/image";
 import { notifications } from "@mantine/notifications";
 import CreateExamModal from "@/components/CreateExamModal";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
 import ItemAnalysisModal from "@/components/ItemAnalysisModal";
+import LearningObjectivesModal from "@/components/LearningObjectivesModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
   fetchExamsWithRelations,
+  fetchExamById,
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
@@ -73,6 +76,13 @@ export default function ExamPageClient() {
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(null);
+
+  const [isObjectivesModalOpen, setIsObjectivesModalOpen] = useState(false);
+  const [objectivesExam, setObjectivesExam] = useState<ExamWithRelations | null>(null);
+  /** When true, objectives modal was opened from creation flow → show "Save & Set Answer Key" */
+  const [objectivesFromCreation, setObjectivesFromCreation] = useState(false);
+  /** When true, answer key was opened from creation flow → show "Back to Objectives" button */
+  const [answerKeyFromCreation, setAnswerKeyFromCreation] = useState(false);
 
   const hasFullAccess = permissions.includes("full_access_examinations");
 
@@ -129,7 +139,10 @@ export default function ExamPageClient() {
         exams.flatMap(
           (e) =>
             (e.exam_assignments ?? [])
-              .filter((a) => !allowedSectionIds || allowedSectionIds.has(a.sections?.section_id!))
+              .filter((a) => {
+                const sectionId = a.sections?.section_id;
+                return !allowedSectionIds || (sectionId != null && allowedSectionIds.has(sectionId));
+              })
               .map((a) => a.sections?.name)
               .filter(Boolean) as string[],
         ),
@@ -213,6 +226,33 @@ export default function ExamPageClient() {
       message: "Answer sheet saved to downloads",
       color: "blue",
     });
+  };
+
+  const handleExamCreated = async (examId: number) => {
+    // Fetch the new exam by ID only — do NOT call fetchExams() yet so the plate
+    // doesn't appear on the list until after the objectives flow completes.
+    const exam = await fetchExamById(examId);
+    if (exam) {
+      setObjectivesExam(exam);
+      setObjectivesFromCreation(true);
+      setIsObjectivesModalOpen(true);
+    }
+  };
+
+  const handleOpenObjectivesModal = (exam: ExamWithRelations) => {
+    setObjectivesExam(exam);
+    setObjectivesFromCreation(false);
+    setIsObjectivesModalOpen(true);
+  };
+
+  const handleCloseObjectivesModal = () => {
+    if (objectivesFromCreation) {
+      // Now refresh the list so the newly-created exam plate appears
+      fetchExams();
+    }
+    setIsObjectivesModalOpen(false);
+    setObjectivesExam(null);
+    setObjectivesFromCreation(false);
   };
 
   const handleOpenDeleteModal = (exam: ExamWithRelations) => {
@@ -627,6 +667,17 @@ export default function ExamPageClient() {
                             </Button>
                             <Button
                               variant="light"
+                              color="violet"
+                              fullWidth
+                              size="sm"
+                              radius="md"
+                              leftSection={<IconBookmark size={14} />}
+                              onClick={() => handleOpenObjectivesModal(exam)}
+                            >
+                              Edit Objectives
+                            </Button>
+                            <Button
+                              variant="light"
                               color="blue"
                               fullWidth
                               size="sm"
@@ -678,6 +729,29 @@ export default function ExamPageClient() {
           <CreateExamModal
             onClose={() => setIsCreateModalOpen(false)}
             onSuccess={fetchExams}
+            onCreated={handleExamCreated}
+          />
+        )}
+
+        {isObjectivesModalOpen && objectivesExam && (
+          <LearningObjectivesModal
+            exam={objectivesExam}
+            onClose={handleCloseObjectivesModal}
+            onSaved={fetchExams}
+            onContinue={
+              objectivesFromCreation
+                ? async () => {
+                    const freshExam = await fetchExamById(objectivesExam.exam_id);
+                    // Close objectives without calling fetchExams — plate appears only after summary "Done"
+                    setIsObjectivesModalOpen(false);
+                    setObjectivesExam(null);
+                    setObjectivesFromCreation(false);
+                    setSelectedExam(freshExam ?? objectivesExam);
+                    setAnswerKeyFromCreation(true);
+                    setIsAnswerKeyModalOpen(true);
+                  }
+                : undefined
+            }
           />
         )}
         {isAnswerKeyModalOpen && selectedExam && (
@@ -685,9 +759,17 @@ export default function ExamPageClient() {
             exam={selectedExam}
             onClose={() => {
               setIsAnswerKeyModalOpen(false);
+              setAnswerKeyFromCreation(false);
               setSelectedExam(null);
             }}
             onSuccess={fetchExams}
+            onBack={answerKeyFromCreation ? () => {
+              setIsAnswerKeyModalOpen(false);
+              setAnswerKeyFromCreation(false);
+              setObjectivesExam(selectedExam);
+              setObjectivesFromCreation(true);
+              setIsObjectivesModalOpen(true);
+            } : undefined}
           />
         )}
 
