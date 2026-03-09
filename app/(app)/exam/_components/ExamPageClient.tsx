@@ -83,6 +83,8 @@ export default function ExamPageClient() {
   const [objectivesFromCreation, setObjectivesFromCreation] = useState(false);
   /** When true, answer key was opened from creation flow → show "Back to Objectives" button */
   const [answerKeyFromCreation, setAnswerKeyFromCreation] = useState(false);
+  /** Exam ID to highlight after creation flow completes */
+  const [newlyCreatedExamId, setNewlyCreatedExamId] = useState<number | null>(null);
 
   const hasFullAccess = permissions.includes("full_access_examinations");
 
@@ -534,6 +536,7 @@ export default function ExamPageClient() {
                   .map((a) => a.sections?.name)
                   .filter(Boolean)
                   .join(", ");
+                const isNew = exam.exam_id === newlyCreatedExamId;
                 return (
                   <Grid.Col
                     key={exam.exam_id}
@@ -543,7 +546,12 @@ export default function ExamPageClient() {
                       padding="lg"
                       radius="md"
                       withBorder
-                      style={{ height: "100%" }}
+                      style={{
+                        height: "100%",
+                        transition: "box-shadow 0.4s ease, border-color 0.4s ease",
+                        boxShadow: isNew ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)" : undefined,
+                        borderColor: isNew ? "#4EAE4A" : undefined,
+                      }}
                     >
                       <Stack gap="md">
                         {/* Header */}
@@ -762,7 +770,12 @@ export default function ExamPageClient() {
               setAnswerKeyFromCreation(false);
               setSelectedExam(null);
             }}
-            onSuccess={fetchExams}
+            onSuccess={answerKeyFromCreation ? async () => {
+              const examId = selectedExam.exam_id;
+              await fetchExams();
+              setNewlyCreatedExamId(examId);
+              setTimeout(() => setNewlyCreatedExamId(null), 4000);
+            } : fetchExams}
             onBack={answerKeyFromCreation ? () => {
               setIsAnswerKeyModalOpen(false);
               setAnswerKeyFromCreation(false);
