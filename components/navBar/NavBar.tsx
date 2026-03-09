@@ -122,7 +122,10 @@ const navigationData: NavigationLink[] = [
     label: "Examinations",
     href: "/exam",
     sublinks: [],
-    requiredPermissions: ["access_examinations"],
+    requiredPermissions: [
+      "full_access_examinations",
+      "partial_access_examinations",
+    ],
   },
   {
     icon: IconFileReport,
@@ -180,8 +183,8 @@ export default function Navbar() {
         if (typeof d.count === "number") setPendingTransferCount(d.count);
       })
       .catch(() => {}); // Badge is non-critical — fail silently
-  // Re-check whenever the user navigates so the count stays fresh
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-check whenever the user navigates so the count stays fresh
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, canReviewTransfers]);
 
   // Helper function to check if user has required permissions
@@ -205,7 +208,8 @@ export default function Navbar() {
     // Then check main links
     for (const link of navigationData) {
       if (pathname === link.href) return link.label;
-      if (link.href !== "/" && pathname.startsWith(link.href)) return link.label;
+      if (link.href !== "/" && pathname.startsWith(link.href))
+        return link.label;
     }
     return "Home";
   }, [pathname]);
@@ -364,7 +368,9 @@ export default function Navbar() {
                         variant="filled"
                         style={{ flexShrink: 0 }}
                       >
-                        {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+                        {pendingTransferCount > 99
+                          ? "99+"
+                          : pendingTransferCount}
                       </Badge>
                     )}
                   </span>
@@ -379,8 +385,7 @@ export default function Navbar() {
 
   const drawerLinks = drawerSublinks.map((sublink: Sublink) => {
     const isActive = pathname === sublink.href;
-    const showBadge =
-      sublink.key === "classes" && pendingTransferCount > 0;
+    const showBadge = sublink.key === "classes" && pendingTransferCount > 0;
 
     return (
       <Link

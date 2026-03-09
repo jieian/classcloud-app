@@ -97,6 +97,8 @@ interface AuthContextType {
   user: User | null;
   roles: Role[];
   permissions: string[];
+  firstName: string;
+  lastName: string;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -108,6 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [firstName, setFirstName] = useState<string>("");
+  const [lastName, setLastName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -117,8 +121,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const cachedRoles = sessionStorage.getItem("cc_roles");
       const cachedPermissions = sessionStorage.getItem("cc_permissions");
+      const cachedFirstName = sessionStorage.getItem("cc_first_name");
+      const cachedLastName = sessionStorage.getItem("cc_last_name");
       if (cachedRoles) setRoles(JSON.parse(cachedRoles));
       if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
+      if (cachedFirstName) setFirstName(cachedFirstName);
+      if (cachedLastName) setLastName(cachedLastName);
     } catch {
       // sessionStorage unavailable
     }
@@ -128,10 +136,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const supabase = getSupabase();
 
-  const fetchUserRoles = async (authUserId: string): Promise<Role[]> => {
+  const fetchUserRoles = async (authUserId: string): Promise<{ roles: Role[]; firstName: string; lastName: string }> => {
     const { data, error } = await supabase
       .from("users")
-      .select("user_roles(role_id, roles(role_id, name))")
+      .select("first_name, last_name, user_roles(role_id, roles(role_id, name))")
       .eq("uid", authUserId)
       .eq("active_status", 1)
       .is("deleted_at", null)
@@ -139,23 +147,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       console.error("Failed to fetch roles:", error.message);
-      return [];
+      return { roles: [], firstName: "", lastName: "" };
     }
 
     // No row means the account is inactive, pending, or soft-deleted.
     // Sign out immediately so they can't linger with cached credentials.
     if (!data) {
       supabase.auth.signOut({ scope: "global" }).catch(() => {});
-      return [];
+      return { roles: [], firstName: "", lastName: "" };
     }
 
     const userRoles = (data.user_roles ?? []) as UserRoleJoinRow[];
-    return userRoles
-      .filter((row) => row.roles !== null)
-      .map((row) => ({
-        role_id: row.roles!.role_id,
-        name: row.roles!.name,
-      }));
+    return {
+      roles: userRoles
+        .filter((row) => row.roles !== null)
+        .map((row) => ({
+          role_id: row.roles!.role_id,
+          name: row.roles!.name,
+        })),
+      firstName: (data as { first_name: string }).first_name ?? "",
+      lastName: (data as { last_name: string }).last_name ?? "",
+    };
   };
 
   const fetchUserPermissions = async (authUserId: string) => {
@@ -178,18 +190,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Uses UUID to link auth.users.id with users.id
    */
   const fetchUserData = async (userId: string) => {
-    const [fetchedRoles, fetchedPermissions] = await Promise.all([
+    const [{ roles: fetchedRoles, firstName: fetchedFirstName, lastName: fetchedLastName }, fetchedPermissions] = await Promise.all([
       fetchUserRoles(userId),
       fetchUserPermissions(userId),
     ]);
 
     setRoles(fetchedRoles);
     setPermissions(fetchedPermissions);
+    setFirstName(fetchedFirstName);
+    setLastName(fetchedLastName);
 
     // Cache for instant hydration on reload
     try {
       sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
       sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
+      sessionStorage.setItem("cc_first_name", fetchedFirstName);
+      sessionStorage.setItem("cc_last_name", fetchedLastName);
     } catch {
       // sessionStorage unavailable (e.g. private browsing quota exceeded)
     }
@@ -346,6 +362,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       sessionStorage.removeItem("cc_roles");
       sessionStorage.removeItem("cc_permissions");
+      sessionStorage.removeItem("cc_first_name");
+      sessionStorage.removeItem("cc_last_name");
     } catch {
       // sessionStorage unavailable
     }
@@ -354,6 +372,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setRoles([]);
     setPermissions([]);
+    setFirstName("");
+    setLastName("");
     setLoading(false);
     clearSupabaseClientAuthArtifacts();
 
@@ -384,7 +404,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, roles, permissions, loading, signIn, signOut }}
+      value={{ user, roles, permissions, firstName, lastName, loading, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>
