@@ -13,10 +13,13 @@ import { createExamWithAssignments } from '@/lib/services/examService';
 import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
 import { useAuth } from '@/context/AuthContext';
 import type { Section, GradeLevel, Quarter } from '@/lib/exam-supabase';
+import CreationFlowStepper from './CreationFlowStepper';
 
 interface CreateExamModalProps {
   onClose: () => void;
   onSuccess: () => void;
+  /** Called with the new exam_id right after creation, before onSuccess/onClose */
+  onCreated?: (examId: number) => void;
 }
 
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
@@ -27,7 +30,7 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   return 50;
 }
 
-export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalProps) {
+export default function CreateExamModal({ onClose, onSuccess, onCreated }: CreateExamModalProps) {
   const { user, permissions } = useAuth();
   const hasFullAccess = permissions.includes('full_access_examinations');
 
@@ -90,9 +93,35 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
     .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
     .filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id));
 
-  const filteredSubjects = subjects
-    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
-    .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id));
+  // Derive section_type from selected sections (null = no selection yet, mixed = show all)
+  const selectedSectionTypes = new Set(
+    filteredSections
+      .filter(s => selectedSectionIds.includes(s.section_id))
+      .map(s => s.section_type)
+      .filter(Boolean)
+  );
+  const activeSectionType =
+    selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
+
+  // Clear subject only when it becomes invalid for the newly active section type
+  useEffect(() => {
+    if (!activeSectionType || !selectedSubjectId) return;
+    const isValid = subjects.some(
+      s => String(s.subject_id) === selectedSubjectId && s.section_type === activeSectionType
+    );
+    if (!isValid) setSelectedSubjectId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSectionType]);
+
+  const filteredSubjects = Array.from(
+    new Map(
+      subjects
+        .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+        .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id))
+        .filter(s => !activeSectionType || s.section_type === activeSectionType)
+        .map(s => [s.subject_id, s] as const)
+    ).values()
+  );
 
   const selectedGradeLevel = selectedGradeLevelId
     ? gradeLevels.find((g) => g.grade_level_id === Number(selectedGradeLevelId)) ?? null
@@ -145,8 +174,14 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
         withBorder: true,
         autoClose: 2500,
       });
-      onSuccess();
-      onClose();
+
+      if (onCreated && result) {
+        onClose();
+        onCreated(result);
+      } else {
+        onSuccess();
+        onClose();
+      }
     } catch {
       notifications.show({
         title: 'Creation Failed',
@@ -172,6 +207,8 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
     >
       <Stack gap="md">
+        <CreationFlowStepper activeStep={0} />
+
         <Alert color="blue" icon={<IconAlertCircle size={16} />}>
           New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
         </Alert>
@@ -280,9 +317,7 @@ export default function CreateExamModal({ onClose, onSuccess }: CreateExamModalP
                 loading={loading}
                 disabled={!canCreateExam || loading || dataLoading}
               >
-                {selectedSectionIds.length > 1
-                  ? `Create ${selectedSectionIds.length} Examinations`
-                  : 'Create Examination'}
+                Proceed to Objectives
               </Button>
             </Group>
           </>

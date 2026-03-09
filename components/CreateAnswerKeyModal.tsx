@@ -1,16 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IconX, IconDeviceFloppy, IconAlertTriangle, IconPlus, IconMinus } from '@tabler/icons-react';
+import { IconX, IconDeviceFloppy, IconAlertTriangle, IconPlus, IconMinus, IconBookmark, IconArrowLeft } from '@tabler/icons-react';
+import CreationFlowStepper from './CreationFlowStepper';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { saveAnswerKey } from '@/lib/services/examService';
-import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import { saveAnswerKey, saveObjectives } from '@/lib/services/examService';
+import type { ExamWithRelations, AnswerKeyJsonb, LearningObjective } from '@/lib/exam-supabase';
 
 interface CreateAnswerKeyModalProps {
   exam: ExamWithRelations;
   onClose: () => void;
   onSuccess: () => void | Promise<void>;
+  /** When provided (creation flow), shows a "Back to Objectives" button */
+  onBack?: () => void;
+}
+
+interface ObjectiveEditorRow {
+  id: number;
+  objective: string;
+  start_item: number | string;
+  end_item: number | string;
 }
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
@@ -23,7 +33,7 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   return 50;
 }
 
-export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: CreateAnswerKeyModalProps) {
+export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack }: CreateAnswerKeyModalProps) {
   const detectedLevelNumber =
     exam.exam_assignments?.[0]?.sections?.grade_levels?.level_number ?? null;
   const autoTotalQuestions = getAutoTotalItems(detectedLevelNumber);
@@ -36,8 +46,20 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
   const [loadingAnswers, setLoadingAnswers] = useState(true);
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [triedToSave, setTriedToSave] = useState(false);
+  const [objectiveRows, setObjectiveRows] = useState<ObjectiveEditorRow[]>([]);
+  const [showObjectiveEditor, setShowObjectiveEditor] = useState(false);
+  const [savingObjectives, setSavingObjectives] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
 
   const choices = ALL_CHOICES.slice(0, numChoices);
+
+  const toObjectiveRows = (objectives: LearningObjective[] | null | undefined): ObjectiveEditorRow[] =>
+    (objectives ?? []).map((o, idx) => ({
+      id: idx + 1,
+      objective: o.objective,
+      start_item: o.start_item,
+      end_item: o.end_item,
+    }));
 
   // Get assigned section names for display
   const assignedSections = exam.exam_assignments
@@ -63,8 +85,94 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
         setNumChoices(Math.max(2, Math.min(ALL_CHOICES.length, existing.num_choices)));
       }
     }
+    setObjectiveRows(toObjectiveRows(exam.objectives));
     setLoadingAnswers(false);
   }, [exam, autoTotalQuestions]);
+
+  const addObjectiveRow = () => {
+    setObjectiveRows((prev) => [
+      ...prev,
+      { id: Date.now(), objective: '', start_item: '', end_item: '' },
+    ]);
+  };
+
+  const removeObjectiveRow = (id: number) => {
+    setObjectiveRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const updateObjectiveRow = (
+    id: number,
+    field: keyof ObjectiveEditorRow,
+    value: string | number,
+  ) => {
+    setObjectiveRows((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)),
+    );
+  };
+
+  const validateObjectiveRows = (): string | null => {
+    for (const row of objectiveRows) {
+      if (!row.objective.trim()) return 'All objective rows must have a description.';
+      const start = Number(row.start_item);
+      const end = Number(row.end_item);
+      if (!start || !end) return 'All objective rows must have valid item ranges.';
+      if (start > end) return 'Objective start item must be less than or equal to end item.';
+      if (start < 1 || end > totalQuestions) {
+        return `Objective item ranges must be between 1 and ${totalQuestions}.`;
+      }
+    }
+    return null;
+  };
+
+  const handleSaveObjectives = async () => {
+    const err = validateObjectiveRows();
+    if (err) {
+      notifications.show({ title: 'Validation Error', message: err, color: 'red' });
+      return;
+    }
+
+    const payload: LearningObjective[] = objectiveRows.map((r) => ({
+      objective: r.objective.trim(),
+      start_item: Number(r.start_item),
+      end_item: Number(r.end_item),
+    }));
+
+    setSavingObjectives(true);
+    const ok = await saveObjectives(exam.exam_id, payload);
+    setSavingObjectives(false);
+
+    if (!ok) {
+      notifications.show({
+        title: 'Save Failed',
+        message: 'Could not save objectives. Please try again.',
+        color: 'red',
+        withBorder: true,
+      });
+      return;
+    }
+
+    notifications.show({
+      title: 'Objectives Saved',
+      message: 'Learning objectives were updated successfully.',
+      color: 'teal',
+      withBorder: true,
+      autoClose: 2000,
+    });
+    await onSuccess();
+    setShowObjectiveEditor(false);
+  };
+
+  const objectiveForItem = (item: number): string | null => {
+    for (const row of objectiveRows) {
+      const start = Number(row.start_item);
+      const end = Number(row.end_item);
+      if (!start || !end) continue;
+      if (item >= start && item <= end && row.objective.trim()) {
+        return row.objective.trim();
+      }
+    }
+    return null;
+  };
 
   const applyTotal = (val: number) => {
     const clamped = Math.max(10, Math.min(200, val));
@@ -143,15 +251,21 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
       const success = await saveAnswerKey(exam.exam_id, answerKeyData);
       if (!success) throw new Error('Failed to save');
 
-      await onSuccess();
       notifications.show({
         title: 'Answer Key Saved',
-        message: 'Your answer key has been updated successfully.',
+        message: 'Your answer key has been saved successfully.',
         color: 'teal',
         withBorder: true,
         autoClose: 2500,
       });
-      onClose();
+
+      if (onBack) {
+        // Creation flow — show summary step before closing
+        setShowSummary(true);
+      } else {
+        await onSuccess();
+        onClose();
+      }
     } catch (error) {
       console.error('Error saving answer key:', error);
       notifications.show({
@@ -174,6 +288,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
 
         {/* Sticky Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 z-10">
+          {onBack && <CreationFlowStepper activeStep={showSummary ? 3 : 2} />}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 relative flex-shrink-0">
@@ -225,13 +340,194 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
-          {loadingAnswers ? (
+          {showSummary ? (
+            <div className="space-y-5">
+              {/* Header */}
+              <div className="text-center pb-2">
+                <div className="text-4xl mb-2">🎉</div>
+                <h3 className="text-xl font-bold text-gray-900">Examination Setup Complete!</h3>
+                <p className="text-gray-500 text-sm mt-0.5">Review your answer key and objectives below.</p>
+              </div>
+
+              {/* Exam meta */}
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {[
+                  ['Exam', exam.title],
+                  ['Subject', exam.subjects?.name ?? '—'],
+                  ['Grade', exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name ?? '—'],
+                  ['Section(s)', assignedSections.join(', ')],
+                ].map(([label, value]) => (
+                  <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+                    <p className="font-semibold text-gray-900 truncate">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Answer key + objectives */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  Answer Key — {totalQuestions} items · {objectiveRows.length} objective{objectiveRows.length !== 1 ? 's' : ''}
+                </p>
+                <div className={`grid gap-x-6 gap-y-0.5 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+                  {Array.from({ length: columns }, (_, col) => (
+                    <div key={col}>
+                      {Array.from({ length: questionsPerColumn }, (_, row) => {
+                        const qNum = col * questionsPerColumn + row + 1;
+                        if (qNum > totalQuestions) return null;
+                        const answer = answers[qNum];
+                        const objectiveLabel = objectiveForItem(qNum);
+                        return (
+                          <div key={qNum} className="flex items-center gap-2 py-1 px-1.5 rounded-lg hover:bg-gray-50">
+                            <span className="text-sm font-semibold w-7 text-right flex-shrink-0 text-gray-500">
+                              {qNum}
+                            </span>
+                            <div className="flex gap-1 flex-shrink-0">
+                              {choices.map(option => (
+                                <div key={option}
+                                  className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-bold text-[11px] ${
+                                    answer === option
+                                      ? 'bg-green-600 border-green-600 text-white shadow-sm'
+                                      : 'border-gray-200 text-gray-300'
+                                  }`}>
+                                  {option}
+                                </div>
+                              ))}
+                            </div>
+                            {objectiveLabel && (
+                              <div className="relative group flex-shrink-0">
+                                <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
+                                  {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
+                                </span>
+                                <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                                  <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">
+                                    {objectiveLabel}
+                                  </div>
+                                  <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Done */}
+              <div className="flex gap-3 pt-3 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={async () => { await onSuccess(); onClose(); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium bg-[#466D1D] hover:bg-[#355516] text-white transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : loadingAnswers ? (
             <div className="text-center py-12">
               <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
               <p className="text-gray-500 mt-4">Loading answer key...</p>
             </div>
           ) : (
             <>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <IconBookmark className="w-4 h-4 text-blue-600" />
+                    <p className="text-sm font-semibold text-blue-800">
+                      Learning Objectives ({objectiveRows.length})
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowObjectiveEditor((v) => !v)}
+                    className="text-xs font-semibold text-blue-700 hover:text-blue-800"
+                  >
+                    {showObjectiveEditor ? 'Hide Editor' : 'Edit Objectives'}
+                  </button>
+                </div>
+                <p className="text-xs text-blue-700 mt-1">
+                  Saved objectives appear beside each item bubble below.
+                </p>
+
+                {showObjectiveEditor && (
+                  <div className="mt-3 space-y-2">
+                    {objectiveRows.length === 0 && (
+                      <div className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-700">
+                        No objectives yet. Add one below.
+                      </div>
+                    )}
+
+                    {objectiveRows.map((row, idx) => (
+                      <div key={row.id} className="rounded-lg border border-blue-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="text-xs font-semibold text-blue-700">Objective {idx + 1}</p>
+                          <button
+                            type="button"
+                            onClick={() => removeObjectiveRow(row.id)}
+                            className="text-xs font-semibold text-red-600 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={row.objective}
+                          onChange={(e) => updateObjectiveRow(row.id, 'objective', e.currentTarget.value)}
+                          placeholder="Objective description"
+                          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm mb-2 focus:outline-none focus:border-blue-400"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={totalQuestions}
+                            value={row.start_item}
+                            onChange={(e) => updateObjectiveRow(row.id, 'start_item', e.currentTarget.value)}
+                            placeholder="From item"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            max={totalQuestions}
+                            value={row.end_item}
+                            onChange={(e) => updateObjectiveRow(row.id, 'end_item', e.currentTarget.value)}
+                            placeholder="To item"
+                            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={addObjectiveRow}
+                        className="px-3 py-1.5 rounded-md text-xs font-semibold bg-white border border-blue-300 text-blue-700 hover:bg-blue-50"
+                      >
+                        Add Objective
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveObjectives}
+                        disabled={savingObjectives}
+                        className={`px-3 py-1.5 rounded-md text-xs font-semibold ${
+                          !savingObjectives
+                            ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                            : 'bg-blue-200 text-blue-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {savingObjectives ? 'Saving...' : 'Save Objectives'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Controls Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
@@ -329,13 +625,14 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
                       const qNum = col * questionsPerColumn + row + 1;
                       if (qNum > totalQuestions) return null;
                       const isUnanswered = triedToSave && !answers[qNum];
+                      const objectiveLabel = objectiveForItem(qNum);
                       return (
                         <div key={qNum}
                           className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
                           <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>
                             {qNum}
                           </span>
-                          <div className="flex gap-1 flex-wrap">
+                          <div className="flex gap-1 flex-shrink-0">
                             {choices.map(option => (
                               <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
@@ -349,6 +646,19 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
                               </button>
                             ))}
                           </div>
+                          {objectiveLabel && (
+                            <div className="relative group flex-shrink-0">
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
+                                {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
+                              </span>
+                              <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                                <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">
+                                  {objectiveLabel}
+                                </div>
+                                <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -365,6 +675,17 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess }: Creat
 
               {/* Action Buttons */}
               <div className="flex gap-3 pt-4 border-t border-gray-200">
+                {onBack && (
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg font-medium text-white bg-[#466D1D] hover:bg-[#355516] transition-colors"
+                    disabled={loading}
+                  >
+                    <IconArrowLeft className="w-4 h-4" />
+                    Back
+                  </button>
+                )}
                 <button type="button" onClick={onClose} className="btn-secondary flex-1" disabled={loading}>Cancel</button>
                 <button type="submit" disabled={loading}
                   className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all duration-200 ${

@@ -2,7 +2,7 @@
  * examService.ts
  * All database interactions for public.exams and public.exam_assignments.
  */
-import { supabase, ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import { supabase, ExamWithRelations, AnswerKeyJsonb, LearningObjective } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -111,6 +111,22 @@ export async function saveAnswerKey(examId: number, answerKey: AnswerKeyJsonb): 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
     console.error('[examService] saveAnswerKey error:', payload?.error ?? 'Unknown error');
+    return false;
+  }
+
+  return true;
+}
+
+export async function saveObjectives(examId: number, objectives: LearningObjective[]): Promise<boolean> {
+  const res = await fetch('/api/exams/objectives', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ examId, objectives }),
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
+    console.error('[examService] saveObjectives error:', payload?.error ?? 'Unknown error');
     return false;
   }
 

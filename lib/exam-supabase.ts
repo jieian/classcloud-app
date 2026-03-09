@@ -39,6 +39,7 @@ export interface Section {
   grade_level_id: number | null;
   sy_id: number | null;
   adviser_id: string | null;
+  section_type: 'REGULAR' | 'SSES' | null;
   grade_levels?: { display_name: string } | null;
 }
 
@@ -48,12 +49,19 @@ export interface AnswerKeyJsonb {
   answers: { [questionNumber: number]: string | null };
 }
 
+export interface LearningObjective {
+  objective: string;
+  start_item: number;
+  end_item: number;
+}
+
 export interface Exam {
   exam_id: number;
   title: string;
   description: string | null;
   total_items: number;
   answer_key: AnswerKeyJsonb | null;
+  objectives: LearningObjective[] | null;
   exam_date: string;
   is_locked: boolean;
   subject_id: number | null;

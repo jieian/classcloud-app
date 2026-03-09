@@ -24,6 +24,7 @@ export async function fetchActiveSections(): Promise<Section[]> {
       grade_level_id,
       sy_id,
       adviser_id,
+      section_type,
       grade_levels ( display_name )
     `)
     .order('name', { ascending: true });
