@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { fetchAttemptsForExam } from '@/lib/services/attemptService';
 import {
   computeItemStatistics, computeExamSummary, saveItemStatistics,
-  fetchItemStatistics, difficultyLabel, discriminationLabel,
+  difficultyLabel,
   ComputedItemStat,
 } from '@/lib/services/analysisService';
 import type { ExamWithRelations, ExamScore, AnswerKeyJsonb } from '@/lib/exam-supabase';
@@ -14,6 +14,14 @@ import type { ExamWithRelations, ExamScore, AnswerKeyJsonb } from '@/lib/exam-su
 interface ItemAnalysisModalProps {
   exam: ExamWithRelations;
   onClose: () => void;
+}
+
+function getProficiency(pct: number): { label: string; color: string } {
+  if (pct >= 90) return { label: 'Highly Proficient', color: 'bg-green-100 text-green-700' };
+  if (pct >= 75) return { label: 'Proficient', color: 'bg-blue-100 text-blue-700' };
+  if (pct >= 50) return { label: 'Nearly Proficient', color: 'bg-yellow-100 text-yellow-700' };
+  if (pct >= 25) return { label: 'Low Proficient', color: 'bg-orange-100 text-orange-700' };
+  return { label: 'Not Proficient', color: 'bg-red-100 text-red-700' };
 }
 
 export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalProps) {
@@ -84,15 +92,15 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
 
           {/* Tabs */}
           <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-            {(['summary', 'items', 'students'] as const).map(tab => (
+            {([['summary', 'Summary'], ['items', 'Items'], ['students', 'Students']] as const).map(([tab, label]) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition-all capitalize ${
+                className={`flex-1 py-1.5 px-3 rounded-lg text-sm font-medium transition-all ${
                   activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
-                {tab}
+                {label}
               </button>
             ))}
           </div>
@@ -192,7 +200,6 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                 <div>
                   <div className="flex gap-4 text-xs text-gray-500 mb-3">
                     <span>🔵 Difficulty: proportion correct (higher = easier)</span>
-                    <span>🟢 Discrimination: separates high/low scorers (D ≥ 0.30 is good)</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -201,15 +208,13 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                           <th className="text-left py-2 px-2 font-semibold">Item</th>
                           <th className="text-left py-2 px-2 font-semibold">Key</th>
                           <th className="text-left py-2 px-2 font-semibold">Difficulty</th>
-                          <th className="text-left py-2 px-2 font-semibold">Discrimination</th>
                           <th className="text-left py-2 px-2 font-semibold">Choices (A/B/C/D...)</th>
-                          <th className="text-left py-2 px-2 font-semibold">n</th>
+                          <th className="text-left py-2 px-2 font-semibold">N</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-50">
                         {itemStats.map(stat => {
                           const dl = difficultyLabel(stat.difficulty_index);
-                          const disc = discriminationLabel(stat.discrimination_index);
                           const freq = stat.choice_frequencies ?? {};
                           const allChoices = Object.keys(freq).filter(k => k !== '*omit*').sort();
                           const maxFreq = Math.max(1, ...Object.values(freq));
@@ -228,19 +233,6 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                                     <span className="text-xs text-gray-500">{(stat.difficulty_index * 100).toFixed(0)}%</span>
                                   </div>
                                   <span className={`text-xs font-medium ${dl.color}`}>{dl.label}</span>
-                                </div>
-                              </td>
-                              <td className="py-2 px-2">
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2">
-                                    <Bar
-                                      value={stat.discrimination_index + 1}
-                                      color={stat.discrimination_index >= 0.3 ? 'bg-green-400' : stat.discrimination_index >= 0 ? 'bg-yellow-400' : 'bg-red-400'}
-                                      max={2}
-                                    />
-                                    <span className="text-xs text-gray-500">{stat.discrimination_index.toFixed(2)}</span>
-                                  </div>
-                                  <span className={`text-xs font-medium ${disc.color}`}>{disc.label}</span>
                                 </div>
                               </td>
                               <td className="py-2 px-2">
@@ -281,9 +273,9 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-xs text-gray-500 border-b border-gray-200">
-                          <th className="text-left py-2 px-3 font-semibold">Enrollment ID</th>
+                          <th className="text-left py-2 px-3 font-semibold">Student Name</th>
                           <th className="text-left py-2 px-3 font-semibold">Score</th>
-                          <th className="text-left py-2 px-3 font-semibold">%</th>
+                          <th className="text-left py-2 px-3 font-semibold">Level Of Proficiency</th>
                           <th className="text-left py-2 px-3 font-semibold">Graded</th>
                         </tr>
                       </thead>
@@ -294,22 +286,16 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                             const pct = Math.round((attempt.calculated_score / totalItems) * 100);
                             return (
                               <tr key={attempt.score_id} className="hover:bg-gray-50">
-                                <td className="py-2.5 px-3 font-medium text-gray-800">{attempt.enrollment_id ?? '—'}</td>
+                                <td className="py-2.5 px-3 font-medium text-gray-800">{attempt.student_name ?? attempt.enrollment_id ?? '—'}</td>
                                 <td className="py-2.5 px-3">
                                   <span className={`font-bold ${pct >= 75 ? 'text-green-600' : pct >= 50 ? 'text-yellow-600' : 'text-red-500'}`}>
                                     {attempt.calculated_score}/{totalItems}
                                   </span>
                                 </td>
                                 <td className="py-2.5 px-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-16 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full ${pct >= 75 ? 'bg-green-400' : pct >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                                        style={{ width: `${pct}%` }}
-                                      />
-                                    </div>
-                                    <span className="text-xs text-gray-500">{pct}%</span>
-                                  </div>
+                                  <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${getProficiency(pct).color}`}>
+                                    {getProficiency(pct).label}
+                                  </span>
                                 </td>
                                 <td className="py-2.5 px-3 text-xs text-gray-400">
                                   {new Date(attempt.graded_at).toLocaleDateString()}

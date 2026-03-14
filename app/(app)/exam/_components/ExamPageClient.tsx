@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Container,
   Title,
   Text,
   Card,
@@ -11,41 +10,44 @@ import {
   Button,
   Badge,
   Group,
+  Tooltip,
   Stack,
-  Grid,
+  SimpleGrid,
+  Accordion,
   ActionIcon,
   Menu,
   Skeleton,
   Alert,
-  Paper,
   Divider,
-  Box,
-  Switch,
   Modal,
   TextInput,
+  Pagination,
 } from "@mantine/core";
 import {
   IconPlus,
   IconFileText,
   IconDownload,
-  IconEdit,
   IconTrash,
   IconAlertCircle,
   IconRefreshDot,
-  IconDots,
+  IconRefresh,
+  IconSchool,
+  IconSettings,
   IconEye,
-  IconBookmark,
+  IconUsers,
+  IconBook,
+  IconKey,
+  IconTargetArrow,
+  IconScanEye,
 } from "@tabler/icons-react";
-import Image from "next/image";
 import { notifications } from "@mantine/notifications";
-import CreateExamModal from "@/components/CreateExamModal";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
+import CreateExamModal, { EXAM_DRAFT_KEY, type ExamDraft } from "@/components/CreateExamModal";
 import ItemAnalysisModal from "@/components/ItemAnalysisModal";
 import LearningObjectivesModal from "@/components/LearningObjectivesModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
   fetchExamsWithRelations,
-  fetchExamById,
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
@@ -57,18 +59,17 @@ import { SearchBar } from "@/components/searchBar/SearchBar";
 
 export default function ExamPageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, permissions, loading: authLoading } = useAuth();
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSection, setSelectedSection] = useState<string | null>("All");
-  const [selectedSubject, setSelectedSubject] = useState<string | null>("All");
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<string | null>(null);
+  const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
-  const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
-    null,
-  );
+  const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(null);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
@@ -76,15 +77,40 @@ export default function ExamPageClient() {
   const [deleting, setDeleting] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(null);
-
   const [isObjectivesModalOpen, setIsObjectivesModalOpen] = useState(false);
   const [objectivesExam, setObjectivesExam] = useState<ExamWithRelations | null>(null);
-  /** When true, objectives modal was opened from creation flow → show "Save & Set Answer Key" */
-  const [objectivesFromCreation, setObjectivesFromCreation] = useState(false);
-  /** When true, answer key was opened from creation flow → show "Back to Objectives" button */
-  const [answerKeyFromCreation, setAnswerKeyFromCreation] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [modalDraft, setModalDraft] = useState<ExamDraft | null>(null);
   /** Exam ID to highlight after creation flow completes */
   const [newlyCreatedExamId, setNewlyCreatedExamId] = useState<number | null>(null);
+  const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
+  const PAGE_SIZE = 3;
+  const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
+
+  // Handle ?newExamId= highlight and ?openCreate=1 modal reopen
+  useEffect(() => {
+    const newId = searchParams.get("newExamId");
+    if (newId) {
+      const examId = Number(newId);
+      if (!isNaN(examId)) {
+        setNewlyCreatedExamId(examId);
+        setTimeout(() => setNewlyCreatedExamId(null), 4000);
+      }
+    }
+    const shouldOpen = searchParams.get("openCreate");
+    if (shouldOpen) {
+      const raw = sessionStorage.getItem(EXAM_DRAFT_KEY);
+      setModalDraft(raw ? JSON.parse(raw) : null);
+      setIsCreateModalOpen(true);
+    }
+    if (newId || shouldOpen) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("newExamId");
+      url.searchParams.delete("openCreate");
+      window.history.replaceState({}, "", url.toString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hasFullAccess = permissions.includes("full_access_examinations");
 
@@ -134,35 +160,66 @@ export default function ExamPageClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id, hasFullAccess]);
 
-  const sectionOptions = [
-    "All",
-    ...Array.from(
-      new Set(
-        exams.flatMap(
-          (e) =>
-            (e.exam_assignments ?? [])
-              .filter((a) => {
-                const sectionId = a.sections?.section_id;
-                return !allowedSectionIds || (sectionId != null && allowedSectionIds.has(sectionId));
-              })
-              .map((a) => a.sections?.name)
-              .filter(Boolean) as string[],
-        ),
-      ),
-    ),
-  ];
+  const gradeLevelOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const exam of exams) {
+      for (const a of exam.exam_assignments ?? []) {
+        const sectionId = a.sections?.section_id;
+        if (allowedSectionIds && (sectionId == null || !allowedSectionIds.has(sectionId))) continue;
+        const name = a.sections?.grade_levels?.display_name;
+        if (name) seen.add(name);
+      }
+    }
+    return Array.from(seen)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .map((name) => ({ value: name, label: name }));
+  }, [exams, allowedSectionIds]);
 
-  const subjectOptions = [
-    "All",
-    ...Array.from(
+  const sectionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const exam of exams) {
+      for (const a of exam.exam_assignments ?? []) {
+        const sectionId = a.sections?.section_id;
+        if (allowedSectionIds && (sectionId == null || !allowedSectionIds.has(sectionId))) continue;
+        if (selectedGradeLevel && a.sections?.grade_levels?.display_name !== selectedGradeLevel) continue;
+        const name = a.sections?.name;
+        if (name) seen.add(name);
+      }
+    }
+    return Array.from(seen)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .map((name) => ({ value: name, label: name }));
+  }, [exams, allowedSectionIds, selectedGradeLevel]);
+
+  const subjectOptions = useMemo(() => {
+    let filtered = exams;
+    if (selectedGradeLevel) {
+      filtered = filtered.filter((e) =>
+        (e.exam_assignments ?? []).some(
+          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
+        ),
+      );
+    }
+    return Array.from(
       new Set(
-        exams
+        filtered
           .filter((e) => !allowedSubjectIds || allowedSubjectIds.has(e.subject_id!))
           .map((e) => e.subjects?.name)
-          .filter(Boolean) as string[]
+          .filter(Boolean) as string[],
       ),
-    ),
-  ];
+    )
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+      .map((name) => ({ value: name, label: name }));
+  }, [exams, selectedGradeLevel, allowedSubjectIds]);
+
+  useEffect(() => {
+    setSelectedSection(null);
+    setSelectedSubject(null);
+  }, [selectedGradeLevel]);
+
+  useEffect(() => {
+    setSelectedSubject(null);
+  }, [selectedSection]);
 
   useEffect(() => {
     let filtered = [...exams];
@@ -171,18 +228,38 @@ export default function ExamPageClient() {
         e.title.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
-    if (selectedSection !== "All") {
+    if (selectedGradeLevel) {
       filtered = filtered.filter((e) =>
         (e.exam_assignments ?? []).some(
-          (a) => a.sections?.name === selectedSection,
+          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
         ),
       );
     }
-    if (selectedSubject !== "All") {
+    if (selectedSection) {
+      filtered = filtered.filter((e) =>
+        (e.exam_assignments ?? []).some((a) => a.sections?.name === selectedSection),
+      );
+    }
+    if (selectedSubject) {
       filtered = filtered.filter((e) => e.subjects?.name === selectedSubject);
     }
     setFilteredExams(filtered);
-  }, [exams, searchQuery, selectedSection, selectedSubject]);
+  }, [exams, searchQuery, selectedGradeLevel, selectedSection, selectedSubject]);
+
+  const groupedExams = useMemo(() => {
+    const groups = new Map<string, { gradeLabel: string; exams: ExamWithRelations[] }>();
+    for (const exam of filteredExams) {
+      const gl = exam.exam_assignments?.[0]?.sections?.grade_levels;
+      const key = gl?.display_name ?? "Unknown";
+      if (!groups.has(key)) {
+        groups.set(key, { gradeLabel: gl?.display_name ?? "Unknown", exams: [] });
+      }
+      groups.get(key)!.exams.push(exam);
+    }
+    return Array.from(groups.values()).sort((a, b) =>
+      a.gradeLabel.localeCompare(b.gradeLabel, undefined, { sensitivity: "base" }),
+    );
+  }, [filteredExams]);
 
   const handleStatusChange = async (
     exam: ExamWithRelations,
@@ -230,31 +307,14 @@ export default function ExamPageClient() {
     });
   };
 
-  const handleExamCreated = async (examId: number) => {
-    // Fetch the new exam by ID only — do NOT call fetchExams() yet so the plate
-    // doesn't appear on the list until after the objectives flow completes.
-    const exam = await fetchExamById(examId);
-    if (exam) {
-      setObjectivesExam(exam);
-      setObjectivesFromCreation(true);
-      setIsObjectivesModalOpen(true);
-    }
-  };
-
   const handleOpenObjectivesModal = (exam: ExamWithRelations) => {
     setObjectivesExam(exam);
-    setObjectivesFromCreation(false);
     setIsObjectivesModalOpen(true);
   };
 
   const handleCloseObjectivesModal = () => {
-    if (objectivesFromCreation) {
-      // Now refresh the list so the newly-created exam plate appears
-      fetchExams();
-    }
     setIsObjectivesModalOpen(false);
     setObjectivesExam(null);
-    setObjectivesFromCreation(false);
   };
 
   const handleOpenDeleteModal = (exam: ExamWithRelations) => {
@@ -292,136 +352,38 @@ export default function ExamPageClient() {
     setDeleting(false);
   };
 
-  const activeCount = exams.filter((e) => !e.is_locked).length;
-  const inactiveCount = exams.filter((e) => e.is_locked).length;
-
   return (
     <>
-      <p className="mb-3 text-sm text-[#808898]">
-        Manage and track all examinations
-      </p>
-      <Container fluid px="md" py="md">
-        <Stack gap="xl">
-          {/* Stats */}
-          <Grid gutter="md">
-            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-              <Paper
-                p="lg"
-                radius="md"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #1f8f3a 0%, #4EAE4A 100%)",
-                  border: "1px solid #3f9f46",
-                }}
-              >
-                <Group justify="space-between" mb={10}>
-                  <Text size="xs" fw={700} c="white">
-                    Active Examinations
-                  </Text>
-                  <Box
-                    w={24}
-                    h={24}
-                    style={{
-                      borderRadius: 999,
-                      background: "rgba(255,255,255,0.2)",
-                      color: "white",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
-                  >
-                    A
-                  </Box>
-                </Group>
-                <Text size="2.25rem" fw={800} lh={1} c="white">
-                  {activeCount}
-                </Text>
-                <Text size="xs" mt={6} c="rgba(255,255,255,0.9)">
-                  Currently active exams
-                </Text>
-              </Paper>
-            </Grid.Col>
-
-            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-              <Paper
-                p="lg"
-                radius="md"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #fff1f1 0%, #ffe3e3 100%)",
-                  border: "1px solid #ffc9c9",
-                }}
-              >
-                <Group justify="space-between" mb={10}>
-                  <Text size="xs" fw={700} c="#c92a2a">
-                    Inactive Examinations
-                  </Text>
-                  <Box
-                    w={24}
-                    h={24}
-                    style={{
-                      borderRadius: 999,
-                      background: "#ffe3e3",
-                      color: "#e03131",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
-                  >
-                    I
-                  </Box>
-                </Group>
-                <Text size="2.25rem" fw={800} lh={1} c="#a61e4d">
-                  {inactiveCount}
-                </Text>
-                <Text size="xs" mt={6} c="#c92a2a">
-                  Exams currently locked
-                </Text>
-              </Paper>
-            </Grid.Col>
-
-            <Grid.Col span={{ base: 12, sm: 6, md: 4 }}>
-              <Paper
-                p="lg"
-                radius="md"
-                style={{
-                  background:
-                    "linear-gradient(135deg, #eef7ff 0%, #e7f5ff 100%)",
-                  border: "1px solid #b6ddff",
-                }}
-              >
-                <Group justify="space-between" mb={10}>
-                  <Text size="xs" fw={700} c="#1864ab">
-                    Total Examinations
-                  </Text>
-                  <Box
-                    w={24}
-                    h={24}
-                    style={{
-                      borderRadius: 999,
-                      background: "#d0ebff",
-                      color: "#1c7ed6",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <IconFileText size={14} />
-                  </Box>
-                </Group>
-                <Text size="2.25rem" fw={800} lh={1} c="#1971c2">
-                  {exams.length}
-                </Text>
-                <Text size="xs" mt={6} c="#1864ab">
-                  Overall exam records
-                </Text>
-              </Paper>
-            </Grid.Col>
-          </Grid>
+      <div>
+        <Group justify="space-between">
+          <h1 className="mb-3 text-2xl font-bold">
+            Examinations{" "}
+            {!loading && (
+              <span className="text-[#808898]">
+                ({filteredExams.length})
+              </span>
+            )}
+          </h1>
+          {loading ? (
+            <Stack gap={4} style={{ alignItems: "flex-end" }}>
+              <Text size="xs" c="dimmed">Create Exam</Text>
+              <Skeleton height={40} width={140} radius="md" />
+            </Stack>
+          ) : (
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => { setModalDraft(null); setIsCreateModalOpen(true); }}
+            >
+              Create Exam
+            </Button>
+          )}
+        </Group>
+        <p className="mb-3 text-sm text-[#808898]">
+          Manage and track all examinations
+        </p>
+      </div>
 
           {/* Error */}
           {dbError && (
@@ -444,300 +406,265 @@ export default function ExamPageClient() {
           )}
 
           {/* Filters */}
-          <Card padding="lg" radius="md" withBorder>
-            <Grid>
-              <Grid.Col span={{ base: 12, md: 6 }}>
+          {loading ? (
+            <div>
+              <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+                <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+                  <Text size="xs" c="dimmed">
+                    Search examinations
+                  </Text>
+                  <Skeleton height={40} radius="md" />
+                </Stack>
+                <Stack gap={4} style={{ alignItems: "flex-end" }}>
+                  <Text size="xs" c="dimmed">
+                    Refresh
+                  </Text>
+                  <Skeleton height={40} width={40} radius="xl" />
+                </Stack>
+              </Group>
+              <Group mb="md" gap="sm">
+                <Skeleton height={40} width={200} radius="md" />
+                <Skeleton height={40} width={200} radius="md" />
+                <Skeleton height={40} width={200} radius="md" />
+              </Group>
+            </div>
+          ) : (
+            <div>
+              <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
                 <SearchBar
+                  id="search-exams"
                   placeholder="Search examinations..."
                   ariaLabel="Search examinations"
+                  style={{ flex: 1, minWidth: 0 }}
+                  maw={700}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.currentTarget.value)}
                 />
-              </Grid.Col>
-              <Grid.Col span={{ base: 6, md: 2 }}>
+                <Tooltip label="Refresh" position="bottom" withArrow>
+                  <ActionIcon
+                    variant="outline"
+                    color="#808898"
+                    size="lg"
+                    radius="xl"
+                    onClick={fetchExams}
+                    loading={loading}
+                    aria-label="Refresh examinations"
+                  >
+                    <IconRefresh size={18} stroke={1.5} />
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
+              <Group mb="md" gap="sm">
                 <Select
+                  placeholder="Grade Level"
+                  data={gradeLevelOptions}
+                  value={selectedGradeLevel}
+                  onChange={setSelectedGradeLevel}
+                  leftSection={<IconSchool size={16} />}
+                  w={200}
+                  clearable
+                />
+                <Select
+                  placeholder="Section"
                   data={sectionOptions}
                   value={selectedSection}
                   onChange={setSelectedSection}
-                  placeholder="Section"
+                  leftSection={<IconUsers size={16} />}
+                  w={200}
+                  clearable
+                  disabled={sectionOptions.length === 0}
                 />
-              </Grid.Col>
-              <Grid.Col span={{ base: 6, md: 2 }}>
                 <Select
+                  placeholder="Subject"
                   data={subjectOptions}
                   value={selectedSubject}
                   onChange={setSelectedSubject}
-                  placeholder="Subject"
+                  leftSection={<IconBook size={16} />}
+                  w={200}
+                  clearable
+                  disabled={subjectOptions.length === 0}
                 />
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 2 }}>
-                <Button
-                  fullWidth
-                  color="#4EAE4A"
-                  radius="md"
-                  leftSection={<IconPlus size={16} />}
-                  onClick={() => setIsCreateModalOpen(true)}
-                >
-                  Create Exam
-                </Button>
-              </Grid.Col>
-            </Grid>
-          </Card>
-
-          <Text size="sm" c="dimmed" fw={500}>
-            Examinations ({filteredExams.length})
-          </Text>
+              </Group>
+            </div>
+          )}
 
           {/* Content */}
           {loading ? (
-            <Grid>
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <Grid.Col key={`exam-skeleton-${i}`} span={{ base: 12, sm: 6, md: 4 }}>
-                  <Card padding="lg" radius="md" withBorder style={{ height: "100%" }}>
-                    <Stack gap="md">
-                      <Group gap="sm">
-                        <Skeleton height={40} width={40} radius="md" />
-                        <Skeleton height={14} style={{ flex: 1 }} />
-                      </Group>
-                      <Skeleton height={68} radius="md" />
-                      <Skeleton height={34} radius="md" />
-                      <Skeleton height={1} />
-                      <Stack gap={6}>
-                        <Skeleton height={30} radius="md" />
-                        <Skeleton height={30} radius="md" />
-                        <Skeleton height={30} radius="md" />
-                        <Skeleton height={30} radius="md" />
-                      </Stack>
-                    </Stack>
-                  </Card>
-                </Grid.Col>
+            <Stack gap="md">
+              {[1, 2].map((i) => (
+                <Skeleton key={i} height={180} radius="md" />
               ))}
-            </Grid>
+            </Stack>
           ) : dbError ? null : filteredExams.length === 0 ? (
             <Card padding={60} radius="md" withBorder>
               <Stack align="center">
                 <IconFileText size={64} color="gray" stroke={1} />
-                <Title order={3} c="dimmed">
-                  No examinations found
-                </Title>
-                <Text c="dimmed" size="sm">
-                  Create your first examination to get started.
-                </Text>
+                <Title order={3} c="dimmed">No examinations found</Title>
+                <Text c="dimmed" size="sm">Create your first examination to get started.</Text>
               </Stack>
             </Card>
           ) : (
-            <Grid>
-              {filteredExams.map((exam) => {
-                const gradeLabel =
-                  exam.exam_assignments?.[0]?.sections?.grade_levels
-                    ?.display_name ?? "";
-                const subjectName = exam.subjects?.name ?? "";
-                const sectionNames = (exam.exam_assignments ?? [])
-                  .map((a) => a.sections?.name)
-                  .filter(Boolean)
-                  .join(", ");
-                const isNew = exam.exam_id === newlyCreatedExamId;
-                return (
-                  <Grid.Col
-                    key={exam.exam_id}
-                    span={{ base: 12, sm: 6, md: 4 }}
-                  >
-                    <Card
-                      padding="lg"
-                      radius="md"
-                      withBorder
-                      style={{
-                        height: "100%",
-                        transition: "box-shadow 0.4s ease, border-color 0.4s ease",
-                        boxShadow: isNew ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)" : undefined,
-                        borderColor: isNew ? "#4EAE4A" : undefined,
-                      }}
-                    >
-                      <Stack gap="md">
-                        {/* Header */}
-                        <Group justify="space-between">
-                          <Group gap="sm" style={{ flex: 1 }}>
-                            <Box pos="relative" w={40} h={40}>
-                              <Image
-                                src="/logo.png"
-                                alt="Logo"
-                                fill
-                                style={{ objectFit: "contain" }}
-                              />
-                            </Box>
-                            <Text
-                              fw={700}
-                              size="sm"
-                              lineClamp={2}
-                              style={{ flex: 1 }}
-                            >
-                              {exam.title}
-                            </Text>
-                          </Group>
-                          <Switch
-                            checked={!exam.is_locked}
-                            onChange={(e) =>
-                              handleStatusChange(
-                                exam,
-                                e.currentTarget.checked ? "active" : "inactive",
-                              )
-                            }
-                            disabled={updatingStatus === exam.exam_id}
-                            color={!exam.is_locked ? "green" : "red"}
-                            size="xl"
-                            onLabel="Active"
-                            offLabel="Inactive"
-                            styles={{
-                              track: {
-                                backgroundColor: exam.is_locked
-                                  ? "var(--mantine-color-red-6)"
-                                  : "var(--mantine-color-green-6)",
-                                borderColor: exam.is_locked
-                                  ? "var(--mantine-color-red-6)"
-                                  : "var(--mantine-color-green-6)",
-                                color: "white",
-                                "--switch-bg": exam.is_locked
-                                  ? "var(--mantine-color-red-6)"
-                                  : "var(--mantine-color-green-6)",
-                              },
+            <Accordion
+              multiple
+              defaultValue={groupedExams.map((g) => g.gradeLabel)}
+              variant="separated"
+              styles={{
+                control: { backgroundColor: "#f0f7ee" },
+                item: { border: "1px solid #d3e9d0" },
+              }}
+            >
+              {groupedExams.map((group) => (
+                <Accordion.Item key={group.gradeLabel} value={group.gradeLabel}>
+                  <Accordion.Control>
+                    <Group gap="xs">
+                      <Text fw={700} size="md">{group.gradeLabel}</Text>
+                      <Text span size="sm" c="dimmed" fw={500}>({group.exams.length})</Text>
+                    </Group>
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p="xs">
+                      {group.exams.slice(
+                        ((pageMap.get(group.gradeLabel) ?? 1) - 1) * PAGE_SIZE,
+                        (pageMap.get(group.gradeLabel) ?? 1) * PAGE_SIZE,
+                      ).map((exam) => {
+                        const subjectName = exam.subjects?.name ?? "";
+                        const sectionNames = (exam.exam_assignments ?? [])
+                          .map((a) => a.sections?.name)
+                          .filter(Boolean)
+                          .join(", ");
+                        const isNew = exam.exam_id === newlyCreatedExamId;
+                        return (
+                          <Card
+                            key={exam.exam_id}
+                            shadow="sm"
+                            padding="lg"
+                            radius="md"
+                            withBorder
+                            onClick={() => setOpenMenuExamId(exam.exam_id)}
+                            style={{
+                              transition: "box-shadow 0.4s ease, border-color 0.4s ease",
+                              boxShadow: isNew ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)" : undefined,
+                              borderColor: isNew ? "#4EAE4A" : undefined,
+                              display: "flex",
+                              flexDirection: "column",
+                              height: "100%",
+                              cursor: "pointer",
                             }}
-                          />
-                        </Group>
+                          >
+                            <Group justify="space-between" mt="md" mb="xs">
+                              <Text fw={550} size="lg" lineClamp={2} style={{ flex: 1 }}>
+                                {exam.title}
+                              </Text>
+                              <Group gap={4} style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                                <Badge color={exam.is_locked ? "red" : "green"} variant="light">
+                                  {exam.is_locked ? "Inactive" : "Active"}
+                                </Badge>
+                                <Menu
+                                  shadow="md"
+                                  width={230}
+                                  position="bottom-end"
+                                  withinPortal
+                                  opened={openMenuExamId === exam.exam_id}
+                                  onChange={(o) => setOpenMenuExamId(o ? exam.exam_id : null)}
+                                >
+                                  <Menu.Target>
+                                    <ActionIcon
+                                      variant="subtle"
+                                      color="gray"
+                                      radius="xl"
+                                      aria-label="Exam actions"
+                                      onClick={(e) => { e.stopPropagation(); setOpenMenuExamId(openMenuExamId === exam.exam_id ? null : exam.exam_id); }}
+                                    >
+                                      <IconSettings size={15} />
+                                    </ActionIcon>
+                                  </Menu.Target>
+                                  <Menu.Dropdown>
+                                    <Menu.Label>Status</Menu.Label>
+                                    <Menu.Item
+                                      leftSection={<IconRefreshDot size={14} />}
+                                      disabled={updatingStatus === exam.exam_id}
+                                      onClick={() => handleStatusChange(exam, exam.is_locked ? "active" : "inactive")}
+                                    >
+                                      {exam.is_locked ? "Set Active" : "Set Inactive"}
+                                    </Menu.Item>
+                                    <Menu.Divider />
+                                    <Menu.Label>Actions</Menu.Label>
+                                    <Menu.Item leftSection={<IconDownload size={14} />} onClick={() => handleDownloadAnswerSheet(exam)}>
+                                      Download Answer Sheet
+                                    </Menu.Item>
+                                    <Menu.Item leftSection={<IconKey size={14} />} onClick={() => { setSelectedExam(exam); setIsAnswerKeyModalOpen(true); }}>
+                                      Edit Answer Key
+                                    </Menu.Item>
+                                    <Menu.Item leftSection={<IconTargetArrow size={14} />} onClick={() => handleOpenObjectivesModal(exam)}>
+                                      Edit Objectives
+                                    </Menu.Item>
+                                    <Menu.Item leftSection={<IconScanEye size={14} />} disabled={!exam.answer_key} onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}>
+                                      Scan Papers
+                                    </Menu.Item>
+                                    <Menu.Item leftSection={<IconEye size={14} />} disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)} onClick={() => { setSelectedExam(exam); setIsAnalysisModalOpen(true); }}>
+                                      Review Papers
+                                    </Menu.Item>
+                                    <Menu.Divider />
+                                    <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => handleOpenDeleteModal(exam)}>
+                                      Delete
+                                    </Menu.Item>
+                                  </Menu.Dropdown>
+                                </Menu>
+                              </Group>
+                            </Group>
 
-                        {/* Details */}
-                        <Paper p="sm" bg="gray.0" radius="md">
-                          <Stack gap={6}>
-                            {gradeLabel && (
-                              <Text size="xs">
-                                <Text span fw={500}>
-                                  Grade:
-                                </Text>{" "}
-                                {gradeLabel}
-                              </Text>
-                            )}
+                            <Divider my="sm" mb="lg" />
+
+                            <Text c="#969696" fw={550} mb="sm">About</Text>
                             {subjectName && (
-                              <Text size="xs">
-                                <Text span fw={500}>
-                                  Subject:
-                                </Text>{" "}
-                                {subjectName}
-                              </Text>
+                              <Group mb="xs" gap="xs">
+                                <IconBook size={16} color="gray" />
+                                <Text size="sm">{subjectName}</Text>
+                              </Group>
                             )}
                             {sectionNames && (
-                              <Text size="xs">
-                                <Text span fw={500}>
-                                  Section:
-                                </Text>{" "}
-                                {sectionNames}
-                              </Text>
+                              <Group mb="xs" gap="xs">
+                                <IconUsers size={16} color="gray" />
+                                <Text size="sm">{sectionNames}</Text>
+                              </Group>
                             )}
-                          </Stack>
-                        </Paper>
-
-                        {/* Download */}
-                        <Button
-                          variant="outline"
-                          color="#4EAE4A"
-                          radius="md"
-                          fullWidth
-                          leftSection={<IconDownload size={16} />}
-                          onClick={() => handleDownloadAnswerSheet(exam)}
-                        >
-                          Download Answer Sheet
-                        </Button>
-
-                        {/* Actions */}
-                        <div>
-                          <Divider mb="sm" />
-                          <Text
-                            size="xs"
-                            tt="uppercase"
-                            fw={600}
-                            c="dimmed"
-                            mb="xs"
-                          >
-                            Actions
-                          </Text>
-                          <Stack gap={6}>
-                            <Button
-                              variant="light"
-                              color="#4EAE4A"
-                              fullWidth
-                              size="sm"
-                              radius="md"
-                              leftSection={<IconEdit size={14} />}
-                              onClick={() => {
-                                setSelectedExam(exam);
-                                setIsAnswerKeyModalOpen(true);
-                              }}
-                            >
-                              Edit Answer Key
-                            </Button>
-                            <Button
-                              variant="light"
-                              color="violet"
-                              fullWidth
-                              size="sm"
-                              radius="md"
-                              leftSection={<IconBookmark size={14} />}
-                              onClick={() => handleOpenObjectivesModal(exam)}
-                            >
-                              Edit Objectives
-                            </Button>
-                            <Button
-                              variant="light"
-                              color="blue"
-                              fullWidth
-                              size="sm"
-                              radius="md"
-                              leftSection={<IconFileText size={14} />}
-                              disabled={!exam.answer_key}
-                              onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
-                            >
-                              Scan Papers
-                            </Button>
-                            <Button
-                              variant="light"
-                              color="teal"
-                              fullWidth
-                              size="sm"
-                              radius="md"
-                              leftSection={<IconEye size={14} />}
-                              disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)}
-                              onClick={() => {
-                                setSelectedExam(exam);
-                                setIsAnalysisModalOpen(true);
-                              }}
-                            >
-                              Review Papers
-                            </Button>
-                            <Button
-                              variant="light"
-                              color="red"
-                              fullWidth
-                              size="sm"
-                              radius="md"
-                              leftSection={<IconTrash size={14} />}
-                              onClick={() => handleOpenDeleteModal(exam)}
-                            >
-                              Delete
-                            </Button>
-                          </Stack>
-                        </div>
-                      </Stack>
-                    </Card>
-                  </Grid.Col>
-                );
-              })}
-            </Grid>
+                          </Card>
+                        );
+                      })}
+                    </SimpleGrid>
+                    {group.exams.length > PAGE_SIZE && (
+                      <Group justify="center" mt="sm">
+                        <Pagination
+                          total={Math.ceil(group.exams.length / PAGE_SIZE)}
+                          value={pageMap.get(group.gradeLabel) ?? 1}
+                          onChange={(page) =>
+                            setPageMap((prev) => new Map(prev).set(group.gradeLabel, page))
+                          }
+                          size="sm"
+                        />
+                      </Group>
+                    )}
+                  </Accordion.Panel>
+                </Accordion.Item>
+              ))}
+            </Accordion>
           )}
-        </Stack>
 
         {isCreateModalOpen && (
           <CreateExamModal
-            onClose={() => setIsCreateModalOpen(false)}
-            onSuccess={fetchExams}
-            onCreated={handleExamCreated}
+            onClose={() => {
+              sessionStorage.removeItem(EXAM_DRAFT_KEY);
+              setIsCreateModalOpen(false);
+              setModalDraft(null);
+            }}
+            onProceed={(draft) => {
+              sessionStorage.setItem(EXAM_DRAFT_KEY, JSON.stringify(draft));
+              setIsCreateModalOpen(false);
+              setModalDraft(null);
+              router.push("/exam/create");
+            }}
+            initialDraft={modalDraft}
+            existingTitles={exams.map((e) => e.title)}
           />
         )}
 
@@ -746,20 +673,6 @@ export default function ExamPageClient() {
             exam={objectivesExam}
             onClose={handleCloseObjectivesModal}
             onSaved={fetchExams}
-            onContinue={
-              objectivesFromCreation
-                ? async () => {
-                    const freshExam = await fetchExamById(objectivesExam.exam_id);
-                    // Close objectives without calling fetchExams — plate appears only after summary "Done"
-                    setIsObjectivesModalOpen(false);
-                    setObjectivesExam(null);
-                    setObjectivesFromCreation(false);
-                    setSelectedExam(freshExam ?? objectivesExam);
-                    setAnswerKeyFromCreation(true);
-                    setIsAnswerKeyModalOpen(true);
-                  }
-                : undefined
-            }
           />
         )}
         {isAnswerKeyModalOpen && selectedExam && (
@@ -767,22 +680,9 @@ export default function ExamPageClient() {
             exam={selectedExam}
             onClose={() => {
               setIsAnswerKeyModalOpen(false);
-              setAnswerKeyFromCreation(false);
               setSelectedExam(null);
             }}
-            onSuccess={answerKeyFromCreation ? async () => {
-              const examId = selectedExam.exam_id;
-              await fetchExams();
-              setNewlyCreatedExamId(examId);
-              setTimeout(() => setNewlyCreatedExamId(null), 4000);
-            } : fetchExams}
-            onBack={answerKeyFromCreation ? () => {
-              setIsAnswerKeyModalOpen(false);
-              setAnswerKeyFromCreation(false);
-              setObjectivesExam(selectedExam);
-              setObjectivesFromCreation(true);
-              setIsObjectivesModalOpen(true);
-            } : undefined}
+            onSuccess={fetchExams}
           />
         )}
 
@@ -824,6 +724,7 @@ export default function ExamPageClient() {
             placeholder="Type delete to confirm"
             value={confirmText}
             onChange={(e) => setConfirmText(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && confirmText.toLowerCase() === "delete" && !deleting) handleDeleteExam(); }}
             mb="lg"
             disabled={deleting}
           />
@@ -841,7 +742,6 @@ export default function ExamPageClient() {
             </Button>
           </Group>
         </Modal>
-      </Container>
     </>
   );
 }

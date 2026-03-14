@@ -98,6 +98,7 @@ export interface ExamScore {
   responses: { [item: number]: string };
   calculated_score: number;
   graded_at: string;
+  student_name?: string | null;
 }
 
 export interface ItemStatistic {
