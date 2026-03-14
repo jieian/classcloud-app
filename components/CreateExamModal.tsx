@@ -103,11 +103,13 @@ export default function CreateExamModal({ onClose, onSuccess, onCreated }: Creat
   const activeSectionType =
     selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
 
-  // Clear subject only when it becomes invalid for the newly active section type
+  // Clear subject only when it becomes invalid for the newly active section type.
+  // Subjects with null section_type (DB column not yet migrated) are always valid.
   useEffect(() => {
     if (!activeSectionType || !selectedSubjectId) return;
     const isValid = subjects.some(
-      s => String(s.subject_id) === selectedSubjectId && s.section_type === activeSectionType
+      s => String(s.subject_id) === selectedSubjectId &&
+           (s.section_type === null || s.section_type === activeSectionType)
     );
     if (!isValid) setSelectedSubjectId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,7 +120,8 @@ export default function CreateExamModal({ onClose, onSuccess, onCreated }: Creat
       subjects
         .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
         .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id))
-        .filter(s => !activeSectionType || s.section_type === activeSectionType)
+        // null section_type means the column isn't migrated yet — show subject regardless
+        .filter(s => !activeSectionType || s.section_type === null || s.section_type === activeSectionType)
         .map(s => [s.subject_id, s] as const)
     ).values()
   );
