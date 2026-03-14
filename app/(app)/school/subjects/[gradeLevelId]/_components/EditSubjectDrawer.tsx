@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import {
   Box,
   Button,
-  Checkbox,
   Drawer,
   Grid,
   Group,
+  Radio,
   SegmentedControl,
   Skeleton,
   Stack,
@@ -53,13 +53,13 @@ export default function EditSubjectDrawer({
   onSuccess,
 }: EditSubjectDrawerProps) {
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
-  const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<string>("");
   const [sectionType, setSectionType] = useState<SectionType>("REGULAR");
   const [loadingGradeLevels, setLoadingGradeLevels] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Track initial values to detect dirty state
-  const initialGradeLevelIds = useRef<string[]>([]);
+  const initialGradeLevelId = useRef<string>("");
   const initialSectionType = useRef<SectionType>("REGULAR");
 
   const form = useForm({
@@ -114,27 +114,29 @@ export default function EditSubjectDrawer({
       setLoadingGradeLevels(true);
       const supabase = getSupabase();
 
-      const [{ data: allLevels, error: glError }, { data: linked, error: linkError }] =
-        await Promise.all([
-          supabase
-            .from("grade_levels")
-            .select("grade_level_id, level_number, display_name")
-            .order("level_number"),
-          supabase
-            .from("subject_grade_levels")
-            .select("grade_level_id")
-            .eq("subject_id", subjectId)
-            .is("deleted_at", null),
-        ]);
+      const [
+        { data: allLevels, error: glError },
+        { data: linked, error: linkError },
+      ] = await Promise.all([
+        supabase
+          .from("grade_levels")
+          .select("grade_level_id, level_number, display_name")
+          .order("level_number"),
+        supabase
+          .from("subject_grade_levels")
+          .select("grade_level_id")
+          .eq("subject_id", subjectId)
+          .is("deleted_at", null),
+      ]);
 
       if (glError) throw glError;
       if (linkError) throw linkError;
 
       setGradeLevels(allLevels ?? []);
 
-      const ids = (linked ?? []).map((r: { grade_level_id: number }) => String(r.grade_level_id));
-      setSelectedGradeLevels(ids);
-      initialGradeLevelIds.current = ids;
+      const id = linked?.[0] ? String(linked[0].grade_level_id) : "";
+      setSelectedGradeLevel(id);
+      initialGradeLevelId.current = id;
     } catch (err) {
       console.error("Failed to load grade levels:", err);
     } finally {
@@ -142,11 +144,12 @@ export default function EditSubjectDrawer({
     }
   }
 
-  const gradeLevelsDirty =
-    JSON.stringify([...selectedGradeLevels].sort()) !==
-    JSON.stringify([...initialGradeLevelIds.current].sort());
+  const gradeLevelsDirty = selectedGradeLevel !== initialGradeLevelId.current;
 
-  const isAnythingDirty = form.isDirty() || gradeLevelsDirty || sectionType !== initialSectionType.current;
+  const isAnythingDirty =
+    form.isDirty() ||
+    gradeLevelsDirty ||
+    sectionType !== initialSectionType.current;
 
   function handleClose() {
     if (isAnythingDirty) {
@@ -155,7 +158,8 @@ export default function EditSubjectDrawer({
         centered: true,
         children: (
           <Text size="sm">
-            You have unsaved changes. Are you sure you want to close this drawer?
+            You have unsaved changes. Are you sure you want to close this
+            drawer?
           </Text>
         ),
         labels: { confirm: "Discard", cancel: "Cancel" },
@@ -182,7 +186,7 @@ export default function EditSubjectDrawer({
       name: subject.name,
       description: subject.description ?? "",
     });
-    setSelectedGradeLevels([...initialGradeLevelIds.current]);
+    setSelectedGradeLevel(initialGradeLevelId.current);
     setSectionType(initialSectionType.current);
   }
 
@@ -227,7 +231,7 @@ export default function EditSubjectDrawer({
           name: toTitleCase(form.values.name),
           description: form.values.description.trim(),
           section_type: sectionType,
-          grade_level_ids: selectedGradeLevels.map(Number),
+          grade_level_ids: [Number(selectedGradeLevel)],
         }),
       });
 
@@ -356,20 +360,20 @@ export default function EditSubjectDrawer({
                 padding: "var(--mantine-spacing-sm)",
               }}
             >
-              <Checkbox.Group
-                value={selectedGradeLevels}
-                onChange={setSelectedGradeLevels}
+              <Radio.Group
+                value={selectedGradeLevel}
+                onChange={setSelectedGradeLevel}
               >
                 <Stack gap="xs">
                   {gradeLevels.map((gl) => (
-                    <Checkbox
+                    <Radio
                       key={gl.grade_level_id}
                       value={String(gl.grade_level_id)}
                       label={gl.display_name}
                     />
                   ))}
                 </Stack>
-              </Checkbox.Group>
+              </Radio.Group>
             </Box>
           )}
         </Grid.Col>

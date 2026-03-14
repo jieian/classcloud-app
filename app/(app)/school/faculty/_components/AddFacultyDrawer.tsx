@@ -62,7 +62,6 @@ export default function AddFacultyDrawer({
       setLoading(true);
       setError(null);
       const all = await fetchActiveUsersWithRoles();
-      // Only users with no is_faculty role
       const nonFaculty = all.filter(
         (u) => !u.roles.some((r) => r.is_faculty === true),
       );
@@ -148,7 +147,9 @@ export default function AddFacultyDrawer({
 
       {!error && filtered.length === 0 && !loading && (
         <Text c="dimmed" ta="center" py="xl">
-          No users found
+          {search.trim()
+            ? "No users match your search."
+            : "All active users already have a faculty role."}
         </Text>
       )}
 

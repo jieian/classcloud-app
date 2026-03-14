@@ -1,4 +1,6 @@
 // app/(app)/user-roles/users/_components/UsersTable.tsx
+"use client";
+
 import {
   Anchor,
   Badge,
@@ -13,6 +15,8 @@ import {
   Text,
   VisuallyHidden,
 } from "@mantine/core";
+import { useMemo } from "react";
+import { useAuth } from "@/context/AuthContext";
 import type { UserWithRoles } from "../_lib";
 import UserTableActions from "./UserTableActions";
 
@@ -22,7 +26,20 @@ type UsersTableProps = {
 };
 
 export default function UsersTable({ users, onUpdate }: UsersTableProps) {
-  if (users.length === 0) {
+  const { user } = useAuth();
+  const currentUid = user?.id ?? null;
+
+  const sorted = useMemo(
+    () =>
+      [...users].sort(
+        (a, b) =>
+          a.first_name.localeCompare(b.first_name) ||
+          a.last_name.localeCompare(b.last_name)
+      ),
+    [users]
+  );
+
+  if (sorted.length === 0) {
     return (
       <Text c="dimmed" ta="center" py="xl">
         No users found
@@ -30,7 +47,7 @@ export default function UsersTable({ users, onUpdate }: UsersTableProps) {
     );
   }
 
-  const rows = users.map((user) => {
+  const rows = sorted.map((user) => {
     const fullName = `${user.first_name} ${user.last_name}`;
 
     return (
@@ -63,7 +80,7 @@ export default function UsersTable({ users, onUpdate }: UsersTableProps) {
           </Anchor>
         </TableTd>
         <TableTd>
-          <UserTableActions user={user} onUpdate={onUpdate} />
+          <UserTableActions user={user} onUpdate={onUpdate} currentUid={currentUid} />
         </TableTd>
       </TableTr>
     );

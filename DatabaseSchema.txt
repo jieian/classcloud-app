@@ -33,6 +33,7 @@ CREATE TABLE public.exams (
   quarter_id integer,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,
+  objectives jsonb,
   CONSTRAINT exams_pkey PRIMARY KEY (exam_id),
   CONSTRAINT exams_creator_teacher_id_fkey FOREIGN KEY (creator_teacher_id) REFERENCES public.users(uid),
   CONSTRAINT exams_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
@@ -189,11 +190,11 @@ CREATE TABLE public.subject_groups (
 );
 CREATE TABLE public.subjects (
   subject_id integer NOT NULL DEFAULT nextval('subjects_subject_id_seq'::regclass),
-  name character varying NOT NULL UNIQUE,
-  code character varying NOT NULL UNIQUE,
+  name character varying NOT NULL,
+  code character varying NOT NULL,
   description text,
-  section_type USER-DEFINED NOT NULL DEFAULT 'REGULAR'::section_type_enum,
   deleted_at timestamp with time zone,
+  section_type USER-DEFINED NOT NULL DEFAULT 'REGULAR'::section_type_enum,
   CONSTRAINT subjects_pkey PRIMARY KEY (subject_id)
 );
 CREATE TABLE public.teacher_class_assignments (

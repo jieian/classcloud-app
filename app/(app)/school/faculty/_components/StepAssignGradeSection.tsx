@@ -87,6 +87,18 @@ export default function StepAssignGradeSection({
     }
   };
 
+  // Sorted once: SSES sections first, then alphabetical by name within each grade level
+  const sortedSections = useMemo(
+    () =>
+      [...sections].sort((a, b) => {
+        const aSSES = a.section_type === "SSES" ? 0 : 1;
+        const bSSES = b.section_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.name.localeCompare(b.name);
+      }),
+    [sections],
+  );
+
   // Map: section_id → grade_level_id (built once, not per-render)
   const sectionGradeLevelMap = useMemo(
     () => new Map(sections.map((s) => [s.section_id, s.grade_level_id])),
@@ -141,7 +153,7 @@ export default function StepAssignGradeSection({
 
       <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
         {gradeLevels.map((gl) => {
-          const glSections = sections.filter((s) => s.grade_level_id === gl.grade_level_id);
+          const glSections = sortedSections.filter((s) => s.grade_level_id === gl.grade_level_id);
           if (glSections.length === 0) return null;
 
           return (

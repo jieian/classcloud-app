@@ -106,11 +106,18 @@ export default function CreateClassModal({
 
       if (!check.available) {
         if (check.conflict === "name") {
-          form.setFieldError("name", check.error ?? "This class name is already taken.");
+          form.setFieldError(
+            "name",
+            check.error ?? "This class name is already taken.",
+          );
         }
         notifications.show({
-          title: check.conflict === "name" ? "Class Name Taken" : "SSES Already Exists",
-          message: check.error ?? "Validation failed. Please review your inputs.",
+          title:
+            check.conflict === "name"
+              ? "Class Name Taken"
+              : "SSES Already Exists",
+          message:
+            check.error ?? "Validation failed. Please review your inputs.",
           color: "red",
         });
         return;
@@ -127,8 +134,9 @@ export default function CreateClassModal({
     }
 
     const gradeLevelName =
-      gradeLevels.find((gl) => String(gl.grade_level_id) === form.values.grade_level_id)
-        ?.display_name ?? "";
+      gradeLevels.find(
+        (gl) => String(gl.grade_level_id) === form.values.grade_level_id,
+      )?.display_name ?? "";
     const sectionTypeLabel = sectionType === "SSES" ? "SSES" : "Regular";
 
     modals.openConfirmModal({
@@ -304,7 +312,6 @@ export default function CreateClassModal({
                     value={form.values.grade_level_id}
                     onChange={(val) => {
                       form.setFieldValue("grade_level_id", val);
-                      setGradeLevelsExpanded(false);
                     }}
                   >
                     <Stack gap="xs">
@@ -314,7 +321,6 @@ export default function CreateClassModal({
                           value={String(gl.grade_level_id)}
                           label={gl.display_name}
                           disabled={disabled}
-                          color="#4EAE4A"
                         />
                       ))}
                     </Stack>

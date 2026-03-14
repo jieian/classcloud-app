@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ActionIcon,
   Button,
@@ -12,7 +12,6 @@ import {
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
-import { getSupabase } from "@/lib/supabase/client";
 import type { UserWithRoles } from "../_lib";
 import { deleteUser } from "../_lib";
 import EditUserDrawer from "./EditUserDrawer";
@@ -20,11 +19,13 @@ import EditUserDrawer from "./EditUserDrawer";
 interface UserTableActionsProps {
   user: UserWithRoles;
   onUpdate: () => void;
+  currentUid: string | null;
 }
 
 export default function UserTableActions({
   user,
   onUpdate,
+  currentUid,
 }: UserTableActionsProps) {
   const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
     useDisclosure(false);
@@ -32,15 +33,6 @@ export default function UserTableActions({
     useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
-  const [currentUid, setCurrentUid] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchUid = async () => {
-      const { data } = await getSupabase().auth.getUser();
-      setCurrentUid(data.user?.id ?? null);
-    };
-    fetchUid();
-  }, []);
 
   const isSelf = currentUid === user.uid;
 

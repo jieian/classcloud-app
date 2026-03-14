@@ -47,7 +47,7 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-const NAME_RE = /^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/;
+const NAME_RE = /^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/;
 
 function nameValidator(label: string, required: boolean) {
   return (value: string) => {
@@ -56,7 +56,7 @@ function nameValidator(label: string, required: boolean) {
     if (t.length < 2) return `${label} must be at least 2 characters.`;
     if (t.length > 100) return `${label} must be 100 characters or less.`;
     if (!NAME_RE.test(t))
-      return `${label} must contain letters only (no numbers, symbols, or extra spaces).`;
+      return `${label} must contain only letters and apostrophes (no numbers, symbols, or extra spaces).`;
     return null;
   };
 }
@@ -365,7 +365,7 @@ export default function EditStudentModal({
             onClick={() => form.reset()}
             disabled={!form.isDirty() || busy}
           >
-            Revert
+            Revert Changes
           </Button>
           <Button
             color="#4EAE4A"

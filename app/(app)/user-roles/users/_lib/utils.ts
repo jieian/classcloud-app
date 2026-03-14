@@ -40,11 +40,11 @@ export function toTitleCase(str: string): string {
  * Generate secure password using crypto.getRandomValues()
  */
 export function generateSecurePassword(): string {
-  const length = 16;
+  const length = 10;
   const lowercase = "abcdefghijklmnopqrstuvwxyz";
   const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   const numbers = "0123456789";
-  const special = "$&+,:;=?@#|<>.^*()%!-";
+  const special = "@#$!";
   const allChars = lowercase + uppercase + numbers + special;
 
   const array = new Uint32Array(length);

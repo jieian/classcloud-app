@@ -11,7 +11,7 @@ export default async function StudentRosterPage({
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
         Students Management
       </h1>
-      <StudentRosterClient sectionId={Number(sectionId)} />;
+      <StudentRosterClient sectionId={Number(sectionId)} />
     </>
   );
 }

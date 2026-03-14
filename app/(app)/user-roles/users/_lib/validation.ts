@@ -11,8 +11,8 @@ export const validateCreateUserForm = {
     if (!trimmed) return "First name is required";
     if (trimmed.length > 100)
       return "First name must be 100 characters or less";
-    if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-      return "First name must contain only letters (no extra spaces)";
+    if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+      return "First name must contain only letters and apostrophes (no extra spaces)";
     return null;
   },
 
@@ -21,8 +21,8 @@ export const validateCreateUserForm = {
     const trimmed = value.trim();
     if (trimmed.length > 100)
       return "Middle name must be 100 characters or less";
-    if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-      return "Middle name must contain only letters (no extra spaces)";
+    if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+      return "Middle name must contain only letters and apostrophes (no extra spaces)";
     return null;
   },
 
@@ -31,8 +31,8 @@ export const validateCreateUserForm = {
     if (!trimmed) return "Last name is required";
     if (trimmed.length > 100)
       return "Last name must be 100 characters or less";
-    if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-      return "Last name must contain only letters (no extra spaces)";
+    if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+      return "Last name must contain only letters and apostrophes (no extra spaces)";
     return null;
   },
 

@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import {
   Box,
   Button,
-  Checkbox,
   Collapse,
   Group,
   Modal,
+  Radio,
   SegmentedControl,
   Skeleton,
   Stack,
@@ -34,6 +34,7 @@ interface CreateSubjectModalProps {
   onSuccess: () => void;
   preselectedGradeLevelId?: number;
   preselectedSectionType?: SectionType;
+  hideGradeLevelPicker?: boolean;
 }
 
 // Only letters, numbers, and spaces — no symbols
@@ -54,11 +55,14 @@ export default function CreateSubjectModal({
   onSuccess,
   preselectedGradeLevelId,
   preselectedSectionType = "REGULAR",
+  hideGradeLevelPicker = false,
 }: CreateSubjectModalProps) {
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
   const [gradeLevelsExpanded, setGradeLevelsExpanded] = useState(false);
-  const [selectedGradeLevels, setSelectedGradeLevels] = useState<string[]>([]);
-  const [sectionType, setSectionType] = useState<SectionType>(preselectedSectionType);
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState<string>("");
+  const [sectionType, setSectionType] = useState<SectionType>(
+    preselectedSectionType,
+  );
   const [loadingGradeLevels, setLoadingGradeLevels] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [checkingCode, setCheckingCode] = useState(false);
@@ -94,12 +98,12 @@ export default function CreateSubjectModal({
   useEffect(() => {
     if (opened) {
       form.reset();
-      setSelectedGradeLevels(
-        preselectedGradeLevelId ? [String(preselectedGradeLevelId)] : [],
+      setSelectedGradeLevel(
+        preselectedGradeLevelId ? String(preselectedGradeLevelId) : "",
       );
       setSectionType(preselectedSectionType);
       setGradeLevelsExpanded(false);
-      loadGradeLevels();
+      if (!hideGradeLevelPicker) loadGradeLevels();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, preselectedGradeLevelId]);
@@ -151,7 +155,8 @@ export default function CreateSubjectModal({
 
     notifications.show({
       title: "Error",
-      message: data.error ?? "Failed to validate subject code. Please try again.",
+      message:
+        data.error ?? "Failed to validate subject code. Please try again.",
       color: "red",
     });
     return false;
@@ -163,10 +168,9 @@ export default function CreateSubjectModal({
 
     const code = form.values.code.trim();
     const name = toTitleCase(form.values.name);
-    const selectedNames = gradeLevels
-      .filter((gl) => selectedGradeLevels.includes(String(gl.grade_level_id)))
-      .map((gl) => gl.display_name)
-      .join(", ");
+    const selectedNames =
+      gradeLevels.find((gl) => String(gl.grade_level_id) === selectedGradeLevel)
+        ?.display_name ?? "";
 
     setCheckingCode(true);
     const isCodeAvailable = await validateCodeAvailability(code);
@@ -201,7 +205,7 @@ export default function CreateSubjectModal({
           name: toTitleCase(form.values.name),
           description: form.values.description.trim(),
           section_type: sectionType,
-          grade_level_ids: selectedGradeLevels.map(Number),
+          grade_level_ids: [Number(selectedGradeLevel)],
         }),
       });
 
@@ -245,7 +249,10 @@ export default function CreateSubjectModal({
   }
 
   const isFormReady =
-    form.isValid() && selectedGradeLevels.length > 0 && !submitting && !checkingCode;
+    form.isValid() &&
+    (hideGradeLevelPicker || selectedGradeLevel !== "") &&
+    !submitting &&
+    !checkingCode;
 
   return (
     <Modal
@@ -300,74 +307,80 @@ export default function CreateSubjectModal({
           />
         </Box>
 
-        <Box
-          style={{
-            border: "1px solid var(--mantine-color-default-border)",
-            borderRadius: "var(--mantine-radius-default)",
-            overflow: "hidden",
-          }}
-        >
-          <Group
-            justify="space-between"
-            align="center"
-            onClick={() => setGradeLevelsExpanded((v) => !v)}
-            style={{ cursor: "pointer", userSelect: "none", padding: "8px 12px" }}
+        {!hideGradeLevelPicker && (
+          <Box
+            style={{
+              border: "1px solid var(--mantine-color-default-border)",
+              borderRadius: "var(--mantine-radius-default)",
+              overflow: "hidden",
+            }}
           >
-            <Group gap={4}>
-              <Text size="sm" fw={500}>
-                Grade Levels
-              </Text>
-              <Text size="sm" c="red" fw={500}>
-                *
-              </Text>
-            </Group>
-            <IconChevronDown
-              size={16}
+            <Group
+              justify="space-between"
+              align="center"
+              onClick={() => setGradeLevelsExpanded((v) => !v)}
               style={{
-                transition: "transform 200ms ease",
-                transform: gradeLevelsExpanded
-                  ? "rotate(180deg)"
-                  : "rotate(0deg)",
-              }}
-            />
-          </Group>
-
-          <Collapse in={gradeLevelsExpanded}>
-            <Box
-              p="sm"
-              style={{
-                borderTop: "1px solid var(--mantine-color-default-border)",
+                cursor: "pointer",
+                userSelect: "none",
+                padding: "8px 12px",
               }}
             >
-              {loadingGradeLevels ? (
-                <Stack gap="xs">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <Skeleton key={i} height={22} radius="sm" />
-                  ))}
-                </Stack>
-              ) : gradeLevels.length === 0 ? (
-                <Text size="sm" c="dimmed">
-                  No grade levels found.
+              <Group gap={4}>
+                <Text size="sm" fw={500}>
+                  Grade Levels
                 </Text>
-              ) : (
-                <Checkbox.Group
-                  value={selectedGradeLevels}
-                  onChange={setSelectedGradeLevels}
-                >
+                <Text size="sm" c="red" fw={500}>
+                  *
+                </Text>
+              </Group>
+              <IconChevronDown
+                size={16}
+                style={{
+                  transition: "transform 200ms ease",
+                  transform: gradeLevelsExpanded
+                    ? "rotate(180deg)"
+                    : "rotate(0deg)",
+                }}
+              />
+            </Group>
+
+            <Collapse in={gradeLevelsExpanded}>
+              <Box
+                p="sm"
+                style={{
+                  borderTop: "1px solid var(--mantine-color-default-border)",
+                }}
+              >
+                {loadingGradeLevels ? (
                   <Stack gap="xs">
-                    {gradeLevels.map((gl) => (
-                      <Checkbox
-                        key={gl.grade_level_id}
-                        value={String(gl.grade_level_id)}
-                        label={gl.display_name}
-                      />
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <Skeleton key={i} height={22} radius="sm" />
                     ))}
                   </Stack>
-                </Checkbox.Group>
-              )}
-            </Box>
-          </Collapse>
-        </Box>
+                ) : gradeLevels.length === 0 ? (
+                  <Text size="sm" c="dimmed">
+                    No grade levels found.
+                  </Text>
+                ) : (
+                  <Radio.Group
+                    value={selectedGradeLevel}
+                    onChange={setSelectedGradeLevel}
+                  >
+                    <Stack gap="xs">
+                      {gradeLevels.map((gl) => (
+                        <Radio
+                          key={gl.grade_level_id}
+                          value={String(gl.grade_level_id)}
+                          label={gl.display_name}
+                        />
+                      ))}
+                    </Stack>
+                  </Radio.Group>
+                )}
+              </Box>
+            </Collapse>
+          </Box>
+        )}
 
         <Group justify="flex-end" mt="xs">
           <Button variant="default" onClick={onClose} disabled={submitting}>

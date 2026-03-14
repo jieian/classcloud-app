@@ -8,9 +8,14 @@ import { SearchBar } from "@/components/searchBar/SearchBar";
 import RolesTableWrapper, {
   type RolesTableWrapperRef,
 } from "./RolesTableWrapper";
+import type { RoleWithPermissions } from "../../users/_lib";
 
-export function RolesSection() {
-  const [roleCount, setRoleCount] = useState<number | null>(null);
+interface RolesSectionProps {
+  initialRoles: RoleWithPermissions[];
+}
+
+export function RolesSection({ initialRoles }: RolesSectionProps) {
+  const [roleCount, setRoleCount] = useState<number | null>(initialRoles.length);
   const [search, setSearch] = useState("");
   const tableRef = useRef<RolesTableWrapperRef>(null);
 
@@ -64,6 +69,7 @@ export function RolesSection() {
         ref={tableRef}
         search={search}
         onCountChange={setRoleCount}
+        initialRoles={initialRoles}
       />
     </>
   );

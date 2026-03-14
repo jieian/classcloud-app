@@ -63,7 +63,7 @@ export default function CreateRoleWizard() {
     }
   }
 
-  // Warn user before leaving with unsaved changes
+  // Warn user before leaving with unsaved changes (browser refresh/close)
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (form.isDirty()) {
@@ -76,6 +76,42 @@ export default function CreateRoleWizard() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
+  }, [form.isDirty()]);
+
+  // Intercept client-side navigation (NavBar Link clicks) when form is dirty
+  useEffect(() => {
+    if (!form.isDirty()) return;
+
+    const handleClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest("a[href]");
+      if (!anchor) return;
+
+      const href = anchor.getAttribute("href")!;
+      // Only intercept internal navigation; ignore external, hash, mailto, etc.
+      if (/^(https?:|#|mailto:|tel:)/.test(href)) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      modals.openConfirmModal({
+        title: "Discard changes?",
+        children: (
+          <Text size="sm">
+            You have unsaved changes. Are you sure you want to leave?
+          </Text>
+        ),
+        labels: { confirm: "Discard", cancel: "Stay" },
+        confirmProps: { color: "red" },
+        onConfirm: () => {
+          form.reset();
+          router.push(href);
+        },
+      });
+    };
+
+    // Capture phase so we intercept before Next.js processes the click
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
   }, [form.isDirty()]);
 
   const [checkingName, setCheckingName] = useState(false);

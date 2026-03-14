@@ -240,7 +240,7 @@ export default function EditRoleDrawer({
     <Drawer
       opened={opened}
       onClose={handleClose}
-      title="Manage Role Details"
+      title="Edit Role Details"
       position="bottom"
       size="lg"
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}

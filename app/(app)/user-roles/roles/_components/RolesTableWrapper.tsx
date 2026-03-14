@@ -2,12 +2,10 @@
 
 import {
   useState,
-  useEffect,
   useImperativeHandle,
   forwardRef,
   useMemo,
 } from "react";
-import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
 import RolesTable from "./RolesTable";
 import RolesTableSkeleton from "./RolesTableSkeleton";
@@ -21,23 +19,18 @@ export interface RolesTableWrapperRef {
 }
 
 interface RolesTableWrapperProps {
+  initialRoles: RoleWithPermissions[];
   search?: string;
   onCountChange?: (count: number) => void;
 }
 
 export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
-  function RolesTableWrapper({ search = "", onCountChange }, ref) {
-    const [roles, setRoles] = useState<RoleWithPermissions[]>([]);
-    const [loading, setLoading] = useState(true);
+  function RolesTableWrapper({ initialRoles, search = "", onCountChange }, ref) {
+    const [roles, setRoles] = useState<RoleWithPermissions[]>(initialRoles);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const pathname = usePathname();
 
     useImperativeHandle(ref, () => ({ refresh: loadRoles }));
-
-    // Fetch on mount and re-fetch when navigating back to this page
-    useEffect(() => {
-      loadRoles();
-    }, [pathname]);
 
     async function loadRoles() {
       try {
@@ -74,10 +67,6 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
       );
     }
 
-    const handleUpdate = () => {
-      loadRoles();
-    };
-
-    return <RolesTable roles={filteredRoles} onUpdate={handleUpdate} />;
+    return <RolesTable roles={filteredRoles} onUpdate={loadRoles} />;
   },
 );

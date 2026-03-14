@@ -98,14 +98,14 @@ const STATUS_CONFIG: Record<
   checking:          { label: "Checking…",             color: "blue"   },
 };
 
-const NAME_RE = /^[a-zA-Z\u00C0-\u024F]+(?:\s[a-zA-Z\u00C0-\u024F]+)*$/;
+const NAME_RE = /^[a-zA-Z\u00C0-\u024F][a-zA-Z\u00C0-\u024F']*(?:\s[a-zA-Z\u00C0-\u024F][a-zA-Z\u00C0-\u024F']*)*$/;
 
 function nameError(value: string, required: boolean): string | null {
   const t = value.trim();
   if (!t) return required ? "Required" : null;
   if (t.length < 2) return "Min 2 characters";
   if (t.length > 100) return "Max 100 characters";
-  if (!NAME_RE.test(t)) return "Letters only";
+  if (!NAME_RE.test(t)) return "Letters and apostrophes only";
   return null;
 }
 

@@ -129,9 +129,9 @@ export default function EditUserDrawer({
         if (!trimmed) return "First name is required";
         if (trimmed.length > 100)
           return "First name must be 100 characters or less";
-        // No leading/trailing/consecutive spaces, letters only
-        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-          return "First name must contain only letters (no extra spaces)";
+        // No leading/trailing/consecutive spaces, letters and apostrophes only
+        if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+          return "First name must contain only letters and apostrophes (no extra spaces)";
         return null;
       },
       middle_name: (value) => {
@@ -139,9 +139,9 @@ export default function EditUserDrawer({
         const trimmed = value.trim();
         if (trimmed.length > 100)
           return "Middle name must be 100 characters or less";
-        // No leading/trailing/consecutive spaces, letters only
-        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-          return "Middle name must contain only letters (no extra spaces)";
+        // No leading/trailing/consecutive spaces, letters and apostrophes only
+        if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+          return "Middle name must contain only letters and apostrophes (no extra spaces)";
         return null;
       },
       last_name: (value) => {
@@ -149,9 +149,9 @@ export default function EditUserDrawer({
         if (!trimmed) return "Last name is required";
         if (trimmed.length > 100)
           return "Last name must be 100 characters or less";
-        // No leading/trailing/consecutive spaces, letters only
-        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-          return "Last name must contain only letters (no extra spaces)";
+        // No leading/trailing/consecutive spaces, letters and apostrophes only
+        if (!/^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/.test(trimmed))
+          return "Last name must contain only letters and apostrophes (no extra spaces)";
         return null;
       },
       email: (value) => {
@@ -280,7 +280,7 @@ export default function EditUserDrawer({
         </Text>
       ),
       labels: { confirm: "Confirm", cancel: "Cancel" },
-      confirmProps: { color: "blue" },
+      confirmProps: { color: "#4EAE4A" },
       onConfirm: async () => {
         await submitForm();
       },
@@ -390,7 +390,7 @@ export default function EditUserDrawer({
     <Drawer
       opened={opened}
       onClose={handleClose}
-      title="Manage User Details"
+      title="Edit User Details"
       position="bottom"
       size="lg"
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
@@ -573,6 +573,7 @@ export default function EditUserDrawer({
             onClick={handleSave}
             disabled={!form.isDirty() || !form.isValid()}
             loading={loading}
+            color="#4EAE4A"
           >
             Save
           </Button>

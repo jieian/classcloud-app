@@ -101,6 +101,7 @@ export function ManageSubjectSection({
         onSuccess={() => tableRef.current?.refresh()}
         preselectedGradeLevelId={gradeLevelId}
         preselectedSectionType={sectionType}
+        hideGradeLevelPicker
       />
 
       <SubjectTableWrapper

@@ -29,6 +29,7 @@ import { notifications } from "@mantine/notifications";
 import {
   IconAlertCircle,
   IconDownload,
+  IconGenderBigender,
   IconPencil,
   IconPlus,
   IconTableImport,
@@ -53,7 +54,7 @@ interface Props {
 }
 
 const SEX_OPTIONS = [
-  { value: "", label: "All" },
+  { value: "", label: "All Sexes" },
   { value: "M", label: "Male" },
   { value: "F", label: "Female" },
 ];
@@ -329,8 +330,9 @@ export default function StudentRosterClient({ sectionId }: Props) {
           data={SEX_OPTIONS}
           value={sexFilter}
           onChange={(v) => setSexFilter(v ?? "")}
-          placeholder="Sex"
-          w={120}
+          placeholder="All Sexes"
+          leftSection={<IconGenderBigender size={16} />}
+          w={140}
           clearable={false}
         />
       </Group>

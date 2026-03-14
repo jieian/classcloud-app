@@ -2,27 +2,31 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CreateClassModal from "./CreateClassModal";
+import Link from "next/link";
 import {
   Accordion,
   Alert,
+  Badge,
   Box,
-  Container,
+  Button,
   Group,
   SimpleGrid,
   Skeleton,
   Stack,
   Text,
 } from "@mantine/core";
-import { IconInfoCircle, IconSchool } from "@tabler/icons-react";
+import {
+  IconInfoCircle,
+  IconSchool,
+  IconArrowsTransferUp,
+} from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
 import type {
   GradeLevelRow,
   SchoolYearOption,
   SectionCard,
 } from "../_lib/classService";
-import {
-  fetchPendingTransferCount,
-} from "../_lib/classService";
+import { fetchPendingTransferCount } from "../_lib/classService";
 import ClassCard from "./ClassCard";
 import UtilitiesSection from "./UtilitiesSection";
 
@@ -157,7 +161,14 @@ export default function ClassesClient() {
         (user && s.adviser_id === user.id);
       return matchesSearch && matchesGl && matchesAccess;
     });
-  }, [sections, search, gradeLevelFilter, isPartialAccess, assignedSectionIds, user]);
+  }, [
+    sections,
+    search,
+    gradeLevelFilter,
+    isPartialAccess,
+    assignedSectionIds,
+    user,
+  ]);
 
   // Current user's advisory section (only relevant if class adviser)
   const advisorySection = useMemo(
@@ -188,159 +199,186 @@ export default function ClassesClient() {
     [gradeLevels, filteredSections],
   );
 
-  if (initializing) {
-    return (
-      <Stack gap="md" mt="md">
-        <Skeleton height={44} radius="md" />
-        <Skeleton height={36} radius="md" />
-        <Skeleton height={220} radius="md" />
-        <Skeleton height={220} radius="md" />
-      </Stack>
-    );
-  }
-
   return (
     <>
-      <h1 className="mb-3 text-2xl font-bold">Classes</h1>
-      <p className="mb-3 text-sm text-[#808898]">
-        Manage and track all classes
-      </p>
-      <Container fluid px="md" py="xl">
-      <CreateClassModal
-        opened={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
-        onSuccess={handleCreateSuccess}
-        gradeLevels={gradeLevels}
-        activeSyId={activeSyId}
-      />
-      <UtilitiesSection
-        schoolYears={schoolYears}
-        selectedSyId={selectedSyId}
-        onSyChange={handleSyChange}
-        gradeLevels={gradeLevels}
-        gradeLevelFilter={gradeLevelFilter}
-        onGradeLevelChange={setGradeLevelFilter}
-        search={search}
-        onSearchChange={setSearch}
-        onRefresh={handleRefresh}
-        hasCreatePermission={hasCreatePermission}
-        canViewTransferRequests={canViewTransferRequests}
-        pendingTransferCount={pendingTransferCount}
-        loading={loadingClasses}
-        onCreateClass={() => setCreateModalOpen(true)}
-      />
-
-      {error && (
-        <Alert color="red" icon={<IconInfoCircle size={16} />} mb="md">
-          {error}
-        </Alert>
-      )}
-
-      {schoolYears.length === 0 ? (
-        <Text c="dimmed" ta="center" py="xl">
-          No school years found. Please create a school year first.
-        </Text>
-      ) : (
-        <>
-          {/* Advisory Class — only visible to users with the Class Adviser role */}
-          {isClassAdviser && (
-            <Accordion
-              multiple
-              defaultValue={["advisory"]}
-              mb="md"
-              variant="separated"
-              styles={{
-                control: { backgroundColor: "#f0f7ee" },
-                item: { border: "1px solid #d3e9d0" },
-              }}
+      <Group justify="space-between">
+        <h1 className="mb-3 text-2xl font-bold">Classes</h1>
+        <Group gap="xs">
+          {canViewTransferRequests && (
+            <Button
+              component={Link}
+              href="/school/classes/transfer-requests"
+              variant="outline"
+              color="#4EAE4A"
+              radius="md"
+              size="sm"
+              leftSection={<IconArrowsTransferUp size={15} />}
+              rightSection={
+                pendingTransferCount > 0 ? (
+                  <Badge size="xs" color="red" variant="filled" circle>
+                    {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+                  </Badge>
+                ) : undefined
+              }
             >
-              <Accordion.Item value="advisory">
-                <Accordion.Control>
-                  <Text fw={700} size="md">
-                    Advisory Class
-                  </Text>
-                </Accordion.Control>
-                <Accordion.Panel>
-                  {loadingClasses ? (
-                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p="xs">
-                      <Skeleton height={170} radius="md" />
-                    </SimpleGrid>
-                  ) : advisorySection ? (
-                    <Box p="xs" maw={320}>
-                      <ClassCard section={advisorySection} />
-                    </Box>
-                  ) : (
-                    <Stack align="center" py="lg" gap="xs">
-                      <IconSchool size={36} color="#c1c2c5" />
-                      <Text fw={500} c="dimmed" ta="center">
-                        No advisory class assigned
-                      </Text>
-                      <Text size="sm" c="dimmed" ta="center" maw={380}>
-                        You have not been assigned as a class adviser for the
-                        selected school year yet.
-                      </Text>
-                    </Stack>
-                  )}
-                </Accordion.Panel>
-              </Accordion.Item>
-            </Accordion>
+              Transfer Requests
+            </Button>
           )}
+          {hasCreatePermission && (
+            <Button color="#4EAE4A" radius="md" onClick={() => setCreateModalOpen(true)}>
+              Create a Class
+            </Button>
+          )}
+        </Group>
+      </Group>
+      <p className="mb-3 text-sm text-[#808898]">
+        A class, or section, is a distinct group of students within a specific
+        grade level, organized under a dedicated Class Adviser.
+      </p>
+      <CreateClassModal
+          opened={createModalOpen}
+          onClose={() => setCreateModalOpen(false)}
+          onSuccess={handleCreateSuccess}
+          gradeLevels={gradeLevels}
+          activeSyId={activeSyId}
+        />
+        <UtilitiesSection
+          schoolYears={schoolYears}
+          selectedSyId={selectedSyId}
+          onSyChange={handleSyChange}
+          gradeLevels={gradeLevels}
+          gradeLevelFilter={gradeLevelFilter}
+          onGradeLevelChange={setGradeLevelFilter}
+          search={search}
+          onSearchChange={setSearch}
+          onRefresh={handleRefresh}
+          loading={loadingClasses}
+        />
 
-          {/* Grade level groups */}
-          {loadingClasses ? (
-            <Stack gap="md">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} height={220} radius="md" />
-              ))}
-            </Stack>
-          ) : groupedSections.length === 0 ? (
-            <Text c="dimmed" ta="center" py="xl">
-              {sections.length === 0
-                ? "No classes found for this school year."
-                : "No classes match your filters."}
-            </Text>
-          ) : (
-            <Accordion
-              key={selectedSyId ?? 0}
-              multiple
-              defaultValue={groupedSections.map((g) =>
-                String(g.grade_level_id),
-              )}
-              variant="separated"
-              styles={{
-                control: { backgroundColor: "#f0f7ee" },
-                item: { border: "1px solid #d3e9d0" },
-              }}
-            >
-              {groupedSections.map((group) => (
-                <Accordion.Item
-                  key={group.grade_level_id}
-                  value={String(group.grade_level_id)}
-                >
+        {error && (
+          <Alert color="red" icon={<IconInfoCircle size={16} />} mb="md">
+            {error}
+          </Alert>
+        )}
+
+        {initializing ? (
+          <Stack gap="md">
+            <Skeleton height={220} radius="md" />
+            <Skeleton height={220} radius="md" />
+          </Stack>
+        ) : schoolYears.length === 0 ? (
+          <Text c="dimmed" ta="center" py="xl">
+            No school years found. Please create a school year first.
+          </Text>
+        ) : (
+          <>
+            {/* Advisory Class — only visible to users with the Class Adviser role */}
+            {isClassAdviser && (
+              <Accordion
+                multiple
+                defaultValue={["advisory"]}
+                mb="md"
+                variant="separated"
+                styles={{
+                  control: { backgroundColor: "#f0f7ee" },
+                  item: { border: "1px solid #d3e9d0" },
+                }}
+              >
+                <Accordion.Item value="advisory">
                   <Accordion.Control>
-                    <Group gap="xs">
-                      <Text fw={700} size="md">
-                        {group.display_name}
-                      </Text>
-                      <Text span size="sm" c="dimmed" fw={500}>
-                        ({group.sections.length})
-                      </Text>
-                    </Group>
+                    <Text fw={700} size="md">
+                      Advisory Class
+                    </Text>
                   </Accordion.Control>
                   <Accordion.Panel>
-                    <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p="xs">
-                      {group.sections.map((section) => (
-                        <ClassCard key={section.section_id} section={section} />
-                      ))}
-                    </SimpleGrid>
+                    {loadingClasses ? (
+                      <SimpleGrid
+                        cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
+                        p="xs"
+                      >
+                        <Skeleton height={170} radius="md" />
+                      </SimpleGrid>
+                    ) : advisorySection ? (
+                      <Box p="xs" maw={320}>
+                        <ClassCard section={advisorySection} />
+                      </Box>
+                    ) : (
+                      <Stack align="center" py="lg" gap="xs">
+                        <IconSchool size={36} color="#c1c2c5" />
+                        <Text fw={500} c="dimmed" ta="center">
+                          No advisory class assigned
+                        </Text>
+                        <Text size="sm" c="dimmed" ta="center" maw={380}>
+                          You have not been assigned as a class adviser for the
+                          selected school year yet.
+                        </Text>
+                      </Stack>
+                    )}
                   </Accordion.Panel>
                 </Accordion.Item>
-              ))}
-            </Accordion>
-          )}
-        </>
-      )}
-      </Container>
+              </Accordion>
+            )}
+
+            {/* Grade level groups */}
+            {loadingClasses ? (
+              <Stack gap="md">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} height={220} radius="md" />
+                ))}
+              </Stack>
+            ) : groupedSections.length === 0 ? (
+              <Text c="dimmed" ta="center" py="xl">
+                {sections.length === 0
+                  ? "No classes found for this school year."
+                  : "No classes match your filters."}
+              </Text>
+            ) : (
+              <Accordion
+                key={selectedSyId ?? 0}
+                multiple
+                defaultValue={groupedSections.map((g) =>
+                  String(g.grade_level_id),
+                )}
+                variant="separated"
+                styles={{
+                  control: { backgroundColor: "#f0f7ee" },
+                  item: { border: "1px solid #d3e9d0" },
+                }}
+              >
+                {groupedSections.map((group) => (
+                  <Accordion.Item
+                    key={group.grade_level_id}
+                    value={String(group.grade_level_id)}
+                  >
+                    <Accordion.Control>
+                      <Group gap="xs">
+                        <Text fw={700} size="md">
+                          {group.display_name}
+                        </Text>
+                        <Text span size="sm" c="dimmed" fw={500}>
+                          ({group.sections.length})
+                        </Text>
+                      </Group>
+                    </Accordion.Control>
+                    <Accordion.Panel>
+                      <SimpleGrid
+                        cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
+                        p="xs"
+                      >
+                        {group.sections.map((section) => (
+                          <ClassCard
+                            key={section.section_id}
+                            section={section}
+                          />
+                        ))}
+                      </SimpleGrid>
+                    </Accordion.Panel>
+                  </Accordion.Item>
+                ))}
+              </Accordion>
+            )}
+          </>
+        )}
     </>
   );
 }

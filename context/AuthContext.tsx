@@ -32,6 +32,14 @@ interface PermissionRow {
   permission_name: string;
 }
 
+interface RolesResult {
+  roles: Role[];
+  firstName: string;
+  lastName: string;
+  /** True when the account is inactive/deleted — signOut already triggered. */
+  deactivated: boolean;
+}
+
 function clearSupabaseClientAuthArtifacts() {
   if (typeof window === "undefined") return;
 
@@ -97,6 +105,8 @@ interface AuthContextType {
   user: User | null;
   roles: Role[];
   permissions: string[];
+  /** True once permissions have been successfully loaded from DB or cache. */
+  permissionsLoaded: boolean;
   firstName: string;
   lastName: string;
   loading: boolean;
@@ -110,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [firstName, setFirstName] = useState<string>("");
   const [lastName, setLastName] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -124,7 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cachedFirstName = sessionStorage.getItem("cc_first_name");
       const cachedLastName = sessionStorage.getItem("cc_last_name");
       if (cachedRoles) setRoles(JSON.parse(cachedRoles));
-      if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
+      if (cachedPermissions) {
+        setPermissions(JSON.parse(cachedPermissions));
+        // Cache is present — permissions are usable immediately.
+        setPermissionsLoaded(true);
+      }
       if (cachedFirstName) setFirstName(cachedFirstName);
       if (cachedLastName) setLastName(cachedLastName);
     } catch {
@@ -136,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const supabase = getSupabase();
 
-  const fetchUserRoles = async (authUserId: string): Promise<{ roles: Role[]; firstName: string; lastName: string }> => {
+  const fetchUserRoles = async (authUserId: string): Promise<RolesResult> => {
     const { data, error } = await supabase
       .from("users")
       .select("first_name, last_name, user_roles(role_id, roles(role_id, name))")
@@ -146,15 +161,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .maybeSingle();
 
     if (error) {
-      console.error("Failed to fetch roles:", error.message);
-      return { roles: [], firstName: "", lastName: "" };
+      throw new Error(`Failed to fetch roles: ${error.message}`);
     }
 
     // No row means the account is inactive, pending, or soft-deleted.
     // Sign out immediately so they can't linger with cached credentials.
     if (!data) {
       supabase.auth.signOut({ scope: "global" }).catch(() => {});
-      return { roles: [], firstName: "", lastName: "" };
+      return { roles: [], firstName: "", lastName: "", deactivated: true };
     }
 
     const userRoles = (data.user_roles ?? []) as UserRoleJoinRow[];
@@ -167,17 +181,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })),
       firstName: (data as { first_name: string }).first_name ?? "",
       lastName: (data as { last_name: string }).last_name ?? "",
+      deactivated: false,
     };
   };
 
   const fetchUserPermissions = async (authUserId: string) => {
-    const { data, error} = await supabase.rpc("get_user_permissions", {
+    const { data, error } = await supabase.rpc("get_user_permissions", {
       user_uuid: authUserId,
     });
 
     if (error) {
-      console.error("Failed to fetch permissions:", error.message);
-      return [];
+      throw new Error(`Failed to fetch permissions: ${error.message}`);
     }
 
     const permissionRows = (data ?? []) as PermissionRow[];
@@ -185,30 +199,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Fetches roles and permissions in parallel for performance
-   * Cuts load time in half compared to sequential fetches
-   * Uses UUID to link auth.users.id with users.id
+   * Fetches roles and permissions in parallel for performance.
+   * Returns true if data was successfully applied, false if skipped (deactivated).
    */
-  const fetchUserData = async (userId: string) => {
-    const [{ roles: fetchedRoles, firstName: fetchedFirstName, lastName: fetchedLastName }, fetchedPermissions] = await Promise.all([
+  const fetchUserData = async (userId: string): Promise<boolean> => {
+    const [rolesResult, fetchedPermissions] = await Promise.all([
       fetchUserRoles(userId),
       fetchUserPermissions(userId),
     ]);
 
-    setRoles(fetchedRoles);
-    setPermissions(fetchedPermissions);
-    setFirstName(fetchedFirstName);
-    setLastName(fetchedLastName);
+    // Account is deactivated — signOut was already triggered in fetchUserRoles.
+    // Do not apply permissions; onAuthStateChange will fire SIGNED_OUT shortly.
+    if (rolesResult.deactivated) {
+      return false;
+    }
 
-    // Cache for instant hydration on reload
+    setRoles(rolesResult.roles);
+    setPermissions(fetchedPermissions);
+    setFirstName(rolesResult.firstName);
+    setLastName(rolesResult.lastName);
+    setPermissionsLoaded(true);
+
+    // Cache for instant hydration on reload (same-tab refreshes)
     try {
-      sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
+      sessionStorage.setItem("cc_roles", JSON.stringify(rolesResult.roles));
       sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
-      sessionStorage.setItem("cc_first_name", fetchedFirstName);
-      sessionStorage.setItem("cc_last_name", fetchedLastName);
+      sessionStorage.setItem("cc_first_name", rolesResult.firstName);
+      sessionStorage.setItem("cc_last_name", rolesResult.lastName);
     } catch {
       // sessionStorage unavailable (e.g. private browsing quota exceeded)
     }
+
+    return true;
   };
 
   // Single subscription — onAuthStateChange fires INITIAL_SESSION on setup,
@@ -219,10 +241,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let alive = true;
     let settled = false;
     let applySessionInFlight = false;
+    // Last-wins queue: if a new session arrives while one is processing, we
+    // store it here and process it immediately after the current one finishes.
+    // undefined = nothing queued; null = queued sign-out; Session = queued session.
+    let queuedSession: Session | null | undefined = undefined;
 
     const applySession = async (session: Session | null) => {
-      if (!alive || applySessionInFlight) return;
+      if (!alive) return;
+
+      // If already processing, queue this session (last-wins) and return.
+      // This prevents silently dropping TOKEN_REFRESHED or other mid-flight events.
+      if (applySessionInFlight) {
+        queuedSession = session;
+        return;
+      }
+
       applySessionInFlight = true;
+      queuedSession = undefined;
+
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
@@ -248,17 +284,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await withTimeout(fetchUserData(currentUser.id), 15000, "fetchUserData");
         } catch (error) {
-          // Non-fatal: cached data is already displayed.
-          console.warn("[auth] fetchUserData background refresh failed:", error);
+          if (hasCached) {
+            // Non-fatal: cached data is already displayed.
+            console.warn("[auth] fetchUserData background refresh failed:", error);
+          } else {
+            // No cache fallback — permissions are unknown. Keep the user
+            // authenticated but mark permissions as not loaded so ProtectedRoute
+            // shows a loader rather than incorrectly redirecting to /unauthorized.
+            console.error("[auth] fetchUserData failed with no cache:", error);
+            // permissionsLoaded stays false; user will see the loading spinner.
+            // The watchdog will eventually force a resolution.
+          }
         }
       } else {
         setRoles([]);
         setPermissions([]);
+        setPermissionsLoaded(false);
       }
 
       if (alive) setLoading(false);
       settled = true;
       applySessionInFlight = false;
+
+      // Process any session that arrived while we were in-flight.
+      if (alive && queuedSession !== undefined) {
+        const nextSession = queuedSession;
+        queuedSession = undefined;
+        await applySession(nextSession);
+      }
     };
 
     const {
@@ -269,6 +322,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
+        setPermissionsLoaded(false);
         setLoading(false);
         window.location.href = "/login";
         return;
@@ -278,6 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
+        setPermissionsLoaded(false);
         setLoading(false);
         return;
       }
@@ -299,6 +354,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
+        setPermissionsLoaded(false);
         setLoading(false);
         settled = true;
       });
@@ -309,6 +365,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setRoles([]);
       setPermissions([]);
+      setPermissionsLoaded(false);
       setLoading(false);
     }, 20000);
 
@@ -336,11 +393,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, pathname, router, isLoggingOut]);
 
   // Ensure authenticated app shell is never visible when signed out.
+  // Guard with isLoggingOut to avoid racing with window.location.replace in signOut().
   useEffect(() => {
-    if (!loading && !user && pathname !== "/login") {
+    if (!loading && !user && !isLoggingOut && pathname !== "/login") {
       router.replace("/login");
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, isLoggingOut, pathname, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -372,6 +430,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setRoles([]);
     setPermissions([]);
+    setPermissionsLoaded(false);
     setFirstName("");
     setLastName("");
     setLoading(false);
@@ -404,7 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, roles, permissions, firstName, lastName, loading, signIn, signOut }}
+      value={{ user, roles, permissions, permissionsLoaded, firstName, lastName, loading, signIn, signOut }}
     >
       {children}
     </AuthContext.Provider>
