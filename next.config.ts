@@ -2,13 +2,20 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    // Prevent the client-side Router Cache from serving stale pages.
-    // Without this, navigating back can restore cached RSC payloads
-    // where client components fail to re-initialize properly.
     staleTimes: {
       dynamic: 0,
       static: 30,
     },
+  },
+  webpack: (config) => {
+    // OpenCV.js ships a pre-built WASM bundle that webpack cannot parse —
+    // attempting to do so causes "Maximum call stack size exceeded".
+    // noParse tells webpack to bundle the file as-is without traversing it.
+    const existing = config.module.noParse;
+    config.module.noParse = existing
+      ? [existing, /opencv/].flat()
+      : /opencv/;
+    return config;
   },
 };
 
