@@ -35,6 +35,7 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
         )
       )
     `)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
   if (teacherId) {
@@ -67,6 +68,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
       )
     `)
     .eq('exam_id', examId)
+    .is('deleted_at', null)
     .single();
 
   if (error) {
@@ -171,8 +173,17 @@ export async function setExamLocked(examId: number, isLocked: boolean): Promise<
 // ─── Delete ───────────────────────────────────────────────────────────────────
 
 export async function deleteExamWithAssignments(examId: number): Promise<boolean> {
-  await supabase.from('exam_assignments').delete().eq('exam_id', examId);
-  const { error } = await supabase.from('exams').delete().eq('exam_id', examId);
-  if (error) { console.error('[examService] deleteExam error:', error.message); return false; }
+  const res = await fetch('/api/exams/delete', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exam_id: examId }),
+  });
+
+  if (!res.ok) {
+    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
+    console.error('[examService] deleteExam error:', payload?.error ?? 'Unknown error');
+    return false;
+  }
+
   return true;
 }

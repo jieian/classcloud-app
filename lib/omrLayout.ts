@@ -45,7 +45,7 @@ export const OMR = {
 
   // ─── Bubble Grid ──────────────────────────────────────────────────────────
   BUBBLE_R:       5.5,  // bubble circle radius in pt
-  FILL_THRESHOLD: 0.35, // ratio of dark pixels to consider a bubble filled
+  FILL_THRESHOLD: 0.55, // ratio of dark pixels to consider a bubble filled — accepts light pencil shading while rejecting X marks
   ROW_H:          17,   // vertical distance between bubble row centers
   CHOICE_SPACING: 22,   // horizontal distance between choice bubble centers
   GRID_START_Y:   195,  // y-center of the first row of bubbles

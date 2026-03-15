@@ -314,7 +314,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
 
             <Group justify="flex-end" mt="md">
               <Button variant="default" onClick={() => setStep(0)}>Back</Button>
-              <Button color="#466D1D" onClick={handleProceed}>Next</Button>
+              <Button color="#4EAE4A" onClick={handleProceed}>Next</Button>
             </Group>
           </>
         )}

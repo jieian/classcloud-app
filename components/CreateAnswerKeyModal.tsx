@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { IconX, IconDeviceFloppy, IconAlertTriangle, IconPlus, IconMinus, IconBookmark, IconArrowLeft } from '@tabler/icons-react';
+import { IconX, IconDeviceFloppy, IconAlertTriangle, IconBookmark, IconArrowLeft } from '@tabler/icons-react';
 import CreationFlowStepper from './CreationFlowStepper';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
@@ -14,6 +14,8 @@ interface CreateAnswerKeyModalProps {
   onSuccess: () => void | Promise<void>;
   /** When provided (creation flow), shows a "Back to Objectives" button */
   onBack?: () => void;
+  /** Number of choices set during exam creation — used as default when no existing answer key */
+  initialNumChoices?: number;
 }
 
 interface ObjectiveEditorRow {
@@ -25,6 +27,17 @@ interface ObjectiveEditorRow {
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
+const OBJECTIVE_PALETTE = [
+  { dot: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+  { dot: '#22c55e', bg: '#f0fdf4', border: '#bbf7d0', text: '#15803d' },
+  { dot: '#a855f7', bg: '#faf5ff', border: '#e9d5ff', text: '#7e22ce' },
+  { dot: '#f97316', bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' },
+  { dot: '#ec4899', bg: '#fdf2f8', border: '#fbcfe8', text: '#be185d' },
+  { dot: '#14b8a6', bg: '#f0fdfa', border: '#99f6e4', text: '#0f766e' },
+  { dot: '#ef4444', bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' },
+  { dot: '#eab308', bg: '#fefce8', border: '#fef08a', text: '#854d0e' },
+];
+
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (!levelNumber) return 30;
   if (levelNumber <= 2) return 30;
@@ -33,15 +46,14 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   return 50;
 }
 
-export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack }: CreateAnswerKeyModalProps) {
+export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack, initialNumChoices }: CreateAnswerKeyModalProps) {
   const detectedLevelNumber =
     exam.exam_assignments?.[0]?.sections?.grade_levels?.level_number ?? null;
   const autoTotalQuestions = getAutoTotalItems(detectedLevelNumber);
 
   const [answers, setAnswers] = useState<{ [key: number]: string | null }>({});
   const [totalQuestions, setTotalQuestions] = useState(autoTotalQuestions);
-  const [inputValue, setInputValue] = useState(String(autoTotalQuestions));
-  const [numChoices, setNumChoices] = useState(4);
+  const [numChoices, setNumChoices] = useState(initialNumChoices ?? 4);
   const [loading, setLoading] = useState(false);
   const [loadingAnswers, setLoadingAnswers] = useState(true);
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
@@ -71,7 +83,6 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
     const existing = exam.answer_key as AnswerKeyJsonb | null;
     const initialTotal = existing?.total_questions ?? autoTotalQuestions;
     setTotalQuestions(initialTotal);
-    setInputValue(String(initialTotal));
     if (existing?.answers) {
       const nextAnswers: { [key: number]: string | null } = {};
       Object.entries(existing.answers).forEach(([k, v]) => {
@@ -81,9 +92,11 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
         }
       });
       setAnswers(nextAnswers);
-      if (existing.num_choices) {
-        setNumChoices(Math.max(2, Math.min(ALL_CHOICES.length, existing.num_choices)));
-      }
+    }
+    if (existing?.num_choices) {
+      setNumChoices(Math.max(2, Math.min(ALL_CHOICES.length, existing.num_choices)));
+    } else if (initialNumChoices) {
+      setNumChoices(Math.max(2, Math.min(ALL_CHOICES.length, initialNumChoices)));
     }
     setObjectiveRows(toObjectiveRows(exam.objectives));
     setLoadingAnswers(false);
@@ -174,44 +187,15 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
     return null;
   };
 
-  const applyTotal = (val: number) => {
-    const clamped = Math.max(10, Math.min(200, val));
-    setTotalQuestions(clamped);
-    setInputValue(String(clamped));
-    setAnswers(prev => {
-      const updated = { ...prev };
-      for (let i = clamped + 1; i <= 200; i++) delete updated[i];
-      return updated;
-    });
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setInputValue(e.target.value);
-  };
-
-  const commitInputValue = () => {
-    const parsed = Number(inputValue);
-    if (Number.isFinite(parsed)) {
-      applyTotal(parsed);
-      return;
+  const objectiveIndexForItem = (item: number): number => {
+    for (let i = 0; i < objectiveRows.length; i++) {
+      const row = objectiveRows[i];
+      const start = Number(row.start_item);
+      const end = Number(row.end_item);
+      if (!start || !end) continue;
+      if (item >= start && item <= end && row.objective.trim()) return i;
     }
-    setInputValue(String(totalQuestions));
-  };
-
-  const handleNumChoicesChange = (newNum: number) => {
-    const clamped = Math.max(2, Math.min(ALL_CHOICES.length, newNum));
-    setNumChoices(clamped);
-    const validChoices = ALL_CHOICES.slice(0, clamped);
-    setAnswers(prev => {
-      const updated = { ...prev };
-      Object.keys(updated).forEach(k => {
-        const key = parseInt(k);
-        if (updated[key] && !validChoices.includes(updated[key] as string)) {
-          updated[key] = null;
-        }
-      });
-      return updated;
-    });
+    return -1;
   };
 
   const handleAnswerSelect = (questionNumber: number, answer: string) => {
@@ -376,13 +360,13 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                         const qNum = col * questionsPerColumn + row + 1;
                         if (qNum > totalQuestions) return null;
                         const answer = answers[qNum];
-                        const objectiveLabel = objectiveForItem(qNum);
+                        const objIdx = objectiveIndexForItem(qNum);
+                        const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+                        const objectiveLabel = objIdx >= 0 ? objectiveForItem(qNum) : null;
                         return (
                           <div key={qNum} className="flex items-center gap-2 py-1 px-1.5 rounded-lg hover:bg-gray-50">
-                            <span className="text-sm font-semibold w-7 text-right shrink-0 text-gray-500">
-                              {qNum}
-                            </span>
-                            <div className="flex gap-1 shrink-0">
+                            <span className="text-sm font-semibold w-7 text-right flex-shrink-0 text-gray-500">{qNum}</span>
+                            <div className="flex gap-1 flex-shrink-0">
                               {choices.map(option => (
                                 <div key={option}
                                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-bold text-[11px] ${
@@ -394,9 +378,10 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                                 </div>
                               ))}
                             </div>
-                            {objectiveLabel && (
-                              <div className="relative group shrink-0">
-                                <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
+                            {objectiveLabel && color && (
+                              <div className="relative group flex-shrink-0">
+                                <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
+                                  style={{ background: color.bg, borderColor: color.border, color: color.text }}>
                                   {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
                                 </span>
                                 <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-60">
@@ -528,66 +513,6 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                 )}
               </div>
 
-              {/* Controls Row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-
-                {/* Number of Items */}
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Number of Items</p>
-                  <div className="flex items-center justify-center gap-3">
-                    <button type="button" onClick={() => applyTotal(totalQuestions - 1)} disabled={totalQuestions <= 10}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalQuestions <= 10 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
-                      <IconMinus className="w-4 h-4" />
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <input type="number" min={10} max={200} value={inputValue}
-                        onChange={handleInputChange}
-                        onBlur={commitInputValue}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            commitInputValue();
-                          }
-                        }}
-                        className="w-20 text-center text-2xl font-bold text-gray-900 border-2 border-gray-300 rounded-xl px-2 py-1.5 focus:outline-none focus:border-primary" />
-                      <span className="text-sm text-gray-400">items</span>
-                    </div>
-                    <button type="button" onClick={() => applyTotal(totalQuestions + 1)} disabled={totalQuestions >= 200}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalQuestions >= 200 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
-                      <IconPlus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center mt-2">
-                    Auto default by grade level (G1-2: 30, G3-4: 40, G5-6: 50) - editable
-                  </p>
-                </div>
-
-                {/* Choices per item */}
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                  <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Choices per Item</p>
-                  <div className="flex items-center justify-center gap-3">
-                    <button type="button" onClick={() => handleNumChoicesChange(numChoices - 1)} disabled={numChoices <= 2}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
-                      <IconMinus className="w-4 h-4" />
-                    </button>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 text-center py-1.5">
-                        <p className="text-2xl font-bold text-gray-900">{numChoices}</p>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm text-gray-400">choices</span>
-                        <span className="text-xs font-semibold text-primary">{choices.join(' · ')}</span>
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => handleNumChoicesChange(numChoices + 1)} disabled={numChoices >= ALL_CHOICES.length}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices >= ALL_CHOICES.length ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
-                      <IconPlus className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center mt-2">Min: 2 (A·B) · Max: 8 (A–H)</p>
-                </div>
-              </div>
-
               {/* Incomplete Warning */}
               {showIncompleteWarning && !isComplete && (
                 <div id="incomplete-warning" className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 mb-6 animate-fade-in">
@@ -625,14 +550,14 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                       const qNum = col * questionsPerColumn + row + 1;
                       if (qNum > totalQuestions) return null;
                       const isUnanswered = triedToSave && !answers[qNum];
-                      const objectiveLabel = objectiveForItem(qNum);
+                      const objIdx = objectiveIndexForItem(qNum);
+                      const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+                      const objectiveLabel = objIdx >= 0 ? objectiveForItem(qNum) : null;
                       return (
                         <div key={qNum}
                           className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
-                          <span className={`text-sm font-semibold w-7 text-right shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>
-                            {qNum}
-                          </span>
-                          <div className="flex gap-1 shrink-0">
+                          <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
+                          <div className="flex gap-1 flex-shrink-0">
                             {choices.map(option => (
                               <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
@@ -646,9 +571,10 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                               </button>
                             ))}
                           </div>
-                          {objectiveLabel && (
-                            <div className="relative group shrink-0">
-                              <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
+                          {objectiveLabel && color && (
+                            <div className="relative group flex-shrink-0">
+                              <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
+                                style={{ background: color.bg, borderColor: color.border, color: color.text }}>
                                 {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
                               </span>
                               <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-60">

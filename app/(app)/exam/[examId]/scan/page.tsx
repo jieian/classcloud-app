@@ -884,10 +884,11 @@ export default function ScanPapersPage() {
               Student answer is gray. Correct answer key is light green. Click any bubble to correct.
             </p>
 
-            <div className={`grid gap-4 ${totalItems > 20 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {[1, 2].map(col => {
-                const start = col === 1 ? 1 : 21;
-                const end = col === 1 ? Math.min(20, totalItems) : totalItems;
+                const half = Math.ceil(totalItems / 2);
+                const start = col === 1 ? 1 : half + 1;
+                const end = col === 1 ? half : totalItems;
                 if (start > totalItems) return null;
                 return (
                   <div key={col} className="space-y-0.5">
