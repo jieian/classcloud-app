@@ -18,7 +18,7 @@ import BackButton from '@/components/BackButton';
 import { SearchBar } from '@/components/searchBar/SearchBar';
 import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
 
@@ -34,7 +34,7 @@ interface RosterStudent {
   grade_level_display: string;
 }
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 
@@ -46,9 +46,9 @@ function getMpl(score: number, totalItems: number): number {
 function getProficiency(mpl: number): string {
   if (mpl >= 90) return 'Highly Proficient';
   if (mpl >= 75) return 'Proficient';
-  if (mpl >= 50) return 'Nearly';
-  if (mpl >= 25) return 'Low';
-  return 'Not';
+  if (mpl >= 50) return 'Nearly Proficient';
+  if (mpl >= 25) return 'Low Proficient';
+  return 'Not Proficient';
 }
 
 function proficiencyBadge(mpl: number): string {
@@ -67,7 +67,7 @@ const STEP_LABELS: Record<string, string> = {
 };
 const STEP_ORDER = ['students', 'capture', 'review', 'submit'] as const;
 
-// â”€â”€â”€ Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -100,7 +100,7 @@ export default function ScanPapersPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
 
-  // â”€â”€ Fetch exam â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Fetch exam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
     if (!examId) return;
     fetchExamById(Number(examId)).then(data => {
@@ -115,7 +115,7 @@ export default function ScanPapersPage() {
   const choices = CHOICES.slice(0, numChoices);
   const answerKey: { [item: number]: string | null } = ak?.answers ?? {};
 
-  // â”€â”€ Camera management â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   const startCamera = async () => {
     if (startingCamera) return;
@@ -176,7 +176,7 @@ export default function ScanPapersPage() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  // â”€â”€ Fetch roster + existing attempts once exam is loaded â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Fetch roster + existing attempts once exam is loaded â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
     if (!exam) return;
 
@@ -212,7 +212,7 @@ export default function ScanPapersPage() {
       .finally(() => setRosterLoading(false));
   }, [exam]);
 
-  // â”€â”€ Attempt lookup map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Attempt lookup map â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const attemptByEnrollment = new Map<number, ExamScore>();
   for (const a of existingAttempts) {
     if (a.enrollment_id != null) attemptByEnrollment.set(a.enrollment_id, a);
@@ -233,7 +233,7 @@ export default function ScanPapersPage() {
   const femaleStudents = filteredStudents.filter((s) => s.sex === 'F');
   const scannedStudentsCount = rosterStudents.filter((s) => getStudentAttempt(s) != null).length;
 
-  // â”€â”€ Camera capture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Camera capture â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
@@ -267,7 +267,7 @@ export default function ScanPapersPage() {
     }, 'image/jpeg', 0.99);
   };
 
-  // â”€â”€ File handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ File handling â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleFileSelected = (file: File) => {
     setCapturedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
@@ -278,7 +278,7 @@ export default function ScanPapersPage() {
     if (file) handleFileSelected(file);
   };
 
-  // â”€â”€ OMR Processing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ OMR Processing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const runProcessing = async () => {
     if (!capturedFile) return;
     setStep('processing');
@@ -294,7 +294,7 @@ export default function ScanPapersPage() {
     }
   };
 
-  // â”€â”€ Review â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Review â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const toggleAnswer = (item: number, choice: string) => {
     setDetectedAnswers(prev => ({ ...prev, [item]: prev[item] === choice ? null : choice }));
   };
@@ -317,7 +317,7 @@ export default function ScanPapersPage() {
     permissions.includes("full_access_examinations") ||
     permissions.includes("partial_access_examinations");
 
-  // â”€â”€ Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
     if (!canAccessExams) {
       alert("You don't have permission to save exam scores.");
@@ -404,7 +404,7 @@ export default function ScanPapersPage() {
     }
   };
 
-  // â”€â”€ Answer bubble color â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Answer bubble color â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const confColor = (item: number, ch: string) => {
     if (answerKey[item] === ch) return 'bg-green-200 border-green-400 text-green-900 shadow-sm ring-2 ring-green-200';
     if (detectedAnswers[item] === ch) return 'bg-gray-300 border-gray-500 text-gray-900 shadow-sm ring-2 ring-gray-200';
@@ -414,7 +414,7 @@ export default function ScanPapersPage() {
   const activeStep = step === 'processing' ? 'capture' : step;
   const stepIndex = STEP_ORDER.indexOf(activeStep as typeof STEP_ORDER[number]);
 
-  // â”€â”€â”€ Loading â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€â"€ Loading â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   if (examLoading || authLoading) {
     return (
@@ -451,7 +451,7 @@ export default function ScanPapersPage() {
     );
   }
 
-  // â”€â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€â"€ Render â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
   return (
     <div className="space-y-4">
@@ -483,7 +483,7 @@ export default function ScanPapersPage() {
           </Stepper>
         </div>
 
-        {/* â”€â”€ STEP: STUDENTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ STEP: STUDENTS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'students' && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-x-6 text-sm">
@@ -493,13 +493,13 @@ export default function ScanPapersPage() {
               </div>
               <div>
                 <span className="font-semibold text-gray-600">Subject</span>
-                <p className="text-gray-800 mt-0.5">{exam.subjects?.name ?? 'â€”'}</p>
+                <p className="text-gray-800 mt-0.5">{exam.subjects?.name ?? '—'}</p>
               </div>
             </div>
 
             <hr />
 
-            {sections.length > 0 && (
+            {sections.length > 1 && (
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Section</p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -722,7 +722,7 @@ export default function ScanPapersPage() {
           </div>
         )}
 
-        {/* â”€â”€ STEP: CAPTURE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ STEP: CAPTURE â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'capture' && (
           <div className="space-y-5">
             {selectedStudent && (
@@ -731,7 +731,7 @@ export default function ScanPapersPage() {
                 <div>
                   <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
                   <p className="text-xs text-blue-500">
-                    {selectedStudent.grade_level_display} â€“ {selectedStudent.section_name} Â· LRN: {selectedStudent.lrn}
+                    {selectedStudent.grade_level_display} – {selectedStudent.section_name} · LRN: {selectedStudent.lrn}
                   </p>
                 </div>
               </div>
@@ -751,7 +751,7 @@ export default function ScanPapersPage() {
               <p className="font-semibold mb-1">Tips for best results:</p>
               <ul className="space-y-0.5 list-disc list-inside text-xs">
                 <li>Place sheet on a dark, flat surface with good lighting</li>
-                <li>Keep the entire sheet visible â€” all 4 corners must be in frame</li>
+                <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
                 <li>Avoid glare and shadows; hold camera directly above the sheet</li>
                 <li>Ensure student has filled bubbles darkly and completely</li>
               </ul>
@@ -760,7 +760,7 @@ export default function ScanPapersPage() {
             {(cameraActive || startingCamera) && (
               <div>
                 <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing cameraâ€¦</p>}
+                {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>}
                 <div className="mt-3 flex gap-3">
                   <button onClick={captureFromCamera} className="flex-1 btn-primary flex items-center justify-center gap-2">
                     <IconCamera className="w-4 h-4" /> Capture
@@ -804,7 +804,7 @@ export default function ScanPapersPage() {
                 >
                   <IconCamera className="w-8 h-8 text-gray-400" />
                   <div className="text-center">
-                    <p className="font-semibold text-gray-700">{startingCamera ? 'Starting cameraâ€¦' : 'Use Camera'}</p>
+                    <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
                     <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
                   </div>
                 </button>
@@ -821,7 +821,7 @@ export default function ScanPapersPage() {
           </div>
         )}
 
-        {/* â”€â”€ STEP: PROCESSING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'processing' && (
           <div className="py-10 space-y-4">
             <div className="flex justify-center">
@@ -841,7 +841,7 @@ export default function ScanPapersPage() {
           </div>
         )}
 
-        {/* â”€â”€ STEP: REVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ STEP: REVIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'review' && (
           <div className="space-y-5">
             {selectedStudent && (
@@ -849,7 +849,7 @@ export default function ScanPapersPage() {
                 <IconCircleCheck className="w-5 h-5 text-blue-500 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
-                  <p className="text-xs text-blue-500">{selectedStudent.grade_level_display} â€“ {selectedStudent.section_name}</p>
+                  <p className="text-xs text-blue-500">{selectedStudent.grade_level_display} - {selectedStudent.section_name}</p>
                 </div>
               </div>
             )}
@@ -860,8 +860,8 @@ export default function ScanPapersPage() {
                 : <IconAlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />}
               <p className={cornersOk ? 'text-green-700' : 'text-yellow-700'}>
                 {cornersOk
-                  ? 'Corner markers detected automatically â€” high confidence detection.'
-                  : 'Corner markers not found â€” results may be less accurate. Review and correct any wrong answers.'}
+                  ? 'Corner markers detected automatically - high confidence detection.'
+                  : 'Corner markers not found - results may be less accurate. Review and correct any wrong answers.'}
               </p>
             </div>
 
@@ -894,7 +894,7 @@ export default function ScanPapersPage() {
                     <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
                       <span className="text-xs font-semibold text-gray-400 w-7">#</span>
                       {choices.map(ch => <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>)}
-                      <span className="text-xs font-semibold text-gray-400 w-5 text-center">âœ“</span>
+                      <span className="text-xs font-semibold text-gray-400 w-5 text-center">✓</span>
                     </div>
                     {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(item => {
                       const correct = answerKey[item];
@@ -914,7 +914,7 @@ export default function ScanPapersPage() {
                             </button>
                           ))}
                           <span className="w-5 text-center text-sm">
-                            {detected && correct ? (isRight ? 'âœ…' : 'âŒ') : detected ? 'â€¢' : 'â€”'}
+                            {detected && correct ? (isRight ? '✓' : '✗') : detected ? '·' : ' - '}
                           </span>
                         </div>
                       );
@@ -935,7 +935,7 @@ export default function ScanPapersPage() {
           </div>
         )}
 
-        {/* â”€â”€ STEP: SUBMIT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* â"€â"€ STEP: SUBMIT â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'submit' && (
           <div className="space-y-5">
             {selectedStudent && (
@@ -943,7 +943,7 @@ export default function ScanPapersPage() {
                 <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Student</p>
                 <p className="text-base font-bold text-blue-800">{selectedStudent.full_name}</p>
                 <p className="text-xs text-blue-500 mt-0.5">
-                  LRN: {selectedStudent.lrn} Â· {selectedStudent.grade_level_display} â€“ {selectedStudent.section_name}
+                  LRN: {selectedStudent.lrn} · {selectedStudent.grade_level_display} - {selectedStudent.section_name}
                 </p>
               </div>
             )}
@@ -951,7 +951,7 @@ export default function ScanPapersPage() {
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
                 <p className="text-3xl font-bold text-green-700">{score} / {totalItems}</p>
                 <p className="text-green-600 text-sm mt-1">
-                  Level of Proficiency: {getProficiency(scoreMpl)} Â· {answeredCount} bubbles detected
+                  Level of Proficiency: {getProficiency(scoreMpl)} · {answeredCount} bubbles detected
                 </p>
               </div>
 
@@ -1004,7 +1004,7 @@ export default function ScanPapersPage() {
                 }`}
               >
                 <IconDeviceFloppy className="w-4 h-4" />
-                {submitting ? 'Savingâ€¦' : 'Save Result'}
+                {submitting ? 'Saving...' : 'Save Result'}
               </button>
             </div>
           </div>

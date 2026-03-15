@@ -12,9 +12,11 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   ReactNode,
 } from "react";
+import { Modal, Text, Button, Group, Stack } from "@mantine/core";
 import { getSupabase } from "@/lib/supabase/client";
 import { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 import { useRouter, usePathname } from "next/navigation";
@@ -125,6 +127,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [lastName, setLastName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showSessionWarning, setShowSessionWarning] = useState(false);
+  const [sessionCountdown, setSessionCountdown] = useState(120);
+  const signOutRef = useRef<() => Promise<void>>(async () => {});
+
+  const INACTIVITY_MS = 2 * 60 * 60 * 1000; // 2 hours
+  const WARNING_MS = 2 * 60 * 1000;          // warn 2 minutes before logout
 
   // Hydrate from sessionStorage on mount (client-only) so NavBar has
   // cached permissions immediately while the fresh async fetch runs.
@@ -400,6 +408,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [loading, user, isLoggingOut, pathname, router]);
 
+  // Keep signOutRef current so inactivity timers always call the latest signOut.
+  useEffect(() => {
+    signOutRef.current = signOut;
+  });
+
+  // Inactivity session timeout — resets on any user interaction.
+  useEffect(() => {
+    if (!user) return;
+
+    let inactivityTimer: ReturnType<typeof setTimeout>;
+    let warningTimer: ReturnType<typeof setTimeout>;
+    let countdownInterval: ReturnType<typeof setInterval>;
+
+    const startTimers = () => {
+      warningTimer = setTimeout(() => {
+        setShowSessionWarning(true);
+        setSessionCountdown(120);
+        countdownInterval = setInterval(() => {
+          setSessionCountdown((prev) => {
+            if (prev <= 1) { clearInterval(countdownInterval); return 0; }
+            return prev - 1;
+          });
+        }, 1000);
+      }, INACTIVITY_MS - WARNING_MS);
+
+      inactivityTimer = setTimeout(() => {
+        signOutRef.current();
+      }, INACTIVITY_MS);
+    };
+
+    const resetTimers = () => {
+      clearTimeout(inactivityTimer);
+      clearTimeout(warningTimer);
+      clearInterval(countdownInterval);
+      setShowSessionWarning(false);
+      setSessionCountdown(120);
+      startTimers();
+    };
+
+    const events = ["mousemove", "mousedown", "keypress", "touchstart", "scroll", "click"];
+    events.forEach((e) => window.addEventListener(e, resetTimers, { passive: true }));
+    startTimers();
+
+    return () => {
+      clearTimeout(inactivityTimer);
+      clearTimeout(warningTimer);
+      clearInterval(countdownInterval);
+      events.forEach((e) => window.removeEventListener(e, resetTimers));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
@@ -466,6 +526,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{ user, roles, permissions, permissionsLoaded, firstName, lastName, loading, signIn, signOut }}
     >
       {children}
+
+      <Modal
+        opened={showSessionWarning}
+        onClose={() => { setShowSessionWarning(false); setSessionCountdown(120); }}
+        title="Session Expiring Soon"
+        centered
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            You have been inactive for a while. You will be automatically logged out in{" "}
+            <Text span fw={700} c="red">{sessionCountdown}s</Text>.
+          </Text>
+          <Text size="sm" c="orange" fw={500}>
+            Any unsaved changes will be lost. Please save your work before the timer runs out.
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={signOut}>
+              Log Out Now
+            </Button>
+            <Button
+              color="#4EAE4A"
+              onClick={() => { setShowSessionWarning(false); setSessionCountdown(120); }}
+            >
+              Stay Logged In
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </AuthContext.Provider>
   );
 }

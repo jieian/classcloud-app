@@ -55,7 +55,7 @@ export async function fetchAttemptsForExam(examId: number): Promise<ExamScore[]>
 
   const { data, error } = await supabase
     .from('scores')
-    .select('score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at')
+    .select('score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at, enrollments(students(full_name))')
     .in('exam_assignment_id', assignmentIds)
     .order('graded_at', { ascending: false });
 
@@ -63,7 +63,20 @@ export async function fetchAttemptsForExam(examId: number): Promise<ExamScore[]>
     console.error('[attemptService] fetchAttemptsForExam error:', error.message);
     return [];
   }
-  return (data ?? []) as ExamScore[];
+  return ((data ?? []) as unknown[]).map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    const enrollment = r.enrollments as Record<string, unknown> | null;
+    const student = enrollment?.students as Record<string, unknown> | null;
+    return {
+      score_id: r.score_id,
+      enrollment_id: r.enrollment_id,
+      exam_assignment_id: r.exam_assignment_id,
+      responses: r.responses,
+      calculated_score: r.calculated_score,
+      graded_at: r.graded_at,
+      student_name: (student?.full_name as string) ?? null,
+    } as ExamScore;
+  });
 }
 
 /**
