@@ -294,15 +294,16 @@ export default function CreateUserWizard() {
       router.refresh();
     } catch (error) {
       console.error("User creation error:", error);
+      const isEmailFailure = (error as any).code === "EMAIL_DELIVERY_FAILED";
       const message =
         error instanceof Error
           ? error.message
           : "Failed to create user. Please try again.";
       notifications.show({
-        title: "Error",
+        title: isEmailFailure ? "Email Could Not Be Delivered" : "Error",
         message,
-        color: "red",
-        autoClose: false,
+        color: isEmailFailure ? "yellow" : "red",
+        autoClose: isEmailFailure ? false : 5000,
       });
     } finally {
       setLoading(false);

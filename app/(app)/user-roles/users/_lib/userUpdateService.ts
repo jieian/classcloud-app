@@ -155,19 +155,18 @@ async function updateAuthUser(
  * The API handles Auth + Database + Roles + Rollback automatically.
  */
 export async function createUser(data: CreateUserData): Promise<void> {
-  // 1. Send EVERYTHING to the server (Names, Email, Password, Roles)
   const response = await fetch("/api/users/create-auth", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data), 
+    body: JSON.stringify(data),
   });
 
   const result = await response.json();
 
-  // 2. Check for Server Errors
   if (!response.ok) {
-    // Pass the specific error message from the API (e.g. "Email already exists")
-    throw new Error(result.error || "Failed to create user.");
+    const err = new Error(result.error || "Failed to create user.");
+    (err as any).code = result.code;
+    throw err;
   }
 }
 
