@@ -1,17 +1,20 @@
 /**
  * omrService.ts
  *
- * Browser-based OMR (Optical Mark Recognition) engine.
+ * Browser-based OMR engine powered by OpenCV.js.
  *
  * Pipeline:
- *  1. loadImageToCanvas()     — Load a File/Blob onto a canvas
- *  2. detectCornerMarkers()   — Find the 4 black corner squares
- *  3. perspectiveCorrect()    — Warp canvas to canonical PAGE_W × PAGE_H
- *  4. detectBubbles()         — Sample bubble positions, return filled choices
- *  5. readExamId()            — Attempt to read QR code from scan
+ *  1. loadImageToCanvas()   — Load a File/Blob onto a canvas
+ *  2. detectCorners()       — Find the 4 black corner squares via findContours
+ *  3. warpPerspective()     — cv.warpPerspective to canonical PAGE_W × PAGE_H
+ *  4. detectBubbles()       — cv.adaptiveThreshold + pixel count per bubble
+ *  5. readExamId()          — BarcodeDetector QR read
  *
- * All coordinates use the OMR constants so they stay in sync with the PDF layout.
+ * All coordinates use OMR constants so they stay in sync with the PDF layout.
  */
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CV = any;
 
 import { OMR } from '@/lib/omrLayout';
 
@@ -20,19 +23,60 @@ import { OMR } from '@/lib/omrLayout';
 export interface Point { x: number; y: number; }
 
 export interface DetectionResult {
-  /** Map of item number (1-based) → letter choice (A/B/C/D/null) */
   answers: { [item: number]: string | null };
-  /** Per-bubble confidence scores (0–1). Low confidence = questionable fill. */
   confidence: { [item: number]: { [choice: string]: number } };
-  /** True if corners were detected automatically */
   cornersAutoDetected: boolean;
-  /** The 4 detected corner points in source-image coordinates */
   corners: [Point, Point, Point, Point];
+  /** Debug image data URL: corrected + binarized canvas with bubble circles */
+  debugDataUrl: string;
 }
 
 export type CornerSet = [Point, Point, Point, Point]; // TL, TR, BL, BR
 
-// ─── 1. Load Image to Canvas ──────────────────────────────────────────────────
+// ─── OpenCV loader ────────────────────────────────────────────────────────────
+
+let _cvPromise: Promise<CV> | null = null;
+
+function loadCV(): Promise<CV> {
+  if (!_cvPromise) {
+    _cvPromise = import('@techstark/opencv-js').then((mod) => {
+      const cv: CV = mod.default ?? mod;
+      if (cv.Mat !== undefined) return cv;
+      return new Promise<CV>((resolve) => { cv.onRuntimeInitialized = () => resolve(cv); });
+    });
+  }
+  return _cvPromise;
+}
+
+// ─── Canvas ↔ Mat helpers ────────────────────────────────────────────────────
+
+function canvasToMat(cv: CV, canvas: HTMLCanvasElement): CV {
+  const ctx = canvas.getContext('2d')!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return cv.matFromImageData(imageData);
+}
+
+function matToCanvas(cv: CV, mat: CV, canvas: HTMLCanvasElement): void {
+  canvas.width = mat.cols;
+  canvas.height = mat.rows;
+  const ctx = canvas.getContext('2d')!;
+  // mat may be grayscale (CV_8UC1) or RGBA (CV_8UC4)
+  let rgba: CV;
+  if (mat.channels() === 1) {
+    rgba = new cv.Mat();
+    cv.cvtColor(mat, rgba, cv.COLOR_GRAY2RGBA);
+  } else if (mat.channels() === 3) {
+    rgba = new cv.Mat();
+    cv.cvtColor(mat, rgba, cv.COLOR_RGB2RGBA);
+  } else {
+    rgba = mat.clone();
+  }
+  const imageData = new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows);
+  ctx.putImageData(imageData, 0, 0);
+  if (rgba !== mat) rgba.delete();
+}
+
+// ─── 1. Load image ─────────────────────────────────────────────────────────
 
 export function loadImageToCanvas(file: File | Blob): Promise<HTMLCanvasElement> {
   return new Promise((resolve, reject) => {
@@ -42,8 +86,7 @@ export function loadImageToCanvas(file: File | Blob): Promise<HTMLCanvasElement>
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
-      ctx.drawImage(img, 0, 0);
+      canvas.getContext('2d')!.drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       resolve(canvas);
     };
@@ -52,469 +95,242 @@ export function loadImageToCanvas(file: File | Blob): Promise<HTMLCanvasElement>
   });
 }
 
-// ─── 2. Corner Marker Detection ───────────────────────────────────────────────
+// ─── 2. Corner detection ─────────────────────────────────────────────────────
 
 /**
- * Detects the 4 black corner markers by scanning each corner quadrant for
- * the largest dark blob. Returns [TL, TR, BL, BR] in image pixel coordinates.
+ * Detects the 4 black corner squares using cv.findContours.
+ * Searches each 20%×20% quadrant for the largest square-ish dark blob.
  */
-export function detectCornerMarkers(canvas: HTMLCanvasElement): CornerSet | null {
-  const ctx = canvas.getContext('2d')!;
-  const { width: W, height: H } = canvas;
-  const data = ctx.getImageData(0, 0, W, H).data;
+function detectCorners(cv: CV, src: CV): CornerSet | null {
+  const W = src.cols;
+  const H = src.rows;
 
-  // Convert to grayscale lookup
-  const gray = (i: number) => {
-    const base = i * 4;
-    return (data[base] * 0.299 + data[base + 1] * 0.587 + data[base + 2] * 0.114);
-  };
-  const isDark = (i: number) => gray(i) < 95;
+  // Grayscale → binary (dark → white in inverted image)
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  const binary = new cv.Mat();
+  cv.threshold(gray, binary, 80, 255, cv.THRESH_BINARY_INV);
+  gray.delete();
 
-  /**
-   * Search a rectangular region and return the center of the largest dark connected component.
-   * This avoids averaging unrelated dark pixels (text/shadows) into the corner estimate.
-   */
-  function findLargestBlobCenter(rx: number, ry: number, rw: number, rh: number): Point | null {
-    const visited = new Uint8Array(rw * rh);
-    const idxLocal = (lx: number, ly: number) => ly * rw + lx;
+  const contours = new cv.MatVector();
+  const hierarchy = new cv.Mat();
+  cv.findContours(binary, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+  binary.delete();
+  hierarchy.delete();
 
+  function bestInRegion(rx: number, ry: number, rw: number, rh: number): Point | null {
     let bestArea = 0;
-    let bestCenter: Point | null = null;
+    let best: Point | null = null;
 
-    for (let ly = 0; ly < rh; ly++) {
-      for (let lx = 0; lx < rw; lx++) {
-        const start = idxLocal(lx, ly);
-        if (visited[start]) continue;
-        visited[start] = 1;
+    for (let i = 0; i < contours.size(); i++) {
+      const cnt = contours.get(i);
+      const area = cv.contourArea(cnt);
+      if (area < 40) continue;
 
-        const gx = rx + lx;
-        const gy = ry + ly;
-        if (!isDark(gy * W + gx)) continue;
+      const rect = cv.boundingRect(cnt);
+      const cx = rect.x + rect.width / 2;
+      const cy = rect.y + rect.height / 2;
+      if (cx < rx || cx > rx + rw || cy < ry || cy > ry + rh) continue;
 
-        const qx: number[] = [lx];
-        const qy: number[] = [ly];
-        let head = 0;
+      const aspect = rect.width / Math.max(1, rect.height);
+      if (aspect < 0.35 || aspect > 2.8) continue;
 
-        let area = 0;
-        let minX = lx, maxX = lx, minY = ly, maxY = ly;
-
-        while (head < qx.length) {
-          const cx = qx[head];
-          const cy = qy[head];
-          head++;
-
-          area++;
-          if (cx < minX) minX = cx;
-          if (cx > maxX) maxX = cx;
-          if (cy < minY) minY = cy;
-          if (cy > maxY) maxY = cy;
-
-          for (let oy = -1; oy <= 1; oy++) {
-            for (let ox = -1; ox <= 1; ox++) {
-              if (ox === 0 && oy === 0) continue;
-              const nx = cx + ox;
-              const ny = cy + oy;
-              if (nx < 0 || ny < 0 || nx >= rw || ny >= rh) continue;
-              const nIdx = idxLocal(nx, ny);
-              if (visited[nIdx]) continue;
-              visited[nIdx] = 1;
-              const ngx = rx + nx;
-              const ngy = ry + ny;
-              if (isDark(ngy * W + ngx)) {
-                qx.push(nx);
-                qy.push(ny);
-              }
-            }
-          }
-        }
-
-        if (area < 40) continue;
-        const bw = maxX - minX + 1;
-        const bh = maxY - minY + 1;
-        const aspect = bw > bh ? bw / bh : bh / bw;
-        const density = area / (bw * bh);
-
-        // Corner markers are compact near-square dense blobs.
-        if (aspect > 2.1 || density < 0.28) continue;
-        if (area > bestArea) {
-          bestArea = area;
-          bestCenter = {
-            x: Math.round(rx + (minX + maxX) / 2),
-            y: Math.round(ry + (minY + maxY) / 2),
-          };
-        }
+      if (area > bestArea) {
+        bestArea = area;
+        best = { x: Math.round(cx), y: Math.round(cy) };
       }
     }
-
-    return bestCenter;
+    return best;
   }
 
-  // Each corner region is 20% × 20% of the image
-  const cw = Math.round(W * 0.20);
-  const ch = Math.round(H * 0.20);
+  const cw = Math.round(W * 0.22);
+  const ch = Math.round(H * 0.22);
 
-  const tl = findLargestBlobCenter(0, 0, cw, ch);
-  const tr = findLargestBlobCenter(W - cw, 0, cw, ch);
-  const bl = findLargestBlobCenter(0, H - ch, cw, ch);
-  const br = findLargestBlobCenter(W - cw, H - ch, cw, ch);
+  const tl = bestInRegion(0,     0,     cw, ch);
+  const tr = bestInRegion(W-cw,  0,     cw, ch);
+  const bl = bestInRegion(0,     H-ch,  cw, ch);
+  const br = bestInRegion(W-cw,  H-ch,  cw, ch);
+
+  contours.delete();
 
   if (!tl || !tr || !bl || !br) return null;
-
   return [tl, tr, bl, br];
 }
 
-// ─── 3. Homography & Perspective Correction ───────────────────────────────────
+// ─── 3. Perspective correction ───────────────────────────────────────────────
 
 /**
- * Solves an 8×8 linear system via Gaussian elimination with partial pivoting.
- * Returns the solution vector [x0 .. x7].
+ * Uses cv.getPerspectiveTransform + cv.warpPerspective to map
+ * the 4 detected corners to the canonical PDF-point positions.
+ * Returns a new Mat (RGBA, PAGE_W × PAGE_H).
  */
-function gaussianElim(A: number[][], b: number[]): number[] {
-  const n = b.length;
-  const M: number[][] = A.map((row, i) => [...row, b[i]]);
-
-  for (let col = 0; col < n; col++) {
-    // Find pivot
-    let maxRow = col;
-    for (let r = col + 1; r < n; r++) {
-      if (Math.abs(M[r][col]) > Math.abs(M[maxRow][col])) maxRow = r;
-    }
-    [M[col], M[maxRow]] = [M[maxRow], M[col]];
-    if (Math.abs(M[col][col]) < 1e-12) continue;
-
-    for (let r = col + 1; r < n; r++) {
-      const f = M[r][col] / M[col][col];
-      for (let k = col; k <= n; k++) M[r][k] -= f * M[col][k];
-    }
-  }
-
-  const x = new Array(n).fill(0);
-  for (let i = n - 1; i >= 0; i--) {
-    x[i] = M[i][n];
-    for (let j = i + 1; j < n; j++) x[i] -= M[i][j] * x[j];
-    x[i] /= M[i][i];
-  }
-  return x;
-}
-
-/**
- * Computes the 3×3 homography matrix (returned as 9-element array, row-major)
- * that maps src[i] → dst[i] for 4 point correspondences.
- */
-function computeHomography(src: Point[], dst: Point[]): number[] {
-  const A: number[][] = [];
-  const b: number[] = [];
-
-  for (let i = 0; i < 4; i++) {
-    const { x, y } = src[i];
-    const { x: xp, y: yp } = dst[i];
-    A.push([-x, -y, -1,  0,  0,  0, x * xp, y * xp]);
-    b.push(-xp);
-    A.push([ 0,  0,  0, -x, -y, -1, x * yp, y * yp]);
-    b.push(-yp);
-  }
-
-  const h = gaussianElim(A, b);
-  // h = [h0..h7], h8 = 1
-  return [...h, 1];
-}
-
-/**
- * Applies homography matrix H to point p. Returns transformed point.
- */
-function applyH(H: number[], p: Point): Point {
-  const [h0, h1, h2, h3, h4, h5, h6, h7, h8] = H;
-  const w = h6 * p.x + h7 * p.y + h8;
-  return {
-    x: (h0 * p.x + h1 * p.y + h2) / w,
-    y: (h3 * p.x + h4 * p.y + h5) / w,
-  };
-}
-
-/**
- * Perspective-corrects the source canvas using 4 detected corner points.
- * Returns a new canvas with dimensions PAGE_W × PAGE_H (595 × 842 px).
- * After this operation, 1 pixel = 1 PDF point.
- */
-export function perspectiveCorrect(
-  srcCanvas: HTMLCanvasElement,
-  corners: CornerSet
-): HTMLCanvasElement {
-  const DW = OMR.PAGE_W;
-  const DH = OMR.PAGE_H;
-
-  // Destination corners = centers of the corner markers in PDF space
-  const dstCorners: Point[] = [
-    OMR.CM_TL_C as Point,
-    OMR.CM_TR_C as Point,
-    OMR.CM_BL_C as Point,
-    OMR.CM_BR_C as Point,
-  ];
+function warpToPage(cv: CV, src: CV, corners: CornerSet): CV {
   const [tl, tr, bl, br] = corners;
-  const srcCorners: Point[] = [tl, tr, bl, br];
 
-  // H maps destination → source (we iterate over destination pixels)
-  const H_dst_to_src = computeHomography(dstCorners, srcCorners);
+  const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    tl.x, tl.y,
+    tr.x, tr.y,
+    bl.x, bl.y,
+    br.x, br.y,
+  ]);
+  const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    OMR.CM_TL_C.x, OMR.CM_TL_C.y,
+    OMR.CM_TR_C.x, OMR.CM_TR_C.y,
+    OMR.CM_BL_C.x, OMR.CM_BL_C.y,
+    OMR.CM_BR_C.x, OMR.CM_BR_C.y,
+  ]);
 
-  const dstCanvas = document.createElement('canvas');
-  dstCanvas.width = DW;
-  dstCanvas.height = DH;
-  const dstCtx = dstCanvas.getContext('2d')!;
+  const M = cv.getPerspectiveTransform(srcPts, dstPts);
+  const dst = new cv.Mat();
+  const dsize = new cv.Size(OMR.PAGE_W, OMR.PAGE_H);
+  cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
 
-  const srcCtx = srcCanvas.getContext('2d')!;
-  const srcData = srcCtx.getImageData(0, 0, srcCanvas.width, srcCanvas.height).data;
-  const SW = srcCanvas.width;
-  const SH = srcCanvas.height;
-
-  const dstData = dstCtx.createImageData(DW, DH);
-
-  for (let dy = 0; dy < DH; dy++) {
-    for (let dx = 0; dx < DW; dx++) {
-      const src = applyH(H_dst_to_src, { x: dx, y: dy });
-      const di = (dy * DW + dx) * 4;
-      const sx = src.x;
-      const sy = src.y;
-      if (sx < 0 || sx >= SW - 1 || sy < 0 || sy >= SH - 1) continue;
-
-      const x0 = Math.floor(sx);
-      const y0 = Math.floor(sy);
-      const x1 = x0 + 1;
-      const y1 = y0 + 1;
-      const tx = sx - x0;
-      const ty = sy - y0;
-
-      const i00 = (y0 * SW + x0) * 4;
-      const i10 = (y0 * SW + x1) * 4;
-      const i01 = (y1 * SW + x0) * 4;
-      const i11 = (y1 * SW + x1) * 4;
-
-      // Bilinear interpolation retains mark detail better than nearest-neighbor.
-      for (let c = 0; c < 3; c++) {
-        const v00 = srcData[i00 + c];
-        const v10 = srcData[i10 + c];
-        const v01 = srcData[i01 + c];
-        const v11 = srcData[i11 + c];
-        const v0 = v00 * (1 - tx) + v10 * tx;
-        const v1 = v01 * (1 - tx) + v11 * tx;
-        dstData.data[di + c] = Math.round(v0 * (1 - ty) + v1 * ty);
-      }
-      dstData.data[di + 3] = 255;
-    }
-  }
-
-  dstCtx.putImageData(dstData, 0, 0);
-  return dstCanvas;
+  srcPts.delete(); dstPts.delete(); M.delete();
+  return dst;
 }
 
-// ─── 4. Bubble Detection ──────────────────────────────────────────────────────
+// ─── 4. Bubble detection ─────────────────────────────────────────────────────
 
 /**
- * Samples a circular region around (cx, cy) with radius r in the canvas.
- * Returns the fraction of pixels that are "dark" (< threshold grayscale).
+ * Returns the fill ratio (0–1) of a bubble circle using a pre-computed binary Mat.
+ * binary: CV_8UC1 where 255 = ink (THRESH_BINARY_INV), 0 = paper.
  */
-function sampleBubbleFill(
-  data: Uint8ClampedArray,
-  W: number,
-  H: number,
-  cx: number,
-  cy: number,
-  r: number
-): number {
-  const innerR = r * 0.62;
-  const bgInnerR = r * 1.2;
-  const bgOuterR = r * 1.9;
-  const rInt = Math.ceil(bgOuterR);
-
-  let innerDark = 0;
-  let innerTotal = 0;
-  let innerGraySum = 0;
-  let bgGraySum = 0;
-  let bgTotal = 0;
+function sampleFill(binaryData: Uint8Array, W: number, H: number, cx: number, cy: number, r: number): number {
+  const innerR = r * 0.72;
+  const rInt = Math.ceil(innerR);
+  let ink = 0, total = 0;
 
   for (let dy = -rInt; dy <= rInt; dy++) {
     for (let dx = -rInt; dx <= rInt; dx++) {
-      const d2 = dx * dx + dy * dy;
-      const dist = Math.sqrt(d2);
-      if (dist > bgOuterR) continue;
-      const px = Math.round(cx + dx);
-      const py = Math.round(cy + dy);
-      if (px < 0 || py < 0 || px >= W || py >= H) continue;
-      const i = (py * W + px) * 4;
-      const g = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-
-      if (dist <= innerR) {
-        innerGraySum += g;
-        innerTotal++;
-      } else if (dist >= bgInnerR) {
-        bgGraySum += g;
-        bgTotal++;
-      }
-    }
-  }
-
-  if (innerTotal === 0 || bgTotal === 0) return 0;
-
-  const innerMean = innerGraySum / innerTotal;
-  const bgMean = bgGraySum / bgTotal;
-  const localDarkThreshold = Math.max(55, Math.min(200, bgMean - 20));
-
-  for (let dy = -Math.ceil(innerR); dy <= Math.ceil(innerR); dy++) {
-    for (let dx = -Math.ceil(innerR); dx <= Math.ceil(innerR); dx++) {
       if (dx * dx + dy * dy > innerR * innerR) continue;
       const px = Math.round(cx + dx);
       const py = Math.round(cy + dy);
       if (px < 0 || py < 0 || px >= W || py >= H) continue;
-      const i = (py * W + px) * 4;
-      const g = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-      if (g < localDarkThreshold) innerDark++;
+      if (binaryData[py * W + px] === 255) ink++;
+      total++;
     }
   }
-
-  const fillRatio = innerDark / innerTotal;
-  const meanDrop = Math.max(0, bgMean - innerMean);
-  const meanDropScore = Math.min(1, meanDrop / 85);
-  return fillRatio * 0.7 + meanDropScore * 0.3;
+  return total === 0 ? 0 : ink / total;
 }
 
 /**
- * Quick focus metric (Tenengrad-style) on luminance gradients.
- * Lower values indicate blur, motion blur, or strong defocus.
- */
-function estimateSharpness(canvas: HTMLCanvasElement): number {
-  const ctx = canvas.getContext('2d')!;
-  const { width: W, height: H } = canvas;
-  const data = ctx.getImageData(0, 0, W, H).data;
-  const stride = Math.max(1, Math.floor(Math.min(W, H) / 900));
-
-  let sum = 0;
-  let count = 0;
-
-  const lum = (x: number, y: number) => {
-    const i = (y * W + x) * 4;
-    return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-  };
-
-  for (let y = stride; y < H - stride; y += stride) {
-    for (let x = stride; x < W - stride; x += stride) {
-      const gx = lum(x + stride, y) - lum(x - stride, y);
-      const gy = lum(x, y + stride) - lum(x, y - stride);
-      sum += gx * gx + gy * gy;
-      count++;
-    }
-  }
-
-  return count ? sum / count : 0;
-}
-
-function sampleBubbleFillBestOffset(
-  data: Uint8ClampedArray,
-  W: number,
-  H: number,
-  cx: number,
-  cy: number,
-  r: number
-): number {
-  let best = 0;
-  // Small local search to absorb minor geometric drift after homography.
-  for (let oy = -2; oy <= 2; oy++) {
-    for (let ox = -2; ox <= 2; ox++) {
-      const score = sampleBubbleFill(data, W, H, cx + ox, cy + oy, r);
-      if (score > best) best = score;
-    }
-  }
-  return best;
-}
-
-/**
- * Detects which bubbles are filled in the corrected canvas.
- * @param correctedCanvas  Output of perspectiveCorrect() — 595×842px
- * @param totalItems       How many items to read
- * @param numChoices       Number of choices per item (A=1, B=2, ...)
+ * Binarizes the corrected page and counts ink pixels in each bubble circle.
+ * Uses cv.adaptiveThreshold (ADAPTIVE_THRESH_MEAN_C, THRESH_BINARY_INV):
+ *   - pixel darker than local neighbourhood mean − C → 255 (ink)
+ *   - pixel lighter → 0 (paper)
  */
 export function detectBubbles(
-  correctedCanvas: HTMLCanvasElement,
+  cv: CV,
+  correctedMat: CV,
   totalItems: number,
   numChoices: number
-): { answers: { [item: number]: string | null }; confidence: { [item: number]: { [ch: string]: number } } } {
-  const ctx = correctedCanvas.getContext('2d')!;
-  const data = ctx.getImageData(0, 0, correctedCanvas.width, correctedCanvas.height).data;
-  const W = correctedCanvas.width;
-  const H = correctedCanvas.height;
-  const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
+): { answers: { [item: number]: string | null }; confidence: { [item: number]: { [ch: string]: number } }; binaryMat: CV } {
+  const gray = new cv.Mat();
+  cv.cvtColor(correctedMat, gray, cv.COLOR_RGBA2GRAY);
 
+  const binary = new cv.Mat();
+  cv.adaptiveThreshold(gray, binary, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY_INV, 11, 8);
+  gray.delete();
+
+  const binaryData: Uint8Array = binary.data;
+  const W = binary.cols;
+  const H = binary.rows;
+
+  const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
   const answers: { [item: number]: string | null } = {};
   const confidence: { [item: number]: { [ch: string]: number } } = {};
 
   for (let item = 1; item <= totalItems; item++) {
-    const fills: { ch: string; fill: number }[] = [];
-
-    choices.forEach((ch, ci) => {
-      const center = OMR.bubbleCenter(item, ci);
-      const fill = sampleBubbleFillBestOffset(data, W, H, center.x, center.y, OMR.BUBBLE_R + 1);
-      fills.push({ ch, fill });
+    const fills = choices.map((ch, ci) => {
+      const center = OMR.bubbleCenter(item, ci, totalItems);
+      return { ch, fill: sampleFill(binaryData, W, H, center.x, center.y, OMR.BUBBLE_R) };
     });
 
-    // Confidence map
+    const sorted = [...fills].sort((a, b) => b.fill - a.fill);
+    const topFill = sorted[0].fill;
+    const delta   = topFill - sorted[1].fill;
+
+    // Marked if ≥20% ink pixels AND clearly ahead of 2nd place by ≥10pp
+    const isMarked = topFill >= 0.20 && delta >= 0.10;
+    answers[item] = isMarked ? sorted[0].ch : null;
+
     confidence[item] = {};
     fills.forEach(({ ch, fill }) => { confidence[item][ch] = fill; });
-
-    // Determine filled bubble using threshold + separation from second best.
-    const sorted = [...fills].sort((a, b) => b.fill - a.fill);
-    const top = sorted[0];
-    const second = sorted[1];
-    const topScore = top?.fill ?? 0;
-    const secondScore = second?.fill ?? 0;
-    const delta = topScore - secondScore;
-
-    const isMarked = topScore >= Math.max(OMR.FILL_THRESHOLD, 0.22);
-    const ambiguousPair = secondScore >= 0.2 && delta < 0.08;
-    const lowSeparation = delta < 0.05;
-
-    answers[item] = isMarked && !ambiguousPair && !lowSeparation ? top.ch : null;
   }
 
-  return { answers, confidence };
+  return { answers, confidence, binaryMat: binary };
 }
+
+// ─── Debug overlay ────────────────────────────────────────────────────────────
+
+function buildDebugDataUrl(
+  cv: CV,
+  binaryMat: CV,
+  answers: { [item: number]: string | null },
+  confidence: { [item: number]: { [choice: string]: number } },
+  totalItems: number,
+  numChoices: number
+): string {
+  // Draw binary image on canvas then overlay circles
+  const canvas = document.createElement('canvas');
+  matToCanvas(cv, binaryMat, canvas);
+  const ctx = canvas.getContext('2d')!;
+
+  const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
+  const r = OMR.BUBBLE_R * 0.72;
+
+  for (let item = 1; item <= totalItems; item++) {
+    choices.forEach((ch, ci) => {
+      const center = OMR.bubbleCenter(item, ci, totalItems);
+      const isMarked = answers[item] === ch;
+      const pct = Math.round((confidence[item]?.[ch] ?? 0) * 100);
+
+      ctx.beginPath();
+      ctx.arc(center.x, center.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = isMarked ? '#00ff00' : '#ff4444';
+      ctx.lineWidth = isMarked ? 2 : 1;
+      ctx.stroke();
+
+      ctx.fillStyle = isMarked ? '#00cc00' : '#ff4444';
+      ctx.font = `bold ${Math.round(r * 0.9)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(pct), center.x, center.y);
+    });
+  }
+
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+// ─── Orientation scoring ──────────────────────────────────────────────────────
 
 function detectionQuality(
   answers: { [item: number]: string | null },
   confidence: { [item: number]: { [choice: string]: number } }
 ): number {
-  let score = 0;
-  let items = 0;
-
+  let score = 0, items = 0;
   for (const itemKey of Object.keys(confidence)) {
     const item = Number(itemKey);
     const values = Object.values(confidence[item] ?? {}).sort((a, b) => b - a);
     if (!values.length) continue;
-
     const top = values[0] ?? 0;
     const second = values[1] ?? 0;
     const delta = top - second;
-
-    // Favor strong/clear marks and penalize weak/ambiguous patterns.
     score += top * 1.4 + delta * 2.2;
     if (answers[item]) score += 0.15;
     if (top < 0.18) score -= 0.2;
     if (delta < 0.04) score -= 0.15;
     items++;
   }
-
   return items ? score / items : -1e9;
 }
 
-// ─── 5. QR Code Reader ────────────────────────────────────────────────────────
+// ─── 5. QR Code reader ────────────────────────────────────────────────────────
 
-/**
- * Attempts to read the exam ID from the QR code region using
- * the browser's BarcodeDetector API (supported in Chrome/Edge/Safari 17+).
- * Returns the exam ID number, or null if not detectable.
- */
 export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<number | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const BD = (window as any).BarcodeDetector;
   if (!BD) return null;
-
   try {
     const detector = new BD({ formats: ['qr_code'] });
     const barcodes = await detector.detect(canvas);
@@ -526,51 +342,85 @@ export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<numbe
   return null;
 }
 
-// ─── Full Pipeline ─────────────────────────────────────────────────────────────
+// ─── Sharpness check ──────────────────────────────────────────────────────────
 
-/**
- * Runs the full OMR pipeline on a captured image file.
- * @param file        The photo of the answer sheet
- * @param totalItems  Number of items on the exam
- * @param numChoices  Choices per item
- * @param manualCorners  Optional manually provided corners (overrides auto detection)
- */
+function estimateSharpness(cv: CV, src: CV): number {
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  const laplacian = new cv.Mat();
+  cv.Laplacian(gray, laplacian, cv.CV_64F);
+  const mean = new cv.Mat();
+  const stddev = new cv.Mat();
+  cv.meanStdDev(laplacian, mean, stddev);
+  const variance = stddev.doubleAt(0, 0) ** 2;
+  gray.delete(); laplacian.delete(); mean.delete(); stddev.delete();
+  return variance;
+}
+
+// ─── Full pipeline ────────────────────────────────────────────────────────────
+
 export async function processAnswerSheet(
   file: File | Blob,
   totalItems: number,
   numChoices: number,
   manualCorners?: CornerSet
 ): Promise<DetectionResult> {
-  const srcCanvas = await loadImageToCanvas(file);
-  const sharpness = estimateSharpness(srcCanvas);
-  if (sharpness < 130) {
+  const cv = await loadCV();
+
+  // Load image
+  const srcCanvas = document.createElement('canvas');
+  await new Promise<void>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      srcCanvas.width = img.naturalWidth;
+      srcCanvas.height = img.naturalHeight;
+      srcCanvas.getContext('2d')!.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      resolve();
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+
+  const srcMat = canvasToMat(cv, srcCanvas);
+
+  // Sharpness check
+  const sharpness = estimateSharpness(cv, srcMat);
+  if (sharpness < 50) {
+    srcMat.delete();
     throw new Error('Image appears blurry. Use better lighting, keep camera steady, and recapture.');
   }
 
-  const corners = manualCorners ?? detectCornerMarkers(srcCanvas);
+  // Corner detection
+  const corners = manualCorners ?? detectCorners(cv, srcMat);
   const autoDetected = !manualCorners && corners !== null;
 
   if (!corners) {
-    throw new Error('Could not detect all corner markers. Recapture with full sheet visible and better lighting.');
+    srcMat.delete();
+    throw new Error('Could not detect all corner markers. Ensure all 4 corners are visible and well-lit.');
   }
 
   if (manualCorners) {
-    const corrected = perspectiveCorrect(srcCanvas, corners);
-    const { answers, confidence } = detectBubbles(corrected, totalItems, numChoices);
-    return { answers, confidence, cornersAutoDetected: autoDetected, corners };
+    const corrected = warpToPage(cv, srcMat, corners);
+    srcMat.delete();
+    const { answers, confidence, binaryMat } = detectBubbles(cv, corrected, totalItems, numChoices);
+    const debugDataUrl = buildDebugDataUrl(cv, binaryMat, answers, confidence, totalItems, numChoices);
+    binaryMat.delete(); corrected.delete();
+    return { answers, confidence, cornersAutoDetected: autoDetected, corners, debugDataUrl };
   }
 
-  // Try rotated/mirrored corner orderings and keep the most plausible read.
+  // Try all 8 orientations, keep the best-scoring one
   const [tl, tr, bl, br] = corners;
   const candidates: CornerSet[] = [
-    [tl, tr, bl, br], // normal
-    [br, bl, tr, tl], // rotate 180
-    [tr, br, tl, bl], // rotate 90 CW
-    [bl, tl, br, tr], // rotate 90 CCW
-    [tr, tl, br, bl], // mirror horizontal
-    [bl, br, tl, tr], // mirror vertical
-    [tl, bl, tr, br], // transpose-like variant
-    [br, tr, bl, tl], // anti-transpose-like variant
+    [tl, tr, bl, br],
+    [br, bl, tr, tl],
+    [tr, br, tl, bl],
+    [bl, tl, br, tr],
+    [tr, tl, br, bl],
+    [bl, br, tl, tr],
+    [tl, bl, tr, br],
+    [br, tr, bl, tl],
   ];
 
   let best: {
@@ -578,26 +428,36 @@ export async function processAnswerSheet(
     corners: CornerSet;
     answers: { [item: number]: string | null };
     confidence: { [item: number]: { [choice: string]: number } };
+    corrected: CV;
+    binaryMat: CV;
   } | null = null;
 
   for (const cand of candidates) {
-    const corrected = perspectiveCorrect(srcCanvas, cand);
-    const { answers, confidence } = detectBubbles(corrected, totalItems, numChoices);
+    const corrected = warpToPage(cv, srcMat, cand);
+    const { answers, confidence, binaryMat } = detectBubbles(cv, corrected, totalItems, numChoices);
     const quality = detectionQuality(answers, confidence);
 
     if (!best || quality > best.quality) {
-      best = { quality, corners: cand, answers, confidence };
+      if (best) { best.corrected.delete(); best.binaryMat.delete(); }
+      best = { quality, corners: cand, answers, confidence, corrected, binaryMat };
+    } else {
+      corrected.delete(); binaryMat.delete();
     }
   }
 
-  if (!best) {
-    throw new Error('Failed to evaluate scan orientation. Please recapture.');
-  }
+  srcMat.delete();
+
+  if (!best) throw new Error('Failed to evaluate scan orientation. Please recapture.');
+
+  const debugDataUrl = buildDebugDataUrl(cv, best.binaryMat, best.answers, best.confidence, totalItems, numChoices);
+  best.corrected.delete();
+  best.binaryMat.delete();
 
   return {
     answers: best.answers,
     confidence: best.confidence,
     cornersAutoDetected: autoDetected,
     corners: best.corners,
+    debugDataUrl,
   };
 }

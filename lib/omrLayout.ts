@@ -64,10 +64,13 @@ export const OMR = {
    * Returns the canonical (x, y) center of a bubble in PDF-point space.
    * @param itemNumber  1-based item number
    * @param choiceIndex 0=A, 1=B, 2=C, 3=D, 4=E ...
+   * @param totalItems  total items on the exam — must match what examPdfService used
+   *                    (column break = Math.ceil(totalItems / 2))
    */
-  bubbleCenter(itemNumber: number, choiceIndex: number): { x: number; y: number } {
-    const col = itemNumber <= this.ITEMS_PER_COL ? 1 : 2;
-    const rowInCol = col === 1 ? itemNumber - 1 : itemNumber - this.ITEMS_PER_COL - 1;
+  bubbleCenter(itemNumber: number, choiceIndex: number, totalItems: number): { x: number; y: number } {
+    const itemsInCol1 = Math.ceil(totalItems / 2);
+    const col = itemNumber <= itemsInCol1 ? 1 : 2;
+    const rowInCol = col === 1 ? itemNumber - 1 : itemNumber - itemsInCol1 - 1;
     const baseX = col === 1 ? this.COL1_FIRST_BUBBLE_X : this.COL2_FIRST_BUBBLE_X;
     return {
       x: baseX + choiceIndex * this.CHOICE_SPACING,
