@@ -42,7 +42,7 @@ import {
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
-import CreateExamModal, { EXAM_DRAFT_KEY, type ExamDraft } from "@/components/CreateExamModal";
+
 import ItemAnalysisModal from "@/components/ItemAnalysisModal";
 import LearningObjectivesModal from "@/components/LearningObjectivesModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
@@ -79,15 +79,14 @@ export default function ExamPageClient() {
   const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(null);
   const [isObjectivesModalOpen, setIsObjectivesModalOpen] = useState(false);
   const [objectivesExam, setObjectivesExam] = useState<ExamWithRelations | null>(null);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [modalDraft, setModalDraft] = useState<ExamDraft | null>(null);
+
   /** Exam ID to highlight after creation flow completes */
   const [newlyCreatedExamId, setNewlyCreatedExamId] = useState<number | null>(null);
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
 
-  // Handle ?newExamId= highlight and ?openCreate=1 modal reopen
+  // Handle ?newExamId= highlight
   useEffect(() => {
     const newId = searchParams.get("newExamId");
     if (newId) {
@@ -96,17 +95,8 @@ export default function ExamPageClient() {
         setNewlyCreatedExamId(examId);
         setTimeout(() => setNewlyCreatedExamId(null), 4000);
       }
-    }
-    const shouldOpen = searchParams.get("openCreate");
-    if (shouldOpen) {
-      const raw = sessionStorage.getItem(EXAM_DRAFT_KEY);
-      setModalDraft(raw ? JSON.parse(raw) : null);
-      setIsCreateModalOpen(true);
-    }
-    if (newId || shouldOpen) {
       const url = new URL(window.location.href);
       url.searchParams.delete("newExamId");
-      url.searchParams.delete("openCreate");
       window.history.replaceState({}, "", url.toString());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -364,14 +354,21 @@ export default function ExamPageClient() {
               </span>
             )}
           </h1>
-          <Button
-            color="#4EAE4A"
-            radius="md"
-            leftSection={<IconPlus size={16} />}
-            onClick={() => { setModalDraft(null); setIsCreateModalOpen(true); }}
-          >
-            Create Exam
-          </Button>
+          {loading ? (
+            <Stack gap={4} style={{ alignItems: "flex-end" }}>
+              <Text size="xs" c="dimmed">Create Exam</Text>
+              <Skeleton height={40} width={140} radius="md" />
+            </Stack>
+          ) : (
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              leftSection={<IconPlus size={16} />}
+              onClick={() => router.push('/exam/create')}
+            >
+              Create Exam
+            </Button>
+          )}
         </Group>
         <p className="mb-3 text-sm text-[#808898]">
           Manage and track all examinations
@@ -548,15 +545,19 @@ export default function ExamPageClient() {
                                     </ActionIcon>
                                   </Menu.Target>
                                   <Menu.Dropdown>
-                                    <Menu.Label>Status</Menu.Label>
-                                    <Menu.Item
-                                      leftSection={<IconRefreshDot size={14} />}
-                                      disabled={updatingStatus === exam.exam_id}
-                                      onClick={() => handleStatusChange(exam, exam.is_locked ? "active" : "inactive")}
-                                    >
-                                      {exam.is_locked ? "Set Active" : "Set Inactive"}
-                                    </Menu.Item>
-                                    <Menu.Divider />
+                                    {hasFullAccess && (
+                                      <>
+                                        <Menu.Label>Status</Menu.Label>
+                                        <Menu.Item
+                                          leftSection={<IconRefreshDot size={14} />}
+                                          disabled={updatingStatus === exam.exam_id}
+                                          onClick={() => handleStatusChange(exam, exam.is_locked ? "active" : "inactive")}
+                                        >
+                                          {exam.is_locked ? "Set Active" : "Set Inactive"}
+                                        </Menu.Item>
+                                        <Menu.Divider />
+                                      </>
+                                    )}
                                     <Menu.Label>Actions</Menu.Label>
                                     <Menu.Item leftSection={<IconDownload size={14} />} onClick={() => handleDownloadAnswerSheet(exam)}>
                                       Download Answer Sheet
@@ -573,10 +574,14 @@ export default function ExamPageClient() {
                                     <Menu.Item leftSection={<IconEye size={14} />} disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)} onClick={() => { setSelectedExam(exam); setIsAnalysisModalOpen(true); }}>
                                       Review Papers
                                     </Menu.Item>
-                                    <Menu.Divider />
-                                    <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => handleOpenDeleteModal(exam)}>
-                                      Delete
-                                    </Menu.Item>
+                                    {hasFullAccess && (
+                                      <>
+                                        <Menu.Divider />
+                                        <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => handleOpenDeleteModal(exam)}>
+                                          Delete
+                                        </Menu.Item>
+                                      </>
+                                    )}
                                   </Menu.Dropdown>
                                 </Menu>
                               </Group>
@@ -619,23 +624,6 @@ export default function ExamPageClient() {
             </Accordion>
           )}
 
-        {isCreateModalOpen && (
-          <CreateExamModal
-            onClose={() => {
-              sessionStorage.removeItem(EXAM_DRAFT_KEY);
-              setIsCreateModalOpen(false);
-              setModalDraft(null);
-            }}
-            onProceed={(draft) => {
-              sessionStorage.setItem(EXAM_DRAFT_KEY, JSON.stringify(draft));
-              setIsCreateModalOpen(false);
-              setModalDraft(null);
-              router.push("/exam/create");
-            }}
-            initialDraft={modalDraft}
-            existingTitles={exams.map((e) => e.title)}
-          />
-        )}
 
         {isObjectivesModalOpen && objectivesExam && (
           <LearningObjectivesModal

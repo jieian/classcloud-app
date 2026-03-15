@@ -80,41 +80,37 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.setFont('helvetica', 'normal');
   const subjectText = exam.subjects?.name ? `Subject: ${exam.subjects.name}` : '';
   const quarterText = exam.quarters?.name ? `  |  ${exam.quarters.name}` : '';
-  const dateText = exam.exam_date ? `  |  Date: ${new Date(exam.exam_date).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}` : '';
-  pdf.text(subjectText + quarterText + dateText, OMR.PAGE_W / 2, 80, { align: 'center' });
+  pdf.text(subjectText + quarterText, OMR.PAGE_W / 2, 80, { align: 'center' });
 
-  // Student info lines
-  const lineY1 = 105;
-  const lineY2 = 125;
-  const lineY3 = 145;
+  // Student info lines — pushed below QR bottom edge (QR ends at y≈110)
+  const lineY1 = 118;
+  const lineY2 = 138;
+  const lineY3 = 158;
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
   pdf.text('STUDENT NAME:', 55, lineY1);
   pdf.setFont('helvetica', 'normal');
-  pdf.line(145, lineY1, 420, lineY1);
-
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('LRN:', 430, lineY1);
-  pdf.setFont('helvetica', 'normal');
-  pdf.line(455, lineY1, 540, lineY1);
+  pdf.line(145, lineY1, 540, lineY1);  // full width — no LRN
 
   pdf.setFont('helvetica', 'bold');
   pdf.text('SECTION:', 55, lineY2);
   pdf.setFont('helvetica', 'normal');
-  pdf.line(100, lineY2, 280, lineY2);
+  pdf.line(97, lineY2, 185, lineY2);
   const sName = sectionName ?? exam.exam_assignments?.[0]?.sections?.name ?? '___';
-  pdf.text(sName, 105, lineY2 - 2);
+  pdf.text(sName, 100, lineY2 - 2);
+
+  const gradeLabel = exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name ?? '';
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('GRADE LEVEL:', 192, lineY2);
+  pdf.setFont('helvetica', 'normal');
+  pdf.line(258, lineY2, 368, lineY2);
+  if (gradeLabel) pdf.text(gradeLabel, 261, lineY2 - 2);
 
   pdf.setFont('helvetica', 'bold');
-  pdf.text('SCORE:', 290, lineY2);
+  pdf.text('DATE:', 375, lineY2);
   pdf.setFont('helvetica', 'normal');
-  pdf.line(325, lineY2, 430, lineY2);
-
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('DATE:', 440, lineY2);
-  pdf.setFont('helvetica', 'normal');
-  pdf.line(465, lineY2, 540, lineY2);
+  pdf.line(398, lineY2, 540, lineY2);
 
   // Instructions
   pdf.setFont('helvetica', 'italic');
@@ -130,6 +126,9 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.line(50, lineY3 + 8, OMR.PAGE_W - 50, lineY3 + 8);
   pdf.setLineWidth(0.3);
 
+  // Split items evenly across 2 columns (half each)
+  const itemsInCol1 = Math.ceil(totalItems / 2);
+
   // ── Column Headers ────────────────────────────────────────────────────────
   const headerY = OMR.GRID_START_Y - 9;
   pdf.setFont('helvetica', 'bold');
@@ -139,7 +138,7 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
     pdf.text(ch, OMR.COL1_FIRST_BUBBLE_X + i * OMR.CHOICE_SPACING, headerY, { align: 'center' });
   });
 
-  const itemsInCol2 = Math.max(0, totalItems - OMR.ITEMS_PER_COL);
+  const itemsInCol2 = Math.max(0, totalItems - itemsInCol1);
   if (itemsInCol2 > 0) {
     pdf.text('#', OMR.COL2_NUM_X, headerY, { align: 'center' });
     choices.forEach((ch, i) => {
@@ -152,8 +151,8 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.setLineWidth(0.6);
 
   for (let item = 1; item <= totalItems; item++) {
-    const col = item <= OMR.ITEMS_PER_COL ? 1 : 2;
-    const rowInCol = col === 1 ? item - 1 : item - OMR.ITEMS_PER_COL - 1;
+    const col = item <= itemsInCol1 ? 1 : 2;
+    const rowInCol = col === 1 ? item - 1 : item - itemsInCol1 - 1;
     const numX = col === 1 ? OMR.COL1_NUM_X : OMR.COL2_NUM_X;
     const firstBubbleX = col === 1 ? OMR.COL1_FIRST_BUBBLE_X : OMR.COL2_FIRST_BUBBLE_X;
     const y = OMR.GRID_START_Y + rowInCol * OMR.ROW_H;
@@ -187,7 +186,7 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
     pdf.setDrawColor(180, 180, 180);
     pdf.setLineWidth(0.5);
     const midX = (OMR.COL1_FIRST_BUBBLE_X + choices.length * OMR.CHOICE_SPACING + OMR.COL2_NUM_X) / 2;
-    pdf.line(midX, OMR.GRID_START_Y - 15, midX, OMR.GRID_START_Y + OMR.ITEMS_PER_COL * OMR.ROW_H + 5);
+    pdf.line(midX, OMR.GRID_START_Y - 15, midX, OMR.GRID_START_Y + itemsInCol1 * OMR.ROW_H + 5);
   }
 
   // ── Footer ────────────────────────────────────────────────────────────────

@@ -3,24 +3,27 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Container, Title, Text, Button, Stack, Group, Paper,
-  Alert, Badge, ActionIcon, NumberInput, Progress, Divider,
+  Container, Stepper, Button, Group, Text, rem, Paper, Stack,
+  Select, Alert, Badge, ActionIcon, NumberInput, Progress,
+  Loader, TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus, IconTrash, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconDeviceFloppy, IconArrowLeft,
+  IconAlertTriangle, IconCheck, IconLink, IconMinus, IconArrowLeft,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
-import { fetchSubjectsWithGradeLevels } from '@/lib/services/subjectService';
+import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
-import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
-import type { LearningObjective, AnswerKeyJsonb, Quarter } from '@/lib/exam-supabase';
-import CreationFlowStepper from '@/components/CreationFlowStepper';
-import { EXAM_DRAFT_KEY, type ExamDraft } from '@/components/CreateExamModal';
+import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { createExamWithAssignments, saveObjectives, saveAnswerKey, fetchExamsWithRelations } from '@/lib/services/examService';
+import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
+import { useAuth } from '@/context/AuthContext';
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+const QUESTIONS_PER_COL = 10;
 
 const OBJECTIVE_PALETTE = [
   { dot: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
@@ -32,7 +35,6 @@ const OBJECTIVE_PALETTE = [
   { dot: '#ef4444', bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' },
   { dot: '#eab308', bg: '#fefce8', border: '#fef08a', text: '#854d0e' },
 ];
-const QUESTIONS_PER_COL = 10;
 
 interface ObjectiveRow {
   id: number;
@@ -46,66 +48,118 @@ function makeRow(override?: Partial<ObjectiveRow>): ObjectiveRow {
   return { id: nextRowId++, objective: '', start_item: '', end_item: '', ...override };
 }
 
-// Page steps: 0=objectives, 1=answer key, 2=summary
-// Maps to stepper: 0→1, 1→2, 2→3
-function toStepperStep(pageStep: number): number {
-  return pageStep + 1;
+function getAutoTotalItems(levelNumber: number | null | undefined): number {
+  if (!levelNumber) return 30;
+  if (levelNumber <= 2) return 30;
+  if (levelNumber <= 4) return 40;
+  if (levelNumber <= 6) return 50;
+  return 50;
 }
 
 export default function CreateExamPage() {
   const router = useRouter();
+  const { user, permissions } = useAuth();
+  const hasFullAccess = permissions.includes('exams.full_access');
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
-  const [draft, setDraft] = useState<ExamDraft | null>(null);
+  const [activeStep, setActiveStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+
+  // Reference data
+  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const [subjects, setSubjects] = useState<SubjectWithGradeLevel[]>([]);
+  const [allSections, setAllSections] = useState<Section[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
-  const [gradeLabelMap, setGradeLabelMap] = useState<Map<string, string>>(new Map());
-  const [subjectNameMap, setSubjectNameMap] = useState<Map<string, string>>(new Map());
-  const [sectionNameMap, setSectionNameMap] = useState<Map<number, string>>(new Map());
+  const [dataLoading, setDataLoading] = useState(true);
+  const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
+  const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+  const [existingTitles, setExistingTitles] = useState<string[]>([]);
 
-  // Page step: 0=objectives, 1=answer key, 2=summary
-  const [step, setStep] = useState(0);
+  // Step 0 — Exam Details
+  const [examName, setExamName] = useState('');
+  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
 
-  // Step 0 — Objectives
+  // Step 1 — Items & Choices
+  const [totalItems, setTotalItems] = useState(30);
+  const [numChoices, setNumChoices] = useState(4);
+
+  // Step 2 — Objectives
   const [objectiveRows, setObjectiveRows] = useState<ObjectiveRow[]>([makeRow()]);
   const [triedToSaveObjectives, setTriedToSaveObjectives] = useState(false);
 
-  // Step 1 — Answer key
+  // Step 3 — Answer Key
   const [answers, setAnswers] = useState<{ [key: number]: string | null }>({});
   const [triedToSave, setTriedToSave] = useState(false);
 
-  const [saving, setSaving] = useState(false);
-
   useEffect(() => {
-    // Read draft from sessionStorage
-    const raw = sessionStorage.getItem(EXAM_DRAFT_KEY);
-    if (!raw) {
-      router.replace('/exam');
-      return;
-    }
-    setDraft(JSON.parse(raw));
-
-    // Load label maps for the summary
-    Promise.all([
-      fetchActiveQuarters(),
-      fetchGradeLevels(),
-      fetchSubjectsWithGradeLevels(),
-      fetchActiveSections(),
-    ]).then(([q, gl, sub, sec]) => {
+    const load = async () => {
+      const [q, gl, sub, sec, allExams] = await Promise.all([
+        fetchActiveQuarters(),
+        fetchGradeLevels(),
+        fetchSubjectsWithGradeLevels(),
+        fetchActiveSections(),
+        fetchExamsWithRelations().catch(() => []),
+      ]);
       setQuarters(q);
-      setGradeLabelMap(new Map(gl.map(g => [String(g.grade_level_id), g.display_name])));
-      setSubjectNameMap(new Map(sub.map(s => [String(s.subject_id), s.name])));
-      setSectionNameMap(new Map(sec.map(s => [s.section_id, s.name])));
-    });
+      setGradeLevels(gl);
+      setSubjects(sub);
+      setAllSections(sec);
+      setExistingTitles(allExams.map((e: { title: string }) => e.title));
+
+      if (!hasFullAccess && user?.id) {
+        const assignments = await fetchTeacherClassAssignments(user.id);
+        setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
+        setAllowedSubjectIds(new Set(assignments.map(a => a.subject_id)));
+      }
+      setDataLoading(false);
+    };
+    load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (!draft) return null;
+  // Auto-reset sections/subject when grade changes
+  useEffect(() => {
+    setSelectedSectionIds([]);
+    setSelectedSubjectId(null);
+  }, [selectedGradeLevelId]);
 
-  const { totalItems, numChoices } = draft;
+  // Auto-set totalItems based on grade
+  useEffect(() => {
+    const gradeLevel = gradeLevels.find(g => g.grade_level_id === Number(selectedGradeLevelId)) ?? null;
+    setTotalItems(getAutoTotalItems(gradeLevel?.level_number));
+  }, [selectedGradeLevelId, gradeLevels]);
+
   const choices = ALL_CHOICES.slice(0, numChoices);
+  const columns = Math.ceil(totalItems / QUESTIONS_PER_COL);
 
-  const gradeLabel = gradeLabelMap.get(draft.gradeLevelId ?? '') ?? '';
-  const subjectName = subjectNameMap.get(draft.subjectId ?? '') ?? '';
-  const sectionNames = draft.sectionIds.map(id => sectionNameMap.get(id)).filter(Boolean).map(n => `Section ${n}`).join(', ');
+  // Filtered data
+  const allowedGradeLevelIds = allowedSectionIds
+    ? new Set(allSections.filter(s => s.grade_level_id !== null && allowedSectionIds.has(s.section_id)).map(s => s.grade_level_id as number))
+    : null;
+  const filteredGradeLevels = gradeLevels.filter(g => !allowedGradeLevelIds || allowedGradeLevelIds.has(g.grade_level_id));
+  const filteredSections = allSections
+    .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+    .filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id));
+  const selectedSectionTypes = new Set(filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.section_type).filter(Boolean));
+  const activeSectionType = selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
+  const filteredSubjects = Array.from(
+    new Map(
+      subjects
+        .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
+        .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id))
+        .filter(s => !activeSectionType || s.section_type === null || s.section_type === activeSectionType)
+        .map(s => [s.subject_id, s] as const)
+    ).values()
+  );
+  const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
+  const isDuplicateName = examName.trim().length > 0 && existingTitles.some(t => t.trim().toLowerCase() === examName.trim().toLowerCase());
+  const canGoStep1 = examName.trim().length > 0 && !isDuplicateName && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
+
+  const toggleSection = (sectionId: number) => {
+    setSelectedSectionIds(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]);
+  };
 
   // ── Objectives helpers ──
   const addRow = () => setObjectiveRows(prev => [...prev, makeRow()]);
@@ -114,8 +168,7 @@ export default function CreateExamPage() {
     setObjectiveRows(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r));
 
   const coveredItems = objectiveRows.reduce<number[]>((acc, r) => {
-    const start = Number(r.start_item);
-    const end = Number(r.end_item);
+    const start = Number(r.start_item); const end = Number(r.end_item);
     if (start && end && start <= end) for (let i = start; i <= end; i++) acc.push(i);
     return acc;
   }, []);
@@ -131,18 +184,14 @@ export default function CreateExamPage() {
       const b = objectiveRows[j];
       const bStart = Number(b.start_item); const bEnd = Number(b.end_item);
       if (!bStart || !bEnd || bStart > bEnd) continue;
-      if (aStart <= bEnd && bStart <= aEnd) {
-        overlappingRowIds.add(a.id);
-        overlappingRowIds.add(b.id);
-      }
+      if (aStart <= bEnd && bStart <= aEnd) { overlappingRowIds.add(a.id); overlappingRowIds.add(b.id); }
     }
   }
 
   const validateObjectives = (): string | null => {
     for (const row of objectiveRows) {
       if (!row.objective.trim()) return 'All objectives must have a description.';
-      const start = Number(row.start_item);
-      const end = Number(row.end_item);
+      const start = Number(row.start_item); const end = Number(row.end_item);
       if (!start || !end) return 'All objectives must have valid item ranges.';
       if (start > end) return 'Start item must be ≤ end item.';
       if (start < 1 || end > totalItems) return `Item numbers must be between 1 and ${totalItems}.`;
@@ -155,14 +204,9 @@ export default function CreateExamPage() {
   const isAnswerKeyComplete = unansweredQuestions.length === 0;
   const answeredCount = totalItems - unansweredQuestions.length;
   const progressPercent = Math.round((answeredCount / totalItems) * 100);
-  const columns = Math.ceil(totalItems / QUESTIONS_PER_COL);
 
   const handleAnswerSelect = (qNum: number, answer: string) => {
     setAnswers(prev => ({ ...prev, [qNum]: prev[qNum] === answer ? null : answer }));
-  };
-
-  const handleBack = () => {
-    router.push('/exam?openCreate=1');
   };
 
   // ── Final save ──
@@ -173,16 +217,14 @@ export default function CreateExamPage() {
       const autoQuarterId = quarters.length > 0 ? quarters[0].quarter_id : null;
 
       const examId = await createExamWithAssignments(
-        { title: draft.examName.trim(), description: null, subject_id: Number(draft.subjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
-        draft.sectionIds
+        { title: examName.trim(), description: null, subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
+        selectedSectionIds
       );
-
       if (!examId) throw new Error('Failed to create exam');
 
       const validObjectives: LearningObjective[] = objectiveRows
         .filter(r => r.objective.trim() && Number(r.start_item) && Number(r.end_item))
         .map(r => ({ objective: r.objective.trim(), start_item: Number(r.start_item), end_item: Number(r.end_item) }));
-
       if (validObjectives.length > 0) await saveObjectives(examId, validObjectives);
 
       const answerKeyData: AnswerKeyJsonb = {
@@ -192,16 +234,11 @@ export default function CreateExamPage() {
       };
       await saveAnswerKey(examId, answerKeyData);
 
-      sessionStorage.removeItem(EXAM_DRAFT_KEY);
-
       notifications.show({
         title: 'Examination Created',
-        message: draft.sectionIds.length > 1
-          ? `${draft.sectionIds.length} examinations were created successfully.`
-          : 'Examination was created successfully.',
+        message: selectedSectionIds.length > 1 ? `${selectedSectionIds.length} examinations were created successfully.` : 'Examination was created successfully.',
         color: 'teal', withBorder: true, autoClose: 2500,
       });
-
       router.push(`/exam?newExamId=${examId}`);
     } catch {
       notifications.show({ title: 'Creation Failed', message: 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
@@ -210,327 +247,469 @@ export default function CreateExamPage() {
     }
   };
 
-  return (
-    <Container fluid px="md" py="xl">
-      <Stack gap="xl">
-        {/* Header */}
-        <div>
-          <Group mb="xs">
-            <Button
-              variant="subtle"
-              color="gray"
-              leftSection={<IconArrowLeft size={16} />}
-              onClick={() => router.push('/exam')}
-              disabled={saving}
-              size="sm"
-            >
-              Back to Examinations
-            </Button>
-          </Group>
-          <Title order={2}>Create Examination</Title>
-          <Text c="dimmed" size="sm" mt={4}>Complete all steps to create a new examination</Text>
-        </div>
+  const nextStep = () => setActiveStep(s => s + 1);
+  const prevStep = () => setActiveStep(s => s - 1);
 
-        {/* Stepper */}
-        <CreationFlowStepper activeStep={toStepperStep(step)} />
-
-        {/* Exam summary banner */}
-        <Paper p="sm" bg="gray.0" withBorder radius="md">
-          <Group gap="xl" wrap="wrap">
-            <Text size="sm"><Text span fw={600}>Exam:</Text> {draft.examName}</Text>
-            {gradeLabel && <Text size="sm"><Text span fw={600}>Grade:</Text> {gradeLabel}</Text>}
-            {subjectName && <Text size="sm"><Text span fw={600}>Subject:</Text> {subjectName}</Text>}
-            <Text size="sm"><Text span fw={600}>Items:</Text> {totalItems}</Text>
-            <Text size="sm"><Text span fw={600}>Choices:</Text> {numChoices} ({ALL_CHOICES.slice(0, numChoices).join('·')})</Text>
-          </Group>
-        </Paper>
-
-        {/* ── Step 0: Learning Objectives ── */}
-        {step === 0 && (
+  // ── Step content ──
+  const renderStep0 = () => (
+    <Stack gap="md">
+      <Text size="lg" fw={700} c="#4EAE4A">Specify Exam Information</Text>
+      <Paper p="lg" withBorder radius="md">
+        <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Details</Text>
+        {dataLoading ? (
+          <Group justify="center" py="xl"><Loader /></Group>
+        ) : (
           <Stack gap="md">
-            <Alert color="blue" icon={<IconBookmark size={16} />}>
-              Map learning objectives to item ranges. Total items: <Text span fw={700}>{totalItems}</Text>
+            <Alert color="blue" icon={<IconAlertCircle size={16} />}>
+              New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
             </Alert>
+            <TextInput
+              label="Examination Name"
+              placeholder="e.g., Mid-term Examination"
+              required
+              value={examName}
+              onChange={(e) => setExamName(e.currentTarget.value)}
+              error={isDuplicateName ? 'An examination with this name already exists.' : undefined}
+            />
+            <Group grow>
+              <Select
+                label="Grade Level"
+                placeholder="Select grade"
+                required
+                data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
+                value={selectedGradeLevelId}
+                onChange={setSelectedGradeLevelId}
+              />
+              <Select
+                label="Subject"
+                placeholder="Select subject"
+                required
+                data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
+                value={selectedSubjectId}
+                onChange={setSelectedSubjectId}
+              />
+            </Group>
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Section <Text span c="red">*</Text>{' '}
+                <Text span c="dimmed" fw={400}>(select one or more)</Text>
+              </Text>
+              <Text size="xs" c="dimmed" mb="sm">
+                A separate exam record will be created per section, but they will all <strong>share one answer key</strong>
+              </Text>
+              {filteredSections.length === 0 ? (
+                <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+                  {selectedGradeLevelId ? 'No sections found for selected grade level' : 'Select a grade level first'}
+                </Alert>
+              ) : (
+                <Group gap="xs">
+                  {filteredSections.map(section => {
+                    const isSelected = selectedSectionIds.includes(section.section_id);
+                    return (
+                      <Button key={section.section_id} variant={isSelected ? 'filled' : 'default'} size="sm"
+                        color={isSelected ? '#4EAE4A' : undefined}
+                        leftSection={isSelected ? <IconCheck size={14} /> : null}
+                        onClick={() => toggleSection(section.section_id)}>
+                        Section {section.name}
+                      </Button>
+                    );
+                  })}
+                </Group>
+              )}
+              {selectedSectionIds.length > 1 && (
+                <Paper p="sm" mt="sm" bg="blue.0" withBorder>
+                  <Group gap="xs">
+                    <IconLink size={16} />
+                    <Text size="xs">
+                      <Text span fw={600}>{selectedSectionIds.length} exams will be created</Text> for sections{' '}
+                      {selectedSectionNames.map(n => `Section ${n}`).join(', ')}. Editing the answer key on any one will update all sections.
+                    </Text>
+                  </Group>
+                </Paper>
+              )}
+              {selectedSectionIds.length === 1 && (
+                <Paper p="sm" mt="sm" bg="green.0" withBorder>
+                  <Text size="xs"><Text span fw={600}>1 exam</Text> will be created for Section {selectedSectionNames[0]}</Text>
+                </Paper>
+              )}
+              {selectedSectionIds.length === 0 && filteredSections.length > 0 && (
+                <Text size="xs" c="red" mt="xs">Please select at least one section</Text>
+              )}
+            </div>
+          </Stack>
+        )}
+      </Paper>
+    </Stack>
+  );
 
-            {hasOverlap && (
-              <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-                Some item ranges overlap. Each item should belong to one objective.
-              </Alert>
-            )}
+  const renderStep1 = () => (
+    <Stack gap="md">
+      <Text size="lg" fw={700} c="#4EAE4A">Set Items & Choices</Text>
+      <Paper p="lg" withBorder radius="md">
+        <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Configuration</Text>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Number of Items</p>
+            <div className="flex items-center justify-center gap-3">
+              <button type="button" onClick={() => setTotalItems(prev => Math.max(10, prev - 1))} disabled={totalItems <= 10}
+                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalItems <= 10 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
+                <IconMinus className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2">
+                <input type="number" min={10} max={200} value={totalItems}
+                  onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setTotalItems(Math.max(10, Math.min(200, v))); }}
+                  className="w-20 text-center text-2xl font-bold text-gray-900 border-2 border-gray-300 rounded-xl px-2 py-1.5 focus:outline-none focus:border-green-400" />
+                <span className="text-sm text-gray-400">items</span>
+              </div>
+              <button type="button" onClick={() => setTotalItems(prev => Math.min(200, prev + 1))} disabled={totalItems >= 200}
+                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalItems >= 200 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
+                <IconPlus className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 text-center mt-2">Auto default by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
+          </div>
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Choices per Item</p>
+            <div className="flex items-center justify-center gap-3">
+              <button type="button" onClick={() => setNumChoices(prev => Math.max(2, prev - 1))} disabled={numChoices <= 2}
+                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
+                <IconMinus className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2">
+                <div className="w-20 text-center py-1.5">
+                  <p className="text-2xl font-bold text-gray-900">{numChoices}</p>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-sm text-gray-400">choices</span>
+                  <span className="text-xs font-semibold text-green-600">{ALL_CHOICES.slice(0, numChoices).join(' · ')}</span>
+                </div>
+              </div>
+              <button type="button" onClick={() => setNumChoices(prev => Math.min(8, prev + 1))} disabled={numChoices >= 8}
+                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices >= 8 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
+                <IconPlus className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 text-center mt-2">Min: 2 (A·B) · Max: 8 (A–H)</p>
+          </div>
+        </div>
+      </Paper>
+    </Stack>
+  );
 
-            <Stack gap="sm">
-              {objectiveRows.map((row, idx) => {
-                const isOverlapping = overlappingRowIds.has(row.id);
-                const descError = triedToSaveObjectives && !row.objective.trim();
-                const startError = (triedToSaveObjectives && !Number(row.start_item)) || isOverlapping;
-                const endError = (triedToSaveObjectives && !Number(row.end_item)) || isOverlapping ||
-                  (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
+  const renderStep2 = () => (
+    <Stack gap="md">
+      <Text size="lg" fw={700} c="#4EAE4A">Learning Objectives</Text>
+      <Alert color="blue" icon={<IconBookmark size={16} />}>
+        Map learning objectives to item ranges. Total items: <Text span fw={700}>{totalItems}</Text>
+      </Alert>
+      {hasOverlap && (
+        <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+          Some item ranges overlap. Each item should belong to one objective.
+        </Alert>
+      )}
+      <Stack gap="sm">
+        {objectiveRows.map((row, idx) => {
+          const isOverlapping = overlappingRowIds.has(row.id);
+          const descError = triedToSaveObjectives && !row.objective.trim();
+          const startError = (triedToSaveObjectives && !Number(row.start_item)) || isOverlapping;
+          const endError = (triedToSaveObjectives && !Number(row.end_item)) || isOverlapping ||
+            (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
+          return (
+            <Paper key={row.id} p="md" withBorder radius="md">
+              <Group gap="xs" mb="xs" justify="space-between">
+                <Badge size="sm" variant="light" color="blue">Objective {idx + 1}</Badge>
+                <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRow(row.id)} disabled={objectiveRows.length === 1}>
+                  <IconTrash size={14} />
+                </ActionIcon>
+              </Group>
+              <input
+                placeholder="e.g. Identify the parts of a plant"
+                value={row.objective}
+                onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
+                className={`w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none ${descError ? 'border-red-400' : 'border-gray-300 focus:border-blue-400'}`}
+              />
+              <Group gap="sm">
+                <NumberInput label="From item" placeholder="1" min={1} max={totalItems}
+                  value={row.start_item === '' ? '' : Number(row.start_item)}
+                  onChange={(val) => updateRow(row.id, 'start_item', val)}
+                  style={{ flex: 1 }} allowDecimal={false}
+                  error={startError ? (isOverlapping ? 'Range overlaps' : true) : undefined} />
+                <NumberInput label="To item" placeholder={String(totalItems)} min={1} max={totalItems}
+                  value={row.end_item === '' ? '' : Number(row.end_item)}
+                  onChange={(val) => updateRow(row.id, 'end_item', val)}
+                  style={{ flex: 1 }} allowDecimal={false}
+                  error={endError ? (isOverlapping ? 'Range overlaps' : Number(row.start_item) > Number(row.end_item) ? 'Must be ≥ start' : true) : undefined} />
+              </Group>
+            </Paper>
+          );
+        })}
+      </Stack>
+      <Button variant="light" color="blue" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
+        Add Objective
+      </Button>
+      <Paper p="sm" bg={uniqueCovered === totalItems ? 'teal.0' : 'orange.0'} radius="md" withBorder>
+        <Text size="xs" fw={500}>
+          Coverage:{' '}
+          <Text span c={uniqueCovered === totalItems ? 'teal' : 'orange'} fw={700}>{uniqueCovered} / {totalItems} items</Text>
+          {uniqueCovered < totalItems && <Text span c="orange.7" fw={500}> — all {totalItems} items must be covered to proceed</Text>}
+          {uniqueCovered === totalItems && <Text span c="teal.7" fw={500}> — full coverage! Ready to set answer key.</Text>}
+        </Text>
+      </Paper>
+    </Stack>
+  );
+
+  const renderStep3 = () => {
+    const qNumToObjIdx = new Map<number, number>();
+    objectiveRows.forEach((row, idx) => {
+      const start = Number(row.start_item); const end = Number(row.end_item);
+      if (!start || !end || start > end || !row.objective.trim()) return;
+      for (let i = start; i <= end; i++) qNumToObjIdx.set(i, idx);
+    });
+    return (
+      <Stack gap="md">
+        <Text size="lg" fw={700} c="#4EAE4A">Answer Key</Text>
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed">Progress</Text>
+          <Text size="sm" fw={600} c={isAnswerKeyComplete ? 'green' : 'orange'}>
+            {answeredCount} / {totalItems} answered ({progressPercent}%)
+          </Text>
+        </Group>
+        <Progress value={progressPercent} color={isAnswerKeyComplete ? 'green' : 'orange'} size="md" radius="xl" />
+        {triedToSave && !isAnswerKeyComplete && (
+          <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-bold text-orange-800">Answer Key is incomplete!</p>
+                <p className="text-orange-700 text-sm mt-1">Missing <strong>{unansweredQuestions.length}</strong> answer{unansweredQuestions.length > 1 ? 's' : ''}:</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {unansweredQuestions.map(q => <span key={q} className="bg-orange-200 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-md">#{q}</span>)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {isAnswerKeyComplete && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+            <span className="text-green-600 text-lg">✅</span>
+            <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
+          </div>
+        )}
+        <div className={`grid gap-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+          {Array.from({ length: columns }, (_, col) => (
+            <div key={col} className="space-y-1">
+              {Array.from({ length: QUESTIONS_PER_COL }, (_, row) => {
+                const qNum = col * QUESTIONS_PER_COL + row + 1;
+                if (qNum > totalItems) return null;
+                const isUnanswered = triedToSave && !answers[qNum];
+                const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
+                const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+                const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
                 return (
-                  <Paper key={row.id} p="md" withBorder radius="md">
-                    <Group gap="xs" mb="xs" justify="space-between">
-                      <Badge size="sm" variant="light" color="blue">Objective {idx + 1}</Badge>
-                      <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRow(row.id)} disabled={objectiveRows.length === 1} aria-label="Remove">
-                        <IconTrash size={14} />
-                      </ActionIcon>
-                    </Group>
-                    <input
-                      placeholder="e.g. Identify the parts of a plant"
-                      value={row.objective}
-                      onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
-                      className={`w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none ${
-                        descError ? 'border-red-400 focus:border-red-500' : 'border-gray-300 focus:border-blue-400'
-                      }`}
-                    />
-                    <Group gap="sm">
-                      <NumberInput label="From item" placeholder="1" min={1} max={totalItems}
-                        value={row.start_item === '' ? '' : Number(row.start_item)}
-                        onChange={(val) => updateRow(row.id, 'start_item', val)}
-                        style={{ flex: 1 }} allowDecimal={false}
-                        error={startError ? (isOverlapping ? 'Range overlaps' : true) : undefined} />
-                      <NumberInput label="To item" placeholder={String(totalItems)} min={1} max={totalItems}
-                        value={row.end_item === '' ? '' : Number(row.end_item)}
-                        onChange={(val) => updateRow(row.id, 'end_item', val)}
-                        style={{ flex: 1 }} allowDecimal={false}
-                        error={endError ? (isOverlapping ? 'Range overlaps' : Number(row.start_item) > Number(row.end_item) ? 'Must be ≥ start' : true) : undefined} />
-                    </Group>
-                  </Paper>
+                  <div key={qNum} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
+                    <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
+                    <div className="flex gap-1 flex-shrink-0">
+                      {choices.map(option => (
+                        <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
+                          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
+                            answers[qNum] === option ? 'bg-green-600 border-green-600 text-white shadow-md'
+                            : isUnanswered ? 'border-orange-300 text-orange-400 hover:border-green-500 hover:bg-green-50'
+                            : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
+                          }`}>
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                    {color && objRow && (
+                      <div className="relative group flex-shrink-0">
+                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
+                          style={{ background: color.bg, borderColor: color.border, color: color.text }}>
+                          {objRow.objective.length > 14 ? objRow.objective.slice(0, 14) + '…' : objRow.objective}
+                        </span>
+                        <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">{objRow.objective}</div>
+                          <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-            </Stack>
-
-            <Button variant="light" color="blue" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
-              Add Objective
-            </Button>
-
-            <Paper p="sm" bg={uniqueCovered === totalItems ? 'teal.0' : 'orange.0'} radius="md" withBorder>
-              <Text size="xs" fw={500}>
-                Coverage:{' '}
-                <Text span c={uniqueCovered === totalItems ? 'teal' : 'orange'} fw={700}>{uniqueCovered} / {totalItems} items</Text>
-                {uniqueCovered < totalItems && <Text span c="orange.7" fw={500}> — all {totalItems} items must be covered to proceed</Text>}
-                {uniqueCovered === totalItems && <Text span c="teal.7" fw={500}> — full coverage! Ready to set answer key.</Text>}
-              </Text>
-            </Paper>
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={handleBack}>Back</Button>
-              <Button variant="default" onClick={() => setStep(1)}>Skip</Button>
-              <Button
-                color="#466D1D"
-                disabled={uniqueCovered < totalItems}
-                onClick={() => {
-                  setTriedToSaveObjectives(true);
-                  const err = validateObjectives();
-                  if (err) { notifications.show({ title: 'Validation Error', message: err, color: 'red' }); return; }
-                  setStep(1);
-                }}
-              >
-                Save &amp; Set Answer Key
-              </Button>
-            </Group>
-          </Stack>
-        )}
-
-        {/* ── Step 1: Answer Key ── */}
-        {step === 1 && (
-          <Stack gap="md">
-            <Group justify="space-between" mb={4}>
-              <Text size="sm" c="dimmed">Progress</Text>
-              <Text size="sm" fw={600} c={isAnswerKeyComplete ? 'green' : 'orange'}>
-                {answeredCount} / {totalItems} answered ({progressPercent}%)
-              </Text>
-            </Group>
-            <Progress value={progressPercent} color={isAnswerKeyComplete ? 'green' : 'orange'} size="md" radius="xl" />
-
-            {triedToSave && !isAnswerKeyComplete && (
-              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-bold text-orange-800">Answer Key is incomplete!</p>
-                    <p className="text-orange-700 text-sm mt-1">Missing <strong>{unansweredQuestions.length}</strong> answer{unansweredQuestions.length > 1 ? 's' : ''}:</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {unansweredQuestions.map(q => <span key={q} className="bg-orange-200 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-md">#{q}</span>)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {isAnswerKeyComplete && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-green-600 text-lg">✅</span>
-                <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
-              </div>
-            )}
-
-            {/* Bubble grid */}
-            {(() => {
-              const qNumToObjIdx = new Map<number, number>();
-              objectiveRows.forEach((row, idx) => {
-                const start = Number(row.start_item); const end = Number(row.end_item);
-                if (!start || !end || start > end || !row.objective.trim()) return;
-                for (let i = start; i <= end; i++) qNumToObjIdx.set(i, idx);
-              });
-              return (
-                <div className={`grid gap-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-                  {Array.from({ length: columns }, (_, col) => (
-                    <div key={col} className="space-y-1">
-                      {Array.from({ length: QUESTIONS_PER_COL }, (_, row) => {
-                        const qNum = col * QUESTIONS_PER_COL + row + 1;
-                        if (qNum > totalItems) return null;
-                        const isUnanswered = triedToSave && !answers[qNum];
-                        const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
-                        const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
-                        const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
-                        return (
-                          <div key={qNum} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
-                            <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
-                            <div className="flex gap-1 flex-shrink-0">
-                              {choices.map(option => (
-                                <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
-                                  className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
-                                    answers[qNum] === option
-                                      ? 'bg-green-600 border-green-600 text-white shadow-md'
-                                      : isUnanswered
-                                      ? 'border-orange-300 text-orange-400 hover:border-green-500 hover:bg-green-50'
-                                      : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
-                                  }`}>
-                                  {option}
-                                </button>
-                              ))}
-                            </div>
-                            {color && objRow && (
-                              <div className="relative group flex-shrink-0">
-                                <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
-                                  style={{ background: color.bg, borderColor: color.border, color: color.text }}>
-                                  {objRow.objective.length > 14 ? objRow.objective.slice(0, 14) + '…' : objRow.objective}
-                                </span>
-                                <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
-                                  <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">{objRow.objective}</div>
-                                  <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-
-            <Group justify="flex-end" mt="md">
-              <Button variant="default" onClick={() => setStep(0)}>Back</Button>
-              <Button
-                color="green"
-                leftSection={<IconDeviceFloppy size={16} />}
-                onClick={() => {
-                  if (!isAnswerKeyComplete) { setTriedToSave(true); return; }
-                  setStep(2);
-                }}
-              >
-                {isAnswerKeyComplete ? 'Next' : `${unansweredQuestions.length} item${unansweredQuestions.length > 1 ? 's' : ''} missing`}
-              </Button>
-            </Group>
-          </Stack>
-        )}
-
-        {/* ── Step 2: Summary ── */}
-        {step === 2 && (
-          <Stack gap="md">
-            <div className="text-center pb-2">
-              <div className="text-4xl mb-2">🎉</div>
-              <h3 className="text-xl font-bold text-gray-900">Ready to Create!</h3>
-              <p className="text-gray-500 text-sm mt-0.5">Review your exam setup below, then hit Create.</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {[
-                ['Exam', draft.examName],
-                ['Grade', gradeLabel],
-                ['Subject', subjectName],
-                ['Section(s)', sectionNames],
-                ['Items', String(totalItems)],
-                ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('·')})`],
-              ].map(([label, value]) => (
-                <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  <p className="font-semibold text-gray-900 truncate">{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* Items with answers and objectives — 2 columns */}
-            <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
-              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items · Answer Key · Objectives</Text>
-              </div>
-              {(() => {
-                const half = Math.ceil(totalItems / 2);
-                const renderTable = (startIdx: number, endIdx: number) => (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
-                        <th className="text-left py-2 px-3 font-semibold w-10">#</th>
-                        <th className="text-left py-2 px-3 font-semibold w-14">Answer</th>
-                        <th className="text-left py-2 px-3 font-semibold">Objective</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {Array.from({ length: endIdx - startIdx }, (_, i) => {
-                        const qNum = startIdx + i + 1;
-                        const answer = answers[qNum] ?? '—';
-                        const objRow = objectiveRows.find(r => {
-                          const s = Number(r.start_item); const e = Number(r.end_item);
-                          return s && e && qNum >= s && qNum <= e && r.objective.trim();
-                        });
-                        const objIdx = objRow ? objectiveRows.indexOf(objRow) : -1;
-                        const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
-                        return (
-                          <tr key={qNum} className="hover:bg-gray-50">
-                            <td className="py-1.5 px-3 font-semibold text-gray-500">{qNum}</td>
-                            <td className="py-1.5 px-3">
-                              <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${
-                                answer !== '—' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'
-                              }`}>{answer}</span>
-                            </td>
-                            <td className="py-1.5 px-3">
-                              {color && objRow ? (
-                                <span className="inline-block px-2 py-0.5 rounded text-xs font-medium border"
-                                  style={{ background: color.bg, borderColor: color.border, color: color.text }}>
-                                  {objRow.objective}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-gray-300">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                );
-                return (
-                  <div className="grid grid-cols-2 divide-x divide-gray-100">
-                    <div className="overflow-x-auto">{renderTable(0, half)}</div>
-                    <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
-                  </div>
-                );
-              })()}
-            </Paper>
-
-            <Divider />
-
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setStep(1)} disabled={saving}>Back</Button>
-              <Button color="#466D1D" onClick={handleFinalSave} loading={saving}>
-                Create Examination
-              </Button>
-            </Group>
-          </Stack>
-        )}
+          ))}
+        </div>
       </Stack>
-    </Container>
+    );
+  };
+
+  const renderStep4 = () => {
+    const half = Math.ceil(totalItems / 2);
+    const gradeLabel = gradeLevels.find(g => String(g.grade_level_id) === selectedGradeLevelId)?.display_name ?? '—';
+    const subjectName = filteredSubjects.find(s => String(s.subject_id) === selectedSubjectId)?.name ?? '—';
+    const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
+
+    const renderTable = (startIdx: number, endIdx: number) => (
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
+            <th className="text-left py-2 px-3 font-semibold w-10">#</th>
+            <th className="text-left py-2 px-3 font-semibold w-14">Answer</th>
+            <th className="text-left py-2 px-3 font-semibold">Objective</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {Array.from({ length: endIdx - startIdx }, (_, i) => {
+            const qNum = startIdx + i + 1;
+            const answer = answers[qNum] ?? '—';
+            const objRow = objectiveRows.find(r => {
+              const s = Number(r.start_item); const e = Number(r.end_item);
+              return s && e && qNum >= s && qNum <= e && r.objective.trim();
+            });
+            const objIdx = objRow ? objectiveRows.indexOf(objRow) : -1;
+            const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+            return (
+              <tr key={qNum} className="hover:bg-gray-50">
+                <td className="py-1.5 px-3 font-semibold text-gray-500">{qNum}</td>
+                <td className="py-1.5 px-3">
+                  <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${answer !== '—' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{answer}</span>
+                </td>
+                <td className="py-1.5 px-3">
+                  {color && objRow ? (
+                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium border"
+                      style={{ background: color.bg, borderColor: color.border, color: color.text }}>
+                      {objRow.objective}
+                    </span>
+                  ) : <span className="text-xs text-gray-300">—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    );
+
+    return (
+      <Stack gap="md">
+        <Text size="lg" fw={700} c="#4EAE4A">Review & Create</Text>
+        <div className="text-center pb-2">
+          <div className="text-4xl mb-2">🎉</div>
+          <h3 className="text-xl font-bold text-gray-900">Ready to Create!</h3>
+          <p className="text-gray-500 text-sm mt-0.5">Review your exam setup below, then hit Create.</p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          {[
+            ['Exam', examName],
+            ['Grade', gradeLabel],
+            ['Subject', subjectName],
+            ['Section(s)', sectionNames],
+            ['Items', String(totalItems)],
+            ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('·')})`],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+              <p className="font-semibold text-gray-900 truncate">{value}</p>
+            </div>
+          ))}
+        </div>
+        <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
+          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items · Answer Key · Objectives</Text>
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-gray-100">
+            <div className="overflow-x-auto">{renderTable(0, half)}</div>
+            <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
+          </div>
+        </Paper>
+      </Stack>
+    );
+  };
+
+  const isNextDisabled = (() => {
+    if (activeStep === 0) return !canGoStep1 || dataLoading;
+    if (activeStep === 2) return uniqueCovered < totalItems;
+    return false;
+  })();
+
+  const handleNext = () => {
+    if (activeStep === 0) {
+      nextStep();
+    } else if (activeStep === 2) {
+      setTriedToSaveObjectives(true);
+      const err = validateObjectives();
+      if (err) { notifications.show({ title: 'Validation Error', message: err, color: 'red' }); return; }
+      nextStep();
+    } else if (activeStep === 3) {
+      if (!isAnswerKeyComplete) { setTriedToSave(true); return; }
+      nextStep();
+    } else {
+      nextStep();
+    }
+  };
+
+  const stepDescriptions = [
+    { label: 'Step 1', description: 'Specify exam information' },
+    { label: 'Step 2', description: 'Set items and answer choices' },
+    { label: 'Step 3', description: 'Map learning objectives' },
+    { label: 'Step 4', description: 'Set correct answers' },
+    { label: 'Step 5', description: 'Review and create' },
+  ];
+
+  const stepContent = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4];
+
+  const navigationButtons = (
+    <Group justify="flex-end" mt="xl">
+      <Button variant="default" onClick={() => activeStep === 0 ? router.push('/exam') : prevStep()} leftSection={activeStep === 0 ? <IconArrowLeft size={16} /> : undefined}>
+        {activeStep === 0 ? 'Back to Examinations' : 'Previous'}
+      </Button>
+      {activeStep < 4 ? (
+        <Button
+          onClick={handleNext}
+          disabled={isNextDisabled}
+          style={isNextDisabled ? undefined : { backgroundColor: '#4EAE4A' }}
+        >
+          {activeStep === 3 && !isAnswerKeyComplete
+            ? `${unansweredQuestions.length} item${unansweredQuestions.length > 1 ? 's' : ''} missing`
+            : 'Next'}
+        </Button>
+      ) : (
+        <Button onClick={handleFinalSave} loading={saving} style={{ backgroundColor: '#4EAE4A' }}>
+          Create Examination
+        </Button>
+      )}
+    </Group>
+  );
+
+  return (
+    <>
+      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
+      <Container fluid py="xl" h="100%">
+        {isMobile ? (
+          <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
+            {stepDescriptions.map((s, i) => (
+              <Stepper.Step key={i} label={s.label} description={s.description}>
+                {stepContent[i]()}
+              </Stepper.Step>
+            ))}
+          </Stepper>
+        ) : (
+          <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>
+            {/* Left: Stepper */}
+            <div style={{ flexShrink: 0, width: '20%' }}>
+              <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
+                {stepDescriptions.map((s, i) => (
+                  <Stepper.Step key={i} label={s.label} description={s.description} />
+                ))}
+              </Stepper>
+            </div>
+            {/* Right: Content */}
+            <div style={{ width: '70%' }}>
+              {stepContent[activeStep]()}
+              {navigationButtons}
+            </div>
+          </div>
+        )}
+        {isMobile && navigationButtons}
+      </Container>
+    </>
   );
 }
