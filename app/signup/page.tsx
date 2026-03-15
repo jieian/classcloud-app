@@ -70,6 +70,7 @@ export default function SignUpPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
   const [shaking, setShaking] = useState(false);
   const [emailError, setEmailError] = useState("");
   const [confirmError, setConfirmError] = useState("");
@@ -145,6 +146,7 @@ export default function SignUpPage() {
         return;
       }
 
+      setSubmittedEmail(email.trim());
       setSubmitted(true);
     } catch {
       triggerShake();
@@ -215,10 +217,10 @@ export default function SignUpPage() {
               {submitted ? (
                 <>
                   <Text size="sm" c="#555" mb="xs">
-                    Your account has been created and is{" "}
-                    <strong>pending approval</strong>. An administrator will
-                    review your request — you&apos;ll be able to log in once
-                    approved.
+                    A verification link has been sent to{" "}
+                    <strong>{submittedEmail}</strong>. Click the link in your
+                    inbox to confirm your email — your account will then be
+                    reviewed by an administrator before you can log in.
                   </Text>
                   <Link href="/login" style={{ textDecoration: "none" }}>
                     <Text size="sm" c="#4EAE4A" mt="md">

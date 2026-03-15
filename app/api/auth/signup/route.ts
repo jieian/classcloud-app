@@ -1,7 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { promises as dns } from "dns";
+import { sendVerificationEmail } from "@/lib/email/templates";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const PASSWORD_REQUIREMENTS = [
+  (p: string) => p.length >= 6,
+  (p: string) => /[0-9]/.test(p),
+  (p: string) => /[a-z]/.test(p),
+  (p: string) => /[A-Z]/.test(p),
+  (p: string) => /[$&+,:;=?@#|'<>.^*()%!-]/.test(p),
+];
 
 async function domainHasMxRecords(email: string): Promise<boolean> {
   const domain = email.split("@")[1];
@@ -13,14 +22,6 @@ async function domainHasMxRecords(email: string): Promise<boolean> {
     return false;
   }
 }
-
-const PASSWORD_REQUIREMENTS = [
-  (p: string) => p.length >= 6,
-  (p: string) => /[0-9]/.test(p),
-  (p: string) => /[a-z]/.test(p),
-  (p: string) => /[A-Z]/.test(p),
-  (p: string) => /[$&+,:;=?@#|'<>.^*()%!-]/.test(p),
-];
 
 export async function POST(request: Request) {
   // --- PARSE & VALIDATE ---
@@ -91,8 +92,8 @@ export async function POST(request: Request) {
   }
 
   // --- TOMBSTONE PATH: email belongs to a soft-deleted account ---
-  // Free the email by renaming the old auth record, then fall through to
-  // normal registration. The old users row (and UID) stays intact for reports.
+  // Free the email by renaming the old auth record, then fall through.
+  // The old users row (and UID) stays intact so report references are preserved.
   let tombstonedUid: string | null = null;
   if (emailStatus?.status === "deleted") {
     tombstonedUid = emailStatus.uid as string;
@@ -109,69 +110,81 @@ export async function POST(request: Request) {
         { status: 500 },
       );
     }
-    // Email is now free — fall through to registration below.
   }
 
-  // --- REGISTRATION ---
+  // --- ORIGIN: resolve base URL for the verification redirect ---
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto") ?? "https";
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    (forwardedHost
+      ? `${forwardedProto}://${forwardedHost}`
+      : new URL(request.url).origin);
+
+  // --- GENERATE VERIFICATION LINK ---
+  // Creates the unconfirmed auth user and returns a one-time confirmation link.
+  // Names are stored in user_metadata so the confirm route can read them later.
   let newAuthUserUuid: string | null = null;
 
-  try {
-    // Create auth user
-    const { data: authData, error: authError } =
-      await adminClient.auth.admin.createUser({
-        email: email.trim(),
-        password,
-        email_confirm: true,
-        user_metadata: {
-          full_name: `${first_name.trim()} ${last_name.trim()}`,
+  const { data: linkData, error: linkError } =
+    await adminClient.auth.admin.generateLink({
+      type: "signup",
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          first_name: first_name.trim(),
+          middle_name: middle_name?.trim() || "",
+          last_name: last_name.trim(),
         },
-      });
-
-    if (authError) throw authError;
-    newAuthUserUuid = authData.user.id;
-
-    // Insert pending profile atomically via RPC
-    const { data: rpcResult, error: rpcError } = await adminClient.rpc(
-      "register_user_atomic",
-      {
-        p_uid: newAuthUserUuid,
-        p_first_name: first_name.trim(),
-        p_middle_name: middle_name?.trim() || "",
-        p_last_name: last_name.trim(),
+        redirectTo: `${origin}/signup/confirmed`,
       },
-    );
+    });
 
-    if (rpcError) throw new Error(`Database Error: ${rpcError.message}`);
-    if (rpcResult?.success === false)
-      throw new Error(rpcResult.message || "Registration failed.");
-
-    return Response.json({ success: true }, { status: 201 });
-  } catch (error: any) {
-    console.error("Sign-up failed:", error.message);
-
-    // Rollback: delete the new auth user if it was created
-    if (newAuthUserUuid) {
-      await adminClient.auth.admin.deleteUser(newAuthUserUuid).catch((err) =>
-        console.error("CRITICAL: Auth rollback failed!", err),
-      );
-    }
-
-    // Rollback: restore the tombstoned email so the old record isn't broken
+  if (linkError || !linkData?.user || !linkData?.properties?.action_link) {
+    // Rollback tombstone if we renamed one
     if (tombstonedUid) {
       await adminClient.auth.admin
         .updateUserById(tombstonedUid, { email: email.trim() })
         .catch((err) =>
-          console.error(
-            "CRITICAL: Failed to rollback tombstone for",
-            tombstonedUid,
-            err,
-          ),
+          console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
         );
     }
-
     return Response.json(
-      { error: error.message || "Registration failed. Please try again." },
+      { error: linkError?.message || "Failed to generate verification link. Please try again." },
       { status: 500 },
     );
   }
+
+  newAuthUserUuid = linkData.user.id;
+
+  // --- SEND VERIFICATION EMAIL ---
+  try {
+    await sendVerificationEmail({
+      to: email.trim(),
+      verificationLink: linkData.properties.action_link,
+      firstName: first_name.trim(),
+    });
+  } catch {
+    // Email failed — rollback the new auth user and tombstone
+    await adminClient.auth.admin.deleteUser(newAuthUserUuid).catch((err) =>
+      console.error("CRITICAL: Auth rollback failed!", err),
+    );
+    if (tombstonedUid) {
+      await adminClient.auth.admin
+        .updateUserById(tombstonedUid, { email: email.trim() })
+        .catch((err) =>
+          console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
+        );
+    }
+    return Response.json(
+      {
+        error: `The verification email could not be delivered to "${email.trim()}". Double-check the address.`,
+        code: "EMAIL_DELIVERY_FAILED",
+      },
+      { status: 422 },
+    );
+  }
+
+  return Response.json({ success: true }, { status: 201 });
 }
