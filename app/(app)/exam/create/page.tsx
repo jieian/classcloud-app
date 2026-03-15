@@ -10,7 +10,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus, IconTrash, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconCheck, IconLink, IconMinus, IconArrowLeft,
+  IconAlertTriangle, IconCheck, IconLink, IconMinus,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { fetchActiveQuarters } from '@/lib/services/quarterService';
@@ -399,61 +399,66 @@ export default function CreateExamPage() {
   const renderStep2 = () => (
     <Stack gap="md">
       <Text size="lg" fw={700} c="#4EAE4A">Learning Objectives</Text>
-      <Alert color="blue" icon={<IconBookmark size={16} />}>
-        Map learning objectives to item ranges. Total items: <Text span fw={700}>{totalItems}</Text>
-      </Alert>
-      {hasOverlap && (
-        <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-          Some item ranges overlap. Each item should belong to one objective.
-        </Alert>
-      )}
-      <Stack gap="sm">
-        {objectiveRows.map((row, idx) => {
-          const isOverlapping = overlappingRowIds.has(row.id);
-          const descError = triedToSaveObjectives && !row.objective.trim();
-          const startError = (triedToSaveObjectives && !Number(row.start_item)) || isOverlapping;
-          const endError = (triedToSaveObjectives && !Number(row.end_item)) || isOverlapping ||
-            (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
-          return (
-            <Paper key={row.id} p="md" withBorder radius="md">
-              <Group gap="xs" mb="xs" justify="space-between">
-                <Badge size="sm" variant="light" color="blue">Objective {idx + 1}</Badge>
-                <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRow(row.id)} disabled={objectiveRows.length === 1}>
-                  <IconTrash size={14} />
-                </ActionIcon>
-              </Group>
-              <input
-                placeholder="e.g. Identify the parts of a plant"
-                value={row.objective}
-                onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
-                className={`w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none ${descError ? 'border-red-400' : 'border-gray-300 focus:border-blue-400'}`}
-              />
-              <Group gap="sm">
-                <NumberInput label="From item" placeholder="1" min={1} max={totalItems}
-                  value={row.start_item === '' ? '' : Number(row.start_item)}
-                  onChange={(val) => updateRow(row.id, 'start_item', val)}
-                  style={{ flex: 1 }} allowDecimal={false}
-                  error={startError ? (isOverlapping ? 'Range overlaps' : true) : undefined} />
-                <NumberInput label="To item" placeholder={String(totalItems)} min={1} max={totalItems}
-                  value={row.end_item === '' ? '' : Number(row.end_item)}
-                  onChange={(val) => updateRow(row.id, 'end_item', val)}
-                  style={{ flex: 1 }} allowDecimal={false}
-                  error={endError ? (isOverlapping ? 'Range overlaps' : Number(row.start_item) > Number(row.end_item) ? 'Must be ≥ start' : true) : undefined} />
-              </Group>
-            </Paper>
-          );
-        })}
-      </Stack>
-      <Button variant="light" color="blue" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
-        Add Objective
-      </Button>
-      <Paper p="sm" bg={uniqueCovered === totalItems ? 'teal.0' : 'orange.0'} radius="md" withBorder>
-        <Text size="xs" fw={500}>
-          Coverage:{' '}
-          <Text span c={uniqueCovered === totalItems ? 'teal' : 'orange'} fw={700}>{uniqueCovered} / {totalItems} items</Text>
-          {uniqueCovered < totalItems && <Text span c="orange.7" fw={500}> — all {totalItems} items must be covered to proceed</Text>}
-          {uniqueCovered === totalItems && <Text span c="teal.7" fw={500}> — full coverage! Ready to set answer key.</Text>}
-        </Text>
+      <Paper p="lg" withBorder radius="md">
+        <Text size="md" fw={700} mb="md" c="#4EAE4A">Map Objectives to Items</Text>
+        <Stack gap="md">
+          <Alert color="blue" icon={<IconBookmark size={16} />}>
+            Map learning objectives to item ranges. Total items: <Text span fw={700}>{totalItems}</Text>
+          </Alert>
+          {hasOverlap && (
+            <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+              Some item ranges overlap. Each item should belong to one objective.
+            </Alert>
+          )}
+          <Stack gap="sm">
+            {objectiveRows.map((row, idx) => {
+              const isOverlapping = overlappingRowIds.has(row.id);
+              const descError = triedToSaveObjectives && !row.objective.trim();
+              const startError = (triedToSaveObjectives && !Number(row.start_item)) || isOverlapping;
+              const endError = (triedToSaveObjectives && !Number(row.end_item)) || isOverlapping ||
+                (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
+              return (
+                <Paper key={row.id} p="md" withBorder radius="md">
+                  <Group gap="xs" mb="xs" justify="space-between">
+                    <Badge size="sm" variant="light" color="blue">Objective {idx + 1}</Badge>
+                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRow(row.id)} disabled={objectiveRows.length === 1}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </Group>
+                  <input
+                    placeholder="e.g. Identify the parts of a plant"
+                    value={row.objective}
+                    onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
+                    className={`w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none ${descError ? 'border-red-400' : 'border-gray-300 focus:border-blue-400'}`}
+                  />
+                  <Group gap="sm">
+                    <NumberInput label="From item" placeholder="1" min={1} max={totalItems}
+                      value={row.start_item === '' ? '' : Number(row.start_item)}
+                      onChange={(val) => updateRow(row.id, 'start_item', val)}
+                      style={{ flex: 1 }} allowDecimal={false}
+                      error={startError ? (isOverlapping ? 'Range overlaps' : true) : undefined} />
+                    <NumberInput label="To item" placeholder={String(totalItems)} min={1} max={totalItems}
+                      value={row.end_item === '' ? '' : Number(row.end_item)}
+                      onChange={(val) => updateRow(row.id, 'end_item', val)}
+                      style={{ flex: 1 }} allowDecimal={false}
+                      error={endError ? (isOverlapping ? 'Range overlaps' : Number(row.start_item) > Number(row.end_item) ? 'Must be ≥ start' : true) : undefined} />
+                  </Group>
+                </Paper>
+              );
+            })}
+          </Stack>
+          <Button variant="light" color="blue" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
+            Add Objective
+          </Button>
+          <Paper p="sm" bg={uniqueCovered === totalItems ? 'teal.0' : 'orange.0'} radius="md" withBorder>
+            <Text size="xs" fw={500}>
+              Coverage:{' '}
+              <Text span c={uniqueCovered === totalItems ? 'teal' : 'orange'} fw={700}>{uniqueCovered} / {totalItems} items</Text>
+              {uniqueCovered < totalItems && <Text span c="orange.7" fw={500}> — all {totalItems} items must be covered to proceed</Text>}
+              {uniqueCovered === totalItems && <Text span c="teal.7" fw={500}> — full coverage! Ready to set answer key.</Text>}
+            </Text>
+          </Paper>
+        </Stack>
       </Paper>
     </Stack>
   );
@@ -468,76 +473,81 @@ export default function CreateExamPage() {
     return (
       <Stack gap="md">
         <Text size="lg" fw={700} c="#4EAE4A">Answer Key</Text>
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">Progress</Text>
-          <Text size="sm" fw={600} c={isAnswerKeyComplete ? 'green' : 'orange'}>
-            {answeredCount} / {totalItems} answered ({progressPercent}%)
-          </Text>
-        </Group>
-        <Progress value={progressPercent} color={isAnswerKeyComplete ? 'green' : 'orange'} size="md" radius="xl" />
-        {triedToSave && !isAnswerKeyComplete && (
-          <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-bold text-orange-800">Answer Key is incomplete!</p>
-                <p className="text-orange-700 text-sm mt-1">Missing <strong>{unansweredQuestions.length}</strong> answer{unansweredQuestions.length > 1 ? 's' : ''}:</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {unansweredQuestions.map(q => <span key={q} className="bg-orange-200 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-md">#{q}</span>)}
+        <Paper p="lg" withBorder radius="md">
+          <Text size="md" fw={700} mb="md" c="#4EAE4A">Set Correct Answers</Text>
+          <Stack gap="md">
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">Progress</Text>
+              <Text size="sm" fw={600} c={isAnswerKeyComplete ? 'green' : 'orange'}>
+                {answeredCount} / {totalItems} answered ({progressPercent}%)
+              </Text>
+            </Group>
+            <Progress value={progressPercent} color={isAnswerKeyComplete ? 'green' : 'orange'} size="md" radius="xl" />
+            {triedToSave && !isAnswerKeyComplete && (
+              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-bold text-orange-800">Answer Key is incomplete!</p>
+                    <p className="text-orange-700 text-sm mt-1">Missing <strong>{unansweredQuestions.length}</strong> answer{unansweredQuestions.length > 1 ? 's' : ''}:</p>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {unansweredQuestions.map(q => <span key={q} className="bg-orange-200 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-md">#{q}</span>)}
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
-        {isAnswerKeyComplete && (
-          <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-            <span className="text-green-600 text-lg">✅</span>
-            <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
-          </div>
-        )}
-        <div className={`grid gap-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-          {Array.from({ length: columns }, (_, col) => (
-            <div key={col} className="space-y-1">
-              {Array.from({ length: QUESTIONS_PER_COL }, (_, row) => {
-                const qNum = col * QUESTIONS_PER_COL + row + 1;
-                if (qNum > totalItems) return null;
-                const isUnanswered = triedToSave && !answers[qNum];
-                const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
-                const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
-                const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
-                return (
-                  <div key={qNum} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
-                    <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
-                    <div className="flex gap-1 flex-shrink-0">
-                      {choices.map(option => (
-                        <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
-                          className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
-                            answers[qNum] === option ? 'bg-green-600 border-green-600 text-white shadow-md'
-                            : isUnanswered ? 'border-orange-300 text-orange-400 hover:border-green-500 hover:bg-green-50'
-                            : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
-                          }`}>
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                    {color && objRow && (
-                      <div className="relative group flex-shrink-0">
-                        <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
-                          style={{ background: color.bg, borderColor: color.border, color: color.text }}>
-                          {objRow.objective.length > 14 ? objRow.objective.slice(0, 14) + '…' : objRow.objective}
-                        </span>
-                        <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
-                          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">{objRow.objective}</div>
-                          <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
+            )}
+            {isAnswerKeyComplete && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
+                <span className="text-green-600 text-lg">✅</span>
+                <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
+              </div>
+            )}
+            <div className={`grid gap-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
+              {Array.from({ length: columns }, (_, col) => (
+                <div key={col} className="space-y-1">
+                  {Array.from({ length: QUESTIONS_PER_COL }, (_, row) => {
+                    const qNum = col * QUESTIONS_PER_COL + row + 1;
+                    if (qNum > totalItems) return null;
+                    const isUnanswered = triedToSave && !answers[qNum];
+                    const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
+                    const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+                    const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
+                    return (
+                      <div key={qNum} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
+                        <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {choices.map(option => (
+                            <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
+                              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
+                                answers[qNum] === option ? 'bg-green-600 border-green-600 text-white shadow-md'
+                                : isUnanswered ? 'border-orange-300 text-orange-400 hover:border-green-500 hover:bg-green-50'
+                                : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
+                              }`}>
+                              {option}
+                            </button>
+                          ))}
                         </div>
+                        {color && objRow && (
+                          <div className="relative group flex-shrink-0">
+                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
+                              style={{ background: color.bg, borderColor: color.border, color: color.text }}>
+                              {objRow.objective.length > 14 ? objRow.objective.slice(0, 14) + '…' : objRow.objective}
+                            </span>
+                            <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                              <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">{objRow.objective}</div>
+                              <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </Stack>
+        </Paper>
       </Stack>
     );
   };
@@ -591,34 +601,39 @@ export default function CreateExamPage() {
     return (
       <Stack gap="md">
         <Text size="lg" fw={700} c="#4EAE4A">Review & Create</Text>
-        <div className="text-center pb-2">
-          <div className="text-4xl mb-2">🎉</div>
-          <h3 className="text-xl font-bold text-gray-900">Ready to Create!</h3>
-          <p className="text-gray-500 text-sm mt-0.5">Review your exam setup below, then hit Create.</p>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          {[
-            ['Exam', examName],
-            ['Grade', gradeLabel],
-            ['Subject', subjectName],
-            ['Section(s)', sectionNames],
-            ['Items', String(totalItems)],
-            ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('·')})`],
-          ].map(([label, value]) => (
-            <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-              <p className="font-semibold text-gray-900 truncate">{value}</p>
+        <Paper p="lg" withBorder radius="md">
+          <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Summary</Text>
+          <Stack gap="md">
+            <div className="text-center pb-2">
+              <div className="text-4xl mb-2">🎉</div>
+              <h3 className="text-xl font-bold text-gray-900">Ready to Create!</h3>
+              <p className="text-gray-500 text-sm mt-0.5">Review your exam setup below, then hit Create.</p>
             </div>
-          ))}
-        </div>
-        <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
-          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-            <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items · Answer Key · Objectives</Text>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-gray-100">
-            <div className="overflow-x-auto">{renderTable(0, half)}</div>
-            <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
-          </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {[
+                ['Exam', examName],
+                ['Grade', gradeLabel],
+                ['Subject', subjectName],
+                ['Section(s)', sectionNames],
+                ['Items', String(totalItems)],
+                ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('·')})`],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+                  <p className="font-semibold text-gray-900 truncate">{value}</p>
+                </div>
+              ))}
+            </div>
+            <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
+              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items · Answer Key · Objectives</Text>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-gray-100">
+                <div className="overflow-x-auto">{renderTable(0, half)}</div>
+                <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
+              </div>
+            </Paper>
+          </Stack>
         </Paper>
       </Stack>
     );
@@ -658,8 +673,8 @@ export default function CreateExamPage() {
 
   const navigationButtons = (
     <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={() => activeStep === 0 ? router.push('/exam') : prevStep()} leftSection={activeStep === 0 ? <IconArrowLeft size={16} /> : undefined}>
-        {activeStep === 0 ? 'Back to Examinations' : 'Previous'}
+      <Button variant="default" onClick={() => activeStep === 0 ? router.push('/exam') : prevStep()}>
+        {activeStep === 0 ? 'Cancel' : 'Previous'}
       </Button>
       {activeStep < 4 ? (
         <Button
