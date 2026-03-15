@@ -161,16 +161,6 @@ export default function CreateUserWizard() {
             return;
           }
 
-          if (emailStatus.status === "deleted") {
-            form.setFieldError("email", "This email belongs to a deleted account and cannot be reused");
-            notifications.show({
-              title: "Email Unavailable",
-              message: "This email belongs to a deleted account and cannot be reused.",
-              color: "red",
-            });
-            return;
-          }
-
           // Cache verified email so going back + forward skips the check
           verifiedEmailRef.current = trimmedEmail;
         } catch {

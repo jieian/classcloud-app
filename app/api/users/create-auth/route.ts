@@ -71,73 +71,45 @@ export async function POST(request: Request) {
     );
   }
 
-  // --- RESTORE PATH: email belongs to a soft-deleted account ---
+  // --- TOMBSTONE PATH: email belongs to a soft-deleted account ---
+  // Rename the old auth user's email to free it up, then create a brand-new account.
+  // The old users row (and its UID) remains intact so report references are preserved.
+  let tombstonedUid: string | null = null;
   if (!emailCheckError && emailStatus?.status === "deleted") {
-    const restoredUid: string = emailStatus.uid;
+    tombstonedUid = emailStatus.uid;
+    const tombstoneEmail = `deleted_${tombstonedUid}@void.invalid`;
 
-    // Send email first — nothing has changed yet, so failure requires no rollback
-    try {
-      await sendWelcomeEmail({ to: email, firstName: first_name, lastName: last_name, password });
-    } catch {
-      return Response.json(
-        {
-          error: `The welcome email could not be delivered to "${email}". Double-check the address — no account changes were made.`,
-          code: "EMAIL_DELIVERY_FAILED",
-        },
-        { status: 422 }
-      );
-    }
-
-    // Restore profile + reassign roles atomically
-    const { data: restoreResult, error: restoreError } = await adminClient.rpc(
-      "restore_user_atomic",
-      {
-        p_uid: restoredUid,
-        p_first_name: first_name,
-        p_middle_name: middle_name || "",
-        p_last_name: last_name,
-        p_role_ids: role_ids,
-      },
+    const { error: tombstoneError } = await adminClient.auth.admin.updateUserById(
+      tombstonedUid,
+      { email: tombstoneEmail },
     );
 
-    if (restoreError || !restoreResult?.success) {
-      // Email was already sent — log clearly so this can be investigated
-      console.error("CRITICAL: Welcome email sent but restore failed for", restoredUid, restoreError?.message);
+    if (tombstoneError) {
       return Response.json(
-        { error: restoreError?.message || "Failed to restore user" },
-        { status: 500 }
+        { error: "Failed to free up the email address. Please try again." },
+        { status: 500 },
       );
     }
-
-    // Unban in auth and reset password
-    const { error: unbanError } = await adminClient.auth.admin.updateUserById(
-      restoredUid,
-      { ban_duration: "none", password },
-    );
-
-    if (unbanError) {
-      // Rollback: re-stamp deleted_at so the record isn't left in a broken state
-      await adminClient
-        .from("users")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("uid", restoredUid);
-      return Response.json({ error: unbanError.message }, { status: 500 });
-    }
-
-    return Response.json({ success: true, uuid: restoredUid, restored: true }, { status: 200 });
+    // Email is now free — fall through to the new user path below.
   }
 
   // --- NEW USER PATH ---
-  // Send email first — if it fails, nothing has been created so no rollback needed
+  // Send email first — if it fails, nothing has been created so rollback is just the tombstone.
   try {
     await sendWelcomeEmail({ to: email, firstName: first_name, lastName: last_name, password });
   } catch {
+    // Rollback tombstone if we renamed an old auth user's email
+    if (tombstonedUid) {
+      await adminClient.auth.admin.updateUserById(tombstonedUid, { email }).catch((err) =>
+        console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
+      );
+    }
     return Response.json(
       {
         error: `The welcome email could not be delivered to "${email}". Double-check the address — no account was created.`,
         code: "EMAIL_DELIVERY_FAILED",
       },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
@@ -173,7 +145,7 @@ export async function POST(request: Request) {
     // Email was already sent — log clearly so this can be investigated
     console.error("CRITICAL: Welcome email sent but user creation failed:", error.message);
 
-    // Rollback auth user if it was created
+    // Rollback new auth user if it was created
     if (newAuthUserUuid) {
       try {
         await adminClient.auth.admin.deleteUser(newAuthUserUuid);
@@ -183,9 +155,16 @@ export async function POST(request: Request) {
       }
     }
 
+    // Rollback tombstone so the old deleted account isn't left with a garbage email
+    if (tombstonedUid) {
+      await adminClient.auth.admin.updateUserById(tombstonedUid, { email }).catch((err) =>
+        console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
+      );
+    }
+
     return Response.json(
       { error: error.message || "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

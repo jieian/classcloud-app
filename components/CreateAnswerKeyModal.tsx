@@ -228,7 +228,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
   const answeredCount = totalQuestions - unansweredQuestions.length;
   const progressPercent = Math.round((answeredCount / totalQuestions) * 100);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setTriedToSave(true);
 
@@ -291,7 +291,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
           {onBack && <CreationFlowStepper activeStep={showSummary ? 3 : 2} />}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 relative flex-shrink-0">
+              <div className="w-10 h-10 relative shrink-0">
                 <Image src="/logo.png" alt="Logo" fill className="object-contain" />
               </div>
               <div>
@@ -379,10 +379,10 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                         const objectiveLabel = objectiveForItem(qNum);
                         return (
                           <div key={qNum} className="flex items-center gap-2 py-1 px-1.5 rounded-lg hover:bg-gray-50">
-                            <span className="text-sm font-semibold w-7 text-right flex-shrink-0 text-gray-500">
+                            <span className="text-sm font-semibold w-7 text-right shrink-0 text-gray-500">
                               {qNum}
                             </span>
-                            <div className="flex gap-1 flex-shrink-0">
+                            <div className="flex gap-1 shrink-0">
                               {choices.map(option => (
                                 <div key={option}
                                   className={`w-7 h-7 rounded-full border-2 flex items-center justify-center font-bold text-[11px] ${
@@ -395,11 +395,11 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                               ))}
                             </div>
                             {objectiveLabel && (
-                              <div className="relative group flex-shrink-0">
+                              <div className="relative group shrink-0">
                                 <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
                                   {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
                                 </span>
-                                <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                                <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-60">
                                   <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">
                                     {objectiveLabel}
                                   </div>
@@ -592,7 +592,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
               {showIncompleteWarning && !isComplete && (
                 <div id="incomplete-warning" className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4 mb-6 animate-fade-in">
                   <div className="flex items-start gap-3">
-                    <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
+                    <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 shrink-0" />
                     <div>
                       <p className="font-bold text-orange-800">Cannot save — Answer Key is incomplete!</p>
                       <p className="text-orange-700 text-sm mt-1">
@@ -629,10 +629,10 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                       return (
                         <div key={qNum}
                           className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
-                          <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>
+                          <span className={`text-sm font-semibold w-7 text-right shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>
                             {qNum}
                           </span>
-                          <div className="flex gap-1 flex-shrink-0">
+                          <div className="flex gap-1 shrink-0">
                             {choices.map(option => (
                               <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
                                 className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
@@ -647,11 +647,11 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack 
                             ))}
                           </div>
                           {objectiveLabel && (
-                            <div className="relative group flex-shrink-0">
+                            <div className="relative group shrink-0">
                               <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 cursor-help leading-tight">
                                 {objectiveLabel.length > 14 ? objectiveLabel.slice(0, 14) + '…' : objectiveLabel}
                               </span>
-                              <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
+                              <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-60">
                                 <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">
                                   {objectiveLabel}
                                 </div>

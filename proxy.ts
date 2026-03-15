@@ -54,15 +54,20 @@ export async function proxy(request: NextRequest) {
       ? requestedNext
       : "/";
 
-  // Redirect to login if not authenticated (except for login page)
-  if (!user && pathname !== "/login") {
+  // Pages anyone can access (unauthenticated or authenticated)
+  const alwaysPublicPaths = ["/reset-password", "/auth/callback"];
+  // Pages only unauthenticated users should see (authenticated users get redirected away)
+  const unauthOnlyPaths = ["/login", "/forgot-password", "/signup"];
+  const publicPaths = [...alwaysPublicPaths, ...unauthOnlyPaths];
+
+  if (!user && !publicPaths.includes(pathname)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", nextPath);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Redirect to home if already authenticated and trying to access login
-  if (user && pathname === "/login" && !isLogoutFlow) {
+  // Redirect to home if already authenticated and trying to access unauthenticated-only pages
+  if (user && unauthOnlyPaths.includes(pathname) && !isLogoutFlow) {
     const homeUrl = new URL(safeNext, request.url);
     return NextResponse.redirect(homeUrl);
   }
