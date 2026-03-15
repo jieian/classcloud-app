@@ -364,21 +364,14 @@ export default function ExamPageClient() {
               </span>
             )}
           </h1>
-          {loading ? (
-            <Stack gap={4} style={{ alignItems: "flex-end" }}>
-              <Text size="xs" c="dimmed">Create Exam</Text>
-              <Skeleton height={40} width={140} radius="md" />
-            </Stack>
-          ) : (
-            <Button
-              color="#4EAE4A"
-              radius="md"
-              leftSection={<IconPlus size={16} />}
-              onClick={() => { setModalDraft(null); setIsCreateModalOpen(true); }}
-            >
-              Create Exam
-            </Button>
-          )}
+          <Button
+            color="#4EAE4A"
+            radius="md"
+            leftSection={<IconPlus size={16} />}
+            onClick={() => { setModalDraft(null); setIsCreateModalOpen(true); }}
+          >
+            Create Exam
+          </Button>
         </Group>
         <p className="mb-3 text-sm text-[#808898]">
           Manage and track all examinations
@@ -406,87 +399,63 @@ export default function ExamPageClient() {
           )}
 
           {/* Filters */}
-          {loading ? (
-            <div>
-              <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-                <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-                  <Text size="xs" c="dimmed">
-                    Search examinations
-                  </Text>
-                  <Skeleton height={40} radius="md" />
-                </Stack>
-                <Stack gap={4} style={{ alignItems: "flex-end" }}>
-                  <Text size="xs" c="dimmed">
-                    Refresh
-                  </Text>
-                  <Skeleton height={40} width={40} radius="xl" />
-                </Stack>
-              </Group>
-              <Group mb="md" gap="sm">
-                <Skeleton height={40} width={200} radius="md" />
-                <Skeleton height={40} width={200} radius="md" />
-                <Skeleton height={40} width={200} radius="md" />
-              </Group>
-            </div>
-          ) : (
-            <div>
-              <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-                <SearchBar
-                  id="search-exams"
-                  placeholder="Search examinations..."
-                  ariaLabel="Search examinations"
-                  style={{ flex: 1, minWidth: 0 }}
-                  maw={700}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                />
-                <Tooltip label="Refresh" position="bottom" withArrow>
-                  <ActionIcon
-                    variant="outline"
-                    color="#808898"
-                    size="lg"
-                    radius="xl"
-                    onClick={fetchExams}
-                    loading={loading}
-                    aria-label="Refresh examinations"
-                  >
-                    <IconRefresh size={18} stroke={1.5} />
-                  </ActionIcon>
-                </Tooltip>
-              </Group>
-              <Group mb="md" gap="sm">
-                <Select
-                  placeholder="Grade Level"
-                  data={gradeLevelOptions}
-                  value={selectedGradeLevel}
-                  onChange={setSelectedGradeLevel}
-                  leftSection={<IconSchool size={16} />}
-                  w={200}
-                  clearable
-                />
-                <Select
-                  placeholder="Section"
-                  data={sectionOptions}
-                  value={selectedSection}
-                  onChange={setSelectedSection}
-                  leftSection={<IconUsers size={16} />}
-                  w={200}
-                  clearable
-                  disabled={sectionOptions.length === 0}
-                />
-                <Select
-                  placeholder="Subject"
-                  data={subjectOptions}
-                  value={selectedSubject}
-                  onChange={setSelectedSubject}
-                  leftSection={<IconBook size={16} />}
-                  w={200}
-                  clearable
-                  disabled={subjectOptions.length === 0}
-                />
-              </Group>
-            </div>
-          )}
+          <div>
+            <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+              <SearchBar
+                id="search-exams"
+                placeholder="Search examinations..."
+                ariaLabel="Search examinations"
+                style={{ flex: 1, minWidth: 0 }}
+                maw={700}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+              />
+              <Tooltip label="Refresh" position="bottom" withArrow>
+                <ActionIcon
+                  variant="outline"
+                  color="#808898"
+                  size="lg"
+                  radius="xl"
+                  onClick={fetchExams}
+                  loading={loading}
+                  aria-label="Refresh examinations"
+                >
+                  <IconRefresh size={18} stroke={1.5} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <Group mb="md" gap="sm">
+              <Select
+                placeholder="Grade Level"
+                data={gradeLevelOptions}
+                value={selectedGradeLevel}
+                onChange={setSelectedGradeLevel}
+                leftSection={<IconSchool size={16} />}
+                w={200}
+                clearable
+              />
+              <Select
+                placeholder="Section"
+                data={sectionOptions}
+                value={selectedSection}
+                onChange={setSelectedSection}
+                leftSection={<IconUsers size={16} />}
+                w={200}
+                clearable
+                disabled={sectionOptions.length === 0}
+              />
+              <Select
+                placeholder="Subject"
+                data={subjectOptions}
+                value={selectedSubject}
+                onChange={setSelectedSubject}
+                leftSection={<IconBook size={16} />}
+                w={200}
+                clearable
+                disabled={subjectOptions.length === 0}
+              />
+            </Group>
+          </div>
 
           {/* Content */}
           {loading ? (
