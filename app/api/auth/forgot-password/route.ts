@@ -15,7 +15,8 @@ export async function POST(request: Request) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
 
-  const origin = new URL(request.url).origin;
+  const origin =
+    process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin;
 
   // Generate a recovery link — also verifies the email exists in auth.users
   const { data, error } = await adminClient.auth.admin.generateLink({
