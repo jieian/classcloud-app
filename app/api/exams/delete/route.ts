@@ -26,8 +26,8 @@ export async function DELETE(request: Request) {
     permsError ||
     !permsData?.some(
       (p: any) =>
-        p.permission_name === "full_access_examinations" ||
-        p.permission_name === "partial_access_examinations",
+        p.permission_name === "exams.full_access" ||
+        p.permission_name === "exams.limited_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
