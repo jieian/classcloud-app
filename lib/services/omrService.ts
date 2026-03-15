@@ -34,15 +34,29 @@ export interface DetectionResult {
 export type CornerSet = [Point, Point, Point, Point]; // TL, TR, BL, BR
 
 // ─── OpenCV loader ────────────────────────────────────────────────────────────
+//
+// opencv.js is served from /public/opencv.js and loaded via <Script> in the
+// scan page. It sets window.cv once the WASM is ready.
 
 let _cvPromise: Promise<CV> | null = null;
 
 function loadCV(): Promise<CV> {
   if (!_cvPromise) {
-    _cvPromise = import('@techstark/opencv-js').then((mod) => {
-      const cv: CV = mod.default ?? mod;
-      if (cv.Mat !== undefined) return cv;
-      return new Promise<CV>((resolve) => { cv.onRuntimeInitialized = () => resolve(cv); });
+    _cvPromise = new Promise<CV>((resolve) => {
+      // Already loaded by the <Script> tag
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = window as any;
+      if (w.cv?.Mat !== undefined) {
+        resolve(w.cv);
+        return;
+      }
+      // Script not yet ready — poll until it is
+      const id = setInterval(() => {
+        if (w.cv?.Mat !== undefined) {
+          clearInterval(id);
+          resolve(w.cv);
+        }
+      }, 50);
     });
   }
   return _cvPromise;

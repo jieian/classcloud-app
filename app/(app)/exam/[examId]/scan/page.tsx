@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import Script from 'next/script';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
@@ -87,6 +88,7 @@ export default function ScanPapersPage() {
   const [exportingCsv, setExportingCsv] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
+  const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
 
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -287,6 +289,7 @@ export default function ScanPapersPage() {
       const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
+      setDebugImageUrl(result.debugDataUrl);
       setStep('review');
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
@@ -455,6 +458,9 @@ export default function ScanPapersPage() {
 
   return (
     <div className="space-y-4">
+      {/* Load OpenCV.js from public folder — sets window.cv when WASM is ready */}
+      <Script src="/opencv.js" strategy="lazyOnload" />
+
       <div className="space-y-3">
         <div>
           <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
@@ -864,6 +870,15 @@ export default function ScanPapersPage() {
                   : 'Corner markers not found - results may be less accurate. Review and correct any wrong answers.'}
               </p>
             </div>
+
+            {debugImageUrl && (
+              <details className="rounded-xl border border-gray-200">
+                <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
+                  Debug: Bubble Detection Map (green=detected, red=not)
+                </summary>
+                <img src={debugImageUrl} alt="OMR debug" className="w-full rounded-b-xl" />
+              </details>
+            )}
 
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="bg-blue-50 rounded-xl p-3">

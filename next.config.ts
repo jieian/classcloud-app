@@ -7,16 +7,9 @@ const nextConfig: NextConfig = {
       static: 30,
     },
   },
-  webpack: (config) => {
-    // OpenCV.js ships a pre-built WASM bundle that webpack cannot parse —
-    // attempting to do so causes "Maximum call stack size exceeded".
-    // noParse tells webpack to bundle the file as-is without traversing it.
-    const existing = config.module.noParse;
-    config.module.noParse = existing
-      ? [existing, /opencv/].flat()
-      : /opencv/;
-    return config;
-  },
+  // OpenCV.js is served from /public/opencv.js and loaded via <Script> at
+  // runtime — no bundler involvement needed.
+  turbopack: {},
 };
 
 export default nextConfig;
