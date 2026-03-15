@@ -23,6 +23,9 @@ export const metadata: Metadata = {
   title: "ClassCloud",
   description:
     "A Centralized Quarterly Test Reports System for Baliwag North Central School",
+  icons: {
+    icon: "/icon.png",
+  },
 };
 
 export default function RootLayout({

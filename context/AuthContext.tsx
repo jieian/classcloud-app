@@ -114,6 +114,8 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Re-fetches first/last name from DB and updates context + sessionStorage. */
+  refreshUserName: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -460,6 +462,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  const refreshUserName = async () => {
+    if (!user?.id) return;
+    try {
+      const { data } = await supabase
+        .from("users")
+        .select("first_name, last_name")
+        .eq("uid", user.id)
+        .single();
+      if (data) {
+        const fn = (data as { first_name: string }).first_name ?? "";
+        const ln = (data as { last_name: string }).last_name ?? "";
+        setFirstName(fn);
+        setLastName(ln);
+        try {
+          sessionStorage.setItem("cc_first_name", fn);
+          sessionStorage.setItem("cc_last_name", ln);
+        } catch {
+          // sessionStorage unavailable
+        }
+      }
+    } catch {
+      // ignore refresh failures silently
+    }
+  };
+
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
@@ -523,7 +550,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, roles, permissions, permissionsLoaded, firstName, lastName, loading, signIn, signOut }}
+      value={{ user, roles, permissions, permissionsLoaded, firstName, lastName, loading, signIn, signOut, refreshUserName }}
     >
       {children}
 
