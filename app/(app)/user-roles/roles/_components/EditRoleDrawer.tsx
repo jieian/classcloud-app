@@ -2,12 +2,9 @@
 
 import {
   Button,
-  Checkbox,
   Drawer,
   Grid,
   Group,
-  Pagination,
-  Skeleton,
   Switch,
   Text,
   TextInput,
@@ -25,6 +22,7 @@ import {
   updateRole,
   checkRoleNameExists,
 } from "../../users/_lib";
+import { PermissionsPanel } from "./PermissionsPanel";
 
 interface EditRoleDrawerProps {
   opened: boolean;
@@ -40,7 +38,6 @@ interface FormValues {
   permission_ids: string[];
 }
 
-const PERMISSIONS_PER_PAGE = 5;
 
 export default function EditRoleDrawer({
   opened,
@@ -52,7 +49,6 @@ export default function EditRoleDrawer({
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
-  const [permPage, setPermPage] = useState(1);
 
   const form = useForm<FormValues>({
     validateInputOnChange: true,
@@ -87,7 +83,6 @@ export default function EditRoleDrawer({
         permission_ids: role.permissions.map((p) => p.permission_id.toString()),
       });
       form.resetDirty();
-      setPermPage(1);
     }
   }, [opened, role]);
 
@@ -170,7 +165,7 @@ export default function EditRoleDrawer({
         </Text>
       ),
       labels: { confirm: "Confirm", cancel: "Cancel" },
-      confirmProps: { color: "blue" },
+      confirmProps: { color: "#4EAE4A" },
       onConfirm: async () => {
         await submitForm();
       },
@@ -229,13 +224,6 @@ export default function EditRoleDrawer({
     }
   };
 
-  // Pagination for permissions
-  const totalPages = Math.ceil(allPermissions.length / PERMISSIONS_PER_PAGE);
-  const paginatedPermissions = allPermissions.slice(
-    (permPage - 1) * PERMISSIONS_PER_PAGE,
-    permPage * PERMISSIONS_PER_PAGE,
-  );
-
   return (
     <Drawer
       opened={opened}
@@ -289,58 +277,19 @@ export default function EditRoleDrawer({
 
           {/* Column II: Permissions */}
           <Grid.Col span={6}>
-            <Text size="sm" fw={600} mb="md">
-              Permissions
-            </Text>
-            {loadingPermissions ? (
-              <>
-                <Skeleton height={24} mb="sm" />
-                <Skeleton height={24} mb="sm" />
-                <Skeleton height={24} mb="sm" />
-                <Skeleton height={24} mb="sm" />
-                <Skeleton height={24} mb="sm" />
-              </>
-            ) : (
-              <>
-                {form.errors.permission_ids && (
-                  <Text size="sm" c="red" mb="xs">
-                    {form.errors.permission_ids}
-                  </Text>
-                )}
-                <Text size="xs" c="dimmed" mb="xs">
-                  {form.values.permission_ids.length} of {allPermissions.length}{" "}
-                  selected
-                </Text>
-                <Checkbox.Group {...form.getInputProps("permission_ids")}>
-                  {paginatedPermissions.map((perm) => (
-                    <Tooltip
-                      key={perm.permission_id}
-                      label={perm.description}
-                      position="left"
-                      withArrow
-                      multiline
-                      maw={300}
-                      disabled={!perm.description}
-                    >
-                      <Checkbox
-                        value={perm.permission_id.toString()}
-                        label={perm.name}
-                        mb="sm"
-                      />
-                    </Tooltip>
-                  ))}
-                </Checkbox.Group>
-                {totalPages > 1 && (
-                  <Pagination
-                    value={permPage}
-                    onChange={setPermPage}
-                    total={totalPages}
-                    size="sm"
-                    mt="sm"
-                  />
-                )}
-              </>
+            {form.errors.permission_ids && (
+              <Text size="sm" c="red" mb="xs">
+                {form.errors.permission_ids}
+              </Text>
             )}
+            <PermissionsPanel
+              selectedIds={form.values.permission_ids.map(Number)}
+              onChange={(ids) =>
+                form.setFieldValue("permission_ids", ids.map(String))
+              }
+              availablePermissions={allPermissions}
+              loading={loadingPermissions}
+            />
           </Grid.Col>
         </Grid>
 
@@ -360,6 +309,7 @@ export default function EditRoleDrawer({
             onClick={handleSave}
             disabled={!form.isDirty() || !form.isValid()}
             loading={loading}
+            color="#4EAE4A"
           >
             Save
           </Button>

@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import type { RoleWithPermissions } from "../../users/_lib";
 import RolesTableActions from "./RolesTableActions";
+import { PERM_DISPLAY_MAP } from "./PermissionsPanel";
 
 const MAX_VISIBLE_BADGES = 3;
 
@@ -47,14 +48,14 @@ export default function RolesTable({ roles, onUpdate }: RolesTableProps) {
             <Group gap="xs" wrap="wrap">
               {visible.map((perm) => (
                 <Badge key={perm.permission_id} variant="light">
-                  {perm.name}
+                  {PERM_DISPLAY_MAP[perm.name] ?? perm.name}
                 </Badge>
               ))}
               {remaining > 0 && (
                 <Tooltip
                   label={role.permissions
                     .slice(MAX_VISIBLE_BADGES)
-                    .map((p) => p.name)
+                    .map((p) => PERM_DISPLAY_MAP[p.name] ?? p.name)
                     .join(", ")}
                   multiline
                   maw={300}

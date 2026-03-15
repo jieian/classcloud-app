@@ -4,6 +4,7 @@ import { Badge, Box, Text, Group } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { CreateRoleForm } from "../../users/_lib/types";
 import type { Permission } from "../../users/_lib/userRolesService";
+import { PERM_DISPLAY_MAP } from "./PermissionsPanel";
 
 interface StepReviewProps {
   form: UseFormReturnType<CreateRoleForm>;
@@ -80,7 +81,9 @@ export default function StepReview({
                   {index + 1}
                 </Text>
               </Box>
-              <Text size="sm">{permission.name}</Text>
+              <Text size="sm">
+                {PERM_DISPLAY_MAP[permission.name] ?? permission.name}
+              </Text>
             </Group>
           ))
         ) : (
