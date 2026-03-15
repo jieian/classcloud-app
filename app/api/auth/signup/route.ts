@@ -95,7 +95,7 @@ export async function POST(request: Request) {
   // normal registration. The old users row (and UID) stays intact for reports.
   let tombstonedUid: string | null = null;
   if (emailStatus?.status === "deleted") {
-    tombstonedUid = emailStatus.uid;
+    tombstonedUid = emailStatus.uid as string;
     const tombstoneEmail = `deleted_${tombstonedUid}@void.invalid`;
 
     const { error: tombstoneError } = await adminClient.auth.admin.updateUserById(
