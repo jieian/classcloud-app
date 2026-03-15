@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   if (
     permsError ||
     !permsData?.some(
-      (p: any) => p.permission_name === "access_year_management",
+      (p: any) => p.permission_name === "school_year.full_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

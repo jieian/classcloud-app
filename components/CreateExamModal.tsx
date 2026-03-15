@@ -43,7 +43,7 @@ interface CreateExamModalProps {
 
 export default function CreateExamModal({ onClose, onProceed, initialDraft, existingTitles = [] }: CreateExamModalProps) {
   const { user, permissions } = useAuth();
-  const hasFullAccess = permissions.includes('full_access_examinations');
+  const hasFullAccess = permissions.includes('exams.full_access');
 
   const [step, setStep] = useState(0);
 

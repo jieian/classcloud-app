@@ -30,7 +30,7 @@ export async function PUT(request: Request) {
     user_uuid: caller.id,
   });
 
-  if (permsError || !permsData?.some((p: any) => p.permission_name === "access_user_management")) {
+  if (permsError || !permsData?.some((p: any) => p.permission_name === "roles.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

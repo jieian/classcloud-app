@@ -112,7 +112,7 @@ export default function ExamPageClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const hasFullAccess = permissions.includes("full_access_examinations");
+  const hasFullAccess = permissions.includes("exams.full_access");
 
   // Allowed section/subject IDs for teachers with partial access (null = no filter)
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);

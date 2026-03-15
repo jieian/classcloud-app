@@ -12,7 +12,7 @@ export default async function ManageSubjectsPage({
   const id = parseInt(gradeLevelId, 10);
 
   return (
-    <ProtectedRoute requiredPermissions={["access_subject_management"]}>
+    <ProtectedRoute requiredPermissions={["subjects.full_access"]}>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
         Subject Management
       </h1>

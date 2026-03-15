@@ -18,7 +18,7 @@ export async function POST(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("partial_access_student_management"))
+  if (!permissions.includes("students.limited_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { requestId } = await params;

@@ -64,8 +64,8 @@ export async function GET(
 
   const permissions = await getUserPermissions(user.id);
   const hasAccess =
-    permissions.includes("full_access_examinations") ||
-    permissions.includes("partial_access_examinations");
+    permissions.includes("exams.full_access") ||
+    permissions.includes("exams.limited_access");
   if (!hasAccess) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

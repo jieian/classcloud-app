@@ -17,7 +17,7 @@ export async function DELETE(request: Request) {
 
   // Verify the caller has user management permissions
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("access_user_management")) {
+  if (!permissions.includes("users.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("partial_access_student_management"))
+  if (!permissions.includes("students.limited_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const body = (await request.json()) as {
@@ -134,8 +134,8 @@ export async function GET(request: Request) {
 
   const permissions = await getUserPermissions(user.id);
   const hasStudentAccess =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
   if (!hasStudentAccess)
     return Response.json({ error: "Forbidden" }, { status: 403 });
 

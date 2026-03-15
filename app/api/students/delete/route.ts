@@ -12,9 +12,9 @@ export async function DELETE(request: Request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  const hasFullAccess = permissions.includes("full_access_student_management");
+  const hasFullAccess = permissions.includes("students.full_access");
   const hasPartialAccess = permissions.includes(
-    "partial_access_student_management",
+    "students.limited_access",
   );
   if (!hasFullAccess && !hasPartialAccess) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

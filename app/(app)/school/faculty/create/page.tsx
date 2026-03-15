@@ -19,7 +19,7 @@ export default async function FacultyCreatePage({
   const initialData = await fetchWizardDataServer(uid);
 
   return (
-    <ProtectedRoute requiredPermissions={["access_faculty_management"]}>
+    <ProtectedRoute requiredPermissions={["faculty.full_access"]}>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
         Faculty Management
       </h1>

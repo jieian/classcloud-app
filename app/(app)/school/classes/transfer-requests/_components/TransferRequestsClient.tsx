@@ -479,10 +479,10 @@ export default function TransferRequestsClient() {
   const { user, permissions } = useAuth();
 
   const canSeeIncoming =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
   const canSeeOutgoing = permissions.includes(
-    "partial_access_student_management",
+    "students.limited_access",
   );
 
   const [incoming, setIncoming] = useState<TransferRequestItem[]>([]);

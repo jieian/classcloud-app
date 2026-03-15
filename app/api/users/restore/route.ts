@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   }
 
   const permissions = await getUserPermissions(caller.id);
-  if (!permissions.includes("access_user_management")) {
+  if (!permissions.includes("users.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -13,9 +13,9 @@ export default async function ClassDetailPage({ params }: Props) {
     <ProtectedRoute
       match="any"
       requiredPermissions={[
-        "access_classes_management",
-        "partial_access_student_management",
-        "full_access_student_management",
+        "classes.full_access",
+        "students.limited_access",
+        "students.full_access",
       ]}
     >
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">

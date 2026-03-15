@@ -20,9 +20,9 @@ export async function GET(
 
   const permissions = await getUserPermissions(user.id);
   const hasAccess =
-    permissions.includes("access_classes_management") ||
-    permissions.includes("partial_access_student_management") ||
-    permissions.includes("full_access_student_management");
+    permissions.includes("classes.full_access") ||
+    permissions.includes("students.limited_access") ||
+    permissions.includes("students.full_access");
   if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;
@@ -151,7 +151,7 @@ export async function PATCH(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("access_classes_management"))
+  if (!permissions.includes("classes.full_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;
@@ -201,7 +201,7 @@ export async function DELETE(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("access_classes_management"))
+  if (!permissions.includes("classes.full_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;

@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   if (
     permsError ||
     !permsData?.some(
-      (p: any) => p.permission_name === "access_faculty_management",
+      (p: any) => p.permission_name === "faculty.full_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

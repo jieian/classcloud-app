@@ -20,8 +20,8 @@ export async function POST(
 
   const permissions = await getUserPermissions(user.id);
   const hasStudentAccess =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
   if (!hasStudentAccess)
     return Response.json({ error: "Forbidden" }, { status: 403 });
 

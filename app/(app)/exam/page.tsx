@@ -6,8 +6,8 @@ export default function Exam() {
     <ProtectedRoute
       match="any"
       requiredPermissions={[
-        "full_access_examinations",
-        "partial_access_examinations",
+        "exams.full_access",
+        "exams.limited_access",
       ]}
       loadingFallback={
         <div className="space-y-4">

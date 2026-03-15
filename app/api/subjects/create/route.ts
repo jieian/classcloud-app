@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     permsError ||
     !permsData?.some(
       (p: { permission_name: string }) =>
-        p.permission_name === "access_subject_management",
+        p.permission_name === "subjects.full_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   // 2. PERMISSIONS: Verify caller has the right to create users
   const permissions = await getUserPermissions(caller.id);
-  if (!permissions.includes("access_user_management")) {
+  if (!permissions.includes("users.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

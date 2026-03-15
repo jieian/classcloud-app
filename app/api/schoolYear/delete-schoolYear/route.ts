@@ -3,7 +3,7 @@
  *
  * Soft-deletes a school year (sets deleted_at = NOW(), is_active = false)
  * and inactivates all its quarters in a single atomic transaction.
- * Requires the caller to have the "access_year_management" permission.
+ * Requires the caller to have the "school_year.full_access" permission.
  *
  * RPC SQL (run once in Supabase SQL editor):
  * -----------------------------------------------------------------------
@@ -64,7 +64,7 @@ export async function DELETE(request: Request) {
   if (
     permsError ||
     !permsData?.some(
-      (p: any) => p.permission_name === "access_year_management",
+      (p: any) => p.permission_name === "school_year.full_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });

@@ -17,7 +17,7 @@ export async function DELETE(request: Request) {
 
   // 2. Verify caller has the right to manage roles
   const permissions = await getUserPermissions(caller.id);
-  if (!permissions.includes("access_user_management")) {
+  if (!permissions.includes("roles.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

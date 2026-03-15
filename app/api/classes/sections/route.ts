@@ -14,9 +14,9 @@ export async function GET(request: Request) {
 
   const permissions = await getUserPermissions(user.id);
   const hasAccess =
-    permissions.includes("access_classes_management") ||
-    permissions.includes("partial_access_student_management") ||
-    permissions.includes("full_access_student_management");
+    permissions.includes("classes.full_access") ||
+    permissions.includes("students.limited_access") ||
+    permissions.includes("students.full_access");
   if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const syId = Number(new URL(request.url).searchParams.get("syId"));
@@ -30,9 +30,9 @@ export async function GET(request: Request) {
   );
 
   const isPartialAccess =
-    permissions.includes("partial_access_student_management") &&
-    !permissions.includes("access_classes_management") &&
-    !permissions.includes("full_access_student_management");
+    permissions.includes("students.limited_access") &&
+    !permissions.includes("classes.full_access") &&
+    !permissions.includes("students.full_access");
 
   // sections + enrollments + optional teacher assignments — all parallel
   const [

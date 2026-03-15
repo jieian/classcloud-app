@@ -38,7 +38,7 @@ import {
 interface Props {
   opened: boolean;
   sectionId: number;
-  /** True when the user has full_access_student_management — bypasses request flow */
+  /** True when the user has students.full_access — bypasses request flow */
   hasFullAccess: boolean;
   onClose: () => void;
   onAdded: () => void;

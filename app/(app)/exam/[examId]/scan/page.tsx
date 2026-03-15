@@ -314,8 +314,8 @@ export default function ScanPapersPage() {
 
   const scoreMpl = getMpl(score, totalItems);
   const canAccessExams =
-    permissions.includes("full_access_examinations") ||
-    permissions.includes("partial_access_examinations");
+    permissions.includes("exams.full_access") ||
+    permissions.includes("exams.limited_access");
 
   // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
@@ -727,7 +727,7 @@ export default function ScanPapersPage() {
           <div className="space-y-5">
             {selectedStudent && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <IconCircleCheck className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                <IconCircleCheck className="w-5 h-5 text-blue-500 shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
                   <p className="text-xs text-blue-500">
@@ -739,7 +739,7 @@ export default function ScanPapersPage() {
 
             {processingError && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
-                <IconAlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <IconAlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-red-700">Processing failed</p>
                   <p className="text-red-600 text-sm mt-1">{processingError}</p>
@@ -846,7 +846,7 @@ export default function ScanPapersPage() {
           <div className="space-y-5">
             {selectedStudent && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <IconCircleCheck className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                <IconCircleCheck className="w-5 h-5 text-blue-500 shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
                   <p className="text-xs text-blue-500">{selectedStudent.grade_level_display} - {selectedStudent.section_name}</p>
@@ -856,8 +856,8 @@ export default function ScanPapersPage() {
 
             <div className={`rounded-xl p-3 flex items-start gap-3 text-sm ${cornersOk ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
               {cornersOk
-                ? <IconCircleCheck className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                : <IconAlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />}
+                ? <IconCircleCheck className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                : <IconAlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />}
               <p className={cornersOk ? 'text-green-700' : 'text-yellow-700'}>
                 {cornersOk
                   ? 'Corner markers detected automatically - high confidence detection.'

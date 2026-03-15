@@ -17,7 +17,7 @@ export async function PATCH(request: Request) {
 
   // Verify caller has user management permission
   const permissions = await getUserPermissions(user.id);
-  if (!permissions.includes("access_user_management")) {
+  if (!permissions.includes("users.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

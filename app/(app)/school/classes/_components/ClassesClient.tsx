@@ -34,18 +34,18 @@ export default function ClassesClient() {
   const { user, roles, permissions } = useAuth();
 
   // Derived directly from AuthContext — no extra DB round-trips
-  const hasCreatePermission = permissions.includes("access_classes_management");
+  const hasCreatePermission = permissions.includes("classes.full_access");
   const isClassAdviser = roles.some(
     (r) => r.name.trim().toLowerCase() === "class adviser",
   );
   const isPartialAccess =
-    permissions.includes("partial_access_student_management") &&
-    !permissions.includes("access_classes_management") &&
-    !permissions.includes("full_access_student_management");
+    permissions.includes("students.limited_access") &&
+    !permissions.includes("classes.full_access") &&
+    !permissions.includes("students.full_access");
 
   const canViewTransferRequests =
-    permissions.includes("partial_access_student_management") ||
-    permissions.includes("full_access_student_management");
+    permissions.includes("students.limited_access") ||
+    permissions.includes("students.full_access");
 
   const [schoolYears, setSchoolYears] = useState<SchoolYearOption[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevelRow[]>([]);

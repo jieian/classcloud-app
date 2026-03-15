@@ -43,6 +43,7 @@ export default function RolesTableActions({
     "subject teacher",
     "grade level coordinator",
     "subject coordinator",
+    "principal",
   ].includes(role.name.trim().toLowerCase());
 
   const handleTrashClick = async () => {

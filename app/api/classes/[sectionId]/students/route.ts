@@ -24,8 +24,8 @@ export async function POST(
 
   const permissions = await getUserPermissions(user.id);
   const hasAccess =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
   if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;
@@ -94,7 +94,7 @@ export async function POST(
   // Gate direct move/update_move: full_access may always proceed;
   // partial_access may only move students INTO their own advisory section.
   if (action === "move" || action === "update_move") {
-    const hasFullAccess = permissions.includes("full_access_student_management");
+    const hasFullAccess = permissions.includes("students.full_access");
     if (!hasFullAccess) {
       const { data: destSection } = await admin
         .from("sections")
@@ -279,9 +279,9 @@ export async function GET(
 
   const permissions = await getUserPermissions(user.id);
   const hasAccess =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management") ||
-    permissions.includes("access_classes_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access") ||
+    permissions.includes("classes.full_access");
   if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;

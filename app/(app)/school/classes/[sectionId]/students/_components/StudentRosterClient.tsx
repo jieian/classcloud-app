@@ -138,9 +138,9 @@ function GroupHeader({ label }: { label: string }) {
 export default function StudentRosterClient({ sectionId }: Props) {
   const { user, permissions } = useAuth();
 
-  const hasFullAccess = permissions.includes("full_access_student_management");
+  const hasFullAccess = permissions.includes("students.full_access");
   const hasPartialAccess = permissions.includes(
-    "partial_access_student_management",
+    "students.limited_access",
   );
 
   const [section, setSection] = useState<StudentRosterSection | null>(null);

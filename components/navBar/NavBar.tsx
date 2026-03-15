@@ -63,56 +63,57 @@ const navigationData: NavigationLink[] = [
         label: "User Management",
         key: "user-management",
         href: "/user-roles/users",
-        requiredPermissions: ["access_user_management"],
+        requiredPermissions: ["users.full_access"],
       },
       {
         label: "Roles Management",
         key: "roles-management",
         href: "/user-roles/roles",
-        requiredPermissions: ["access_user_management"],
+        requiredPermissions: ["roles.full_access"],
       },
     ],
-    requiredPermissions: ["access_user_management"],
+    requiredPermissions: ["users.full_access", "roles.full_access"],
   },
   {
     icon: IconSchool,
     label: "School",
     href: "/school",
     requiredPermissions: [
-      "access_year_management",
-      "access_faculty_management",
-      "access_subject_management",
-      "access_classes_management",
-      "partial_access_student_management",
-      "full_access_student_management",
+      "school_year.full_access",
+      "faculty.full_access",
+      "subjects.full_access",
+      "subjects.limited_access",
+      "classes.full_access",
+      "students.limited_access",
+      "students.full_access",
     ],
     sublinks: [
       {
         label: "School Year",
         key: "school-year",
         href: "/school/year",
-        requiredPermissions: ["access_year_management"],
+        requiredPermissions: ["school_year.full_access"],
       },
       {
         label: "Faculty",
         key: "faculty",
         href: "/school/faculty",
-        requiredPermissions: ["access_faculty_management"],
+        requiredPermissions: ["faculty.full_access"],
       },
       {
         label: "Subjects",
         key: "subjects",
         href: "/school/subjects",
-        requiredPermissions: ["access_subject_management"],
+        requiredPermissions: ["subjects.full_access", "subjects.limited_access"],
       },
       {
         label: "Classes",
         key: "classes",
         href: "/school/classes",
         requiredPermissions: [
-          "access_classes_management",
-          "partial_access_student_management",
-          "full_access_student_management",
+          "classes.full_access",
+          "students.limited_access",
+          "students.full_access",
         ],
       },
     ],
@@ -123,33 +124,33 @@ const navigationData: NavigationLink[] = [
     href: "/exam",
     sublinks: [],
     requiredPermissions: [
-      "full_access_examinations",
-      "partial_access_examinations",
+      "exams.full_access",
+      "exams.limited_access",
     ],
   },
   {
     icon: IconFileReport,
     label: "Reports",
     href: "/reports",
-    requiredPermissions: ["access_reports"],
+    requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
     sublinks: [
       {
         label: "Item Analysis",
         key: "item-analysis",
         href: "/reports/itemAnalysis",
-        requiredPermissions: ["access_reports"],
+        requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
       },
       {
         label: "Level of Proficiency",
         key: "level-of-proficiency",
         href: "/reports/levelOfProficiency",
-        requiredPermissions: ["access_reports"],
+        requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
       },
       {
         label: "LAEMPL",
         key: "laempl",
         href: "/reports/laempl",
-        requiredPermissions: ["access_reports"],
+        requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
       },
     ],
   },
@@ -169,8 +170,8 @@ export default function Navbar() {
   // Pending transfer request count — drives the badge on the Classes sublink
   const [pendingTransferCount, setPendingTransferCount] = useState(0);
   const canReviewTransfers =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
 
   useEffect(() => {
     if (!canReviewTransfers) {

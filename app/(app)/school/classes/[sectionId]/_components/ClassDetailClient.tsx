@@ -49,11 +49,11 @@ export default function ClassDetailClient({ sectionId }: Props) {
   const { permissions } = useAuth();
 
   const hasClassesManagement = permissions.includes(
-    "access_classes_management",
+    "classes.full_access",
   );
   const hasStudentManagement =
-    permissions.includes("full_access_student_management") ||
-    permissions.includes("partial_access_student_management");
+    permissions.includes("students.full_access") ||
+    permissions.includes("students.limited_access");
 
   const [section, setSection] = useState<SectionDetail | null>(null);
   const [subjects, setSubjects] = useState<SectionSubjectRow[]>([]);
