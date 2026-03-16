@@ -1,6 +1,5 @@
 ﻿'use client';
 
-import Script from 'next/script';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
@@ -9,7 +8,7 @@ import {
   IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
   IconDownload,
 } from '@tabler/icons-react';
-import { processAnswerSheet } from '@/lib/services/omrService';
+import { processAnswerSheet } from '@/lib/services/omrService'; // fallback only
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/app/(app)/school/classes/_lib/classService';
@@ -89,6 +88,7 @@ export default function ScanPapersPage() {
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
+  const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
 
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -286,9 +286,38 @@ export default function ScanPapersPage() {
     setStep('processing');
     setProcessingError(null);
     try {
-      const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+      let result: Awaited<ReturnType<typeof processAnswerSheet>>;
+
+      // Use the server-side Python OMR service when available (more accurate).
+      // Falls back to the browser JS engine if the env var is not set.
+      if (true) {
+        const form = new FormData();
+        form.append('file', capturedFile);
+        form.append('total_items', String(totalItems));
+        form.append('num_choices', String(numChoices));
+
+        const res = await fetch('/api/scan', { method: 'POST', body: form });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? 'OMR service error');
+
+        result = {
+          answers: Object.fromEntries(
+            Object.entries(json.answers as Record<string, string | null>)
+              .map(([k, v]) => [Number(k), v])
+          ),
+          confidence:          {},
+          cornersAutoDetected: json.cornersAutoDetected ?? true,
+          corners:             json.corners,
+          warpedDataUrl:       json.warpedDataUrl,
+          debugDataUrl:        json.debugDataUrl,
+        };
+      } else {
+        result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+      }
+
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
+      setWarpedImageUrl(result.warpedDataUrl);
       setDebugImageUrl(result.debugDataUrl);
       setStep('review');
     } catch (err: unknown) {
@@ -458,9 +487,6 @@ export default function ScanPapersPage() {
 
   return (
     <div className="space-y-4">
-      {/* Load OpenCV.js from public folder — sets window.cv when WASM is ready */}
-      <Script src="/opencv.js" strategy="lazyOnload" />
-
       <div className="space-y-3">
         <div>
           <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
@@ -645,6 +671,8 @@ export default function ScanPapersPage() {
                                       setCapturedFile(null);
                                       setPreviewUrl(null);
                                       setDetectedAnswers({});
+                                      setDebugImageUrl(null);
+                                      setWarpedImageUrl(null);
                                       setProcessingError(null);
                                       setStep('capture');
                                     }}
@@ -705,6 +733,8 @@ export default function ScanPapersPage() {
                                       setCapturedFile(null);
                                       setPreviewUrl(null);
                                       setDetectedAnswers({});
+                                      setDebugImageUrl(null);
+                                      setWarpedImageUrl(null);
                                       setProcessingError(null);
                                       setStep('capture');
                                     }}
@@ -871,6 +901,15 @@ export default function ScanPapersPage() {
               </p>
             </div>
 
+            {warpedImageUrl && (
+              <details className="rounded-xl border border-gray-200">
+                <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
+                  Debug: Perspective-Corrected Image (verify alignment)
+                </summary>
+                <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-b-xl" />
+              </details>
+            )}
+
             {debugImageUrl && (
               <details className="rounded-xl border border-gray-200">
                 <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
@@ -901,9 +940,8 @@ export default function ScanPapersPage() {
 
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {[1, 2].map(col => {
-                const half = Math.ceil(totalItems / 2);
-                const start = col === 1 ? 1 : half + 1;
-                const end = col === 1 ? half : totalItems;
+                const start = col === 1 ? 1 : 21;
+                const end = col === 1 ? Math.min(20, totalItems) : totalItems;
                 if (start > totalItems) return null;
                 return (
                   <div key={col} className="space-y-0.5">
