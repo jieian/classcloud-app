@@ -424,17 +424,12 @@ export async function processAnswerSheet(
     return { answers, confidence, cornersAutoDetected: autoDetected, corners, debugDataUrl };
   }
 
-  // Try all 8 orientations, keep the best-scoring one
+  // Try 2 most likely orientations (portrait + 180° flip).
+  // Full 8-way search is rarely needed and multiplies processing time by 8.
   const [tl, tr, bl, br] = corners;
   const candidates: CornerSet[] = [
     [tl, tr, bl, br],
     [br, bl, tr, tl],
-    [tr, br, tl, bl],
-    [bl, tl, br, tr],
-    [tr, tl, br, bl],
-    [bl, br, tl, tr],
-    [tl, bl, tr, br],
-    [br, tr, bl, tl],
   ];
 
   let best: {

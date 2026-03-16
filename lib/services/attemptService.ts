@@ -20,7 +20,8 @@ function isMissingResourceError(message: string): boolean {
     m.includes('could not find the table') ||
     m.includes('does not exist') ||
     m.includes('schema cache') ||
-    m.includes('could not find the column')
+    m.includes('could not find the column') ||
+    m.includes('column') // catches "column scores.exam_id does not exist"
   );
 }
 
