@@ -1,110 +1,128 @@
-/**
- * attemptService.ts
- * CRUD operations for the public.scores table.
- */
-
 import { supabase } from '@/lib/exam-supabase';
-import type { ExamScore } from '@/lib/exam-supabase';
+import type { ExamAttempt } from '@/lib/exam-supabase';
 
-export type CreateScorePayload = {
-  enrollment_id: number;
-  exam_assignment_id: number;
+export type CreateAttemptPayload = {
+  exam_id: number;
+  student_lrn?: string | null;
+  student_name?: string | null;
+  enrollment_id?: number | null;
+  section_id?: number | null;
   responses: { [item: number]: string };
-  calculated_score: number;
+  score: number;
+  total_items: number;
 };
 
-/** Insert a new score row and return it. */
-export async function createAttempt(payload: CreateScorePayload): Promise<ExamScore | null> {
-  const response = await fetch("/api/exams/scores/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+const ATTEMPT_TABLES = ['exam_attempts', 'scores'] as const;
 
-  if (!response.ok) {
-    let message = "Failed to create score attempt";
-    try {
-      const json = (await response.json()) as { error?: string };
-      if (json.error) message = json.error;
-    } catch {
-      // Keep fallback message when response is not JSON.
+function isMissingResourceError(message: string): boolean {
+  const m = message.toLowerCase();
+  return (
+    m.includes('could not find the table') ||
+    m.includes('does not exist') ||
+    m.includes('schema cache') ||
+    m.includes('could not find the column')
+  );
+}
+
+function normalizeAttemptRow(row: Record<string, unknown>, examIdFallback: number): ExamAttempt {
+  return {
+    attempt_id: Number(row.attempt_id ?? row.score_id ?? row.id ?? 0),
+    exam_id: Number(row.exam_id ?? examIdFallback),
+    student_lrn: (row.student_lrn ?? row.lrn ?? null) as string | null,
+    student_name: (row.student_name ?? row.full_name ?? null) as string | null,
+    enrollment_id: (row.enrollment_id ?? null) as number | null,
+    section_id: (row.section_id ?? null) as number | null,
+    responses: ((row.responses ?? row.answers ?? {}) as { [item: number]: string }) ?? {},
+    score: Number(row.score ?? 0),
+    total_items: Number(row.total_items ?? 0),
+    scanned_at: (row.scanned_at ?? row.created_at ?? new Date(0).toISOString()) as string,
+  };
+}
+
+function sortAttemptsNewestFirst(attempts: ExamAttempt[]): ExamAttempt[] {
+  return attempts.sort((a, b) => {
+    const ta = new Date(a.scanned_at).getTime();
+    const tb = new Date(b.scanned_at).getTime();
+    return tb - ta;
+  });
+}
+
+/** Insert a new attempt and return it. */
+export async function createAttempt(payload: CreateAttemptPayload): Promise<ExamAttempt | null> {
+  let lastError: string | null = null;
+
+  for (const table of ATTEMPT_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .insert(payload)
+      .select()
+      .single();
+
+    if (!error && data) {
+      return normalizeAttemptRow(data as Record<string, unknown>, payload.exam_id);
     }
-    console.error("[attemptService] createAttempt error:", message);
-    return null;
+
+    if (!error) continue;
+    lastError = error.message;
+    if (!isMissingResourceError(error.message)) {
+      console.error(`[attemptService] createAttempt error (${table}):`, error.message);
+      return null;
+    }
   }
 
-  const json = (await response.json()) as { score: ExamScore };
-  return json.score;
+  if (lastError) {
+    console.error('[attemptService] createAttempt error:', lastError);
+  }
+  return null;
 }
 
-/** Fetch all scores for an exam (via exam_assignments), newest first. */
-export async function fetchAttemptsForExam(examId: number): Promise<ExamScore[]> {
-  // First resolve all exam_assignment_ids for this exam
-  const { data: assignments, error: assignErr } = await supabase
-    .from('exam_assignments')
-    .select('id')
-    .eq('exam_id', examId);
+/** Fetch all attempts for an exam, newest first. */
+export async function fetchAttemptsForExam(examId: number): Promise<ExamAttempt[]> {
+  let lastError: string | null = null;
 
-  if (assignErr) {
-    console.error('[attemptService] fetchAttemptsForExam assignments error:', assignErr.message);
-    return [];
+  for (const table of ATTEMPT_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('exam_id', examId);
+
+    if (!error) {
+      const attempts = ((data ?? []) as Record<string, unknown>[])
+        .map((row) => normalizeAttemptRow(row, examId));
+      return sortAttemptsNewestFirst(attempts);
+    }
+
+    lastError = error.message;
+    if (!isMissingResourceError(error.message)) {
+      console.error(`[attemptService] fetchAttemptsForExam error (${table}):`, error.message);
+      return [];
+    }
   }
 
-  const assignmentIds = (assignments ?? []).map((a: { id: number }) => a.id);
-  if (assignmentIds.length === 0) return [];
-
-  const { data, error } = await supabase
-    .from('scores')
-    .select('score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at, enrollments(students(full_name))')
-    .in('exam_assignment_id', assignmentIds)
-    .order('graded_at', { ascending: false });
-
-  if (error) {
-    console.error('[attemptService] fetchAttemptsForExam error:', error.message);
-    return [];
+  if (lastError) {
+    console.error('[attemptService] fetchAttemptsForExam error:', lastError);
   }
-  return ((data ?? []) as unknown[]).map((row: unknown) => {
-    const r = row as Record<string, unknown>;
-    const enrollment = r.enrollments as Record<string, unknown> | null;
-    const student = enrollment?.students as Record<string, unknown> | null;
-    return {
-      score_id: r.score_id,
-      enrollment_id: r.enrollment_id,
-      exam_assignment_id: r.exam_assignment_id,
-      responses: r.responses,
-      calculated_score: r.calculated_score,
-      graded_at: r.graded_at,
-      student_name: (student?.full_name as string) ?? null,
-    } as ExamScore;
-  });
+  return [];
 }
 
-/**
- * Given a map of { assignmentId → examId }, returns the set of examIds
- * that have at least one score row. Used to enable/disable "Review Papers".
- */
-export async function fetchExamIdsWithScores(
-  assignmentIdToExamId: Map<number, number>
-): Promise<Set<number>> {
-  const assignmentIds = [...assignmentIdToExamId.keys()];
-  if (assignmentIds.length === 0) return new Set();
+/** Delete a single attempt by ID. */
+export async function deleteAttempt(attemptId: number): Promise<boolean> {
+  for (const table of ATTEMPT_TABLES) {
+    const idColumns = ['attempt_id', 'score_id', 'id'];
+    for (const idCol of idColumns) {
+      const { error } = await supabase
+        .from(table)
+        .delete()
+        .eq(idCol, attemptId);
 
-  const { data, error } = await supabase
-    .from('scores')
-    .select('exam_assignment_id')
-    .in('exam_assignment_id', assignmentIds);
-
-  if (error) {
-    console.error('[attemptService] fetchExamIdsWithScores error:', error.message);
-    return new Set();
+      if (!error) return true;
+      if (!isMissingResourceError(error.message)) {
+        console.error(`[attemptService] deleteAttempt error (${table}.${idCol}):`, error.message);
+        return false;
+      }
+    }
   }
-
-  const result = new Set<number>();
-  for (const row of (data ?? []) as { exam_assignment_id: number }[]) {
-    const examId = assignmentIdToExamId.get(row.exam_assignment_id);
-    if (examId !== undefined) result.add(examId);
-  }
-  return result;
+  return false;
 }
 
 /**

@@ -5,8 +5,7 @@ Layout constants must stay in sync with omrLayout.ts.
 """
 
 import base64
-import io
-from itertools import permutations
+import math
 
 import cv2
 import numpy as np
@@ -39,21 +38,22 @@ CM_TR_C = (CM_TR[0] + CM_SIZE / 2, CM_TR[1] + CM_SIZE / 2)
 CM_BL_C = (CM_BL[0] + CM_SIZE / 2, CM_BL[1] + CM_SIZE / 2)
 CM_BR_C = (CM_BR[0] + CM_SIZE / 2, CM_BR[1] + CM_SIZE / 2)
 
-BUBBLE_R        = 8
-ROW_H           = 22
-CHOICE_SPACING  = 25
+BUBBLE_R        = 5.5
+ROW_H           = 17
+CHOICE_SPACING  = 22
 GRID_START_Y    = 195
-ITEMS_PER_COL   = 20
 COL1_FIRST_BUBBLE_X = 82
 COL2_FIRST_BUBBLE_X = 345
 
-WARP_SCALE  = 2
+WARP_SCALE  = 1    # warp directly to PAGE_W × PAGE_H (no upscaling)
 MAX_SCAN_PX = 1500
 
 
-def bubble_center(item: int, choice_idx: int) -> tuple[float, float]:
-    col = 1 if item <= ITEMS_PER_COL else 2
-    row = (item - 1) if col == 1 else (item - ITEMS_PER_COL - 1)
+def bubble_center(item: int, choice_idx: int, total_items: int) -> tuple[float, float]:
+    """Column split = Math.ceil(total_items / 2) — must match examPdfService.ts."""
+    items_in_col1 = math.ceil(total_items / 2)
+    col = 1 if item <= items_in_col1 else 2
+    row = (item - 1) if col == 1 else (item - items_in_col1 - 1)
     first_x = COL1_FIRST_BUBBLE_X if col == 1 else COL2_FIRST_BUBBLE_X
     return (
         first_x + choice_idx * CHOICE_SPACING,
@@ -210,7 +210,7 @@ def detect_bubbles(
     for item in range(1, total_items + 1):
         gray_means = []
         for ci, ch in enumerate(choices):
-            cx_pt, cy_pt = bubble_center(item, ci)
+            cx_pt, cy_pt = bubble_center(item, ci, total_items)
             cx, cy = cx_pt * S, cy_pt * S
             r = BUBBLE_R * S
             # Take min (darkest sample) over ±2pt offsets — robust to small warp error
@@ -272,7 +272,7 @@ def build_debug_image(
 
     for item in range(1, total_items + 1):
         for ci, ch in enumerate(choices):
-            cx_pt, cy_pt = bubble_center(item, ci)
+            cx_pt, cy_pt = bubble_center(item, ci, total_items)
             cx = int(cx_pt * S)
             cy = int(cy_pt * S)
             r  = int(BUBBLE_R * S * 0.72)
