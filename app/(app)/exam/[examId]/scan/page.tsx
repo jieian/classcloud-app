@@ -107,8 +107,7 @@ export default function ScanPapersPage() {
     if (!examId) return;
     fetchExamById(Number(examId)).then(data => {
       setExam(data);
-      setExamLoading(false);
-    });
+    }).catch(console.error).finally(() => setExamLoading(false));
   }, [examId]);
 
   const ak = exam ? exam.answer_key as AnswerKeyJsonb | null : null;
