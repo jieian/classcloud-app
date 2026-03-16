@@ -923,9 +923,8 @@ export default function ScanPapersPage() {
 
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {[1, 2].map(col => {
-                const itemsInCol1 = Math.ceil(totalItems / 2);
-                const start = col === 1 ? 1 : itemsInCol1 + 1;
-                const end = col === 1 ? itemsInCol1 : totalItems;
+                const start = col === 1 ? 1 : 21;
+                const end = col === 1 ? Math.min(20, totalItems) : totalItems;
                 if (start > totalItems) return null;
                 return (
                   <div key={col} className="space-y-0.5">
