@@ -38,9 +38,9 @@ CM_TR_C = (CM_TR[0] + CM_SIZE / 2, CM_TR[1] + CM_SIZE / 2)
 CM_BL_C = (CM_BL[0] + CM_SIZE / 2, CM_BL[1] + CM_SIZE / 2)
 CM_BR_C = (CM_BR[0] + CM_SIZE / 2, CM_BR[1] + CM_SIZE / 2)
 
-BUBBLE_R        = 5.5
-ROW_H           = 17
-CHOICE_SPACING  = 22
+BUBBLE_R        = 8
+ROW_H           = 22
+CHOICE_SPACING  = 25
 GRID_START_Y    = 195
 COL1_FIRST_BUBBLE_X = 82
 COL2_FIRST_BUBBLE_X = 345
