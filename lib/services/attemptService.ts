@@ -100,7 +100,7 @@ export async function fetchAttemptsForExam(examId: number): Promise<ExamAttempt[
     }
   }
 
-  if (lastError) {
+  if (lastError && !isMissingResourceError(lastError)) {
     console.error('[attemptService] fetchAttemptsForExam error:', lastError);
   }
   return [];
