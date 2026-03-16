@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import Script from 'next/script';
 import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
@@ -457,6 +458,7 @@ export default function ScanPapersPage() {
 
   return (
     <div className="space-y-4">
+      <Script src="/opencv.js" strategy="afterInteractive" />
       <div className="space-y-3">
         <div>
           <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
