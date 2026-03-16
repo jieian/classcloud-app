@@ -126,6 +126,40 @@ export async function deleteAttempt(attemptId: number): Promise<boolean> {
 }
 
 /**
+ * Given a map of assignmentId → examId, returns the Set of examIds
+ * that have at least one saved attempt/score.
+ */
+export async function fetchExamIdsWithScores(
+  assignmentIdToExamId: Map<number, number>
+): Promise<Set<number>> {
+  const examIds = Array.from(new Set(assignmentIdToExamId.values()));
+  if (examIds.length === 0) return new Set();
+
+  const result = new Set<number>();
+
+  for (const table of ATTEMPT_TABLES) {
+    const { data, error } = await supabase
+      .from(table)
+      .select('exam_id')
+      .in('exam_id', examIds);
+
+    if (!error && data) {
+      for (const row of data as { exam_id: number }[]) {
+        result.add(row.exam_id);
+      }
+      return result;
+    }
+
+    if (error && !isMissingResourceError(error.message)) {
+      console.error(`[attemptService] fetchExamIdsWithScores error (${table}):`, error.message);
+      return result;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Scores a response set against the stored answer key.
  * Returns the number of correct answers.
  */
