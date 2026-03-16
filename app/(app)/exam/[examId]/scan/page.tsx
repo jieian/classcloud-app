@@ -8,7 +8,6 @@ import {
   IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
   IconDownload,
 } from '@tabler/icons-react';
-import { processAnswerSheet } from '@/lib/services/omrService'; // fallback only
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/app/(app)/school/classes/_lib/classService';
@@ -286,10 +285,6 @@ export default function ScanPapersPage() {
     setStep('processing');
     setProcessingError(null);
     try {
-      let result: Awaited<ReturnType<typeof processAnswerSheet>>;
-
-      // Use the server-side Python OMR service when available (more accurate).
-      // Falls back to the browser JS engine if the env var is not set.
       if (true) {
         const form = new FormData();
         form.append('file', capturedFile);
@@ -300,25 +295,21 @@ export default function ScanPapersPage() {
         const json = await res.json();
         if (!res.ok) throw new Error(json.error ?? 'OMR service error');
 
-        result = {
-          answers: Object.fromEntries(
-            Object.entries(json.answers as Record<string, string | null>)
-              .map(([k, v]) => [Number(k), v])
-          ),
-          confidence:          {},
-          cornersAutoDetected: json.cornersAutoDetected ?? true,
-          corners:             json.corners,
-          warpedDataUrl:       json.warpedDataUrl,
-          debugDataUrl:        json.debugDataUrl,
-        };
+        const answers: DetectedAnswers = Object.fromEntries(
+          Object.entries(json.answers as Record<string, string | null>)
+            .map(([k, v]) => [Number(k), v])
+        );
+        setDetectedAnswers(answers);
+        setCornersOk(json.cornersAutoDetected ?? true);
+        setWarpedImageUrl(json.warpedDataUrl ?? null);
+        setDebugImageUrl(json.debugDataUrl ?? null);
       } else {
-        result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+        const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+        setDetectedAnswers(result.answers);
+        setCornersOk(result.cornersAutoDetected);
+        setDebugImageUrl(result.debugDataUrl);
       }
 
-      setDetectedAnswers(result.answers);
-      setCornersOk(result.cornersAutoDetected);
-      setWarpedImageUrl(result.warpedDataUrl);
-      setDebugImageUrl(result.debugDataUrl);
       setStep('review');
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
