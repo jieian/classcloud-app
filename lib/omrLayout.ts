@@ -44,10 +44,10 @@ export const OMR = {
   HEADER_END_Y: 175,  // y-coordinate where the header area ends
 
   // ─── Bubble Grid ──────────────────────────────────────────────────────────
-  BUBBLE_R:       5.5,  // bubble circle radius in pt
-  FILL_THRESHOLD: 0.55, // ratio of dark pixels to consider a bubble filled — accepts light pencil shading while rejecting X marks
-  ROW_H:          17,   // vertical distance between bubble row centers
-  CHOICE_SPACING: 22,   // horizontal distance between choice bubble centers
+  BUBBLE_R:       8,    // bubble circle radius in pt (larger = easier to fill, more robust to scan)
+  FILL_THRESHOLD: 0.55,
+  ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
+  CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
   GRID_START_Y:   195,  // y-center of the first row of bubbles
   ITEMS_PER_COL:  20,   // maximum items per column
 
