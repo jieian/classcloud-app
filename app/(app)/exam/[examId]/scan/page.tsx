@@ -285,31 +285,23 @@ export default function ScanPapersPage() {
     setStep('processing');
     setProcessingError(null);
     try {
-      if (true) {
-        const form = new FormData();
-        form.append('file', capturedFile);
-        form.append('total_items', String(totalItems));
-        form.append('num_choices', String(numChoices));
+      const form = new FormData();
+      form.append('file', capturedFile);
+      form.append('total_items', String(totalItems));
+      form.append('num_choices', String(numChoices));
 
-        const res = await fetch('/api/scan', { method: 'POST', body: form });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error ?? 'OMR service error');
+      const res = await fetch('/api/scan', { method: 'POST', body: form });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'OMR service error');
 
-        const answers: DetectedAnswers = Object.fromEntries(
-          Object.entries(json.answers as Record<string, string | null>)
-            .map(([k, v]) => [Number(k), v])
-        );
-        setDetectedAnswers(answers);
-        setCornersOk(json.cornersAutoDetected ?? true);
-        setWarpedImageUrl(json.warpedDataUrl ?? null);
-        setDebugImageUrl(json.debugDataUrl ?? null);
-      } else {
-        const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
-        setDetectedAnswers(result.answers);
-        setCornersOk(result.cornersAutoDetected);
-        setDebugImageUrl(result.debugDataUrl);
-      }
-
+      const answers: DetectedAnswers = Object.fromEntries(
+        Object.entries(json.answers as Record<string, string | null>)
+          .map(([k, v]) => [Number(k), v])
+      );
+      setDetectedAnswers(answers);
+      setCornersOk(json.cornersAutoDetected ?? true);
+      setWarpedImageUrl(json.warpedDataUrl ?? null);
+      setDebugImageUrl(json.debugDataUrl ?? null);
       setStep('review');
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
