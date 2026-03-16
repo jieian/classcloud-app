@@ -86,8 +86,8 @@ def detect_corners(gray: np.ndarray) -> list[tuple[int, int]] | None:
     DARK = 80
     DENSITY_MIN = 0.55
 
-    dark = (gray < DARK).view(np.uint8)
-    integral = cv2.integral(dark.astype(np.int32))
+    dark = (gray < DARK).astype(np.uint8)
+    integral = cv2.integral(dark)
 
     def dark_density(x1, y1, x2, y2) -> float:
         x1, y1 = max(0, x1), max(0, y1)
