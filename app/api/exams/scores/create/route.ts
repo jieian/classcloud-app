@@ -52,6 +52,33 @@ export async function POST(request: Request) {
 
   if (error) {
     console.error("[api/exams/scores/create] rpc create_score error:", error.message);
+
+    const uniqueViolation =
+      String(error.code).toLowerCase() === "23505" ||
+      String(error.message).toLowerCase().includes("unique") ||
+      String(error.message).toLowerCase().includes("duplicate");
+
+    if (uniqueViolation) {
+      const { data: updated, error: updateError } = await adminClient
+        .from("scores")
+        .update({
+          responses,
+          calculated_score: calculatedScore,
+          graded_at: gradedAt,
+        })
+        .eq("enrollment_id", enrollmentId)
+        .eq("exam_assignment_id", examAssignmentId)
+        .select("score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at")
+        .single();
+
+      if (updateError) {
+        console.error("[api/exams/scores/create] update fallback error:", updateError.message);
+        return Response.json({ error: updateError.message }, { status: 500 });
+      }
+
+      return Response.json({ score: updated }, { status: 201 });
+    }
+
     return Response.json({ error: error.message }, { status: 500 });
   }
 

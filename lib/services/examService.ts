@@ -26,6 +26,8 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
       *,
       subjects ( name, code ),
       quarters ( name ),
+      answer_key,
+      objectives,
       exam_assignments (
         id,
         sections (
@@ -83,7 +85,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
 export async function createExamWithAssignments(
   payload: CreateExamPayload,
   sectionIds: number[]
-): Promise<number | null> {
+): Promise<{ exam_id: number } | null> {
   const res = await fetch('/api/exams/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -91,13 +93,13 @@ export async function createExamWithAssignments(
   });
 
   if (!res.ok) {
-    const { error } = await res.json();
-    console.error('[examService] createExamWithAssignments error:', error);
-    return null;
+    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
+    console.error('[examService] createExamWithAssignments error:', payload?.error);
+    throw new Error(payload?.error ?? 'Failed to create exam');
   }
 
-  const { exam_id } = await res.json();
-  return exam_id ?? null;
+  const data = await res.json();
+  return data ?? null;
 }
 
 

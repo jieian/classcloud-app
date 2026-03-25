@@ -33,10 +33,7 @@ export async function GET() {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  const isPartialAccess =
-    permissions.includes("students.limited_access") &&
-    !permissions.includes("classes.full_access") &&
-    !permissions.includes("students.full_access");
+  const isPartialAccess = !permissions.includes("classes.full_access");
 
   // Wave 1: school years + grade levels in parallel
   const [

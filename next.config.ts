@@ -10,8 +10,8 @@ const nextConfig: NextConfig = {
       static: 30,
     },
   },
-  // OpenCV.js is served from /public/opencv.js and loaded via <Script> at
-  // runtime — no bundler involvement needed.
+  // opencv.js is served from /public/opencv.js and injected at runtime via
+  // a dynamic <script> tag in omrService.ts — never bundled by webpack/turbopack.
   turbopack: {},
 };
 

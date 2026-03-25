@@ -18,7 +18,7 @@ import { processAnswerSheet } from '@/lib/services/omrService';
 import { createAttempt, fetchAttemptsForExam, scoreResponses } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { supabase } from '@/lib/exam-supabase';
-import type { ExamWithRelations, AnswerKeyJsonb, ExamAttempt } from '@/lib/exam-supabase';
+import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
 
 type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
 type DetectedAnswers = { [item: number]: string | null };
@@ -82,7 +82,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   const [startingCamera, setStartingCamera] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [students, setStudents] = useState<StudentRow[]>([]);
-  const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
+  const [attempts, setAttempts] = useState<ExamScore[]>([]);
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [selectedStudentUid, setSelectedStudentUid] = useState<string | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
@@ -114,7 +114,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   );
 
   const latestAttemptByName = useMemo(() => {
-    const map = new Map<string, ExamAttempt>();
+    const map = new Map<string, ExamScore>();
     for (const attempt of attempts) {
       const key = (attempt.student_name ?? '').trim().toLowerCase();
       if (!key || map.has(key)) continue;
@@ -124,7 +124,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   }, [attempts]);
 
   const latestAttemptByEnrollment = useMemo(() => {
-    const map = new Map<number, ExamAttempt>();
+    const map = new Map<number, ExamScore>();
     for (const attempt of attempts) {
       if (!attempt.enrollment_id || map.has(attempt.enrollment_id)) continue;
       map.set(attempt.enrollment_id, attempt);
@@ -205,7 +205,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
     }
 
     return rows
-      .map((row, index) => {
+      .map<StudentRow | null>((row, index) => {
         const normalized = normalizeJoinedStudent(row);
         if (!normalized.fullName) return null;
         return {
@@ -214,7 +214,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
           studentLrn: normalized.lrn,
           enrollmentId: row.enrollment_id ?? null,
           sectionId: row.section_id ?? sectionId,
-        } satisfies StudentRow;
+        } as StudentRow;
       })
       .filter((row): row is StudentRow => row !== null);
   }, []);
@@ -551,7 +551,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                         return (
                           <tr key={student.uid} className="border-b border-gray-100 last:border-b-0">
                             <td className="py-3 px-4 font-medium text-gray-800">{student.fullName}</td>
-                            <td className="py-3 px-4 text-gray-700">{attempt ? `${attempt.score}/${attempt.total_items}` : '-'}</td>
+                            <td className="py-3 px-4 text-gray-700">{attempt ? `${attempt.calculated_score}/${totalItems}` : '-'}</td>
                             <td className="py-3 px-4">
                               <button
                                 type="button"

@@ -16,7 +16,8 @@ import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
 import BackButton from '@/components/BackButton';
 import { SearchBar } from '@/components/searchBar/SearchBar';
-import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
+import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
+import { resolveExamParams } from '@/lib/exam-supabase';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -72,7 +73,7 @@ const STEP_ORDER = ['students', 'capture', 'review', 'submit'] as const;
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
-  const { permissions, loading: authLoading } = useAuth();
+  const { permissions } = useAuth();
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
   const [examLoading, setExamLoading] = useState(true);
@@ -83,6 +84,7 @@ export default function ScanPapersPage() {
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
@@ -110,11 +112,9 @@ export default function ScanPapersPage() {
     }).catch(console.error).finally(() => setExamLoading(false));
   }, [examId]);
 
-  const ak = exam ? exam.answer_key as AnswerKeyJsonb | null : null;
-  const totalItems = ak?.total_questions ?? exam?.total_items ?? 30;
-  const numChoices = ak?.num_choices ?? 4;
+  const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = CHOICES.slice(0, numChoices);
-  const answerKey: { [item: number]: string | null } = ak?.answers ?? {};
+  const answerKey: { [item: number]: string | null } = exam?.answer_key?.answers ?? {};
 
   // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -235,6 +235,18 @@ export default function ScanPapersPage() {
   const scannedStudentsCount = rosterStudents.filter((s) => getStudentAttempt(s) != null).length;
 
   // â"€â"€ Camera capture â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Scan student: preload OpenCV + transition to capture step ────────────
+  const handleScanStudent = useCallback((student: RosterStudent) => {
+    setSelectedStudent(student);
+    setCapturedFile(null);
+    setPreviewUrl(null);
+    setDetectedAnswers({});
+    setDebugImageUrl(null);
+    setWarpedImageUrl(null);
+    setProcessingError(null);
+    setStep('capture');
+  }, []);
+
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
@@ -284,8 +296,13 @@ export default function ScanPapersPage() {
     if (!capturedFile) return;
     setStep('processing');
     setProcessingError(null);
+    setProcessingStatus('');
     try {
-      const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+      const result = await processAnswerSheet(
+        capturedFile, totalItems, numChoices,
+        undefined,
+        setProcessingStatus,
+      );
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
       setDebugImageUrl(result.debugDataUrl);
@@ -317,7 +334,8 @@ export default function ScanPapersPage() {
   const scoreMpl = getMpl(score, totalItems);
   const canAccessExams =
     permissions.includes("exams.full_access") ||
-    permissions.includes("exams.limited_access");
+    permissions.includes("exams.limited_access") ||
+    permissions.includes("access_examinations");
 
   // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
@@ -636,16 +654,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center">
                                   <button
-                                    onClick={() => {
-                                      setSelectedStudent(student);
-                                      setCapturedFile(null);
-                                      setPreviewUrl(null);
-                                      setDetectedAnswers({});
-                                      setDebugImageUrl(null);
-                                      setWarpedImageUrl(null);
-                                      setProcessingError(null);
-                                      setStep('capture');
-                                    }}
+                                    onClick={() => handleScanStudent(student)}
                                     className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                                       hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
                                     }`}
@@ -698,16 +707,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center">
                                   <button
-                                    onClick={() => {
-                                      setSelectedStudent(student);
-                                      setCapturedFile(null);
-                                      setPreviewUrl(null);
-                                      setDetectedAnswers({});
-                                      setDebugImageUrl(null);
-                                      setWarpedImageUrl(null);
-                                      setProcessingError(null);
-                                      setStep('capture');
-                                    }}
+                                    onClick={() => handleScanStudent(student)}
                                     className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                                       hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
                                     }`}
@@ -829,21 +829,12 @@ export default function ScanPapersPage() {
 
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'processing' && (
-          <div className="py-10 space-y-4">
-            <div className="flex justify-center">
-              <Skeleton height={20} width={220} radius="md" />
-            </div>
-            <div className="flex justify-center">
-              <Skeleton height={14} width={360} radius="md" />
-            </div>
-            <Paper withBorder radius="md" p="md">
-              <Skeleton height={180} radius="md" mb="md" />
-              <Group grow>
-                <Skeleton height={10} radius="md" />
-                <Skeleton height={10} radius="md" />
-                <Skeleton height={10} radius="md" />
-              </Group>
-            </Paper>
+          <div className="py-12 flex flex-col items-center gap-5">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700">
+              {processingStatus || 'Processing…'}
+            </p>
+            <p className="text-xs text-gray-400">This may take a few seconds</p>
           </div>
         )}
 
@@ -881,12 +872,14 @@ export default function ScanPapersPage() {
             )}
 
             {debugImageUrl && (
-              <details className="rounded-xl border border-gray-200">
-                <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
-                  Debug: Bubble Detection Map (green=detected, red=not)
-                </summary>
-                <img src={debugImageUrl} alt="OMR debug" className="w-full rounded-b-xl" />
-              </details>
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <p className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border-b border-gray-200">
+                  Bubble Detection Map — <span className="text-green-600">green = detected</span>, <span className="text-red-500">red = not selected</span>. Verify circles align with bubbles.
+                </p>
+                <div className="overflow-auto bg-gray-100 flex items-start justify-center p-2" style={{ maxHeight: '640px' }}>
+                  <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain" />
+                </div>
+              </div>
             )}
 
             <div className="grid grid-cols-3 gap-3 text-center">
@@ -910,8 +903,9 @@ export default function ScanPapersPage() {
 
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {[1, 2].map(col => {
-                const start = col === 1 ? 1 : 21;
-                const end = col === 1 ? Math.min(20, totalItems) : totalItems;
+                const itemsInCol1 = Math.ceil(totalItems / 2);
+                const start = col === 1 ? 1 : itemsInCol1 + 1;
+                const end = col === 1 ? itemsInCol1 : totalItems;
                 if (start > totalItems) return null;
                 return (
                   <div key={col} className="space-y-0.5">

@@ -7,7 +7,7 @@
  *  2. omrService.ts      — to FIND elements when detecting answers in a scan
  *
  * All units are PDF points (pt), where 72pt = 1 inch.
- * A4 page = 595 × 842 pt.
+ * Letter page = 612 × 792 pt.
  *
  * After perspective correction, the scanned image is mapped to exactly
  * PAGE_W × PAGE_H pixels, so 1px == 1pt. This makes sampling trivial.
@@ -15,8 +15,8 @@
 
 export const OMR = {
   // ─── Page ─────────────────────────────────────────────────────────────────
-  PAGE_W: 595,
-  PAGE_H: 842,
+  PAGE_W: 612,
+  PAGE_H: 792,
 
   // ─── Corner Markers ────────────────────────────────────────────────────────
   // Solid black squares used for perspective detection.
@@ -25,9 +25,9 @@ export const OMR = {
   // Inset markers from paper edges so phone/webcam wide shots can include all corners more easily.
   CM_SIZE: 24,   // square side length in pt
   CM_TL: { x: 40,  y: 40  },   // top-left marker
-  CM_TR: { x: 531, y: 40  },   // top-right marker
-  CM_BL: { x: 40,  y: 778 },   // bottom-left marker
-  CM_BR: { x: 531, y: 778 },   // bottom-right marker (L-shaped notch for orientation)
+  CM_TR: { x: 548, y: 40  },   // top-right marker  (612 - 40 - 24)
+  CM_BL: { x: 40,  y: 753 },   // bottom-left marker (792 - 15 - 24 = 753; 15pt bottom margin keeps clearance from last bubble row)
+  CM_BR: { x: 548, y: 753 },   // bottom-right marker
 
   // Computed: center of each corner marker
   get CM_TL_C() { return { x: this.CM_TL.x + this.CM_SIZE / 2, y: this.CM_TL.y + this.CM_SIZE / 2 }; },
@@ -44,8 +44,9 @@ export const OMR = {
   HEADER_END_Y: 175,  // y-coordinate where the header area ends
 
   // ─── Bubble Grid ──────────────────────────────────────────────────────────
-  BUBBLE_R:       8,    // bubble circle radius in pt (larger = easier to fill, more robust to scan)
-  FILL_THRESHOLD: 0.55,
+  BUBBLE_R:       6,    // bubble circle radius in pt
+  FILL_THRESHOLD: 0.09, // fraction difference from local background to detect fill (calibrated)
+  FILL_DELTA:     0.05, // second-best gap required to avoid ambiguous multi-fill
   ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
   CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
   GRID_START_Y:   195,  // y-center of the first row of bubbles

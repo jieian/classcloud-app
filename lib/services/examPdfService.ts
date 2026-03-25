@@ -12,7 +12,8 @@
 
 import jsPDF from 'jspdf';
 import { OMR } from '@/lib/omrLayout';
-import type { ExamWithRelations, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import type { ExamWithRelations } from '@/lib/exam-supabase';
+import { resolveExamParams } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,11 +38,9 @@ async function generateQrDataUrl(text: string, sizePx: number): Promise<string> 
 
 export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<jsPDF> {
   const { exam, sectionName } = opts;
-  const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait' });
+  const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
 
-  const ak = exam.answer_key as AnswerKeyJsonb | null;
-  const totalItems = ak?.total_questions ?? exam.total_items ?? 40;
-  const numChoices = ak?.num_choices ?? 4;
+  const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
 
   // ── Corner Markers ────────────────────────────────────────────────────────

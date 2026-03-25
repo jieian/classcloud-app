@@ -82,22 +82,57 @@ export default function ExamPageClient() {
 
   /** Exam ID to highlight after creation flow completes */
   const [newlyCreatedExamId, setNewlyCreatedExamId] = useState<number | null>(null);
+  const [highlightExpiring, setHighlightExpiring] = useState(false);
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
 
-  // Handle ?newExamId= highlight
+  // Handle ?newExamId= highlight — persists for 5 minutes via localStorage
   useEffect(() => {
+    const HIGHLIGHT_MS = 5 * 60 * 1000; // 5 minutes
+    const FADE_BEFORE_MS = 10 * 1000;   // start fading 10 s before expiry
+    const STORAGE_KEY = "examHighlight";
+
+    // If a new exam was just created, record it with an expiry timestamp
     const newId = searchParams.get("newExamId");
     if (newId) {
       const examId = Number(newId);
       if (!isNaN(examId)) {
-        setNewlyCreatedExamId(examId);
-        setTimeout(() => setNewlyCreatedExamId(null), 4000);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ examId, expiresAt: Date.now() + HIGHLIGHT_MS }));
       }
       const url = new URL(window.location.href);
       url.searchParams.delete("newExamId");
       window.history.replaceState({}, "", url.toString());
+    }
+
+    // Restore highlight from storage (covers page reload / navigation back)
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const { examId, expiresAt } = JSON.parse(raw) as { examId: number; expiresAt: number };
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) { localStorage.removeItem(STORAGE_KEY); return; }
+
+      setNewlyCreatedExamId(examId);
+      setHighlightExpiring(remaining <= FADE_BEFORE_MS);
+
+      // Start fade when 10 s remain
+      const fadeDelay = remaining - FADE_BEFORE_MS;
+      const fadeTimer = fadeDelay > 0 ? setTimeout(() => setHighlightExpiring(true), fadeDelay) : null;
+
+      // Clear highlight when fully expired
+      const clearTimer = setTimeout(() => {
+        setNewlyCreatedExamId(null);
+        setHighlightExpiring(false);
+        localStorage.removeItem(STORAGE_KEY);
+      }, remaining);
+
+      return () => {
+        if (fadeTimer) clearTimeout(fadeTimer);
+        clearTimeout(clearTimer);
+      };
+    } catch {
+      localStorage.removeItem(STORAGE_KEY);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -107,6 +142,7 @@ export default function ExamPageClient() {
   // Allowed section/subject IDs for teachers with partial access (null = no filter)
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+  const [assignedSectionSubjectPairs, setAssignedSectionSubjectPairs] = useState<Set<string>>(new Set());
 
   // Exam IDs that have at least one scanned/saved score
   const [examIdsWithScores, setExamIdsWithScores] = useState<Set<number>>(new Set());
@@ -138,14 +174,16 @@ export default function ExamPageClient() {
   useEffect(() => {
     if (authLoading) return;
     fetchExams();
-    if (!hasFullAccess && user?.id) {
+    if (user?.id) {
       fetchTeacherClassAssignments(user.id).then((assignments) => {
         setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
         setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+        setAssignedSectionSubjectPairs(new Set(assignments.map((a) => `${a.section_id}-${a.subject_id}`)));
       });
     } else {
       setAllowedSectionIds(null);
       setAllowedSubjectIds(null);
+      setAssignedSectionSubjectPairs(new Set());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id, hasFullAccess]);
@@ -179,7 +217,27 @@ export default function ExamPageClient() {
     return Array.from(seen)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, allowedSectionIds, selectedGradeLevel]);
+  }, [exams, selectedGradeLevel, allowedSectionIds]);
+
+  const canDeleteExam = (exam: ExamWithRelations): boolean => {
+    if (!exam.subject_id) return false;
+    if (hasFullAccess) return true;
+    // Creator can always delete their own exam (covers copies assigned to SSES/cross-type sections)
+    if (user?.id && exam.creator_teacher_id === user.id) return true;
+    if (assignedSectionSubjectPairs.size === 0) return false;
+
+    const assignmentPairs = new Set(
+      (exam.exam_assignments ?? [])
+        .map((a) => a.sections?.section_id)
+        .filter((sectionId): sectionId is number => typeof sectionId === 'number')
+        .map((sectionId) => `${sectionId}-${exam.subject_id}`),
+    );
+
+    for (const pair of assignmentPairs) {
+      if (assignedSectionSubjectPairs.has(pair)) return true;
+    }
+    return false;
+  };
 
   const subjectOptions = useMemo(() => {
     let filtered = exams;
@@ -508,9 +566,9 @@ export default function ExamPageClient() {
                             withBorder
                             onClick={() => setOpenMenuExamId(exam.exam_id)}
                             style={{
-                              transition: "box-shadow 0.4s ease, border-color 0.4s ease",
-                              boxShadow: isNew ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)" : undefined,
-                              borderColor: isNew ? "#4EAE4A" : undefined,
+                              transition: "box-shadow 8s ease, border-color 8s ease",
+                              boxShadow: isNew && !highlightExpiring ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)" : undefined,
+                              borderColor: isNew && !highlightExpiring ? "#4EAE4A" : undefined,
                               display: "flex",
                               flexDirection: "column",
                               height: "100%",
@@ -574,7 +632,10 @@ export default function ExamPageClient() {
                                     <Menu.Item leftSection={<IconEye size={14} />} disabled={!exam.answer_key || !examIdsWithScores.has(exam.exam_id)} onClick={() => { setSelectedExam(exam); setIsAnalysisModalOpen(true); }}>
                                       Review Papers
                                     </Menu.Item>
-                                    {hasFullAccess && (
+                                    <Menu.Item leftSection={<IconPlus size={14} />} onClick={() => router.push(`/exam/copy/${exam.exam_id}`)}>
+                                      Copy Exam
+                                    </Menu.Item>
+                                    {canDeleteExam(exam) && (
                                       <>
                                         <Menu.Divider />
                                         <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => handleOpenDeleteModal(exam)}>

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
-  Select, Alert, Badge, ActionIcon, NumberInput, Progress,
+  Select, MultiSelect, Alert, Badge, ActionIcon, NumberInput, Progress,
   Loader, TextInput,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
@@ -23,7 +23,7 @@ import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } 
 import { useAuth } from '@/context/AuthContext';
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-const QUESTIONS_PER_COL = 10;
+// Always 2 columns matching the PDF answer sheet layout
 
 const OBJECTIVE_PALETTE = [
   { dot: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
@@ -73,8 +73,7 @@ export default function CreateExamPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
-  const [existingTitles, setExistingTitles] = useState<string[]>([]);
-
+  const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
   const [examName, setExamName] = useState('');
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(null);
@@ -106,12 +105,13 @@ export default function CreateExamPage() {
       setGradeLevels(gl);
       setSubjects(sub);
       setAllSections(sec);
-      setExistingTitles(allExams.map((e: { title: string }) => e.title));
-
-      if (!hasFullAccess && user?.id) {
+      if (user?.id) {
         const assignments = await fetchTeacherClassAssignments(user.id);
-        setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
-        setAllowedSubjectIds(new Set(assignments.map(a => a.subject_id)));
+        setTeacherAssignments(assignments);
+        if (!hasFullAccess) {
+          setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
+          setAllowedSubjectIds(new Set(assignments.map(a => a.subject_id)));
+        }
       }
       setDataLoading(false);
     };
@@ -132,7 +132,7 @@ export default function CreateExamPage() {
   }, [selectedGradeLevelId, gradeLevels]);
 
   const choices = ALL_CHOICES.slice(0, numChoices);
-  const columns = Math.ceil(totalItems / QUESTIONS_PER_COL);
+  const itemsInCol1 = Math.ceil(totalItems / 2);
 
   // Filtered data
   const allowedGradeLevelIds = allowedSectionIds
@@ -144,18 +144,35 @@ export default function CreateExamPage() {
     .filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id));
   const selectedSectionTypes = new Set(filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.section_type).filter(Boolean));
   const activeSectionType = selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
+
+  useEffect(() => {
+    if (selectedSectionIds.length === 0) {
+      setSelectedSubjectId(null);
+      return;
+    }
+
+    if (!activeSectionType || !selectedSubjectId) return;
+    const isValid = subjects.some(s => String(s.subject_id) === selectedSubjectId && (s.section_type === null || s.section_type === activeSectionType));
+    if (!isValid) setSelectedSubjectId(null);
+  }, [activeSectionType, selectedSectionIds, selectedSubjectId, subjects]);
+
+  // When sections are selected, narrow subjects to those the teacher actually teaches in those sections.
+  // Fall back to the global allowedSubjectIds (or no restriction for full-access) when no sections are chosen yet.
+  const sectionAwareSubjectIds = selectedSectionIds.length > 0 && teacherAssignments.length > 0
+    ? new Set(teacherAssignments.filter(a => selectedSectionIds.includes(a.section_id)).map(a => a.subject_id))
+    : allowedSubjectIds;
+
   const filteredSubjects = Array.from(
     new Map(
       subjects
         .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
-        .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id))
+        .filter(s => !sectionAwareSubjectIds || sectionAwareSubjectIds.has(s.subject_id))
         .filter(s => !activeSectionType || s.section_type === null || s.section_type === activeSectionType)
         .map(s => [s.subject_id, s] as const)
     ).values()
   );
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
-  const isDuplicateName = examName.trim().length > 0 && existingTitles.some(t => t.trim().toLowerCase() === examName.trim().toLowerCase());
-  const canGoStep1 = examName.trim().length > 0 && !isDuplicateName && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
+  const canGoStep1 = examName.trim().length > 0 && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
   const toggleSection = (sectionId: number) => {
     setSelectedSectionIds(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]);
@@ -216,11 +233,12 @@ export default function CreateExamPage() {
       const today = new Date().toISOString().split('T')[0];
       const autoQuarterId = quarters.length > 0 ? quarters[0].quarter_id : null;
 
-      const examId = await createExamWithAssignments(
+      const examResult = await createExamWithAssignments(
         { title: examName.trim(), description: null, subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
         selectedSectionIds
       );
-      if (!examId) throw new Error('Failed to create exam');
+      if (!examResult) throw new Error('Failed to create exam');
+      const examId = examResult.exam_id;
 
       const validObjectives: LearningObjective[] = objectiveRows
         .filter(r => r.objective.trim() && Number(r.start_item) && Number(r.end_item))
@@ -240,8 +258,8 @@ export default function CreateExamPage() {
         color: 'teal', withBorder: true, autoClose: 2500,
       });
       router.push(`/exam?newExamId=${examId}`);
-    } catch {
-      notifications.show({ title: 'Creation Failed', message: 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
+    } catch (error) {
+      notifications.show({ title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
     } finally {
       setSaving(false);
     }
@@ -263,13 +281,15 @@ export default function CreateExamPage() {
             <Alert color="blue" icon={<IconAlertCircle size={16} />}>
               New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
             </Alert>
+            <Text size="xs" c="dimmed">
+              Complete all required fields marked with <Text span c="red">*</Text> to continue.
+            </Text>
             <TextInput
               label="Examination Name"
               placeholder="e.g., Mid-term Examination"
               required
               value={examName}
               onChange={(e) => setExamName(e.currentTarget.value)}
-              error={isDuplicateName ? 'An examination with this name already exists.' : undefined}
             />
             <Group grow>
               <Select
@@ -280,41 +300,31 @@ export default function CreateExamPage() {
                 value={selectedGradeLevelId}
                 onChange={setSelectedGradeLevelId}
               />
+              <MultiSelect
+                label="Section"
+                placeholder="Select section(s)"
+                required
+                data={filteredSections.map(s => ({ value: String(s.section_id), label: `Section ${s.name}` }))}
+                value={selectedSectionIds.map(String)}
+                onChange={(values) => setSelectedSectionIds(values.map(Number))}
+                nothingFoundMessage={selectedGradeLevelId ? 'No sections available' : 'Select a grade level first'}
+                disabled={filteredSections.length === 0}
+              />
               <Select
                 label="Subject"
-                placeholder="Select subject"
+                placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                 required
                 data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
+                disabled={selectedSectionIds.length === 0}
               />
             </Group>
             <div>
-              <Text size="sm" fw={500} mb={4}>
-                Section <Text span c="red">*</Text>{' '}
-                <Text span c="dimmed" fw={400}>(select one or more)</Text>
-              </Text>
-              <Text size="xs" c="dimmed" mb="sm">
-                A separate exam record will be created per section, but they will all <strong>share one answer key</strong>
-              </Text>
-              {filteredSections.length === 0 ? (
+              {selectedSectionIds.length === 0 && filteredSections.length === 0 && (
                 <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
                   {selectedGradeLevelId ? 'No sections found for selected grade level' : 'Select a grade level first'}
                 </Alert>
-              ) : (
-                <Group gap="xs">
-                  {filteredSections.map(section => {
-                    const isSelected = selectedSectionIds.includes(section.section_id);
-                    return (
-                      <Button key={section.section_id} variant={isSelected ? 'filled' : 'default'} size="sm"
-                        color={isSelected ? '#4EAE4A' : undefined}
-                        leftSection={isSelected ? <IconCheck size={14} /> : null}
-                        onClick={() => toggleSection(section.section_id)}>
-                        Section {section.name}
-                      </Button>
-                    );
-                  })}
-                </Group>
               )}
               {selectedSectionIds.length > 1 && (
                 <Paper p="sm" mt="sm" bg="blue.0" withBorder>
@@ -331,9 +341,6 @@ export default function CreateExamPage() {
                 <Paper p="sm" mt="sm" bg="green.0" withBorder>
                   <Text size="xs"><Text span fw={600}>1 exam</Text> will be created for Section {selectedSectionNames[0]}</Text>
                 </Paper>
-              )}
-              {selectedSectionIds.length === 0 && filteredSections.length > 0 && (
-                <Text size="xs" c="red" mt="xs">Please select at least one section</Text>
               )}
             </div>
           </Stack>
@@ -503,12 +510,15 @@ export default function CreateExamPage() {
                 <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
               </div>
             )}
-            <div className={`grid gap-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-              {Array.from({ length: columns }, (_, col) => (
+            <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
+              {[0, 1].map(col => {
+                const start = col === 0 ? 1 : itemsInCol1 + 1;
+                const count = col === 0 ? itemsInCol1 : totalItems - itemsInCol1;
+                if (start > totalItems) return null;
+                return (
                 <div key={col} className="space-y-1">
-                  {Array.from({ length: QUESTIONS_PER_COL }, (_, row) => {
-                    const qNum = col * QUESTIONS_PER_COL + row + 1;
-                    if (qNum > totalItems) return null;
+                  {Array.from({ length: count }, (_, row) => {
+                    const qNum = start + row;
                     const isUnanswered = triedToSave && !answers[qNum];
                     const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
                     const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
@@ -544,7 +554,8 @@ export default function CreateExamPage() {
                     );
                   })}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </Stack>
         </Paper>
