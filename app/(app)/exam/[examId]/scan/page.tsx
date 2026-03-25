@@ -767,12 +767,12 @@ export default function ScanPapersPage() {
               <div>
                 <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
                 {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>}
-                <div className="mt-3 flex gap-3">
-                  <button onClick={captureFromCamera} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                    <IconCamera className="w-4 h-4" /> Capture
-                  </button>
-                  <button onClick={stopCamera} className="btn-secondary">Cancel</button>
-                </div>
+                <Group mt="sm">
+                  <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
+                    Capture
+                  </Button>
+                  <Button variant="default" onClick={stopCamera}>Cancel</Button>
+                </Group>
               </div>
             )}
 
@@ -780,14 +780,14 @@ export default function ScanPapersPage() {
               <div className="space-y-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
-                <div className="flex gap-3">
-                  <button onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} className="btn-secondary flex items-center gap-2">
-                    <IconRefresh className="w-4 h-4" /> Retake
-                  </button>
-                  <button onClick={runProcessing} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                    Process Sheet <IconChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+                <Group>
+                  <Button variant="default" onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} leftSection={<IconRefresh className="w-4 h-4" />}>
+                    Retake
+                  </Button>
+                  <Button color="#4EAE4A" onClick={runProcessing} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
+                    Process Sheet
+                  </Button>
+                </Group>
               </div>
             )}
 
@@ -820,9 +820,9 @@ export default function ScanPapersPage() {
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
 
             <div className="pt-2 border-t">
-              <button onClick={() => setStep('students')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Back to Students
-              </button>
+              <Button variant="default" onClick={() => setStep('students')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Back to Students
+              </Button>
             </div>
           </div>
         )}
@@ -942,14 +942,14 @@ export default function ScanPapersPage() {
               })}
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <button onClick={() => setStep('capture')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Rescan
-              </button>
-              <button onClick={() => setStep('submit')} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                Continue <IconChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
+              <Button variant="default" onClick={() => setStep('capture')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Rescan
+              </Button>
+              <Button color="#4EAE4A" onClick={() => setStep('submit')} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
+                Continue
+              </Button>
+            </Group>
           </div>
         )}
 
@@ -1010,21 +1010,20 @@ export default function ScanPapersPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <button onClick={() => setStep('review')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Back
-              </button>
-              <button
+            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
+              <Button variant="default" onClick={() => setStep('review')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Back
+              </Button>
+              <Button
+                color="#4EAE4A"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all ${
-                  !submitting ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
+                leftSection={<IconDeviceFloppy className="w-4 h-4" />}
+                style={{ flex: 1 }}
               >
-                <IconDeviceFloppy className="w-4 h-4" />
                 {submitting ? 'Saving...' : 'Save Result'}
-              </button>
-            </div>
+              </Button>
+            </Group>
           </div>
         )}
 

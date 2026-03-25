@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
@@ -37,7 +37,18 @@ export default function CopyExamPage() {
   const hasFullAccess = permissions.includes('exams.full_access');
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  const [activeStep, setActiveStep] = useState(0);
+  // Draft persistence (keyed by examId so copying different exams doesn't mix)
+  const draftKey = `exam_copy_draft_${examId}`;
+  const draftRef = useRef<{ step: number; sectionIds: number[] } | null | undefined>(undefined);
+  if (draftRef.current === undefined) {
+    try {
+      const raw = typeof window !== 'undefined' ? sessionStorage.getItem(draftKey) : null;
+      draftRef.current = raw ? JSON.parse(raw) : null;
+    } catch { draftRef.current = null; }
+  }
+  const d = draftRef.current;
+
+  const [activeStep, setActiveStep] = useState(d?.step ?? 0);
   const [saving, setSaving] = useState(false);
 
   // Reference data
@@ -50,7 +61,13 @@ export default function CopyExamPage() {
   const [originalExam, setOriginalExam] = useState<ExamWithRelations | null>(null);
 
   // Step 0 — Select Sections
-  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>(d?.sectionIds ?? []);
+
+  // Save draft whenever step or sections change
+  useEffect(() => {
+    try { sessionStorage.setItem(draftKey, JSON.stringify({ step: activeStep, sectionIds: selectedSectionIds })); }
+    catch { /* ignore */ }
+  }, [activeStep, selectedSectionIds, draftKey]);
 
   useEffect(() => {
     const load = async () => {
@@ -315,6 +332,7 @@ export default function CopyExamPage() {
         color: 'green',
       });
 
+      try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
       router.push(`/exam?newExamId=${result.exam_id}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -330,7 +348,10 @@ export default function CopyExamPage() {
 
   const navigationButtons = (
     <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={() => activeStep === 0 ? router.push('/exam') : prevStep()}>
+      <Button variant="default" onClick={() => {
+        if (activeStep === 0) { try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ } router.push('/exam'); }
+        else prevStep();
+      }}>
         {activeStep === 0 ? 'Cancel' : 'Previous'}
       </Button>
       {activeStep < 1 ? (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
@@ -48,6 +48,33 @@ function makeRow(override?: Partial<ObjectiveRow>): ObjectiveRow {
   return { id: nextRowId++, objective: '', start_item: '', end_item: '', ...override };
 }
 
+// ── Draft persistence ────────────────────────────────────────────────────────
+const DRAFT_KEY = 'exam_create_draft';
+
+interface ExamCreateDraft {
+  step: number;
+  examName: string;
+  gradeLevelId: string | null;
+  subjectId: string | null;
+  sectionIds: number[];
+  totalItems: number;
+  numChoices: number;
+  objectiveRows: ObjectiveRow[];
+  answers: Record<number, string | null>;
+}
+
+function readDraft(): ExamCreateDraft | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw ? (JSON.parse(raw) as ExamCreateDraft) : null;
+  } catch { return null; }
+}
+
+function clearDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+}
+
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (!levelNumber) return 30;
   if (levelNumber <= 2) return 30;
@@ -62,7 +89,18 @@ export default function CreateExamPage() {
   const hasFullAccess = permissions.includes('exams.full_access');
   const isMobile = useMediaQuery('(max-width: 768px)');
 
-  const [activeStep, setActiveStep] = useState(0);
+  // Load once on first render — does not re-run on re-renders
+  const draftRef = useRef<ExamCreateDraft | null | undefined>(undefined);
+  if (draftRef.current === undefined) draftRef.current = readDraft();
+  const d = draftRef.current;
+
+  // Restore saved row IDs so nextRowId stays ahead
+  if (d?.objectiveRows?.length) {
+    const maxId = Math.max(...d.objectiveRows.map(r => r.id));
+    if (maxId >= nextRowId) nextRowId = maxId + 1;
+  }
+
+  const [activeStep, setActiveStep] = useState(d?.step ?? 0);
   const [saving, setSaving] = useState(false);
 
   // Reference data
@@ -75,22 +113,29 @@ export default function CreateExamPage() {
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
-  const [examName, setExamName] = useState('');
-  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(null);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
-  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>([]);
+  const [examName, setExamName] = useState(d?.examName ?? '');
+  const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(d?.subjectId ?? null);
+  const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>(d?.sectionIds ?? []);
 
   // Step 1 — Items & Choices
-  const [totalItems, setTotalItems] = useState(30);
-  const [numChoices, setNumChoices] = useState(4);
+  const [totalItems, setTotalItems] = useState(d?.totalItems ?? 30);
+  const [numChoices, setNumChoices] = useState(d?.numChoices ?? 4);
 
   // Step 2 — Objectives
-  const [objectiveRows, setObjectiveRows] = useState<ObjectiveRow[]>([makeRow()]);
+  const [objectiveRows, setObjectiveRows] = useState<ObjectiveRow[]>(
+    d?.objectiveRows?.length ? d.objectiveRows : [makeRow()]
+  );
   const [triedToSaveObjectives, setTriedToSaveObjectives] = useState(false);
 
   // Step 3 — Answer Key
-  const [answers, setAnswers] = useState<{ [key: number]: string | null }>({});
+  const [answers, setAnswers] = useState<{ [key: number]: string | null }>(d?.answers ?? {});
   const [triedToSave, setTriedToSave] = useState(false);
+
+  // Refs to skip auto-reset effects on the very first mount (would clear restored data)
+  const gradeLevelMountedRef = useRef(false);
+  const totalItemsMountedRef = useRef(false);
+  const prevGradeLevelForItemsRef = useRef<string | null | undefined>(d?.gradeLevelId);
 
   useEffect(() => {
     const load = async () => {
@@ -119,17 +164,41 @@ export default function CreateExamPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-reset sections/subject when grade changes
+  // Auto-reset sections/subject when grade changes (skip on first mount to preserve restored draft)
   useEffect(() => {
+    if (!gradeLevelMountedRef.current) { gradeLevelMountedRef.current = true; return; }
     setSelectedSectionIds([]);
     setSelectedSubjectId(null);
   }, [selectedGradeLevelId]);
 
-  // Auto-set totalItems based on grade
+  // Auto-set totalItems based on grade — only fires when user actually changes grade,
+  // not on initial mount or when gradeLevels data loads (preserves restored draft value)
   useEffect(() => {
+    if (!totalItemsMountedRef.current) { totalItemsMountedRef.current = true; return; }
+    if (prevGradeLevelForItemsRef.current === selectedGradeLevelId) return; // gradeLevels loaded, grade unchanged
+    prevGradeLevelForItemsRef.current = selectedGradeLevelId;
     const gradeLevel = gradeLevels.find(g => g.grade_level_id === Number(selectedGradeLevelId)) ?? null;
     setTotalItems(getAutoTotalItems(gradeLevel?.level_number));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGradeLevelId, gradeLevels]);
+
+  // Save draft to sessionStorage whenever form state changes
+  useEffect(() => {
+    try {
+      const draft: ExamCreateDraft = {
+        step: activeStep,
+        examName,
+        gradeLevelId: selectedGradeLevelId,
+        subjectId: selectedSubjectId,
+        sectionIds: selectedSectionIds,
+        totalItems,
+        numChoices,
+        objectiveRows,
+        answers,
+      };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch { /* ignore */ }
+  }, [activeStep, examName, selectedGradeLevelId, selectedSubjectId, selectedSectionIds, totalItems, numChoices, objectiveRows, answers]);
 
   const choices = ALL_CHOICES.slice(0, numChoices);
   const itemsInCol1 = Math.ceil(totalItems / 2);
@@ -257,6 +326,7 @@ export default function CreateExamPage() {
         message: selectedSectionIds.length > 1 ? `${selectedSectionIds.length} examinations were created successfully.` : 'Examination was created successfully.',
         color: 'teal', withBorder: true, autoClose: 2500,
       });
+      clearDraft();
       router.push(`/exam?newExamId=${examId}`);
     } catch (error) {
       notifications.show({ title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
@@ -684,7 +754,10 @@ export default function CreateExamPage() {
 
   const navigationButtons = (
     <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={() => activeStep === 0 ? router.push('/exam') : prevStep()}>
+      <Button variant="default" onClick={() => {
+        if (activeStep === 0) { clearDraft(); router.push('/exam'); }
+        else prevStep();
+      }}>
         {activeStep === 0 ? 'Cancel' : 'Previous'}
       </Button>
       {activeStep < 4 ? (
