@@ -221,9 +221,89 @@ function detectCorners(buffer, width, height) {
   }
 }
 
+// ─── Paper-edge detection (fallback when corner markers not found) ────────────
+
+/**
+ * Detects the 4 corners of the answer sheet itself using Canny edge detection
+ * + largest-quadrilateral contour approximation.
+ * Used as a fallback when the corner black-square markers are not detectable
+ * (e.g. extreme angle, partial occlusion, cut-off edges).
+ * Returns [tl, tr, bl, br] in image coordinates, or null on failure.
+ */
+function detectPaperEdge(buffer, width, height) {
+  const src     = bufferToMat(buffer, width, height);
+  const gray    = new cv.Mat();
+  const blurred = new cv.Mat();
+  const edges   = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(7, 7), 0);
+    cv.Canny(blurred, edges, 30, 90);
+
+    // Dilate to bridge small gaps along the paper boundary
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    cv.dilate(edges, edges, kernel);
+    kernel.delete();
+
+    const contours  = new cv.MatVector();
+    const hierarchy = new cv.Mat();
+    cv.findContours(edges, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+    let bestQuad = null;
+    let bestArea = 0;
+    const imgArea = width * height;
+
+    for (let i = 0; i < contours.size(); i++) {
+      const contour = contours.get(i);
+      const area    = cv.contourArea(contour);
+
+      // Paper must cover at least 15% of the photo
+      if (area < imgArea * 0.15) continue;
+
+      const peri   = cv.arcLength(contour, true);
+      const approx = new cv.Mat();
+      cv.approxPolyDP(contour, approx, 0.02 * peri, true);
+
+      // Accept only 4-sided shapes larger than any previous candidate
+      if (approx.rows === 4 && area > bestArea) {
+        bestArea = area;
+        bestQuad = [];
+        for (let j = 0; j < 4; j++) {
+          bestQuad.push({ x: approx.data32S[j * 2], y: approx.data32S[j * 2 + 1] });
+        }
+      }
+      approx.delete();
+    }
+
+    contours.delete(); hierarchy.delete();
+
+    if (!bestQuad) {
+      console.log('[OMR worker] detectPaperEdge: no quadrilateral found');
+      return null;
+    }
+
+    const corners = assignCorners(bestQuad);
+    console.log('[OMR worker] detectPaperEdge: paper corners',
+      corners?.map(c => `(${Math.round(c.x)},${Math.round(c.y)})`).join(' '));
+    return corners;
+
+  } finally {
+    src.delete(); gray.delete(); blurred.delete(); edges.delete();
+  }
+}
+
 // ─── Perspective warp ─────────────────────────────────────────────────────────
 
-function warpToPage(buffer, width, height, corners) {
+/**
+ * @param {boolean} srcIsMarkers
+ *   true  → src corners are corner-marker centres; warp them to their known
+ *           layout positions (most accurate — default behaviour).
+ *   false → src corners are the paper's physical edges; warp them to fill the
+ *           full PAGE_W × PAGE_H canvas (fallback; bubble coords stay valid
+ *           because they are defined relative to the page origin).
+ */
+function warpToPage(buffer, width, height, corners, srcIsMarkers = true) {
   const [tl, tr, bl, br] = corners;
   const S = WARP_SCALE;
 
@@ -234,12 +314,19 @@ function warpToPage(buffer, width, height, corners) {
     br.x, br.y,
   ]);
 
-  const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
-    OMR.CM_TL_C.x * S, OMR.CM_TL_C.y * S,
-    OMR.CM_TR_C.x * S, OMR.CM_TR_C.y * S,
-    OMR.CM_BL_C.x * S, OMR.CM_BL_C.y * S,
-    OMR.CM_BR_C.x * S, OMR.CM_BR_C.y * S,
-  ]);
+  const dstPts = srcIsMarkers
+    ? cv.matFromArray(4, 1, cv.CV_32FC2, [
+        OMR.CM_TL_C.x * S, OMR.CM_TL_C.y * S,
+        OMR.CM_TR_C.x * S, OMR.CM_TR_C.y * S,
+        OMR.CM_BL_C.x * S, OMR.CM_BL_C.y * S,
+        OMR.CM_BR_C.x * S, OMR.CM_BR_C.y * S,
+      ])
+    : cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0,              0,
+        OMR.PAGE_W * S, 0,
+        0,              OMR.PAGE_H * S,
+        OMR.PAGE_W * S, OMR.PAGE_H * S,
+      ]);
 
   const M   = cv.getPerspectiveTransform(srcPts, dstPts);
   srcPts.delete(); dstPts.delete();
@@ -391,7 +478,7 @@ self.onmessage = async (e) => {
     self.postMessage({ type: 'status', message: 'Loading scanner engine\u2026' });
     if (!cv) await loadCV();
 
-    let corners, autoDetected;
+    let corners, autoDetected, usedPaperEdge = false;
 
     if (manualCorners) {
       corners      = manualCorners;
@@ -400,9 +487,14 @@ self.onmessage = async (e) => {
       self.postMessage({ type: 'status', message: 'Detecting corner markers\u2026' });
       corners = detectCorners(buffer, width, height);
       if (!corners) {
-        throw new Error(
-          'Could not detect corner markers. Make sure all 4 black squares are visible and the sheet is well-lit.'
-        );
+        self.postMessage({ type: 'status', message: 'Corner markers not found \u2014 trying paper edge detection\u2026' });
+        corners = detectPaperEdge(buffer, width, height);
+        if (!corners) {
+          throw new Error(
+            'Could not detect the answer sheet. Make sure the full sheet is visible and the photo is well-lit.'
+          );
+        }
+        usedPaperEdge = true;
       }
       autoDetected = true;
     }
@@ -418,7 +510,7 @@ self.onmessage = async (e) => {
 
     for (const cand of candidates) {
       try {
-        const warped = warpToPage(buffer, width, height, cand);
+        const warped = warpToPage(buffer, width, height, cand, !usedPaperEdge);
         self.postMessage({ type: 'status', message: 'Reading bubbles\u2026' });
         const { answers, confidence } = detectBubbles(
           warped.buffer, warped.width, warped.height, totalItems, numChoices
