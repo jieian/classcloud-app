@@ -501,9 +501,14 @@ self.onmessage = async (e) => {
 
     self.postMessage({ type: 'status', message: 'Correcting perspective\u2026' });
     const [c0, c1, c2, c3] = corners;
+    // Try all 4 flip combinations so a wrong TL/TR/BL/BR assignment
+    // (which happens when the paper is rotated in the photo) is corrected
+    // by the quality score rather than silently producing a bad warp.
     const candidates = [
-      [c0, c1, c2, c3],
-      [c3, c2, c1, c0],
+      [c0, c1, c2, c3],   // normal
+      [c1, c0, c3, c2],   // L/R flipped
+      [c2, c3, c0, c1],   // T/B flipped
+      [c3, c2, c1, c0],   // both flipped
     ];
 
     let best = null;
