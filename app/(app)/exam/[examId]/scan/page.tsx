@@ -792,28 +792,38 @@ export default function ScanPapersPage() {
             )}
 
             {!cameraActive && !previewUrl && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
-                >
-                  <IconUpload className="w-8 h-8 text-gray-400" />
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-700">Upload Photo</p>
-                    <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
-                  </div>
-                </button>
-                <button
-                  onClick={startCamera}
-                  disabled={startingCamera}
-                  className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
-                >
-                  <IconCamera className="w-8 h-8 text-gray-400" />
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
-                  </div>
-                </button>
+              <div className="space-y-3">
+                <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                  <p className="font-semibold mb-1">📷 Photo tips for best results</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+                    <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
+                    <li>All <strong>4 black corner squares</strong> must be visible</li>
+                    <li>Good lighting — avoid shadows over the bubbles</li>
+                  </ul>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                  >
+                    <IconUpload className="w-8 h-8 text-gray-400" />
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-700">Upload Photo</p>
+                      <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={startCamera}
+                    disabled={startingCamera}
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                  >
+                    <IconCamera className="w-8 h-8 text-gray-400" />
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
+                    </div>
+                  </button>
+                </div>
               </div>
             )}
 
