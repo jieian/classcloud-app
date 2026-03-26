@@ -259,9 +259,6 @@ export default function ScanPapersPage() {
     if (ImageCaptureCtor && track) {
       try {
         const ic = new ImageCaptureCtor(track);
-        // Request maximum photo resolution — on Android this captures at full
-        // camera sensor resolution (e.g. 13MP on A03s) regardless of the 1080p
-        // video stream constraint, giving gallery-quality images.
         let photoOptions: Record<string, number> = {};
         try {
           const caps = await ic.getPhotoCapabilities();
@@ -270,6 +267,42 @@ export default function ScanPapersPage() {
           }
         } catch { /* capabilities not supported — use defaults */ }
         const blob: Blob = await ic.takePhoto(photoOptions);
+
+        // The captured photo may have a wider FOV than the video preview
+        // (common on Android where the still camera uses the full 4:3 sensor
+        // while the video stream is a 16:9 crop). Crop the photo center to
+        // match the preview aspect ratio so what the user saw = what gets scanned.
+        const videoW = videoRef.current?.videoWidth ?? 0;
+        const videoH = videoRef.current?.videoHeight ?? 0;
+        const previewAR = videoW > 0 && videoH > 0 ? videoW / videoH : 0;
+
+        if (previewAR > 0) {
+          const img = await createImageBitmap(blob);
+          const photoAR = img.width / img.height;
+
+          // Only crop if the aspect ratios differ by more than 5%
+          if (Math.abs(photoAR - previewAR) / previewAR > 0.05) {
+            const cropW = previewAR > photoAR ? img.width : Math.round(img.height * previewAR);
+            const cropH = previewAR > photoAR ? Math.round(img.width / previewAR) : img.height;
+            const cropX = Math.round((img.width  - cropW) / 2);
+            const cropY = Math.round((img.height - cropH) / 2);
+
+            const cropCanvas = document.createElement('canvas');
+            cropCanvas.width  = cropW;
+            cropCanvas.height = cropH;
+            cropCanvas.getContext('2d')!.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            img.close();
+
+            cropCanvas.toBlob(croppedBlob => {
+              if (!croppedBlob) return;
+              stopCamera();
+              handleFileSelected(new File([croppedBlob], 'scan.jpg', { type: 'image/jpeg' }));
+            }, 'image/jpeg', 0.97);
+            return;
+          }
+          img.close();
+        }
+
         stopCamera();
         handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
