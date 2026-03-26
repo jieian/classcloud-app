@@ -45,8 +45,8 @@ export const OMR = {
 
   // ─── Bubble Grid ──────────────────────────────────────────────────────────
   BUBBLE_R:       6,    // bubble circle radius in pt
-  FILL_THRESHOLD: 0.06, // fraction difference from local background to detect fill (calibrated for HB/Mongol No.2 pencil)
-  FILL_DELTA:     0.04, // second-best gap required to avoid ambiguous multi-fill
+  FILL_THRESHOLD: 0.04, // fraction difference from local background to detect fill (calibrated for HB/Mongol No.2 pencil)
+  FILL_DELTA:     0.02, // second-best gap required to avoid ambiguous multi-fill
   ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
   CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
   GRID_START_Y:   195,  // y-center of the first row of bubbles

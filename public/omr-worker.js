@@ -50,8 +50,8 @@ const OMR = {
 };
 
 const WARP_SCALE     = 2;
-const FILL_THRESHOLD = 0.06;  // minimum fill to count as marked (calibrated for HB/Mongol No.2 pencil)
-const FILL_DELTA     = 0.04;  // minimum gap between top-2 to confirm the winner
+const FILL_THRESHOLD = 0.04;  // minimum fill to count as marked (calibrated for HB/Mongol No.2 pencil)
+const FILL_DELTA     = 0.02;  // minimum gap between top-2 to confirm the winner
 
 // ─── OpenCV initialization ────────────────────────────────────────────────────
 
