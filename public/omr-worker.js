@@ -175,7 +175,13 @@ function findCandidates(gray, binary, width, solidityMin, darknessMax) {
       roi.delete();
       if (meanVal[0] > darknessMax) continue;
 
-      result.push({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
+      // Use the true contour centroid (moments) rather than the bounding-rect
+      // centre — for a perspective-distorted square (trapezoid) these differ,
+      // and that error propagates into the homography matrix.
+      const M = cv.moments(contour, false);
+      const cx = M.m00 > 0 ? M.m10 / M.m00 : rect.x + rect.width  / 2;
+      const cy = M.m00 > 0 ? M.m01 / M.m00 : rect.y + rect.height / 2;
+      result.push({ x: cx, y: cy });
     }
     return result;
   } finally {
