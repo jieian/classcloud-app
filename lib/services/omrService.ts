@@ -120,7 +120,7 @@ function buildDebugDataUrl(
 
   const S       = WARP_SCALE;
   const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
-  const r       = OMR.BUBBLE_R * S * 0.72;
+  const r       = OMR.BUBBLE_R * S * 1.1;  // slightly larger for visibility on phone screens
 
   for (let item = 1; item <= totalItems; item++) {
     choices.forEach((ch, ci) => {
@@ -133,11 +133,11 @@ function buildDebugDataUrl(
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.strokeStyle = isMarked ? '#00ff00' : '#ff4444';
-      ctx.lineWidth   = isMarked ? 2 : 1;
+      ctx.lineWidth   = isMarked ? 3 : 1.5;
       ctx.stroke();
 
       ctx.fillStyle    = isMarked ? '#00cc00' : '#ff4444';
-      ctx.font         = `bold ${Math.round(r * 0.9)}px sans-serif`;
+      ctx.font         = `bold ${Math.round(r * 0.85)}px sans-serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String(pct), cx, cy);
