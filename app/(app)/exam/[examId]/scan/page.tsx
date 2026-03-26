@@ -259,11 +259,23 @@ export default function ScanPapersPage() {
     if (ImageCaptureCtor && track) {
       try {
         const ic = new ImageCaptureCtor(track);
-        const blob: Blob = await ic.takePhoto();
+        // Request maximum photo resolution — on Android this captures at full
+        // camera sensor resolution (e.g. 13MP on A03s) regardless of the 1080p
+        // video stream constraint, giving gallery-quality images.
+        let photoOptions: Record<string, number> = {};
+        try {
+          const caps = await ic.getPhotoCapabilities();
+          if (caps.imageWidth?.max && caps.imageHeight?.max) {
+            photoOptions = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max };
+          }
+        } catch { /* capabilities not supported — use defaults */ }
+        const blob: Blob = await ic.takePhoto(photoOptions);
         stopCamera();
         handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
-      } catch { /* fall back */ }
+      } catch (err) {
+        console.warn('[Camera] ImageCapture.takePhoto() failed, falling back to canvas:', err);
+      }
     }
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
