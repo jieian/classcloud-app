@@ -188,7 +188,10 @@ function detectCorners(buffer, width, height) {
 
   try {
     cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
+    // 9×9 kernel smooths JPEG compression artifacts around corner marker edges
+    // (common on Android phones). Larger blur = more stable contour centroids
+    // = more accurate homography. Has no negative effect on clean iPhone images.
+    cv.GaussianBlur(gray, blurred, new cv.Size(9, 9), 0);
     cv.threshold(blurred, binary, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
 
     // Pass 1 — strict
