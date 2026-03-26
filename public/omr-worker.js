@@ -140,11 +140,12 @@ function findCandidates(gray, binary, width, solidityMin, darknessMax) {
     const scaleEst = width / OMR.PAGE_W;
     const targetSz = OMR.CM_SIZE * scaleEst;
     // Corner marker: 24×24pt solid square  → area ≈ targetSz²   (100%)
-    // Bubble circle: radius 8pt            → area ≈ 0.35×targetSz² ( 35%)
-    // Floor at 0.70² = 49% filters bubbles while keeping markers with headroom.
-    // Ceiling at 2.5² = 625% filters the QR code and large text blocks.
-    const minArea  = Math.pow(targetSz * 0.70, 2);
-    const maxArea  = Math.pow(targetSz * 2.50, 2);
+    // Bubble circle: radius 6pt            → area ≈ 0.20×targetSz² ( 20%)
+    // Floor at 0.35² = 12% — wide enough to catch foreshortened markers on
+    //   tilted paper (far-side markers appear smaller than near-side ones).
+    // Ceiling at 4.0² = 1600% — still filters the QR code (which is ~9×targetSz²).
+    const minArea  = Math.pow(targetSz * 0.35, 2);
+    const maxArea  = Math.pow(targetSz * 4.00, 2);
     const result   = [];
 
     for (let i = 0; i < contours.size(); i++) {
@@ -154,8 +155,10 @@ function findCandidates(gray, binary, width, solidityMin, darknessMax) {
 
       const rect = cv.boundingRect(contour);
       const ar   = rect.width / rect.height;
-      // Corner markers are squares; reject highly elongated shapes (text, lines)
-      if (ar < 0.40 || ar > 2.50) continue;
+      // A square viewed in perspective becomes a trapezoid — aspect ratio can
+      // deviate noticeably from 1.  Widen the gate to 0.25–4.0 and let the
+      // solidity + darkness checks do the real filtering.
+      if (ar < 0.25 || ar > 4.00) continue;
 
       const hull     = new cv.Mat();
       cv.convexHull(contour, hull, false, true);
