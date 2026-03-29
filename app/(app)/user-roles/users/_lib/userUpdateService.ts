@@ -79,37 +79,51 @@ export async function deleteUser(uid: string): Promise<void> {
 }
 
 /**
- * Activates a pending user atomically via RPC.
- * Sets active_status = 1 and assigns roles in a single transaction.
+ * Activates a pending user via the secure API route.
+ * Handles both new users and restored (soft-deleted) users — unbans auth account if needed.
  */
 export async function activateUser(
   uid: string,
+  firstName: string,
+  middleName: string,
+  lastName: string,
   roleIds: number[],
 ): Promise<void> {
-  const supabase = getSupabase();
-  const { data: result, error } = await supabase.rpc("activate_user_atomic", {
-    p_uid: uid,
-    p_role_ids: roleIds,
+  const response = await fetch("/api/users/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      uid,
+      first_name: firstName,
+      middle_name: middleName,
+      last_name: lastName,
+      role_ids: roleIds,
+    }),
   });
 
-  if (error) {
-    if (error.message.includes("not found") || error.message.includes("already active")) {
-      throw new Error("User not found or already active. Please refresh.");
-    }
-    throw new Error("Failed to activate user. Please try again.");
-  }
+  const result = await response.json();
 
-  if (!result?.success) {
-    throw new Error("Activation did not complete successfully.");
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to activate user. Please try again.");
   }
 }
 
 /**
- * Rejects a pending user by deleting from auth.users.
+ * Rejects a pending user: sends rejection email then hard-deletes from auth.users.
  * ON DELETE CASCADE handles users + user_roles automatically.
  */
-export async function rejectPendingUser(uid: string): Promise<void> {
-  await deleteAuthUser(uid);
+export async function rejectPendingUser(uid: string, reason: string): Promise<void> {
+  const response = await fetch("/api/users/reject", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid, reason }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to reject user. Please try again.");
+  }
 }
 
 /**

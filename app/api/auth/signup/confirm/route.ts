@@ -30,8 +30,8 @@ export async function POST() {
     return Response.json({ success: true });
   }
 
-  // Read names from user_metadata (stored during signup link generation)
-  const { first_name, middle_name, last_name } = user.user_metadata ?? {};
+  // Read names and role_ids from user_metadata (stored during signup link generation)
+  const { first_name, middle_name, last_name, role_ids } = user.user_metadata ?? {};
 
   if (!first_name || !last_name) {
     return Response.json(
@@ -64,6 +64,18 @@ export async function POST() {
       { error: rpcResult.message || "Registration failed." },
       { status: 500 },
     );
+  }
+
+  // Insert requested role preferences into user_roles
+  if (Array.isArray(role_ids) && role_ids.length > 0) {
+    const { error: rolesError } = await adminClient
+      .from("user_roles")
+      .insert(role_ids.map((role_id: number) => ({ uid: user.id, role_id })));
+
+    if (rolesError) {
+      console.error("Failed to insert user_roles for new user:", rolesError.message);
+      // Non-fatal: profile is created, admin can assign roles manually
+    }
   }
 
   return Response.json({ success: true });

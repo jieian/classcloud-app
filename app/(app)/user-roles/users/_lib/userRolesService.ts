@@ -42,6 +42,7 @@ export interface PendingUser {
   middle_name?: string;
   last_name: string;
   email: string;
+  requested_role_ids: number[];
 }
 
 export async function fetchPendingUserCount(): Promise<number> {
@@ -88,6 +89,7 @@ export async function fetchPendingUsers(): Promise<PendingUser[]> {
   return ((result?.data as PendingUser[]) || []).map((user: PendingUser) => ({
     ...user,
     middle_name: isValidName(user.middle_name) ? user.middle_name : undefined,
+    requested_role_ids: user.requested_role_ids ?? [],
   }));
 }
 

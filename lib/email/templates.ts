@@ -102,6 +102,83 @@ export async function sendVerificationEmail({
   });
 }
 
+interface ApprovalEmailParams {
+  to: string;
+  firstName: string;
+}
+
+export async function sendApprovalEmail({
+  to,
+  firstName,
+}: ApprovalEmailParams) {
+  await transporter.sendMail({
+    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: "Your ClassCloud Account Has Been Approved",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
+        </div>
+
+        <h2 style="color: #333;">Hello, ${firstName}!</h2>
+        <p style="color: #555; font-size: 16px;">
+          Great news — your ClassCloud account has been reviewed and approved by an administrator.
+          You can now log in and start using the platform.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="color: #999; font-size: 12px; text-align: center;">
+          This is an automated message from ClassCloud. Please do not reply to this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
+interface RejectionEmailParams {
+  to: string;
+  firstName: string;
+  reason: string;
+}
+
+export async function sendRejectionEmail({
+  to,
+  firstName,
+  reason,
+}: RejectionEmailParams) {
+  await transporter.sendMail({
+    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: "Your ClassCloud Registration Has Been Rejected",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
+        </div>
+
+        <h2 style="color: #333;">Hello, ${firstName}!</h2>
+        <p style="color: #555; font-size: 16px;">
+          We regret to inform you that your ClassCloud registration request has been reviewed and rejected for the following reason:
+        </p>
+
+        <div style="background-color: #fff3f3; border-left: 4px solid #e74c3c; padding: 14px 18px; margin: 20px 0; border-radius: 4px;">
+          <p style="margin: 0; color: #333; font-size: 15px;">${reason}</p>
+        </div>
+
+        <p style="color: #555; font-size: 14px;">
+          If you believe this is a mistake, please contact your school administrator.
+        </p>
+
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="color: #999; font-size: 12px; text-align: center;">
+          This is an automated message from ClassCloud. Please do not reply to this email.
+        </p>
+      </div>
+    `,
+  });
+}
+
 interface WelcomeEmailParams {
   to: string;
   firstName: string;

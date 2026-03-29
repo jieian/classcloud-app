@@ -12,7 +12,7 @@ import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
 import PendingUsersTable from "./PendingUsersTable";
 import PendingUsersTableSkeleton from "./PendingUsersTableSkeleton";
-import { fetchPendingUsers, type PendingUser } from "../_lib";
+import { fetchPendingUsers, fetchAllRoles, type PendingUser, type Role } from "../_lib";
 
 export interface PendingUsersTableWrapperRef {
   refresh: () => void;
@@ -28,6 +28,7 @@ export default forwardRef<
   PendingUsersTableWrapperProps
 >(function PendingUsersTableWrapper({ search = "", onCountChange }, ref) {
   const [users, setUsers] = useState<PendingUser[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pathname = usePathname();
@@ -52,8 +53,12 @@ export default forwardRef<
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchPendingUsers();
+      const [data, allRoles] = await Promise.all([
+        fetchPendingUsers(),
+        fetchAllRoles(),
+      ]);
       setUsers(data);
+      setRoles(allRoles);
       onCountChange?.(data.length);
     } catch (err) {
       setError("Failed to load pending users. Please try again later.");
@@ -93,5 +98,5 @@ export default forwardRef<
     );
   }
 
-  return <PendingUsersTable users={filteredUsers} onUpdate={handleUpdate} />;
+  return <PendingUsersTable users={filteredUsers} roles={roles} onUpdate={handleUpdate} />;
 });

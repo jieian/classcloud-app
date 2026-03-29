@@ -25,6 +25,25 @@ export default function SignUpConfirmedPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [retrying, setRetrying] = useState(false);
 
+  // ── Restore path (token + uid in query params, no session needed) ──
+  const runRestore = async (token: string, uid: string) => {
+    const res = await fetch("/api/auth/signup/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, uid }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setErrorMessage(data.error ?? "Something went wrong. Please try again.");
+      setPageState("error");
+      return;
+    }
+
+    setPageState("success");
+  };
+
+  // ── New user path (Supabase hash tokens, session required) ──
   const runConfirm = async () => {
     const res = await fetch("/api/auth/signup/confirm", { method: "POST" });
     const data = await res.json();
@@ -42,19 +61,30 @@ export default function SignUpConfirmedPage() {
 
   useEffect(() => {
     void (async () => {
-      // Check existing session first (e.g. page refresh after confirmation)
+      // ── Restore flow: token + uid in URL query params ──
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const uid = params.get("uid");
+
+      if (token && uid) {
+        // Clear the params from the URL before processing
+        window.history.replaceState(null, "", window.location.pathname);
+        await runRestore(token, uid);
+        return;
+      }
+
+      // ── New user flow: Supabase tokens in URL hash ──
       const { data } = await supabase.auth.getSession();
       if (data.session) {
         await runConfirm();
         return;
       }
 
-      // Parse implicit flow tokens from URL hash (Supabase email link redirect)
       const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      const type = params.get("type");
+      const hashParams = new URLSearchParams(hash);
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const type = hashParams.get("type");
 
       if (accessToken && refreshToken && type === "signup") {
         const { error } = await supabase.auth.setSession({
@@ -67,7 +97,6 @@ export default function SignUpConfirmedPage() {
           return;
         }
 
-        // Clear the tokens from the URL
         window.history.replaceState(null, "", window.location.pathname);
         await runConfirm();
         return;
@@ -81,7 +110,18 @@ export default function SignUpConfirmedPage() {
   const handleRetry = async () => {
     setRetrying(true);
     setPageState("loading");
-    await runConfirm();
+
+    // Re-check which flow to retry
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+    const uid = params.get("uid");
+
+    if (token && uid) {
+      await runRestore(token, uid);
+    } else {
+      await runConfirm();
+    }
+
     setRetrying(false);
   };
 
@@ -123,13 +163,7 @@ export default function SignUpConfirmedPage() {
                       <IconCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
-                  <Text
-                    ta="center"
-                    fw={700}
-                    fz="lg"
-                    c="#45903B"
-                    mb="xs"
-                  >
+                  <Text ta="center" fw={700} fz="lg" c="#45903B" mb="xs">
                     Email Verified!
                   </Text>
                   <Text ta="center" size="sm" c="#555" mb="lg">

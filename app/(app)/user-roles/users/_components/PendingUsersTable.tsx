@@ -12,16 +12,18 @@ import {
   Group,
   VisuallyHidden,
 } from "@mantine/core";
-import type { PendingUser } from "../_lib";
+import type { PendingUser, Role } from "../_lib";
 import PendingTableActions from "./PendingTableActions";
 
 interface PendingUsersTableProps {
   users: PendingUser[];
+  roles: Role[];
   onUpdate: () => void;
 }
 
 export default function PendingUsersTable({
   users,
+  roles,
   onUpdate,
 }: PendingUsersTableProps) {
   if (users.length === 0) {
@@ -50,7 +52,7 @@ export default function PendingUsersTable({
           <Text fz="sm">{user.email}</Text>
         </TableTd>
         <TableTd>
-          <PendingTableActions user={user} onUpdate={onUpdate} />
+          <PendingTableActions user={user} roles={roles} onUpdate={onUpdate} />
         </TableTd>
       </TableTr>
     );

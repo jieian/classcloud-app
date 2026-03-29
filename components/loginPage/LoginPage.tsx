@@ -190,7 +190,7 @@ export default function LoginPage() {
               <form onSubmit={handleLogin}>
                 <TextInput
                   label="Email"
-                  placeholder="you@email.com"
+                  placeholder="you@deped.gov.ph"
                   required
                   radius="md"
                   value={email}

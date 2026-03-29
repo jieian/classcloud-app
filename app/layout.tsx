@@ -39,6 +39,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <MantineProvider
+          forceColorScheme="light"
           theme={{
             fontFamily: "Geist, sans-serif",
             headings: { fontFamily: "Geist, sans-serif" },
