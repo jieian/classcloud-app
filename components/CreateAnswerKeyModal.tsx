@@ -263,8 +263,8 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
     }
   };
 
-  const questionsPerColumn = 10;
-  const columns = Math.ceil(totalQuestions / questionsPerColumn);
+  // Match the 2-column split used by the PDF answer sheet (omrLayout.ts)
+  const itemsInCol1 = Math.ceil(totalQuestions / 2);
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
@@ -353,12 +353,15 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                   Answer Key — {totalQuestions} items · {objectiveRows.length} objective{objectiveRows.length !== 1 ? 's' : ''}
                 </p>
-                <div className={`grid gap-x-6 gap-y-0.5 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-                  {Array.from({ length: columns }, (_, col) => (
+                <div className="grid gap-x-6 gap-y-0.5 grid-cols-1 md:grid-cols-2">
+                  {[0, 1].map(col => {
+                    const start = col === 0 ? 1 : itemsInCol1 + 1;
+                    const count = col === 0 ? itemsInCol1 : totalQuestions - itemsInCol1;
+                    if (start > totalQuestions) return null;
+                    return (
                     <div key={col}>
-                      {Array.from({ length: questionsPerColumn }, (_, row) => {
-                        const qNum = col * questionsPerColumn + row + 1;
-                        if (qNum > totalQuestions) return null;
+                      {Array.from({ length: count }, (_, row) => {
+                        const qNum = start + row;
                         const answer = answers[qNum];
                         const objIdx = objectiveIndexForItem(qNum);
                         const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
@@ -396,7 +399,8 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
                         );
                       })}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -543,12 +547,15 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
               )}
 
               {/* Answer Bubbles */}
-              <div className={`grid gap-6 mb-6 ${columns <= 2 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-                {Array.from({ length: columns }, (_, col) => (
+              <div className="grid gap-6 mb-6 grid-cols-1 md:grid-cols-2">
+                {[0, 1].map(col => {
+                  const start = col === 0 ? 1 : itemsInCol1 + 1;
+                  const count = col === 0 ? itemsInCol1 : totalQuestions - itemsInCol1;
+                  if (start > totalQuestions) return null;
+                  return (
                   <div key={col} className="space-y-1">
-                    {Array.from({ length: questionsPerColumn }, (_, row) => {
-                      const qNum = col * questionsPerColumn + row + 1;
-                      if (qNum > totalQuestions) return null;
+                    {Array.from({ length: count }, (_, row) => {
+                      const qNum = start + row;
                       const isUnanswered = triedToSave && !answers[qNum];
                       const objIdx = objectiveIndexForItem(qNum);
                       const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
@@ -589,7 +596,8 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
                       );
                     })}
                   </div>
-                ))}
+                  );
+                })}
               </div>
 
               {!isComplete && !showIncompleteWarning && (

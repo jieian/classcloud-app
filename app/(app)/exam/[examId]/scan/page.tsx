@@ -16,7 +16,8 @@ import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
 import BackButton from '@/components/BackButton';
 import { SearchBar } from '@/components/searchBar/SearchBar';
-import type { ExamWithRelations, AnswerKeyJsonb, ExamScore } from '@/lib/exam-supabase';
+import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
+import { resolveExamParams } from '@/lib/exam-supabase';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -72,7 +73,7 @@ const STEP_ORDER = ['students', 'capture', 'review', 'submit'] as const;
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
-  const { permissions, loading: authLoading } = useAuth();
+  const { permissions } = useAuth();
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
   const [examLoading, setExamLoading] = useState(true);
@@ -83,10 +84,13 @@ export default function ScanPapersPage() {
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [processingStatus, setProcessingStatus] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
+  const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
+  const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
 
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -105,15 +109,12 @@ export default function ScanPapersPage() {
     if (!examId) return;
     fetchExamById(Number(examId)).then(data => {
       setExam(data);
-      setExamLoading(false);
-    });
+    }).catch(console.error).finally(() => setExamLoading(false));
   }, [examId]);
 
-  const ak = exam ? exam.answer_key as AnswerKeyJsonb | null : null;
-  const totalItems = ak?.total_questions ?? exam?.total_items ?? 30;
-  const numChoices = ak?.num_choices ?? 4;
+  const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = CHOICES.slice(0, numChoices);
-  const answerKey: { [item: number]: string | null } = ak?.answers ?? {};
+  const answerKey: { [item: number]: string | null } = exam?.answer_key?.answers ?? {};
 
   // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -234,6 +235,18 @@ export default function ScanPapersPage() {
   const scannedStudentsCount = rosterStudents.filter((s) => getStudentAttempt(s) != null).length;
 
   // â"€â"€ Camera capture â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Scan student: preload OpenCV + transition to capture step ────────────
+  const handleScanStudent = useCallback((student: RosterStudent) => {
+    setSelectedStudent(student);
+    setCapturedFile(null);
+    setPreviewUrl(null);
+    setDetectedAnswers({});
+    setDebugImageUrl(null);
+    setWarpedImageUrl(null);
+    setProcessingError(null);
+    setStep('capture');
+  }, []);
+
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
@@ -246,11 +259,23 @@ export default function ScanPapersPage() {
     if (ImageCaptureCtor && track) {
       try {
         const ic = new ImageCaptureCtor(track);
-        const blob: Blob = await ic.takePhoto();
+        // Request maximum photo resolution — on Android this captures at full
+        // camera sensor resolution (e.g. 13MP on A03s) regardless of the 1080p
+        // video stream constraint, giving gallery-quality images.
+        let photoOptions: Record<string, number> = {};
+        try {
+          const caps = await ic.getPhotoCapabilities();
+          if (caps.imageWidth?.max && caps.imageHeight?.max) {
+            photoOptions = { imageWidth: caps.imageWidth.max, imageHeight: caps.imageHeight.max };
+          }
+        } catch { /* capabilities not supported — use defaults */ }
+        const blob: Blob = await ic.takePhoto(photoOptions);
         stopCamera();
         handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
-      } catch { /* fall back */ }
+      } catch (err) {
+        console.warn('[Camera] ImageCapture.takePhoto() failed, falling back to canvas:', err);
+      }
     }
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth;
@@ -283,10 +308,16 @@ export default function ScanPapersPage() {
     if (!capturedFile) return;
     setStep('processing');
     setProcessingError(null);
+    setProcessingStatus('');
     try {
-      const result = await processAnswerSheet(capturedFile, totalItems, numChoices);
+      const result = await processAnswerSheet(
+        capturedFile, totalItems, numChoices,
+        undefined,
+        setProcessingStatus,
+      );
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
+      setDebugImageUrl(result.debugDataUrl);
       setStep('review');
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
@@ -315,7 +346,8 @@ export default function ScanPapersPage() {
   const scoreMpl = getMpl(score, totalItems);
   const canAccessExams =
     permissions.includes("exams.full_access") ||
-    permissions.includes("exams.limited_access");
+    permissions.includes("exams.limited_access") ||
+    permissions.includes("access_examinations");
 
   // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
@@ -416,7 +448,7 @@ export default function ScanPapersPage() {
 
   // â"€â"€â"€ Loading â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-  if (examLoading || authLoading) {
+  if (examLoading) {
     return (
       <div className="space-y-4">
         <div className="space-y-2">
@@ -634,14 +666,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center">
                                   <button
-                                    onClick={() => {
-                                      setSelectedStudent(student);
-                                      setCapturedFile(null);
-                                      setPreviewUrl(null);
-                                      setDetectedAnswers({});
-                                      setProcessingError(null);
-                                      setStep('capture');
-                                    }}
+                                    onClick={() => handleScanStudent(student)}
                                     className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                                       hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
                                     }`}
@@ -694,14 +719,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center">
                                   <button
-                                    onClick={() => {
-                                      setSelectedStudent(student);
-                                      setCapturedFile(null);
-                                      setPreviewUrl(null);
-                                      setDetectedAnswers({});
-                                      setProcessingError(null);
-                                      setStep('capture');
-                                    }}
+                                    onClick={() => handleScanStudent(student)}
                                     className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                                       hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
                                     }`}
@@ -761,12 +779,12 @@ export default function ScanPapersPage() {
               <div>
                 <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
                 {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>}
-                <div className="mt-3 flex gap-3">
-                  <button onClick={captureFromCamera} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                    <IconCamera className="w-4 h-4" /> Capture
-                  </button>
-                  <button onClick={stopCamera} className="btn-secondary">Cancel</button>
-                </div>
+                <Group mt="sm">
+                  <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
+                    Capture
+                  </Button>
+                  <Button variant="default" onClick={stopCamera}>Cancel</Button>
+                </Group>
               </div>
             )}
 
@@ -774,70 +792,71 @@ export default function ScanPapersPage() {
               <div className="space-y-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
-                <div className="flex gap-3">
-                  <button onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} className="btn-secondary flex items-center gap-2">
-                    <IconRefresh className="w-4 h-4" /> Retake
-                  </button>
-                  <button onClick={runProcessing} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                    Process Sheet <IconChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
+                <Group>
+                  <Button variant="default" onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} leftSection={<IconRefresh className="w-4 h-4" />}>
+                    Retake
+                  </Button>
+                  <Button color="#4EAE4A" onClick={runProcessing} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
+                    Process Sheet
+                  </Button>
+                </Group>
               </div>
             )}
 
             {!cameraActive && !previewUrl && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
-                >
-                  <IconUpload className="w-8 h-8 text-gray-400" />
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-700">Upload Photo</p>
-                    <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
-                  </div>
-                </button>
-                <button
-                  onClick={startCamera}
-                  disabled={startingCamera}
-                  className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
-                >
-                  <IconCamera className="w-8 h-8 text-gray-400" />
-                  <div className="text-center">
-                    <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
-                  </div>
-                </button>
+              <div className="space-y-3">
+                <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
+                  <p className="font-semibold mb-1">📷 Photo tips for best results</p>
+                  <ul className="list-disc list-inside space-y-0.5 text-blue-700">
+                    <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
+                    <li>All <strong>4 black corner squares</strong> must be visible</li>
+                    <li>Good lighting — avoid shadows over the bubbles</li>
+                  </ul>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                  >
+                    <IconUpload className="w-8 h-8 text-gray-400" />
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-700">Upload Photo</p>
+                      <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={startCamera}
+                    disabled={startingCamera}
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                  >
+                    <IconCamera className="w-8 h-8 text-gray-400" />
+                    <div className="text-center">
+                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
+                    </div>
+                  </button>
+                </div>
               </div>
             )}
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
 
             <div className="pt-2 border-t">
-              <button onClick={() => setStep('students')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Back to Students
-              </button>
+              <Button variant="default" onClick={() => setStep('students')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Back to Students
+              </Button>
             </div>
           </div>
         )}
 
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'processing' && (
-          <div className="py-10 space-y-4">
-            <div className="flex justify-center">
-              <Skeleton height={20} width={220} radius="md" />
-            </div>
-            <div className="flex justify-center">
-              <Skeleton height={14} width={360} radius="md" />
-            </div>
-            <Paper withBorder radius="md" p="md">
-              <Skeleton height={180} radius="md" mb="md" />
-              <Group grow>
-                <Skeleton height={10} radius="md" />
-                <Skeleton height={10} radius="md" />
-                <Skeleton height={10} radius="md" />
-              </Group>
-            </Paper>
+          <div className="py-12 flex flex-col items-center gap-5">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700">
+              {processingStatus || 'Processing…'}
+            </p>
+            <p className="text-xs text-gray-400">This may take a few seconds</p>
           </div>
         )}
 
@@ -865,6 +884,26 @@ export default function ScanPapersPage() {
               </p>
             </div>
 
+            {warpedImageUrl && (
+              <details className="rounded-xl border border-gray-200">
+                <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
+                  Debug: Perspective-Corrected Image (verify alignment)
+                </summary>
+                <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-b-xl" />
+              </details>
+            )}
+
+            {debugImageUrl && (
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <p className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border-b border-gray-200">
+                  Bubble Detection Map — <span className="text-green-600">green = detected</span>, <span className="text-red-500">red = not selected</span>. Verify circles align with bubbles.
+                </p>
+                <div className="overflow-auto bg-gray-100 flex items-start justify-center p-2" style={{ maxHeight: '640px' }}>
+                  <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain" />
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="bg-blue-50 rounded-xl p-3">
                 <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
@@ -886,9 +925,9 @@ export default function ScanPapersPage() {
 
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
               {[1, 2].map(col => {
-                const half = Math.ceil(totalItems / 2);
-                const start = col === 1 ? 1 : half + 1;
-                const end = col === 1 ? half : totalItems;
+                const itemsInCol1 = Math.ceil(totalItems / 2);
+                const start = col === 1 ? 1 : itemsInCol1 + 1;
+                const end = col === 1 ? itemsInCol1 : totalItems;
                 if (start > totalItems) return null;
                 return (
                   <div key={col} className="space-y-0.5">
@@ -925,14 +964,14 @@ export default function ScanPapersPage() {
               })}
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <button onClick={() => setStep('capture')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Rescan
-              </button>
-              <button onClick={() => setStep('submit')} className="flex-1 btn-primary flex items-center justify-center gap-2">
-                Continue <IconChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
+              <Button variant="default" onClick={() => setStep('capture')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Rescan
+              </Button>
+              <Button color="#4EAE4A" onClick={() => setStep('submit')} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
+                Continue
+              </Button>
+            </Group>
           </div>
         )}
 
@@ -993,21 +1032,20 @@ export default function ScanPapersPage() {
               </div>
             </div>
 
-            <div className="flex gap-3 pt-4 border-t">
-              <button onClick={() => setStep('review')} className="btn-secondary flex items-center gap-2">
-                <IconChevronLeft className="w-4 h-4" /> Back
-              </button>
-              <button
+            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
+              <Button variant="default" onClick={() => setStep('review')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
+                Back
+              </Button>
+              <Button
+                color="#4EAE4A"
                 onClick={handleSubmit}
                 disabled={submitting}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all ${
-                  !submitting ? 'bg-green-600 hover:bg-green-700 text-white shadow-md' : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                }`}
+                leftSection={<IconDeviceFloppy className="w-4 h-4" />}
+                style={{ flex: 1 }}
               >
-                <IconDeviceFloppy className="w-4 h-4" />
                 {submitting ? 'Saving...' : 'Save Result'}
-              </button>
-            </div>
+              </Button>
+            </Group>
           </div>
         )}
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Modal, TextInput, Select, Button, Stack, Group, Paper, Text, Alert, Loader,
+  Modal, TextInput, Select, MultiSelect, Button, Stack, Group, Paper, Text, Alert, Loader,
 } from '@mantine/core';
 import { IconCheck, IconLink, IconAlertCircle, IconMinus, IconPlus } from '@tabler/icons-react';
 import { fetchSubjectsWithGradeLevels, SubjectWithGradeLevel } from '@/lib/services/subjectService';
@@ -117,11 +117,16 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
   const activeSectionType = selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
 
   useEffect(() => {
+    if (selectedSectionIds.length === 0) {
+      setSelectedSubjectId(null);
+      return;
+    }
+
     if (!activeSectionType || !selectedSubjectId) return;
     const isValid = subjects.some(s => String(s.subject_id) === selectedSubjectId && (s.section_type === null || s.section_type === activeSectionType));
     if (!isValid) setSelectedSubjectId(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeSectionType]);
+  }, [activeSectionType, selectedSectionIds]);
 
   const filteredSubjects = Array.from(
     new Map(
@@ -135,10 +140,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
 
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
 
-  const isDuplicateName = examName.trim().length > 0 &&
-    existingTitles.some(t => t.trim().toLowerCase() === examName.trim().toLowerCase());
-
-  const canGoStep1 = examName.trim().length > 0 && !isDuplicateName && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
+  const canGoStep1 = examName.trim().length > 0 && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
   const toggleSection = (sectionId: number) => {
     setSelectedSectionIds(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]);
@@ -169,6 +171,9 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
         <Alert color="blue" icon={<IconAlertCircle size={16} />}>
           New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
         </Alert>
+        <Text size="xs" c="dimmed">
+          Complete all required fields marked with <Text span c="red">*</Text> to continue.
+        </Text>
 
         {/* ── Step 0: Exam Details ── */}
         {step === 0 && (
@@ -182,7 +187,6 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
                 required
                 value={examName}
                 onChange={(e) => setExamName(e.currentTarget.value)}
-                error={isDuplicateName ? 'An examination with this name already exists. Please use a different name.' : undefined}
               />
 
               <Group grow>
@@ -194,65 +198,27 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
                   value={selectedGradeLevelId}
                   onChange={setSelectedGradeLevelId}
                 />
+                <MultiSelect
+                  label="Section"
+                  placeholder="Select section(s)"
+                  required
+                  data={filteredSections.map(s => ({ value: String(s.section_id), label: `Section ${s.name}` }))}
+                  value={selectedSectionIds.map(String)}
+                  onChange={(values) => setSelectedSectionIds(values.map(Number))}
+                  nothingFoundMessage={selectedGradeLevelId ? 'No sections available' : 'Select a grade level first'}
+                  disabled={filteredSections.length === 0}
+                />
                 <Select
                   label="Subject"
-                  placeholder="Select subject"
+                  placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                   required
                   data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
                   value={selectedSubjectId}
                   onChange={setSelectedSubjectId}
+                  disabled={selectedSectionIds.length === 0}
                   color="#4EAE4A"
                 />
               </Group>
-
-              <div>
-                <Text size="sm" fw={500} mb={4}>
-                  Section <Text span c="red">*</Text>{' '}
-                  <Text span c="dimmed" fw={400}>(select one or more)</Text>
-                </Text>
-                <Text size="xs" c="dimmed" mb="sm">
-                  A separate exam record will be created per section, but they will all <strong>share one answer key</strong>
-                </Text>
-
-                {filteredSections.length === 0 ? (
-                  <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-                    {selectedGradeLevelId ? 'No sections found for selected grade level' : 'Select a grade level first'}
-                  </Alert>
-                ) : (
-                  <Group gap="xs">
-                    {filteredSections.map(section => {
-                      const isSelected = selectedSectionIds.includes(section.section_id);
-                      return (
-                        <Button key={section.section_id} variant={isSelected ? 'filled' : 'default'} size="sm"
-                          leftSection={isSelected ? <IconCheck size={14} /> : null}
-                          onClick={() => toggleSection(section.section_id)}>
-                          Section {section.name}
-                        </Button>
-                      );
-                    })}
-                  </Group>
-                )}
-
-                {selectedSectionIds.length > 1 && (
-                  <Paper p="sm" mt="sm" bg="blue.0" withBorder>
-                    <Group gap="xs">
-                      <IconLink size={16} />
-                      <Text size="xs">
-                        <Text span fw={600}>{selectedSectionIds.length} exams will be created</Text> for sections{' '}
-                        {selectedSectionNames.map(n => `Section ${n}`).join(', ')}. Editing the answer key on any one will update all sections.
-                      </Text>
-                    </Group>
-                  </Paper>
-                )}
-                {selectedSectionIds.length === 1 && (
-                  <Paper p="sm" mt="sm" bg="green.0" withBorder>
-                    <Text size="xs"><Text span fw={600}>1 exam</Text> will be created for Section {selectedSectionNames[0]}</Text>
-                  </Paper>
-                )}
-                {selectedSectionIds.length === 0 && filteredSections.length > 0 && (
-                  <Text size="xs" c="red" mt="xs">Please select at least one section</Text>
-                )}
-              </div>
 
               <Group justify="flex-end" mt="md">
                 <Button variant="default" onClick={onClose}>Cancel</Button>

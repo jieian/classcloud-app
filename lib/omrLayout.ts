@@ -7,7 +7,7 @@
  *  2. omrService.ts      — to FIND elements when detecting answers in a scan
  *
  * All units are PDF points (pt), where 72pt = 1 inch.
- * A4 page = 595 × 842 pt.
+ * Letter page = 612 × 792 pt.
  *
  * After perspective correction, the scanned image is mapped to exactly
  * PAGE_W × PAGE_H pixels, so 1px == 1pt. This makes sampling trivial.
@@ -15,8 +15,8 @@
 
 export const OMR = {
   // ─── Page ─────────────────────────────────────────────────────────────────
-  PAGE_W: 595,
-  PAGE_H: 842,
+  PAGE_W: 612,
+  PAGE_H: 792,
 
   // ─── Corner Markers ────────────────────────────────────────────────────────
   // Solid black squares used for perspective detection.
@@ -25,9 +25,9 @@ export const OMR = {
   // Inset markers from paper edges so phone/webcam wide shots can include all corners more easily.
   CM_SIZE: 24,   // square side length in pt
   CM_TL: { x: 40,  y: 40  },   // top-left marker
-  CM_TR: { x: 531, y: 40  },   // top-right marker
-  CM_BL: { x: 40,  y: 778 },   // bottom-left marker
-  CM_BR: { x: 531, y: 778 },   // bottom-right marker (L-shaped notch for orientation)
+  CM_TR: { x: 548, y: 40  },   // top-right marker  (612 - 40 - 24)
+  CM_BL: { x: 40,  y: 753 },   // bottom-left marker (792 - 15 - 24 = 753; 15pt bottom margin keeps clearance from last bubble row)
+  CM_BR: { x: 548, y: 753 },   // bottom-right marker
 
   // Computed: center of each corner marker
   get CM_TL_C() { return { x: this.CM_TL.x + this.CM_SIZE / 2, y: this.CM_TL.y + this.CM_SIZE / 2 }; },
@@ -44,10 +44,11 @@ export const OMR = {
   HEADER_END_Y: 175,  // y-coordinate where the header area ends
 
   // ─── Bubble Grid ──────────────────────────────────────────────────────────
-  BUBBLE_R:       5.5,  // bubble circle radius in pt
-  FILL_THRESHOLD: 0.55, // ratio of dark pixels to consider a bubble filled — accepts light pencil shading while rejecting X marks
-  ROW_H:          17,   // vertical distance between bubble row centers
-  CHOICE_SPACING: 22,   // horizontal distance between choice bubble centers
+  BUBBLE_R:       6,    // bubble circle radius in pt
+  FILL_THRESHOLD: 0.04, // fraction difference from local background to detect fill (calibrated for HB/Mongol No.2 pencil)
+  FILL_DELTA:     0.02, // second-best gap required to avoid ambiguous multi-fill
+  ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
+  CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
   GRID_START_Y:   195,  // y-center of the first row of bubbles
   ITEMS_PER_COL:  20,   // maximum items per column
 
@@ -64,10 +65,13 @@ export const OMR = {
    * Returns the canonical (x, y) center of a bubble in PDF-point space.
    * @param itemNumber  1-based item number
    * @param choiceIndex 0=A, 1=B, 2=C, 3=D, 4=E ...
+   * @param totalItems  total items on the exam — must match what examPdfService used
+   *                    (column break = Math.ceil(totalItems / 2))
    */
-  bubbleCenter(itemNumber: number, choiceIndex: number): { x: number; y: number } {
-    const col = itemNumber <= this.ITEMS_PER_COL ? 1 : 2;
-    const rowInCol = col === 1 ? itemNumber - 1 : itemNumber - this.ITEMS_PER_COL - 1;
+  bubbleCenter(itemNumber: number, choiceIndex: number, totalItems: number): { x: number; y: number } {
+    const itemsInCol1 = Math.ceil(totalItems / 2);
+    const col = itemNumber <= itemsInCol1 ? 1 : 2;
+    const rowInCol = col === 1 ? itemNumber - 1 : itemNumber - itemsInCol1 - 1;
     const baseX = col === 1 ? this.COL1_FIRST_BUBBLE_X : this.COL2_FIRST_BUBBLE_X;
     return {
       x: baseX + choiceIndex * this.CHOICE_SPACING,

@@ -63,6 +63,36 @@ export async function POST(request: Request) {
 
   const creatorTeacherId = payload.creator_teacher_id ?? user.id;
 
+  // Ensure no duplicate (section + subject) exam already exists.
+  if (!payload.subject_id) {
+    return Response.json({ error: "Subject is required." }, { status: 400 });
+  }
+
+  const { data: existingDuplications, error: dupError } = await adminClient
+    .from("exam_assignments")
+    .select("section_id, exam_id, exams!inner(subject_id, deleted_at, creator_teacher_id)")
+    .in("section_id", selectedSectionIds)
+    .eq("exams.subject_id", payload.subject_id)
+    .eq("exams.creator_teacher_id", creatorTeacherId)
+    .is("exams.deleted_at", null);
+
+  if (dupError) {
+    console.error("[api/exams/create] duplicate check error:", dupError.message);
+    return Response.json({ error: dupError.message }, { status: 500 });
+  }
+
+  const existingSectionIds = new Set<number>((existingDuplications ?? []).map((row: any) => row.section_id));
+  const nonDuplicateSectionIds = selectedSectionIds.filter((id) => !existingSectionIds.has(id));
+
+  if (nonDuplicateSectionIds.length === 0) {
+    return Response.json(
+      { error: "Exam for selected section(s) with this subject already exists." },
+      { status: 400 },
+    );
+  }
+
+  const skippedSectionIds = selectedSectionIds.filter((id) => existingSectionIds.has(id));
+
   const { data: examRow, error: examError } = await adminClient
     .from("exams")
     .insert({
@@ -82,7 +112,7 @@ export async function POST(request: Request) {
     return Response.json({ error: examError?.message ?? "Failed to create exam" }, { status: 500 });
   }
 
-  const assignments = selectedSectionIds.map((sectionId) => ({
+  const assignments = nonDuplicateSectionIds.map((sectionId) => ({
     exam_id: examRow.exam_id,
     section_id: sectionId,
   }));
@@ -95,6 +125,10 @@ export async function POST(request: Request) {
     console.error("[api/exams/create] assignment insert error:", assignmentError.message);
     await adminClient.from("exams").delete().eq("exam_id", examRow.exam_id);
     return Response.json({ error: assignmentError.message }, { status: 500 });
+  }
+
+  if (skippedSectionIds && skippedSectionIds.length > 0) {
+    return Response.json({ exam_id: examRow.exam_id, skipped_sections: skippedSectionIds }, { status: 200 });
   }
 
   return Response.json({ exam_id: examRow.exam_id });

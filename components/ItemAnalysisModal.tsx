@@ -9,7 +9,8 @@ import {
   difficultyLabel,
   ComputedItemStat,
 } from '@/lib/services/analysisService';
-import type { ExamWithRelations, ExamScore, AnswerKeyJsonb } from '@/lib/exam-supabase';
+import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
+import { resolveExamParams } from '@/lib/exam-supabase';
 
 interface ItemAnalysisModalProps {
   exam: ExamWithRelations;
@@ -30,9 +31,8 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'summary' | 'items' | 'students'>('summary');
 
-  const ak = exam.answer_key as AnswerKeyJsonb | null;
-  const totalItems = ak?.total_questions ?? exam.total_items ?? 30;
-  const answerKey: { [item: number]: string | null } = ak?.answers ?? {};
+  const { totalItems } = resolveExamParams(exam);
+  const answerKey: { [item: number]: string | null } = exam.answer_key?.answers ?? {};
 
   const loadData = async () => {
     setLoading(true);

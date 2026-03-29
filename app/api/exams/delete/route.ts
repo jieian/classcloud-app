@@ -22,14 +22,10 @@ export async function DELETE(request: Request) {
     { user_uuid: user.id },
   );
 
-  if (
-    permsError ||
-    !permsData?.some(
-      (p: any) =>
-        p.permission_name === "exams.full_access" ||
-        p.permission_name === "exams.limited_access",
-    )
-  ) {
+  const hasFullAccess = permsData?.some((p: any) => p.permission_name === "exams.full_access");
+  const hasLimitedAccess = permsData?.some((p: any) => p.permission_name === "exams.limited_access");
+
+  if (permsError || (!hasFullAccess && !hasLimitedAccess)) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -38,6 +34,59 @@ export async function DELETE(request: Request) {
 
   if (!Number.isInteger(examId) || examId <= 0) {
     return Response.json({ error: "Invalid exam_id." }, { status: 400 });
+  }
+
+  const { data: examData, error: examFetchError } = await adminClient
+    .from("exams")
+    .select("exam_id, subject_id, creator_teacher_id")
+    .eq("exam_id", examId)
+    .is("deleted_at", null)
+    .single();
+
+  if (examFetchError || !examData) {
+    return Response.json({ error: "Exam not found." }, { status: 404 });
+  }
+
+  const examSubjectId = examData.subject_id;
+
+  const { data: examAssignments, error: examAssignmentsError } = await adminClient
+    .from("exam_assignments")
+    .select("section_id")
+    .eq("exam_id", examId);
+  if (examAssignmentsError) {
+    console.error("[api/exams/delete] fetch exam_assignments error:", examAssignmentsError.message);
+    return Response.json({ error: examAssignmentsError.message }, { status: 500 });
+  }
+
+  const sectionIds = (examAssignments ?? [])
+    .map((a: { section_id: number }) => a.section_id)
+    .filter((sectionId) => Number.isInteger(sectionId) && sectionId > 0);
+
+  if (!examSubjectId || sectionIds.length === 0) {
+    return Response.json({ error: "Exam missing subject or section associations." }, { status: 400 });
+  }
+
+  if (!hasFullAccess) {
+    // Creator can always delete their own exam (covers copies assigned to SSES/cross-type sections
+    // where the exam's subject_id differs from the teacher's SSES assignment subject_id)
+    if (examData.creator_teacher_id !== user.id) {
+      const { data: teacherAssignments, error: teacherAssignmentsError } = await adminClient
+        .from("teacher_class_assignments")
+        .select("section_id, subject_id")
+        .eq("teacher_id", user.id)
+        .in("section_id", sectionIds)
+        .eq("subject_id", examSubjectId)
+        .is("deleted_at", null);
+
+      if (teacherAssignmentsError) {
+        console.error("[api/exams/delete] teacher assignment check error:", teacherAssignmentsError.message);
+        return Response.json({ error: teacherAssignmentsError.message }, { status: 500 });
+      }
+
+      if (!teacherAssignments || teacherAssignments.length === 0) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
   }
 
   const { error } = await adminClient

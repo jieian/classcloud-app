@@ -89,6 +89,24 @@ export interface ExamWithRelations extends Exam {
   }[];
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Single source of truth for resolving exam parameters.
+ * Prefers answer_key fields (set at creation time), then falls back to
+ * exam.total_items (always present), then a safe minimum default.
+ */
+export function resolveExamParams(exam: Exam | null | undefined): {
+  totalItems: number;
+  numChoices: number;
+} {
+  const ak = exam?.answer_key ?? null;
+  return {
+    totalItems:  ak?.total_questions ?? exam?.total_items ?? 30,
+    numChoices:  ak?.num_choices      ?? 4,
+  };
+}
+
 // ─── Scan / Analysis interfaces ───────────────────────────────────────────────
 
 export interface ExamScore {

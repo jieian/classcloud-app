@@ -38,10 +38,7 @@ export default function ClassesClient() {
   const isClassAdviser = roles.some(
     (r) => r.name.trim().toLowerCase() === "class adviser",
   );
-  const isPartialAccess =
-    permissions.includes("students.limited_access") &&
-    !permissions.includes("classes.full_access") &&
-    !permissions.includes("students.full_access");
+  const isPartialAccess = !permissions.includes("classes.full_access");
 
   const canViewTransferRequests =
     permissions.includes("students.limited_access") ||

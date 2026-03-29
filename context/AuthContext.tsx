@@ -12,11 +12,9 @@ import {
   createContext,
   useContext,
   useEffect,
-  useRef,
   useState,
   ReactNode,
 } from "react";
-import { Modal, Text, Button, Group, Stack } from "@mantine/core";
 import { getSupabase } from "@/lib/supabase/client";
 import { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 import { useRouter, usePathname } from "next/navigation";
@@ -34,12 +32,12 @@ interface PermissionRow {
   permission_name: string;
 }
 
-interface RolesResult {
-  roles: Role[];
-  firstName: string;
-  lastName: string;
-  /** True when the account is inactive/deleted — signOut already triggered. */
-  deactivated: boolean;
+function isSupabaseLockTimeout(message: string): boolean {
+  return /Navigator LockManager lock/i.test(message) && /timed out/i.test(message);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function clearSupabaseClientAuthArtifacts() {
@@ -107,15 +105,9 @@ interface AuthContextType {
   user: User | null;
   roles: Role[];
   permissions: string[];
-  /** True once permissions have been successfully loaded from DB or cache. */
-  permissionsLoaded: boolean;
-  firstName: string;
-  lastName: string;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  /** Re-fetches first/last name from DB and updates context + sessionStorage. */
-  refreshUserName: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -124,36 +116,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
-  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
-  const [firstName, setFirstName] = useState<string>("");
-  const [lastName, setLastName] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [showSessionWarning, setShowSessionWarning] = useState(false);
-  const [sessionCountdown, setSessionCountdown] = useState(120);
-  const signOutRef = useRef<() => Promise<void>>(async () => {});
 
-  const INACTIVITY_MS = 2 * 60 * 60 * 1000; // 2 hours
-  const WARNING_MS = 2 * 60 * 1000;          // warn 2 minutes before logout
-
-  // Hydrate from sessionStorage on mount (client-only) so NavBar has
-  // cached permissions immediately while the fresh async fetch runs.
+  // Hydrate from storage on mount (client-only) so navigation can render
+  // immediately in new tabs while the fresh async fetch runs.
   useEffect(() => {
     try {
-      const cachedRoles = sessionStorage.getItem("cc_roles");
-      const cachedPermissions = sessionStorage.getItem("cc_permissions");
-      const cachedFirstName = sessionStorage.getItem("cc_first_name");
-      const cachedLastName = sessionStorage.getItem("cc_last_name");
+      const cachedRoles =
+        localStorage.getItem("cc_roles") ?? sessionStorage.getItem("cc_roles");
+      const cachedPermissions =
+        localStorage.getItem("cc_permissions") ?? sessionStorage.getItem("cc_permissions");
       if (cachedRoles) setRoles(JSON.parse(cachedRoles));
-      if (cachedPermissions) {
-        setPermissions(JSON.parse(cachedPermissions));
-        // Cache is present — permissions are usable immediately.
-        setPermissionsLoaded(true);
-      }
-      if (cachedFirstName) setFirstName(cachedFirstName);
-      if (cachedLastName) setLastName(cachedLastName);
+      if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
     } catch {
-      // sessionStorage unavailable
+      // storage unavailable
     }
   }, []);
 
@@ -161,47 +138,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const supabase = getSupabase();
 
-  const fetchUserRoles = async (authUserId: string): Promise<RolesResult> => {
+  const fetchUserRoles = async (
+    authUserId: string,
+    retries = 2,
+  ): Promise<Role[] | null> => {
     const { data, error } = await supabase
       .from("users")
-      .select("first_name, last_name, user_roles(role_id, roles(role_id, name))")
+      .select("user_roles(role_id, roles(role_id, name))")
       .eq("uid", authUserId)
       .eq("active_status", 1)
-      .is("deleted_at", null)
       .maybeSingle();
 
     if (error) {
-      throw new Error(`Failed to fetch roles: ${error.message}`);
+      if (retries > 0 && isSupabaseLockTimeout(error.message)) {
+        await delay(250);
+        return fetchUserRoles(authUserId, retries - 1);
+      }
+      console.error("Failed to fetch roles:", error.message);
+      // Return null to signal "keep current/cached values" on transient failures.
+      return null;
     }
 
-    // No row means the account is inactive, pending, or soft-deleted.
-    // Sign out immediately so they can't linger with cached credentials.
-    if (!data) {
-      supabase.auth.signOut({ scope: "global" }).catch(() => {});
-      return { roles: [], firstName: "", lastName: "", deactivated: true };
-    }
-
-    const userRoles = (data.user_roles ?? []) as UserRoleJoinRow[];
-    return {
-      roles: userRoles
-        .filter((row) => row.roles !== null)
-        .map((row) => ({
-          role_id: row.roles!.role_id,
-          name: row.roles!.name,
-        })),
-      firstName: (data as { first_name: string }).first_name ?? "",
-      lastName: (data as { last_name: string }).last_name ?? "",
-      deactivated: false,
-    };
+    const userRoles = (data?.user_roles ?? []) as UserRoleJoinRow[];
+    return userRoles
+      .filter((row) => row.roles !== null)
+      .map((row) => ({
+        role_id: row.roles!.role_id,
+        name: row.roles!.name,
+      }));
   };
 
-  const fetchUserPermissions = async (authUserId: string) => {
-    const { data, error } = await supabase.rpc("get_user_permissions", {
+  const fetchUserPermissions = async (
+    authUserId: string,
+    retries = 2,
+  ): Promise<string[] | null> => {
+    const { data, error} = await supabase.rpc("get_user_permissions", {
       user_uuid: authUserId,
     });
 
     if (error) {
-      throw new Error(`Failed to fetch permissions: ${error.message}`);
+      if (retries > 0 && isSupabaseLockTimeout(error.message)) {
+        await delay(250);
+        return fetchUserPermissions(authUserId, retries - 1);
+      }
+      console.error("Failed to fetch permissions:", error.message);
+      // Return null to signal "keep current/cached values" on transient failures.
+      return null;
     }
 
     const permissionRows = (data ?? []) as PermissionRow[];
@@ -209,38 +191,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   /**
-   * Fetches roles and permissions in parallel for performance.
-   * Returns true if data was successfully applied, false if skipped (deactivated).
+   * Fetches roles and permissions in parallel for performance
+   * Cuts load time in half compared to sequential fetches
+   * Uses UUID to link auth.users.id with users.id
    */
-  const fetchUserData = async (userId: string): Promise<boolean> => {
-    const [rolesResult, fetchedPermissions] = await Promise.all([
+  const fetchUserData = async (userId: string) => {
+    const [fetchedRoles, fetchedPermissions] = await Promise.all([
       fetchUserRoles(userId),
       fetchUserPermissions(userId),
     ]);
 
-    // Account is deactivated — signOut was already triggered in fetchUserRoles.
-    // Do not apply permissions; onAuthStateChange will fire SIGNED_OUT shortly.
-    if (rolesResult.deactivated) {
-      return false;
+    // If auth lock contention occurred, do not wipe existing/cached permissions.
+    if (!fetchedRoles || !fetchedPermissions) {
+      return;
     }
 
-    setRoles(rolesResult.roles);
+    setRoles(fetchedRoles);
     setPermissions(fetchedPermissions);
-    setFirstName(rolesResult.firstName);
-    setLastName(rolesResult.lastName);
-    setPermissionsLoaded(true);
 
-    // Cache for instant hydration on reload (same-tab refreshes)
+    // Cache for instant hydration on reload
     try {
-      sessionStorage.setItem("cc_roles", JSON.stringify(rolesResult.roles));
+      localStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
+      localStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
+      sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
       sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
-      sessionStorage.setItem("cc_first_name", rolesResult.firstName);
-      sessionStorage.setItem("cc_last_name", rolesResult.lastName);
     } catch {
-      // sessionStorage unavailable (e.g. private browsing quota exceeded)
+      // storage unavailable
     }
-
-    return true;
   };
 
   // Single subscription — onAuthStateChange fires INITIAL_SESSION on setup,
@@ -251,24 +228,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let alive = true;
     let settled = false;
     let applySessionInFlight = false;
-    // Last-wins queue: if a new session arrives while one is processing, we
-    // store it here and process it immediately after the current one finishes.
-    // undefined = nothing queued; null = queued sign-out; Session = queued session.
-    let queuedSession: Session | null | undefined = undefined;
 
     const applySession = async (session: Session | null) => {
-      if (!alive) return;
-
-      // If already processing, queue this session (last-wins) and return.
-      // This prevents silently dropping TOKEN_REFRESHED or other mid-flight events.
-      if (applySessionInFlight) {
-        queuedSession = session;
-        return;
-      }
-
+      if (!alive || applySessionInFlight) return;
       applySessionInFlight = true;
-      queuedSession = undefined;
-
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
@@ -278,8 +241,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const hasCached = (() => {
           try {
             return !!(
-              sessionStorage.getItem("cc_roles") &&
-              sessionStorage.getItem("cc_permissions")
+              (localStorage.getItem("cc_roles") ?? sessionStorage.getItem("cc_roles")) &&
+              (localStorage.getItem("cc_permissions") ?? sessionStorage.getItem("cc_permissions"))
             );
           } catch {
             return false;
@@ -294,34 +257,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         try {
           await withTimeout(fetchUserData(currentUser.id), 15000, "fetchUserData");
         } catch (error) {
-          if (hasCached) {
-            // Non-fatal: cached data is already displayed.
-            console.warn("[auth] fetchUserData background refresh failed:", error);
-          } else {
-            // No cache fallback — permissions are unknown. Keep the user
-            // authenticated but mark permissions as not loaded so ProtectedRoute
-            // shows a loader rather than incorrectly redirecting to /unauthorized.
-            console.error("[auth] fetchUserData failed with no cache:", error);
-            // permissionsLoaded stays false; user will see the loading spinner.
-            // The watchdog will eventually force a resolution.
-          }
+          // Non-fatal: cached data is already displayed.
+          console.warn("[auth] fetchUserData background refresh failed:", error);
         }
       } else {
         setRoles([]);
         setPermissions([]);
-        setPermissionsLoaded(false);
       }
 
       if (alive) setLoading(false);
       settled = true;
       applySessionInFlight = false;
-
-      // Process any session that arrived while we were in-flight.
-      if (alive && queuedSession !== undefined) {
-        const nextSession = queuedSession;
-        queuedSession = undefined;
-        await applySession(nextSession);
-      }
     };
 
     const {
@@ -332,7 +278,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
-        setPermissionsLoaded(false);
         setLoading(false);
         window.location.href = "/login";
         return;
@@ -342,7 +287,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
-        setPermissionsLoaded(false);
         setLoading(false);
         return;
       }
@@ -364,7 +308,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setRoles([]);
         setPermissions([]);
-        setPermissionsLoaded(false);
         setLoading(false);
         settled = true;
       });
@@ -375,7 +318,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       setRoles([]);
       setPermissions([]);
-      setPermissionsLoaded(false);
       setLoading(false);
     }, 20000);
 
@@ -403,89 +345,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user, pathname, router, isLoggingOut]);
 
   // Ensure authenticated app shell is never visible when signed out.
-  // Guard with isLoggingOut to avoid racing with window.location.replace in signOut().
   useEffect(() => {
-    if (!loading && !user && !isLoggingOut && pathname !== "/login") {
+    if (!loading && !user && pathname !== "/login") {
       router.replace("/login");
     }
-  }, [loading, user, isLoggingOut, pathname, router]);
-
-  // Keep signOutRef current so inactivity timers always call the latest signOut.
-  useEffect(() => {
-    signOutRef.current = signOut;
-  });
-
-  // Inactivity session timeout — resets on any user interaction.
-  useEffect(() => {
-    if (!user) return;
-
-    let inactivityTimer: ReturnType<typeof setTimeout>;
-    let warningTimer: ReturnType<typeof setTimeout>;
-    let countdownInterval: ReturnType<typeof setInterval>;
-
-    const startTimers = () => {
-      warningTimer = setTimeout(() => {
-        setShowSessionWarning(true);
-        setSessionCountdown(120);
-        countdownInterval = setInterval(() => {
-          setSessionCountdown((prev) => {
-            if (prev <= 1) { clearInterval(countdownInterval); return 0; }
-            return prev - 1;
-          });
-        }, 1000);
-      }, INACTIVITY_MS - WARNING_MS);
-
-      inactivityTimer = setTimeout(() => {
-        signOutRef.current();
-      }, INACTIVITY_MS);
-    };
-
-    const resetTimers = () => {
-      clearTimeout(inactivityTimer);
-      clearTimeout(warningTimer);
-      clearInterval(countdownInterval);
-      setShowSessionWarning(false);
-      setSessionCountdown(120);
-      startTimers();
-    };
-
-    const events = ["mousemove", "mousedown", "keypress", "touchstart", "scroll", "click"];
-    events.forEach((e) => window.addEventListener(e, resetTimers, { passive: true }));
-    startTimers();
-
-    return () => {
-      clearTimeout(inactivityTimer);
-      clearTimeout(warningTimer);
-      clearInterval(countdownInterval);
-      events.forEach((e) => window.removeEventListener(e, resetTimers));
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
-
-  const refreshUserName = async () => {
-    if (!user?.id) return;
-    try {
-      const { data } = await supabase
-        .from("users")
-        .select("first_name, last_name")
-        .eq("uid", user.id)
-        .single();
-      if (data) {
-        const fn = (data as { first_name: string }).first_name ?? "";
-        const ln = (data as { last_name: string }).last_name ?? "";
-        setFirstName(fn);
-        setLastName(ln);
-        try {
-          sessionStorage.setItem("cc_first_name", fn);
-          sessionStorage.setItem("cc_last_name", ln);
-        } catch {
-          // sessionStorage unavailable
-        }
-      }
-    } catch {
-      // ignore refresh failures silently
-    }
-  };
+  }, [loading, user, pathname, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -505,21 +369,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Clear app-specific cached auth data immediately.
     try {
+      localStorage.removeItem("cc_roles");
+      localStorage.removeItem("cc_permissions");
       sessionStorage.removeItem("cc_roles");
       sessionStorage.removeItem("cc_permissions");
-      sessionStorage.removeItem("cc_first_name");
-      sessionStorage.removeItem("cc_last_name");
     } catch {
-      // sessionStorage unavailable
+      // storage unavailable
     }
 
     // Optimistically clear in-memory state to prevent stale nav state.
     setUser(null);
     setRoles([]);
     setPermissions([]);
-    setPermissionsLoaded(false);
-    setFirstName("");
-    setLastName("");
     setLoading(false);
     clearSupabaseClientAuthArtifacts();
 
@@ -550,40 +411,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, roles, permissions, permissionsLoaded, firstName, lastName, loading, signIn, signOut, refreshUserName }}
+      value={{ user, roles, permissions, loading, signIn, signOut }}
     >
       {children}
-
-      <Modal
-        opened={showSessionWarning}
-        onClose={() => { setShowSessionWarning(false); setSessionCountdown(120); }}
-        title="Session Expiring Soon"
-        centered
-        withCloseButton={false}
-        closeOnClickOutside={false}
-        closeOnEscape={false}
-      >
-        <Stack gap="md">
-          <Text size="sm">
-            You have been inactive for a while. You will be automatically logged out in{" "}
-            <Text span fw={700} c="red">{sessionCountdown}s</Text>.
-          </Text>
-          <Text size="sm" c="orange" fw={500}>
-            Any unsaved changes will be lost. Please save your work before the timer runs out.
-          </Text>
-          <Group justify="flex-end" gap="sm">
-            <Button variant="default" onClick={signOut}>
-              Log Out Now
-            </Button>
-            <Button
-              color="#4EAE4A"
-              onClick={() => { setShowSessionWarning(false); setSessionCountdown(120); }}
-            >
-              Stay Logged In
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
     </AuthContext.Provider>
   );
 }
