@@ -337,7 +337,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
               <div className="grid grid-cols-2 gap-2 text-sm">
                 {[
                   ['Exam', exam.title],
-                  ['Subject', exam.subjects?.name ?? '—'],
+                  ['Subject', exam.curriculum_subjects?.subjects?.name ?? '—'],
                   ['Grade', exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name ?? '—'],
                   ['Section(s)', assignedSections.join(', ')],
                 ].map(([label, value]) => (

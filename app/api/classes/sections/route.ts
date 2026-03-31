@@ -48,9 +48,9 @@ export async function GET(request: Request) {
     isPartialAccess
       ? admin
           .from("teacher_class_assignments")
-          .select("section_id")
+          .select("section_id, sections!inner(sy_id)")
           .eq("teacher_id", user.id)
-          .eq("sy_id", syId)
+          .eq("sections.sy_id", syId)
           .is("deleted_at", null)
       : Promise.resolve({ data: [] as { section_id: number }[], error: null }),
   ]);

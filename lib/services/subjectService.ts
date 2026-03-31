@@ -1,49 +1,39 @@
 /**
  * subjectService.ts
- * Fetches subjects from public.subjects table.
+ * Fetches subjects from the active curriculum for use in exam creation.
  */
 import { supabase, Subject } from '@/lib/exam-supabase';
 
-export async function fetchSubjects(): Promise<Subject[]> {
-  const { data, error } = await supabase
-    .from('subjects')
-    .select('*')
-    .order('name', { ascending: true });
-
-  if (error) {
-    console.error('[subjectService] fetchSubjects error:', error.message);
-    return [];
-  }
-  return data ?? [];
-}
-
-export type SectionType = 'REGULAR' | 'SSES';
-
 export interface SubjectWithGradeLevel extends Subject {
+  curriculum_subject_id: number;
   grade_level_id: number;
-  section_type: SectionType | null;
+  /** 'BOTH' = applies to all sections; 'SSES' = SSES sections only */
+  subject_type: 'BOTH' | 'SSES';
 }
 
 export async function fetchSubjectsWithGradeLevels(): Promise<SubjectWithGradeLevel[]> {
-  // Try with section_type first; fall back if the column doesn't exist yet
-  let { data, error } = await supabase
-    .from('subject_grade_levels')
-    .select('grade_level_id, section_type, subjects(subject_id, name, code)')
-    .is('deleted_at', null);
+  // Round 1: resolve the active curriculum — single-row fetch
+  const { data: sy, error: syErr } = await supabase
+    .from('school_years')
+    .select('curriculum_id')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle();
 
-  if (error?.message?.includes('section_type')) {
-    // Column not yet migrated — fetch without it
-    const fallback = await supabase
-      .from('subject_grade_levels')
-      .select('grade_level_id, subjects(subject_id, name, code)')
-      .is('deleted_at', null);
-    if (fallback.error) {
-      console.error('[subjectService] fetchSubjectsWithGradeLevels error:', fallback.error.message);
-      return [];
-    }
-    data = fallback.data as any;
-    error = null;
+  if (syErr) {
+    console.error('[subjectService] fetchSubjectsWithGradeLevels sy error:', syErr.message);
+    return [];
   }
+
+  const curriculumId = (sy as any)?.curriculum_id as number | null;
+  if (!curriculumId) return [];
+
+  // Round 2: all subjects for that curriculum in one query via inner join
+  const { data, error } = await supabase
+    .from('curriculum_subjects')
+    .select('curriculum_subject_id, grade_level_id, subjects!inner(subject_id, name, code, subject_type, deleted_at)')
+    .eq('curriculum_id', curriculumId)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('[subjectService] fetchSubjectsWithGradeLevels error:', error.message);
@@ -51,15 +41,15 @@ export async function fetchSubjectsWithGradeLevels(): Promise<SubjectWithGradeLe
   }
 
   return ((data ?? []) as any[]).flatMap((row: any) => {
-    const s = row.subjects;
-    if (!s) return [];
-    const subjects = Array.isArray(s) ? s : [s];
-    return subjects.map((sub: any) => ({
-      subject_id: sub.subject_id,
-      name: sub.name,
-      code: sub.code,
-      grade_level_id: row.grade_level_id,
-      section_type: (row.section_type ?? null) as SectionType | null,
-    }));
+    const sub = row.subjects;
+    if (!sub || sub.deleted_at !== null) return [];
+    return [{
+      curriculum_subject_id: row.curriculum_subject_id as number,
+      subject_id: sub.subject_id as number,
+      name: sub.name as string,
+      code: sub.code as string,
+      grade_level_id: row.grade_level_id as number,
+      subject_type: sub.subject_type as 'BOTH' | 'SSES',
+    }];
   });
 }

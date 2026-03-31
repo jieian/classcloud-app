@@ -14,12 +14,12 @@ type BackButtonProps = Omit<ButtonProps, 'variant' | 'color' | 'leftSection'> & 
  * Standardized back navigation button used across the app.
  * Pass `href` for link-based navigation, or `onClick` for programmatic navigation.
  */
-export default function BackButton({ href, onClick, size = 'md', children, ...props }: BackButtonProps) {
+export default function BackButton({ href, onClick, size = 'xs', children, ...props }: BackButtonProps) {
   const common: ButtonProps = {
-    variant: 'filled',
-    color: '#466D1D',
-    leftSection: <IconArrowLeft size={16} />,
+    variant: 'default',
+    leftSection: <IconArrowLeft size={12} />,
     size,
+    w: 'fit-content',
     ...props,
   };
 

@@ -99,7 +99,7 @@ export default function ManageSubjectTeachersModal({
     setSaving(true);
     try {
       const assignments = subjects.map((sub) => ({
-        subject_id: sub.subject_id,
+        curriculum_subject_id: sub.curriculum_subject_id,
         teacher_id:
           (selections[sub.subject_id] ?? UNASSIGNED) === UNASSIGNED
             ? null

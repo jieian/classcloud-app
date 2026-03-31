@@ -469,7 +469,7 @@ export default function ScanPapersPage() {
     return (
       <div className="text-center py-20">
         <p className="text-gray-500 font-medium">You do not have permission to access this page.</p>
-        <BackButton mt="md" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
+        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
     );
   }
@@ -478,12 +478,12 @@ export default function ScanPapersPage() {
     return (
       <div className="text-center py-20">
         <p className="text-gray-500 font-medium">Exam not found.</p>
-        <BackButton mt="md" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
+        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
     );
   }
 
-  // â"€â"€â"€ Render â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-4">
@@ -492,7 +492,7 @@ export default function ScanPapersPage() {
           <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
           <p className="mt-1 text-sm text-[#597D37]">{exam.title}</p>
         </div>
-        <BackButton onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
+        <BackButton size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6">
@@ -525,7 +525,7 @@ export default function ScanPapersPage() {
               </div>
               <div>
                 <span className="font-semibold text-gray-600">Subject</span>
-                <p className="text-gray-800 mt-0.5">{exam.subjects?.name ?? '—'}</p>
+                <p className="text-gray-800 mt-0.5">{exam.curriculum_subjects?.subjects?.name ?? '—'}</p>
               </div>
             </div>
 

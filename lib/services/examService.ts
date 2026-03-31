@@ -11,7 +11,7 @@ export type CreateExamPayload = {
   total_items: number;
   exam_date: string;
   description?: string | null;
-  subject_id?: number | null;
+  curriculum_subject_id: number;
   quarter_id?: number | null;
   creator_teacher_id?: string | null;
   is_locked?: boolean;
@@ -23,11 +23,11 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
   let query = supabase
     .from('exams')
     .select(`
-      *,
-      subjects ( name, code ),
+      exam_id, title, total_items, exam_date, is_locked,
+      creator_teacher_id, quarter_id, curriculum_subject_id, created_at,
+      answer_key, objectives,
+      curriculum_subjects ( subject_id, subjects ( name, code ) ),
       quarters ( name ),
-      answer_key,
-      objectives,
       exam_assignments (
         id,
         sections (
@@ -58,7 +58,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
     .from('exams')
     .select(`
       *,
-      subjects ( name, code ),
+      curriculum_subjects ( subject_id, subjects ( name, code ) ),
       quarters ( name ),
       exam_assignments (
         id,

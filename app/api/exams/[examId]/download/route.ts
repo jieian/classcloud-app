@@ -100,7 +100,6 @@ export async function GET(
     .from("exam_assignments")
     .select("id, section_id")
     .eq("exam_id", examId)
-    .is("deleted_at", null)
     .returns<AssignmentRow[]>();
 
   if (assignmentError) {

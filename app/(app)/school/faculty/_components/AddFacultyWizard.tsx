@@ -218,17 +218,27 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
     try {
       setSubmitting(true);
 
-      const flatSubjectAssignments = form.values.subject_assignments.flatMap(
-        (a) =>
-          a.subject_ids.map((subjectId) => ({
-            section_id: a.section_id,
-            subject_id: subjectId,
-          })),
+      // Build lookup: "grade_level_id-subject_id" → curriculum_subject_id
+      const sectionGlMap = new Map(
+        initialData.sections.map((s) => [s.section_id, s.grade_level_id]),
       );
+      const csIdMap = new Map(
+        initialData.subjects_by_grade_level.map((s) => [
+          `${s.grade_level_id}-${s.subject_id}`,
+          s.curriculum_subject_id,
+        ]),
+      );
+
+      const flatSubjectAssignments = form.values.subject_assignments.flatMap((a) => {
+        const gradeLevel = sectionGlMap.get(a.section_id);
+        return a.subject_ids.flatMap((subjectId) => {
+          const csId = csIdMap.get(`${gradeLevel}-${subjectId}`);
+          return csId ? [{ section_id: a.section_id, curriculum_subject_id: csId }] : [];
+        });
+      });
 
       await assignAcademicLoad({
         faculty_id: facultyUid,
-        sy_id: initialData.active_sy_id,
         advisory_section_id: form.values.advisory_section_id,
         subject_assignments: flatSubjectAssignments,
       });

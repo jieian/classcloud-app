@@ -735,7 +735,7 @@ export default function TransferRequestsClient() {
   return (
     <>
       {/* Page header */}
-      <BackButton href="/school/classes" mb="md">Back to Classes</BackButton>
+      <BackButton href="/school/classes" mb="md" size="sm">Back to Classes</BackButton>
       <Group mb="xs" align="center" gap="xs">
         <Text size="xl" fw={700}>
           Transfer Requests

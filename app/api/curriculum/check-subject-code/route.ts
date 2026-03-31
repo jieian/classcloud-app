@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     permsError ||
     !permsData?.some(
       (p: { permission_name: string }) =>
-        p.permission_name === "subjects.full_access",
+        p.permission_name === "curriculum.full_access",
     )
   ) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
@@ -46,23 +46,23 @@ export async function POST(request: Request) {
     return Response.json({ error: "Subject code is required." }, { status: 400 });
   }
 
-  const { count: dupCount, error: dupError } = await adminClient
+  const subjectType = sectionType === "SSES" ? "SSES" : "BOTH";
+
+  const { data: existing, error: dupError } = await adminClient
     .from("subjects")
-    .select("subject_id", { count: "exact", head: true })
+    .select("subject_id, code, name, description, subject_type")
     .ilike("code", code)
-    .eq("section_type", sectionType)
-    .is("deleted_at", null);
+    .eq("subject_type", subjectType)
+    .is("deleted_at", null)
+    .limit(1);
 
   if (dupError) {
     return Response.json({ error: dupError.message }, { status: 500 });
   }
 
-  if ((dupCount ?? 0) > 0) {
+  if ((existing?.length ?? 0) > 0) {
     return Response.json(
-      {
-        available: false,
-        error: `A ${sectionType} subject with this code already exists.`,
-      },
+      { available: false, existingSubject: existing![0] },
       { status: 409 },
     );
   }

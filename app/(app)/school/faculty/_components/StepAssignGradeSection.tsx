@@ -116,24 +116,24 @@ export default function StepAssignGradeSection({
     [allAssignments, facultyUid],
   );
 
-  // Map: "grade_level_id-section_type" → subject_ids (built once)
-  const subjectIdsByGl = useMemo(() => {
-    const map = new Map<string, number[]>();
+  // Map: grade_level_id → subjects (built once)
+  const subjectsByGl = useMemo(() => {
+    const map = new Map<number, SubjectForGradeLevel[]>();
     for (const s of subjectsByGradeLevel) {
-      const key = `${s.grade_level_id}-${s.section_type}`;
-      const existing = map.get(key);
-      if (existing) existing.push(s.subject_id);
-      else map.set(key, [s.subject_id]);
+      const existing = map.get(s.grade_level_id);
+      if (existing) existing.push(s);
+      else map.set(s.grade_level_id, [s]);
     }
     return map;
   }, [subjectsByGradeLevel]);
 
-  // O(1) lookup: is every subject in this section taken by someone else?
+  // O(1) lookup: is every applicable subject in this section taken by someone else?
+  // BOTH subjects apply to all sections; SSES subjects only apply to SSES sections
   const isAllSubjectsTaken = (section: SectionWithAdviser): boolean => {
-    const key = `${section.grade_level_id}-${section.section_type}`;
-    const subjectIds = subjectIdsByGl.get(key);
-    if (!subjectIds || subjectIds.length === 0) return false;
-    return subjectIds.every((sid) => takenKeys.has(`${section.section_id}-${sid}`));
+    const subjects = (subjectsByGl.get(section.grade_level_id) ?? [])
+      .filter((s) => s.subject_type === "BOTH" || section.section_type === "SSES");
+    if (subjects.length === 0) return false;
+    return subjects.every((s) => takenKeys.has(`${section.section_id}-${s.subject_id}`));
   };
 
   // O(1) lookup: how many selected sections belong to this grade level?

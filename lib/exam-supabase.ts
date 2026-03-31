@@ -64,7 +64,7 @@ export interface Exam {
   objectives: LearningObjective[] | null;
   exam_date: string;
   is_locked: boolean;
-  subject_id: number | null;
+  curriculum_subject_id: number;
   creator_teacher_id: string | null;
   quarter_id: number | null;
   created_at: string;
@@ -77,7 +77,7 @@ export interface ExamAssignment {
 }
 
 export interface ExamWithRelations extends Exam {
-  subjects: { name: string; code: string } | null;
+  curriculum_subjects: { subject_id: number; subjects: { name: string; code: string } | null } | null;
   quarters: { name: string } | null;
   exam_assignments: {
     id: number;

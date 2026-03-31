@@ -110,7 +110,7 @@ export default function ClassDetailClient({ sectionId }: Props) {
     <Stack gap="md" maw={1000}>
       {/* Back */}
       <Box>
-        <BackButton href="/school/classes" mb="md">Back to Classes</BackButton>
+        <BackButton href="/school/classes" mb="md" size="sm">Back to Classes</BackButton>
       </Box>
 
       {/* Heading */}

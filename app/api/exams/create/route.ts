@@ -64,15 +64,15 @@ export async function POST(request: Request) {
   const creatorTeacherId = payload.creator_teacher_id ?? user.id;
 
   // Ensure no duplicate (section + subject) exam already exists.
-  if (!payload.subject_id) {
+  if (!payload.curriculum_subject_id) {
     return Response.json({ error: "Subject is required." }, { status: 400 });
   }
 
   const { data: existingDuplications, error: dupError } = await adminClient
     .from("exam_assignments")
-    .select("section_id, exam_id, exams!inner(subject_id, deleted_at, creator_teacher_id)")
+    .select("section_id, exam_id, exams!inner(curriculum_subject_id, deleted_at, creator_teacher_id)")
     .in("section_id", selectedSectionIds)
-    .eq("exams.subject_id", payload.subject_id)
+    .eq("exams.curriculum_subject_id", payload.curriculum_subject_id)
     .eq("exams.creator_teacher_id", creatorTeacherId)
     .is("exams.deleted_at", null);
 
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       title: payload.title,
       total_items: resolvedTotalItems,
       exam_date: payload.exam_date,
-      subject_id: payload.subject_id ?? null,
+      curriculum_subject_id: payload.curriculum_subject_id,
       quarter_id: payload.quarter_id ?? null,
       description: payload.description ?? null,
       creator_teacher_id: creatorTeacherId,

@@ -77,7 +77,7 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
 
   pdf.setFontSize(9);
   pdf.setFont('helvetica', 'normal');
-  const subjectText = exam.subjects?.name ? `Subject: ${exam.subjects.name}` : '';
+  const subjectText = exam.curriculum_subjects?.subjects?.name ? `Subject: ${exam.curriculum_subjects.subjects.name}` : '';
   const quarterText = exam.quarters?.name ? `  |  ${exam.quarters.name}` : '';
   pdf.text(subjectText + quarterText, OMR.PAGE_W / 2, 80, { align: 'center' });
 

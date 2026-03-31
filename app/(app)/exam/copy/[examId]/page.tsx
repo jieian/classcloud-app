@@ -14,7 +14,7 @@ import { notifications } from '@mantine/notifications';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
-import { createExamWithAssignments } from '@/lib/services/examService';
+import { createExamWithAssignments, fetchExamById } from '@/lib/services/examService';
 import type { Section, ExamWithRelations } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -71,12 +71,21 @@ export default function CopyExamPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [sec, subs] = await Promise.all([
+      const [sec, subs, exam] = await Promise.all([
         fetchActiveSections(),
         fetchSubjectsWithGradeLevels(),
+        fetchExamById(examId),
       ]);
+
+      if (!exam) {
+        notifications.show({ title: 'Error', message: 'Exam not found', color: 'red' });
+        router.push('/exam');
+        return;
+      }
+
       setAllSections(sec);
       setSubjects(subs);
+      setOriginalExam(exam);
 
       if (user?.id) {
         const assignmentsData = await fetchTeacherClassAssignments(user.id);
@@ -84,19 +93,6 @@ export default function CopyExamPage() {
       } else {
         setAssignments([]);
       }
-
-      // Load original exam data
-      // For now, we'll assume we need to fetch it; but since we're copying, we can pass data or fetch here
-      // Actually, to keep it simple, let's fetch the exam data here
-      const { fetchExamsWithRelations } = await import('@/lib/services/examService');
-      const exams = await fetchExamsWithRelations(hasFullAccess ? undefined : user?.id);
-      const exam = exams.find(e => e.exam_id === examId);
-      if (!exam) {
-        notifications.show({ title: 'Error', message: 'Exam not found', color: 'red' });
-        router.push('/exam');
-        return;
-      }
-      setOriginalExam(exam);
 
       setDataLoading(false);
     };
@@ -113,19 +109,18 @@ export default function CopyExamPage() {
     return null;
   })();
 
-  const originalSubjectName = originalExam?.subjects?.name ?? null;
+  const originalSubjectName = originalExam?.curriculum_subjects?.subjects?.name ?? null;
 
   const filteredSections = allSections.filter(s => {
-    if (!originalExam?.subject_id) return false;
+    if (!originalExam?.curriculum_subject_id) return false;
 
     return assignments.some(a => {
       if (a.section_id !== s.section_id) return false;
 
-      // Primary: exact subject match
-      if (a.subject_id === originalExam.subject_id) return true;
+      // Primary: exact curriculum_subject match
+      if (a.curriculum_subject_id === originalExam.curriculum_subject_id) return true;
 
-      // Fallback: same subject name + same grade level (covers REGULAR ↔ SSES copies
-      // where the same subject exists under two different subject_ids for each section type)
+      // Fallback: same subject name + same grade level
       if (!originalSubjectName || !originalGradeLevelId) return false;
       const sub = subjects.find(sub => sub.subject_id === a.subject_id);
       return sub?.name === originalSubjectName && sub?.grade_level_id === originalGradeLevelId;
@@ -197,7 +192,7 @@ export default function CopyExamPage() {
 
     const half = Math.ceil(originalExam.total_items / 2);
     const gradeLabel = originalExam.exam_assignments?.[0]?.sections?.grade_levels?.display_name ?? '—';
-    const subjectName = originalExam.subjects?.name ?? '—';
+    const subjectName = originalExam.curriculum_subjects?.subjects?.name ?? '—';
     const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
 
     const answers = originalExam.answer_key?.answers ?? {};
@@ -295,7 +290,7 @@ export default function CopyExamPage() {
         title: `${originalExam.title} (Copy)`,
         total_items: originalExam.total_items,
         exam_date: new Date().toISOString().split('T')[0], // Today
-        subject_id: originalExam.subject_id,
+        curriculum_subject_id: originalExam.curriculum_subject_id,
         quarter_id: originalExam.quarter_id,
         description: originalExam.description,
         creator_teacher_id: user?.id,

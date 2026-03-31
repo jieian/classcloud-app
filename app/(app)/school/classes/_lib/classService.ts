@@ -134,6 +134,7 @@ export interface SectionDetail {
 }
 
 export interface SectionSubjectRow {
+  curriculum_subject_id: number;
   subject_id: number;
   code: string;
   name: string;
@@ -455,9 +456,9 @@ export async function fetchTeacherAssignedSectionIds(
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("teacher_class_assignments")
-    .select("section_id")
+    .select("section_id, sections!inner(sy_id)")
     .eq("teacher_id", uid)
-    .eq("sy_id", syId)
+    .eq("sections.sy_id", syId)
     .is("deleted_at", null);
 
   if (error) return new Set();
@@ -468,16 +469,20 @@ export async function fetchTeacherAssignedSectionIds(
 
 export async function fetchTeacherClassAssignments(
   uid: string,
-): Promise<{ section_id: number; subject_id: number }[]> {
+): Promise<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("teacher_class_assignments")
-    .select("section_id, subject_id")
+    .select("section_id, curriculum_subject_id, curriculum_subjects!inner(subject_id)")
     .eq("teacher_id", uid)
     .is("deleted_at", null);
 
   if (error) return [];
-  return (data ?? []) as { section_id: number; subject_id: number }[];
+  return ((data ?? []) as any[]).map((r: any) => ({
+    section_id: r.section_id as number,
+    curriculum_subject_id: r.curriculum_subject_id as number,
+    subject_id: (r.curriculum_subjects as any)?.subject_id as number,
+  }));
 }
 
 export async function fetchAvailableAdviserCandidates(
@@ -552,7 +557,7 @@ export async function archiveSection(sectionId: number): Promise<void> {
 
 export async function assignSubjectTeachers(
   sectionId: number,
-  assignments: { subject_id: number; teacher_id: string | null }[],
+  assignments: { curriculum_subject_id: number; teacher_id: string | null }[],
 ): Promise<void> {
   const response = await fetch(`/api/classes/${sectionId}/assign-subject-teachers`, {
     method: "POST",

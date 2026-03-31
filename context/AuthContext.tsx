@@ -17,7 +17,7 @@ import {
 } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 import { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 interface Role {
   role_id: number;
@@ -106,8 +106,11 @@ interface AuthContextType {
   roles: Role[];
   permissions: string[];
   loading: boolean;
+  firstName: string;
+  lastName: string;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshUserName: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -117,7 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
 
   // Hydrate from storage on mount (client-only) so navigation can render
   // immediately in new tabs while the fresh async fetch runs.
@@ -135,7 +139,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const router = useRouter();
-  const pathname = usePathname();
   const supabase = getSupabase();
 
   const fetchUserRoles = async (
@@ -188,6 +191,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const permissionRows = (data ?? []) as PermissionRow[];
     return permissionRows.map((p) => p.permission_name);
+  };
+
+  const fetchUserName = async (authUserId: string): Promise<void> => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('first_name, last_name')
+      .eq('uid', authUserId)
+      .maybeSingle();
+
+    if (error || !data) return;
+    setFirstName(data.first_name ?? '');
+    setLastName(data.last_name ?? '');
+  };
+
+  const refreshUserName = async (): Promise<void> => {
+    if (!user) return;
+    await fetchUserName(user.id);
   };
 
   /**
@@ -255,7 +275,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         try {
-          await withTimeout(fetchUserData(currentUser.id), 15000, "fetchUserData");
+          await Promise.all([
+            withTimeout(fetchUserData(currentUser.id), 15000, "fetchUserData"),
+            fetchUserName(currentUser.id),
+          ]);
         } catch (error) {
           // Non-fatal: cached data is already displayed.
           console.warn("[auth] fetchUserData background refresh failed:", error);
@@ -329,27 +352,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Handle post-login redirect separately so it doesn't affect the subscription
-  useEffect(() => {
-    if (user && pathname === "/login" && !isLoggingOut) {
-      const requestedNext =
-        typeof window !== "undefined"
-          ? new URLSearchParams(window.location.search).get("next")
-          : null;
-      const safeNext =
-        requestedNext && requestedNext.startsWith("/") && !requestedNext.startsWith("//")
-          ? requestedNext
-          : "/";
-      router.replace(safeNext);
-    }
-  }, [user, pathname, router, isLoggingOut]);
-
   // Ensure authenticated app shell is never visible when signed out.
+  // No pathname check needed — AuthProvider only wraps (app)/* protected routes.
+  // proxy.ts handles server-side redirects; this covers client-side session expiry.
   useEffect(() => {
-    if (!loading && !user && pathname !== "/login") {
+    if (!loading && !user) {
       router.replace("/login");
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, user, router]);
 
   const signIn = async (email: string, password: string) => {
     setLoading(true);
@@ -365,8 +375,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    setIsLoggingOut(true);
-
     // Clear app-specific cached auth data immediately.
     try {
       localStorage.removeItem("cc_roles");
@@ -381,6 +389,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setRoles([]);
     setPermissions([]);
+    setFirstName('');
+    setLastName('');
     setLoading(false);
     clearSupabaseClientAuthArtifacts();
 
@@ -399,7 +409,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("Logout error:", error);
     } finally {
       clearSupabaseClientAuthArtifacts();
-      setIsLoggingOut(false);
       // Hard navigation guarantees app state resets fully.
       if (typeof window !== "undefined") {
         window.location.replace("/login?logout=1");
@@ -411,7 +420,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, roles, permissions, loading, signIn, signOut }}
+      value={{ user, roles, permissions, loading, firstName, lastName, signIn, signOut, refreshUserName }}
     >
       {children}
     </AuthContext.Provider>

@@ -15,11 +15,15 @@ import { Center, Loader } from "@mantine/core";
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredPermissions: string[];
+  match?: 'any' | 'all';
+  loadingFallback?: ReactNode;
 }
 
 export default function ProtectedRoute({
   children,
   requiredPermissions,
+  match = 'any',
+  loadingFallback,
 }: ProtectedRouteProps) {
   const { user, permissions, loading } = useAuth();
   const router = useRouter();
@@ -46,19 +50,21 @@ export default function ProtectedRoute({
       return;
     }
 
-    // Treat required permissions as OR (any one permission grants access).
-    // This matches navbar visibility behavior and avoids false unauthorized redirects.
     const hasPermission =
       requiredPermissions.length === 0 ||
-      requiredPermissions.some((p) => effectivePermissions.includes(p));
+      (match === 'all'
+        ? requiredPermissions.every((p) => effectivePermissions.includes(p))
+        : requiredPermissions.some((p) => effectivePermissions.includes(p)));
 
     if (!hasPermission) {
       router.replace("/unauthorized");
     }
-  }, [user, effectivePermissions, loading, requiredPermissions, router]);
+  }, [user, effectivePermissions, loading, requiredPermissions, match, router]);
 
   if (loading) {
-    return (
+    return loadingFallback ? (
+      <>{loadingFallback}</>
+    ) : (
       <Center h="60vh">
         <Loader size="md" />
       </Center>
@@ -69,7 +75,9 @@ export default function ProtectedRoute({
 
   const hasPermission =
     requiredPermissions.length === 0 ||
-    requiredPermissions.some((p) => effectivePermissions.includes(p));
+    (match === 'all'
+      ? requiredPermissions.every((p) => effectivePermissions.includes(p))
+      : requiredPermissions.some((p) => effectivePermissions.includes(p)));
 
   if (!hasPermission) return null;
 

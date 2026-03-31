@@ -79,7 +79,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
     const assignmentLoad = !hasFullAccess && user?.id
       ? fetchTeacherClassAssignments(user.id).then((assignments) => {
           setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
-          setAllowedSubjectIds(new Set(assignments.map((a) => a.subject_id)));
+          setAllowedSubjectIds(new Set(assignments.map((a) => a.curriculum_subject_id)));
         })
       : Promise.resolve();
 
@@ -123,7 +123,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
     }
 
     if (!activeSectionType || !selectedSubjectId) return;
-    const isValid = subjects.some(s => String(s.subject_id) === selectedSubjectId && (s.section_type === null || s.section_type === activeSectionType));
+    const isValid = subjects.some(s => String(s.curriculum_subject_id) === selectedSubjectId && (s.subject_type === 'BOTH' || activeSectionType === 'SSES'));
     if (!isValid) setSelectedSubjectId(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSectionType, selectedSectionIds]);
@@ -132,9 +132,9 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
     new Map(
       subjects
         .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
-        .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.subject_id))
-        .filter(s => !activeSectionType || s.section_type === null || s.section_type === activeSectionType)
-        .map(s => [s.subject_id, s] as const)
+        .filter(s => !allowedSubjectIds || allowedSubjectIds.has(s.curriculum_subject_id))
+        .filter(s => s.subject_type === 'BOTH' || activeSectionType === 'SSES')
+        .map(s => [s.curriculum_subject_id, s] as const)
     ).values()
   );
 
@@ -212,7 +212,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
                   label="Subject"
                   placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                   required
-                  data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
+                  data={filteredSubjects.map(s => ({ value: String(s.curriculum_subject_id), label: s.name }))}
                   value={selectedSubjectId}
                   onChange={setSelectedSubjectId}
                   disabled={selectedSectionIds.length === 0}

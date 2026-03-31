@@ -23,7 +23,7 @@ export default async function FacultyCreatePage({
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
         Faculty Management
       </h1>
-      <AddFacultyWizard facultyUid={uid} initialData={initialData} />
+      <AddFacultyWizard key={uid} facultyUid={uid} initialData={initialData} />
     </ProtectedRoute>
   );
 }

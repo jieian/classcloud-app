@@ -38,7 +38,7 @@ export async function DELETE(request: Request) {
 
   const { data: examData, error: examFetchError } = await adminClient
     .from("exams")
-    .select("exam_id, subject_id, creator_teacher_id")
+    .select("exam_id, curriculum_subject_id, creator_teacher_id")
     .eq("exam_id", examId)
     .is("deleted_at", null)
     .single();
@@ -47,7 +47,7 @@ export async function DELETE(request: Request) {
     return Response.json({ error: "Exam not found." }, { status: 404 });
   }
 
-  const examSubjectId = examData.subject_id;
+  const examCurriculumSubjectId = examData.curriculum_subject_id;
 
   const { data: examAssignments, error: examAssignmentsError } = await adminClient
     .from("exam_assignments")
@@ -62,7 +62,7 @@ export async function DELETE(request: Request) {
     .map((a: { section_id: number }) => a.section_id)
     .filter((sectionId) => Number.isInteger(sectionId) && sectionId > 0);
 
-  if (!examSubjectId || sectionIds.length === 0) {
+  if (!examCurriculumSubjectId || sectionIds.length === 0) {
     return Response.json({ error: "Exam missing subject or section associations." }, { status: 400 });
   }
 
@@ -72,10 +72,10 @@ export async function DELETE(request: Request) {
     if (examData.creator_teacher_id !== user.id) {
       const { data: teacherAssignments, error: teacherAssignmentsError } = await adminClient
         .from("teacher_class_assignments")
-        .select("section_id, subject_id")
+        .select("section_id, curriculum_subject_id")
         .eq("teacher_id", user.id)
         .in("section_id", sectionIds)
-        .eq("subject_id", examSubjectId)
+        .eq("curriculum_subject_id", examCurriculumSubjectId)
         .is("deleted_at", null);
 
       if (teacherAssignmentsError) {

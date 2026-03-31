@@ -59,16 +59,32 @@ export async function POST(request: Request) {
       String(error.message).toLowerCase().includes("duplicate");
 
     if (uniqueViolation) {
+      // Compute mpl and proficiency_level for the update path
+      const { data: examData } = await adminClient
+        .from("exam_assignments")
+        .select("exams(total_items)")
+        .eq("id", examAssignmentId)
+        .single();
+      const totalItems = (examData?.exams as any)?.total_items ?? 0;
+      const mpl = totalItems > 0 ? Math.round((calculatedScore / totalItems) * 100) : 0;
+      const proficiencyLevel =
+        mpl >= 90 ? "Highly Proficient" :
+        mpl >= 75 ? "Proficient" :
+        mpl >= 50 ? "Nearly" :
+        mpl >= 25 ? "Low" : "Not";
+
       const { data: updated, error: updateError } = await adminClient
         .from("scores")
         .update({
           responses,
           calculated_score: calculatedScore,
+          mpl,
+          proficiency_level: proficiencyLevel,
           graded_at: gradedAt,
         })
         .eq("enrollment_id", enrollmentId)
         .eq("exam_assignment_id", examAssignmentId)
-        .select("score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at")
+        .select("score_id, enrollment_id, exam_assignment_id, responses, calculated_score, mpl, proficiency_level, graded_at")
         .single();
 
       if (updateError) {

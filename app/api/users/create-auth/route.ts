@@ -49,17 +49,21 @@ export async function POST(request: Request) {
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
 
-  // --- STEP 0: Check email status in DB ---
+  // --- CHECK EMAIL STATUS ---
   const { data: emailStatus, error: emailCheckError } = await adminClient.rpc(
     "check_email_status",
     { p_email: email, p_exclude_uid: null },
   );
 
-  if (!emailCheckError && emailStatus?.status === "active") {
+  if (emailCheckError) {
+    return Response.json({ error: "Failed to verify email availability." }, { status: 500 });
+  }
+
+  if (emailStatus?.status === "active") {
     return Response.json({ error: "Email already in use" }, { status: 409 });
   }
 
-  // --- STEP 1: DNS MX check — verify the domain accepts mail before doing anything ---
+  // --- DNS MX CHECK ---
   const domainValid = await domainHasMxRecords(email);
   if (!domainValid) {
     return Response.json(
@@ -67,43 +71,64 @@ export async function POST(request: Request) {
         error: `The domain for "${email}" does not appear to accept mail. Double-check the address — no account was created.`,
         code: "EMAIL_DELIVERY_FAILED",
       },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
-  // --- TOMBSTONE PATH: email belongs to a soft-deleted account ---
-  // Rename the old auth user's email to free it up, then create a brand-new account.
-  // The old users row (and its UID) remains intact so report references are preserved.
-  let tombstonedUid: string | null = null;
-  if (!emailCheckError && emailStatus?.status === "deleted") {
-    tombstonedUid = emailStatus.uid as string;
-    const tombstoneEmail = `deleted_${tombstonedUid}@void.invalid`;
+  // --- RESTORE PATH: email belongs to a soft-deleted account ---
+  // Unban + update credentials, then activate immediately (admin-created = no pending state).
+  if (emailStatus?.status === "deleted") {
+    const uid = emailStatus.uid as string;
 
-    const { error: tombstoneError } = await adminClient.auth.admin.updateUserById(
-      tombstonedUid,
-      { email: tombstoneEmail },
-    );
+    const { error: updateError } = await adminClient.auth.admin.updateUserById(uid, {
+      password,
+      ban_duration: "none",
+      user_metadata: { full_name: `${first_name} ${last_name}` },
+    });
 
-    if (tombstoneError) {
+    if (updateError) {
+      return Response.json({ error: "Failed to restore account. Please try again." }, { status: 500 });
+    }
+
+    // Send welcome email before DB changes so we can bail cleanly on failure
+    try {
+      await sendWelcomeEmail({ to: email, firstName: first_name, lastName: last_name, password });
+    } catch {
+      // Rollback: re-ban the user
+      await adminClient.auth.admin
+        .updateUserById(uid, { ban_duration: "876000h" })
+        .catch((err) => console.error("CRITICAL: Failed to re-ban on email rollback:", err));
       return Response.json(
-        { error: "Failed to free up the email address. Please try again." },
-        { status: 500 },
+        {
+          error: `The welcome email could not be delivered to "${email}". Double-check the address — no account was created.`,
+          code: "EMAIL_DELIVERY_FAILED",
+        },
+        { status: 422 },
       );
     }
-    // Email is now free — fall through to the new user path below.
+
+    // Activate: clears deleted_at, sets active_status=1, updates names, replaces roles
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc("activate_user_atomic", {
+      p_uid: uid,
+      p_first_name: first_name,
+      p_middle_name: middle_name || "",
+      p_last_name: last_name,
+      p_role_ids: role_ids,
+    });
+
+    if (rpcError || rpcResult?.success === false) {
+      console.error("CRITICAL: Welcome email sent but restore activation failed:", rpcError?.message);
+      return Response.json({ error: "Account restore failed. Please try again." }, { status: 500 });
+    }
+
+    return Response.json({ success: true, uuid: uid }, { status: 200 });
   }
 
   // --- NEW USER PATH ---
-  // Send email first — if it fails, nothing has been created so rollback is just the tombstone.
+  // Send email first — if it fails, nothing has been created yet.
   try {
     await sendWelcomeEmail({ to: email, firstName: first_name, lastName: last_name, password });
   } catch {
-    // Rollback tombstone if we renamed an old auth user's email
-    if (tombstonedUid) {
-      await adminClient.auth.admin.updateUserById(tombstonedUid, { email }).catch((err) =>
-        console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
-      );
-    }
     return Response.json(
       {
         error: `The welcome email could not be delivered to "${email}". Double-check the address — no account was created.`,
@@ -116,7 +141,6 @@ export async function POST(request: Request) {
   let newAuthUserUuid: string | null = null;
 
   try {
-    // Create auth user
     const { data: authData, error: authError } = await adminClient.auth.admin.createUser({
       email,
       password,
@@ -127,7 +151,6 @@ export async function POST(request: Request) {
     if (authError) throw authError;
     newAuthUserUuid = authData.user.id;
 
-    // Atomic DB insert (profile + roles via RPC)
     const { data: rpcResult, error: rpcError } = await adminClient.rpc("create_user_atomic", {
       p_uid: newAuthUserUuid,
       p_first_name: first_name,
@@ -142,23 +165,11 @@ export async function POST(request: Request) {
     return Response.json({ success: true, uuid: newAuthUserUuid }, { status: 201 });
 
   } catch (error: any) {
-    // Email was already sent — log clearly so this can be investigated
     console.error("CRITICAL: Welcome email sent but user creation failed:", error.message);
 
-    // Rollback new auth user if it was created
     if (newAuthUserUuid) {
-      try {
-        await adminClient.auth.admin.deleteUser(newAuthUserUuid);
-        console.log(`Rollback successful: Deleted orphaned auth user ${newAuthUserUuid}`);
-      } catch (rollbackError) {
-        console.error("CRITICAL: Auth rollback failed!", rollbackError);
-      }
-    }
-
-    // Rollback tombstone so the old deleted account isn't left with a garbage email
-    if (tombstonedUid) {
-      await adminClient.auth.admin.updateUserById(tombstonedUid, { email }).catch((err) =>
-        console.error("CRITICAL: Failed to rollback tombstone for", tombstonedUid, err),
+      await adminClient.auth.admin.deleteUser(newAuthUserUuid).catch((err) =>
+        console.error("CRITICAL: Auth rollback failed!", err),
       );
     }
 

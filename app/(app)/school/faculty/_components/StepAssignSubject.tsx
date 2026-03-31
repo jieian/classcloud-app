@@ -92,14 +92,14 @@ export default function StepAssignSubject({
     form.setFieldValue("subject_assignments", updated);
   };
 
-  // Map: "grade_level_id-section_type" → subjects (built once, replaces per-render .filter())
-  const subjectsByKey = useMemo(() => {
-    const map = new Map<string, SubjectForGradeLevel[]>();
+  // Map: grade_level_id → subjects (built once)
+  // Subject visibility: BOTH applies to all sections; SSES applies only to SSES sections
+  const subjectsByGl = useMemo(() => {
+    const map = new Map<number, SubjectForGradeLevel[]>();
     for (const s of subjectsByGradeLevel) {
-      const key = `${s.grade_level_id}-${s.section_type}`;
-      const existing = map.get(key);
+      const existing = map.get(s.grade_level_id);
       if (existing) existing.push(s);
-      else map.set(key, [s]);
+      else map.set(s.grade_level_id, [s]);
     }
     return map;
   }, [subjectsByGradeLevel]);
@@ -165,9 +165,9 @@ export default function StepAssignSubject({
             ? `${gradeLevel.display_name} • ${section.name}`
             : section.name;
 
-          const subjectsForGl = [
-            ...(subjectsByKey.get(`${section.grade_level_id}-${section.section_type}`) ?? []),
-          ].sort((a, b) => a.name.localeCompare(b.name));
+          const subjectsForGl = (subjectsByGl.get(section.grade_level_id) ?? [])
+            .filter((s) => s.subject_type === "BOTH" || section.section_type === "SSES")
+            .sort((a, b) => a.name.localeCompare(b.name));
 
           const assignment = subjectAssignments.find((a) => a.section_id === sectionId);
           const selectedCount = assignment?.subject_ids.length ?? 0;

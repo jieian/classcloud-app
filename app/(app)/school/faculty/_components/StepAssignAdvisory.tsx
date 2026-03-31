@@ -87,13 +87,19 @@ export default function StepAssignAdvisory({
     );
   };
 
-  // Pre-group sections by grade level — rebuilt only when sections change
+  // Pre-group sections by grade level — SSES first, then alphabetical
   const sectionsByGl = useMemo(() => {
     const map = new Map<number, SectionWithAdviser[]>();
     for (const s of sections) {
       const existing = map.get(s.grade_level_id);
       if (existing) existing.push(s);
       else map.set(s.grade_level_id, [s]);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => {
+        if (a.section_type === b.section_type) return a.name.localeCompare(b.name);
+        return a.section_type === "SSES" ? -1 : 1;
+      });
     }
     return map;
   }, [sections]);

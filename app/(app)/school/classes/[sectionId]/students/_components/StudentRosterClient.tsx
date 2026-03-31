@@ -256,7 +256,7 @@ export default function StudentRosterClient({ sectionId }: Props) {
     return (
       <Stack gap="md" maw={950}>
         <Box>
-          <BackButton href={`/school/classes/${sectionId}`}>Back to Class</BackButton>
+          <BackButton href={`/school/classes/${sectionId}`} size="sm">Back to Class</BackButton>
         </Box>
         <Alert color="red" icon={<IconAlertCircle size={16} />}>
           {error}
@@ -269,7 +269,7 @@ export default function StudentRosterClient({ sectionId }: Props) {
     <Stack gap="md" maw={1000}>
       {/* Back */}
       <Box>
-        <BackButton href={`/school/classes/${sectionId}`} mb="sm">Back to Class Details</BackButton>
+        <BackButton href={`/school/classes/${sectionId}`} mb="sm" size="sm">Back to Class Details</BackButton>
       </Box>
 
       {/* Header */}

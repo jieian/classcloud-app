@@ -18,7 +18,7 @@ import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
-import { createExamWithAssignments, saveObjectives, saveAnswerKey, fetchExamsWithRelations } from '@/lib/services/examService';
+import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 
@@ -111,7 +111,7 @@ export default function CreateExamPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
-  const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; subject_id: number }[]>([]);
+  const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
   const [examName, setExamName] = useState(d?.examName ?? '');
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
@@ -139,12 +139,11 @@ export default function CreateExamPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [q, gl, sub, sec, allExams] = await Promise.all([
+      const [q, gl, sub, sec] = await Promise.all([
         fetchActiveQuarters(),
         fetchGradeLevels(),
         fetchSubjectsWithGradeLevels(),
         fetchActiveSections(),
-        fetchExamsWithRelations().catch(() => []),
       ]);
       setQuarters(q);
       setGradeLevels(gl);
@@ -155,7 +154,7 @@ export default function CreateExamPage() {
         setTeacherAssignments(assignments);
         if (!hasFullAccess) {
           setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
-          setAllowedSubjectIds(new Set(assignments.map(a => a.subject_id)));
+          setAllowedSubjectIds(new Set(assignments.map(a => a.curriculum_subject_id)));
         }
       }
       setDataLoading(false);
@@ -221,23 +220,23 @@ export default function CreateExamPage() {
     }
 
     if (!activeSectionType || !selectedSubjectId) return;
-    const isValid = subjects.some(s => String(s.subject_id) === selectedSubjectId && (s.section_type === null || s.section_type === activeSectionType));
+    const isValid = subjects.some(s => String(s.curriculum_subject_id) === selectedSubjectId && (s.subject_type === 'BOTH' || activeSectionType === 'SSES'));
     if (!isValid) setSelectedSubjectId(null);
   }, [activeSectionType, selectedSectionIds, selectedSubjectId, subjects]);
 
   // When sections are selected, narrow subjects to those the teacher actually teaches in those sections.
   // Fall back to the global allowedSubjectIds (or no restriction for full-access) when no sections are chosen yet.
   const sectionAwareSubjectIds = selectedSectionIds.length > 0 && teacherAssignments.length > 0
-    ? new Set(teacherAssignments.filter(a => selectedSectionIds.includes(a.section_id)).map(a => a.subject_id))
+    ? new Set(teacherAssignments.filter(a => selectedSectionIds.includes(a.section_id)).map(a => a.curriculum_subject_id))
     : allowedSubjectIds;
 
   const filteredSubjects = Array.from(
     new Map(
       subjects
         .filter(s => !selectedGradeLevelId || s.grade_level_id === Number(selectedGradeLevelId))
-        .filter(s => !sectionAwareSubjectIds || sectionAwareSubjectIds.has(s.subject_id))
-        .filter(s => !activeSectionType || s.section_type === null || s.section_type === activeSectionType)
-        .map(s => [s.subject_id, s] as const)
+        .filter(s => !sectionAwareSubjectIds || sectionAwareSubjectIds.has(s.curriculum_subject_id))
+        .filter(s => s.subject_type === 'BOTH' || activeSectionType === 'SSES')
+        .map(s => [s.curriculum_subject_id, s] as const)
     ).values()
   );
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
@@ -303,7 +302,7 @@ export default function CreateExamPage() {
       const autoQuarterId = quarters.length > 0 ? quarters[0].quarter_id : null;
 
       const examResult = await createExamWithAssignments(
-        { title: examName.trim(), description: null, subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
+        { title: examName.trim(), description: null, curriculum_subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
         selectedSectionIds
       );
       if (!examResult) throw new Error('Failed to create exam');
@@ -384,7 +383,7 @@ export default function CreateExamPage() {
                 label="Subject"
                 placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                 required
-                data={filteredSubjects.map(s => ({ value: String(s.subject_id), label: s.name }))}
+                data={filteredSubjects.map(s => ({ value: String(s.curriculum_subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
                 disabled={selectedSectionIds.length === 0}
@@ -636,7 +635,7 @@ export default function CreateExamPage() {
   const renderStep4 = () => {
     const half = Math.ceil(totalItems / 2);
     const gradeLabel = gradeLevels.find(g => String(g.grade_level_id) === selectedGradeLevelId)?.display_name ?? '—';
-    const subjectName = filteredSubjects.find(s => String(s.subject_id) === selectedSubjectId)?.name ?? '—';
+    const subjectName = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.name ?? '—';
     const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
 
     const renderTable = (startIdx: number, endIdx: number) => (
@@ -755,8 +754,25 @@ export default function CreateExamPage() {
   const navigationButtons = (
     <Group justify="flex-end" mt="xl">
       <Button variant="default" onClick={() => {
-        if (activeStep === 0) { clearDraft(); router.push('/exam'); }
-        else prevStep();
+        if (activeStep === 0) {
+          setExamName('');
+          setSelectedGradeLevelId(null);
+          setSelectedSubjectId(null);
+          setSelectedSectionIds([]);
+          setTotalItems(30);
+          setNumChoices(4);
+          setObjectiveRows([makeRow()]);
+          setAnswers({});
+          setActiveStep(0);
+          setTriedToSave(false);
+          setTriedToSaveObjectives(false);
+          gradeLevelMountedRef.current = false;
+          totalItemsMountedRef.current = false;
+          prevGradeLevelForItemsRef.current = null;
+          draftRef.current = null;
+          clearDraft();
+          router.push('/exam');
+        } else prevStep();
       }}>
         {activeStep === 0 ? 'Cancel' : 'Previous'}
       </Button>

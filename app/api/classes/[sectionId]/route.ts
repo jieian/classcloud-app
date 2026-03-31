@@ -49,7 +49,7 @@ export async function GET(
         .maybeSingle(),
       admin
         .from("school_years")
-        .select("sy_id")
+        .select("sy_id, curriculum_id")
         .eq("is_active", true)
         .is("deleted_at", null)
         .maybeSingle(),
@@ -70,10 +70,10 @@ export async function GET(
     ? `${adviserUser.first_name ?? ""} ${adviserUser.last_name ?? ""}`.trim() || null
     : null;
 
-  // Wave 2: enrollments + subjects + teacher assignments — all parallel
-  // soft_delete_user_atomic clears adviser_id on sections and stamps deleted_at on
-  // teacher_class_assignments, so no extra round-trips are needed to verify deleted state.
-  const [{ data: enrollData }, { data: sglData }, { data: assignData }] =
+  const curriculumId: number | null = (syData as any)?.curriculum_id ?? null;
+
+  // Wave 2: enrollments + curriculum_subjects + teacher assignments — all parallel
+  const [{ data: enrollData }, { data: csData }, { data: assignData }] =
     await Promise.all([
       activeSyId
         ? admin
@@ -83,21 +83,22 @@ export async function GET(
             .eq("sy_id", activeSyId)
             .is("deleted_at", null)
         : Promise.resolve({ data: [] }),
-      admin
-        .from("subject_grade_levels")
-        .select("subjects(subject_id, name, code, section_type, deleted_at)")
-        .eq("grade_level_id", gradeLevelId)
-        .is("deleted_at", null),
-      activeSyId
+      curriculumId
         ? admin
-            .from("teacher_class_assignments")
-            .select("subject_id, teacher_id, users(first_name, last_name)")
-            .eq("section_id", sectionId)
-            .eq("sy_id", activeSyId)
+            .from("curriculum_subjects")
+            .select("curriculum_subject_id, subjects!inner(subject_id, name, code, subject_type, deleted_at)")
+            .eq("curriculum_id", curriculumId)
+            .eq("grade_level_id", gradeLevelId)
             .is("deleted_at", null)
         : Promise.resolve({ data: [] }),
+      admin
+        .from("teacher_class_assignments")
+        .select("curriculum_subject_id, teacher_id, users!teacher_id(first_name, last_name)")
+        .eq("section_id", sectionId)
+        .is("deleted_at", null),
     ]);
 
+  // Map: curriculum_subject_id → { teacher_name, teacher_id }
   const teacherNameMap = new Map<number, string>();
   const teacherIdMap = new Map<number, string>();
   for (const a of (assignData ?? []) as any[]) {
@@ -105,24 +106,28 @@ export async function GET(
     const name = u
       ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()
       : "";
-    if (name) teacherNameMap.set(a.subject_id as number, name);
-    if (a.teacher_id) teacherIdMap.set(a.subject_id as number, a.teacher_id as string);
+    const csId = a.curriculum_subject_id as number;
+    if (name) teacherNameMap.set(csId, name);
+    if (a.teacher_id) teacherIdMap.set(csId, a.teacher_id as string);
   }
 
-  const subjects: SectionSubjectRow[] = ((sglData ?? []) as any[]).flatMap(
-    (sgl: any) => {
-      const raw = sgl.subjects;
-      if (!raw) return [];
-      const arr: any[] = Array.isArray(raw) ? raw : [raw];
-      return arr
-        .filter((sub: any) => sub.deleted_at === null && sub.section_type === s.section_type)
-        .map((sub: any) => ({
-          subject_id: sub.subject_id as number,
-          code: sub.code as string,
-          name: sub.name as string,
-          assigned_teacher: teacherNameMap.get(sub.subject_id as number) ?? null,
-          assigned_teacher_id: teacherIdMap.get(sub.subject_id as number) ?? null,
-        }));
+  const sectionType = s.section_type as "SSES" | "REGULAR";
+
+  const subjects: SectionSubjectRow[] = ((csData ?? []) as any[]).flatMap(
+    (cs: any) => {
+      const sub = cs.subjects;
+      if (!sub || sub.deleted_at !== null) return [];
+      // BOTH subjects apply to all sections; SSES subjects only for SSES sections
+      if (sub.subject_type !== "BOTH" && sectionType !== "SSES") return [];
+      const csId = cs.curriculum_subject_id as number;
+      return [{
+        curriculum_subject_id: csId,
+        subject_id: sub.subject_id as number,
+        code: sub.code as string,
+        name: sub.name as string,
+        assigned_teacher: teacherNameMap.get(csId) ?? null,
+        assigned_teacher_id: teacherIdMap.get(csId) ?? null,
+      }];
     },
   );
 

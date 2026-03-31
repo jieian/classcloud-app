@@ -47,16 +47,16 @@ CREATE TABLE public.exams (
   answer_key jsonb,
   exam_date date NOT NULL,
   is_locked boolean DEFAULT false,
-  subject_id integer,
   creator_teacher_id uuid,
   quarter_id integer,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,
   objectives jsonb,
+  curriculum_subject_id integer NOT NULL,
   CONSTRAINT exams_pkey PRIMARY KEY (exam_id),
   CONSTRAINT exams_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
-  CONSTRAINT exams_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id),
-  CONSTRAINT exams_creator_teacher_id_fkey FOREIGN KEY (creator_teacher_id) REFERENCES public.users(uid)
+  CONSTRAINT exams_creator_teacher_id_fkey FOREIGN KEY (creator_teacher_id) REFERENCES public.users(uid),
+  CONSTRAINT exams_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id)
 );
 CREATE TABLE public.grade_level_coordinators (
   glc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -189,20 +189,20 @@ CREATE TABLE public.subject_coordinators (
 );
 CREATE TABLE public.subject_group_members (
   subject_group_id integer NOT NULL,
-  subject_id integer NOT NULL,
   deleted_at timestamp with time zone,
-  sy_id integer NOT NULL,
-  CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, subject_id, sy_id),
+  curriculum_subject_id integer NOT NULL,
+  CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, curriculum_subject_id),
   CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
-  CONSTRAINT subject_group_members_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id),
-  CONSTRAINT subject_group_members_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+  CONSTRAINT subject_group_members_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id)
 );
 CREATE TABLE public.subject_groups (
   subject_group_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL UNIQUE,
+  name character varying NOT NULL,
   description text,
   deleted_at timestamp with time zone,
-  CONSTRAINT subject_groups_pkey PRIMARY KEY (subject_group_id)
+  curriculum_id integer NOT NULL,
+  CONSTRAINT subject_groups_pkey PRIMARY KEY (subject_group_id),
+  CONSTRAINT subject_groups_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id)
 );
 CREATE TABLE public.subjects (
   subject_id integer NOT NULL DEFAULT nextval('subjects_subject_id_seq'::regclass),
@@ -218,7 +218,7 @@ CREATE TABLE public.teacher_class_assignments (
   teacher_id uuid,
   section_id integer,
   deleted_at timestamp with time zone,
-  curriculum_subject_id integer,
+  curriculum_subject_id integer NOT NULL,
   CONSTRAINT teacher_class_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT teacher_class_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
   CONSTRAINT teacher_class_assignments_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),

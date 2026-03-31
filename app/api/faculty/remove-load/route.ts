@@ -39,21 +39,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing faculty_id" }, { status: 400 });
   }
 
-  // Fetch active school year
-  const { data: syData } = await adminClient
-    .from("school_years")
-    .select("sy_id")
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (!syData?.sy_id) {
-    return Response.json({ error: "No active school year found" }, { status: 400 });
-  }
-
   const { error } = await adminClient.rpc("remove_faculty_academic_load", {
     p_faculty_id: faculty_id,
-    p_sy_id: syData.sy_id,
   });
 
   if (error) {

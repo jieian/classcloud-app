@@ -53,11 +53,11 @@ const PERMISSION_GROUPS: PermGroup[] = [
         options: [{ permName: "faculty.full_access", display: "Full Access" }],
       },
       {
-        label: "Subjects",
+        label: "Curriculum",
         type: "radio",
         options: [
-          { permName: "subjects.full_access", display: "Full Access" },
-          { permName: "subjects.limited_access", display: "Limited Access" },
+          { permName: "curriculum.full_access", display: "Full Access" },
+          { permName: "curriculum.limited_access", display: "Limited Access" },
         ],
       },
       {

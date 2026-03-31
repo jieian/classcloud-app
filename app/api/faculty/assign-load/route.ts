@@ -33,15 +33,14 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json();
-  const { faculty_id, sy_id, advisory_section_id, subject_assignments } = body;
+  const { faculty_id, advisory_section_id, subject_assignments } = body;
 
-  if (!faculty_id || !sy_id || !Array.isArray(subject_assignments)) {
+  if (!faculty_id || !Array.isArray(subject_assignments)) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
   const { error } = await adminClient.rpc("assign_faculty_academic_load", {
     p_faculty_id: faculty_id,
-    p_sy_id: sy_id,
     p_advisory_section_id: advisory_section_id ?? null,
     p_subject_assignments: subject_assignments,
   });
