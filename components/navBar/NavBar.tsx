@@ -8,7 +8,7 @@ import {
   IconUsers,
   IconSchool,
   IconClipboardData,
-  IconFileReport,
+  IconFileText,
   IconX,
   IconLogout,
   IconSettings,
@@ -129,7 +129,7 @@ const navigationData: NavigationLink[] = [
     requiredPermissions: ["exams.full_access", "exams.limited_access"],
   },
   {
-    icon: IconFileReport,
+    icon: IconFileText,
     label: "Reports",
     href: "/reports",
     requiredPermissions: [
@@ -139,44 +139,7 @@ const navigationData: NavigationLink[] = [
       "reports.monitor_subjects",
       "reports.approve",
     ],
-    sublinks: [
-      {
-        label: "Item Analysis",
-        key: "item-analysis",
-        href: "/reports/itemAnalysis",
-        requiredPermissions: [
-          "reports.view_all",
-          "reports.view_assigned",
-          "reports.monitor_grade_level",
-          "reports.monitor_subjects",
-          "reports.approve",
-        ],
-      },
-      {
-        label: "Level of Proficiency",
-        key: "level-of-proficiency",
-        href: "/reports/levelOfProficiency",
-        requiredPermissions: [
-          "reports.view_all",
-          "reports.view_assigned",
-          "reports.monitor_grade_level",
-          "reports.monitor_subjects",
-          "reports.approve",
-        ],
-      },
-      {
-        label: "LAEMPL",
-        key: "laempl",
-        href: "/reports/laempl",
-        requiredPermissions: [
-          "reports.view_all",
-          "reports.view_assigned",
-          "reports.monitor_grade_level",
-          "reports.monitor_subjects",
-          "reports.approve",
-        ],
-      },
-    ],
+    sublinks: [],
   },
 ];
 

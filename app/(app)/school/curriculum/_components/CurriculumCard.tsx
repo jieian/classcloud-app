@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, Card, Divider, Group, Text } from "@mantine/core";
-import { IconCalendar, IconSettings } from "@tabler/icons-react";
+import { IconCalendar, IconEye, IconSettings } from "@tabler/icons-react";
 
 interface CurriculumCardProps {
   name: string;
@@ -59,10 +59,10 @@ export default function CurriculumCard({
         color="#4A72AE"
         fullWidth
         radius="md"
-        leftSection={<IconSettings size={16} />}
+        leftSection={is_active ? <IconEye size={16} /> : <IconSettings size={16} />}
         onClick={onManage}
       >
-        Manage Curriculum
+        {is_active ? "View Curriculum" : "Manage Curriculum"}
       </Button>
     </Card>
   );

@@ -1,4 +1,6 @@
-import transporter from "./transporter";
+import resend from "./transporter";
+
+const FROM = "ClassCloud <noreply@classcloudph.app>";
 
 interface PasswordResetEmailParams {
   to: string;
@@ -9,8 +11,8 @@ export async function sendPasswordResetEmail({
   to,
   resetLink,
 }: PasswordResetEmailParams) {
-  await transporter.sendMail({
-    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM,
     to,
     subject: "Reset Your ClassCloud Password",
     html: `
@@ -59,8 +61,8 @@ export async function sendVerificationEmail({
   verificationLink,
   firstName,
 }: VerificationEmailParams) {
-  await transporter.sendMail({
-    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM,
     to,
     subject: "Verify Your ClassCloud Email",
     html: `
@@ -111,8 +113,8 @@ export async function sendApprovalEmail({
   to,
   firstName,
 }: ApprovalEmailParams) {
-  await transporter.sendMail({
-    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM,
     to,
     subject: "Your ClassCloud Account Has Been Approved",
     html: `
@@ -147,8 +149,8 @@ export async function sendRejectionEmail({
   firstName,
   reason,
 }: RejectionEmailParams) {
-  await transporter.sendMail({
-    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM,
     to,
     subject: "Your ClassCloud Registration Has Been Rejected",
     html: `
@@ -192,8 +194,8 @@ export async function sendWelcomeEmail({
   lastName,
   password,
 }: WelcomeEmailParams) {
-  await transporter.sendMail({
-    from: `"ClassCloud" <${process.env.GMAIL_USER}>`,
+  await resend.emails.send({
+    from: FROM,
     to,
     subject: "Your ClassCloud Account Has Been Created",
     html: `
