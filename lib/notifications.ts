@@ -88,15 +88,16 @@ async function getUsersWithPermission(
     .is("deleted_at", null);
   if (!publicUsers || (publicUsers as any[]).length === 0) return [];
 
-  // 5. Fetch emails only for the UIDs we need — avoids loading all auth users.
-  const authResults = await Promise.all(
-    (publicUsers as any[]).map((u) => admin.auth.admin.getUserById(u.uid as string)),
-  );
+  // 5. Fetch emails in a single Admin API call and filter to the UIDs we need.
+  //    One call is far cheaper than N parallel getUserById() calls, which can
+  //    hit Supabase's Auth Admin API rate limit with many admin accounts.
+  //    Assumption: total user count fits within 1000 (valid for a school app).
+  const targetUids = new Set((publicUsers as any[]).map((u) => u.uid as string));
+  const { data: authData } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const emailMap = new Map<string, string>(
-    (publicUsers as any[]).map((u, i) => [
-      u.uid as string,
-      authResults[i].data?.user?.email ?? "",
-    ]),
+    (authData?.users ?? [])
+      .filter((u) => targetUids.has(u.id))
+      .map((u) => [u.id, u.email ?? ""]),
   );
 
   return ((publicUsers as any[])

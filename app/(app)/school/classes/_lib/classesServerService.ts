@@ -53,12 +53,25 @@ export async function getClassesInitData(
 ): Promise<ClassesInitialData> {
   const isPartialAccess = !permissions.includes("classes.full_access");
 
-  const [schoolYears, gradeLevels] = await Promise.all([
+  // Fetch the active school year ID live so it is never stale, even when
+  // the school_years cache hasn't been revalidated yet after an activation.
+  // The full school-years list (for the dropdown) still comes from cache.
+  const [schoolYears, gradeLevels, activeSyResult] = await Promise.all([
     getSchoolYearsCached(),
     getGradeLevelsCached(),
+    admin
+      .from("school_years")
+      .select("sy_id")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle(),
   ]);
 
-  const defaultSyId = resolveDefaultSyId(schoolYears);
+  // Prefer the live active year; fall back to resolving from the cached list
+  // (handles the edge case where no year is marked active yet).
+  const defaultSyId =
+    (activeSyResult.data as { sy_id: number } | null)?.sy_id ??
+    resolveDefaultSyId(schoolYears);
 
   if (!defaultSyId) {
     return { schoolYears, gradeLevels, sections: [], defaultSyId: null, assignedSectionIds: [] };

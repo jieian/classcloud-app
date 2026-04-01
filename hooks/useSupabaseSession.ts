@@ -127,6 +127,7 @@ export function useSupabaseSession({
 
     return () => {
       alive = false;
+      applyInFlightRef.current = false;
       clearTimeout(watchdog);
       subscription.unsubscribe();
     };
