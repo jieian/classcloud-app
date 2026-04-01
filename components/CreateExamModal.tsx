@@ -8,7 +8,7 @@ import { IconCheck, IconLink, IconAlertCircle, IconMinus, IconPlus } from '@tabl
 import { fetchSubjectsWithGradeLevels, SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
-import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { useAuth } from '@/context/AuthContext';
 import type { Section, GradeLevel } from '@/lib/exam-supabase';
 import CreationFlowStepper from './CreationFlowStepper';

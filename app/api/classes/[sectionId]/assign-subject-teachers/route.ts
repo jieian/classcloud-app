@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function POST(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -30,11 +31,6 @@ export async function POST(
   if (!Array.isArray(body.assignments))
     return Response.json({ error: "Invalid payload." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Single atomic RPC — soft-delete + re-insert in one transaction
   const { error } = await admin.rpc("set_section_subject_teachers", {
@@ -44,9 +40,11 @@ export async function POST(
 
   if (error)
     return Response.json(
-      { error: error.message || "Failed to update subject teacher assignments." },
+      { error: "Failed to update subject teacher assignments." },
       { status: 500 },
     );
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

@@ -1,11 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function GET(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -26,11 +27,6 @@ export async function GET(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Fetch section with grade level, school year, and adviser in one query
   const { data: sectionRaw, error: secError } = await admin
@@ -43,7 +39,7 @@ export async function GET(
     .maybeSingle();
 
   if (secError)
-    return Response.json({ error: secError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sectionRaw)
     return Response.json({ error: "Section not found." }, { status: 404 });
 
@@ -74,7 +70,7 @@ export async function GET(
     .is("students.deleted_at", null);
 
   if (enrollErr)
-    return Response.json({ error: enrollErr.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
 
   const allStudents = ((enrollData ?? []) as any[]).map((e: any) => {
     const st = Array.isArray(e.students) ? e.students[0] : e.students;
@@ -225,3 +221,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withErrorHandler(_GET)

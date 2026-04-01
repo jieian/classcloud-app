@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function DELETE(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _DELETE = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -11,11 +12,6 @@ export async function DELETE(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: permsData, error: permsError } = await adminClient.rpc(
     "get_user_permissions",
@@ -55,7 +51,7 @@ export async function DELETE(request: Request) {
     .eq("exam_id", examId);
   if (examAssignmentsError) {
     console.error("[api/exams/delete] fetch exam_assignments error:", examAssignmentsError.message);
-    return Response.json({ error: examAssignmentsError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const sectionIds = (examAssignments ?? [])
@@ -80,7 +76,7 @@ export async function DELETE(request: Request) {
 
       if (teacherAssignmentsError) {
         console.error("[api/exams/delete] teacher assignment check error:", teacherAssignmentsError.message);
-        return Response.json({ error: teacherAssignmentsError.message }, { status: 500 });
+        return Response.json({ error: "Internal server error." }, { status: 500 });
       }
 
       if (!teacherAssignments || teacherAssignments.length === 0) {
@@ -98,10 +94,12 @@ export async function DELETE(request: Request) {
   if (error) {
     console.error("[api/exams/delete] delete exam error:", error.message);
     return Response.json(
-      { error: error.message || "Failed to delete exam." },
+      { error: "Failed to delete exam." },
       { status: 500 },
     );
   }
 
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const DELETE = withErrorHandler(_DELETE)

@@ -11,7 +11,7 @@ import {
 import { processAnswerSheet } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
-import { fetchStudentRoster } from '@/app/(app)/school/classes/_lib/classService';
+import { fetchStudentRoster } from '@/lib/services/classService';
 import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
 import BackButton from '@/components/BackButton';

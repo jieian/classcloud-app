@@ -1,8 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendRejectionEmail } from "@/lib/email/templates";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -23,11 +24,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "A rejection reason is required." }, { status: 400 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Fetch auth user to get email, name, and ban status
   const { data: authData, error: getUserError } = await adminClient.auth.admin.getUserById(uid);
@@ -49,7 +45,7 @@ export async function POST(request: Request) {
     );
 
     if (rpcError) {
-      return Response.json({ error: rpcError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
     if (!rpcResult?.success) {
@@ -63,7 +59,7 @@ export async function POST(request: Request) {
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(uid);
 
     if (deleteError) {
-      return Response.json({ error: deleteError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
   }
 
@@ -76,3 +72,5 @@ export async function POST(request: Request) {
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

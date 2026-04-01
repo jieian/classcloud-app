@@ -28,7 +28,7 @@ import {
   setSectionAdviser,
   fetchAvailableAdviserCandidates,
   type AdviserCandidate,
-} from "../../_lib/classService";
+} from "@/lib/services/classService";
 
 interface AssignAdviserModalProps {
   opened: boolean;

@@ -1,6 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const { email } = await request.json();
 
   if (!email || typeof email !== "string") {
@@ -8,10 +8,6 @@ export async function POST(request: Request) {
   }
 
   // Use service role to bypass RLS and access auth.users
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   // Find the auth user by email
   const { data: authData } = await adminClient.auth.admin.listUsers();
@@ -33,3 +29,5 @@ export async function POST(request: Request) {
 
   return Response.json({ pending: !!data });
 }
+
+export const POST = withErrorHandler(_POST)

@@ -1,15 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 interface AssignAdviserBody {
   section_id?: number;
   adviser_id?: string | null;
 }
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user: caller },
@@ -36,11 +37,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { error } = await adminClient.rpc("set_section_adviser", {
     p_section_id: sectionId,
@@ -49,10 +45,12 @@ export async function POST(request: Request) {
 
   if (error) {
     return Response.json(
-      { error: error.message || "Failed to assign class adviser." },
+      { error: "Failed to assign class adviser." },
       { status: 500 },
     );
   }
 
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const POST = withErrorHandler(_POST)

@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import { promises as dns } from "dns";
 import {
   createServerSupabaseClient,
@@ -6,6 +5,8 @@ import {
 } from "@/lib/supabase/server";
 import { sendWelcomeEmail } from "@/lib/email/templates";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 async function domainHasMxRecords(email: string): Promise<boolean> {
   const domain = email.split("@")[1];
   if (!domain) return false;
@@ -17,7 +18,7 @@ async function domainHasMxRecords(email: string): Promise<boolean> {
   }
 }
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   // 1. SECURITY: Verify the CALLER (the admin user clicking the button)
   const supabase = await createServerSupabaseClient();
   const {
@@ -41,13 +42,6 @@ export async function POST(request: Request) {
   if (!email || !password || !first_name || !last_name || !role_ids) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
-
-  // 4. ADMIN CLIENT: Initialize with Service Role Key (Bypasses RLS)
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
 
   // --- CHECK EMAIL STATUS ---
   const { data: emailStatus, error: emailCheckError } = await adminClient.rpc(
@@ -174,8 +168,10 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 },
     );
   }
 }
+
+export const POST = withErrorHandler(_POST)

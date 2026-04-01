@@ -34,7 +34,7 @@ import {
   fetchSectionDetail,
   type SectionDetail,
   type SectionSubjectRow,
-} from "../../_lib/classService";
+} from "@/lib/services/classService";
 import ArchiveClassModal from "./ArchiveClassModal";
 import AssignAdviserModal from "./AssignAdviserModal";
 import EditSectionNameModal from "./EditSectionNameModal";
@@ -46,11 +46,9 @@ interface Props {
 
 export default function ClassDetailClient({ sectionId }: Props) {
   const router = useRouter();
-  const { permissions } = useAuth();
+  const { user, permissions } = useAuth();
 
-  const hasClassesManagement = permissions.includes(
-    "classes.full_access",
-  );
+  const hasClassesManagement = permissions.includes("classes.full_access");
   const hasStudentManagement =
     permissions.includes("students.full_access") ||
     permissions.includes("students.limited_access");
@@ -110,7 +108,9 @@ export default function ClassDetailClient({ sectionId }: Props) {
     <Stack gap="md" maw={1000}>
       {/* Back */}
       <Box>
-        <BackButton href="/school/classes" mb="md" size="sm">Back to Classes</BackButton>
+        <BackButton href="/school/classes" mb="md" size="sm">
+          Back to Classes
+        </BackButton>
       </Box>
 
       {/* Heading */}
@@ -200,7 +200,10 @@ export default function ClassDetailClient({ sectionId }: Props) {
                 component={Link}
                 href={`/school/classes/${section.section_id}/students`}
               >
-                Manage Student Roster
+                {permissions.includes("students.full_access") ||
+                section?.adviser_id === user?.id
+                  ? "Manage Student Roster"
+                  : "View Student Roster"}
               </Button>
             )}
             {hasClassesManagement && (

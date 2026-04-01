@@ -1,11 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function GET(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -26,11 +27,6 @@ export async function GET(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: sectionRaw } = await admin
     .from("sections")
@@ -134,3 +130,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withErrorHandler(_GET)

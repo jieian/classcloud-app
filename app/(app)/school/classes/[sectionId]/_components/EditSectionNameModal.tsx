@@ -8,7 +8,7 @@ import { notifications } from "@mantine/notifications";
 import {
   checkSectionNameExists,
   renameSectionName,
-} from "../../_lib/classService";
+} from "@/lib/services/classService";
 
 function toTitleCase(str: string): string {
   return str

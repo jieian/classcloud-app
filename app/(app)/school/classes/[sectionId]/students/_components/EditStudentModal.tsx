@@ -20,7 +20,7 @@ import {
   checkLrnExists,
   updateStudent,
   type StudentRosterEntry,
-} from "../../../_lib/classService";
+} from "@/lib/services/classService";
 
 interface Props {
   opened: boolean;

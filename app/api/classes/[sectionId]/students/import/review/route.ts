@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ImportRowStatus =
@@ -75,7 +76,7 @@ function parseName(
 // Accepts a multipart/form-data upload with field "file" (.xlsx).
 // Parses the Excel, validates format, runs LRN checks, and returns review rows.
 
-export async function POST(
+const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -234,11 +235,6 @@ export async function POST(
   });
 
   // ── LRN database checks ─────────────────────────────────────────────────────
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Get the section's sy_id + adviser_id once
   const { data: sectionRaw } = await admin
@@ -416,3 +412,5 @@ export async function POST(
 
   return Response.json({ rows: reviewRows });
 }
+
+export const POST = withErrorHandler(_POST)

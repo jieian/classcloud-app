@@ -31,7 +31,7 @@ import {
   type AddStudentAction,
   type LrnCheckCurrentSection,
   type LrnCheckStudent,
-} from "../../../_lib/classService";
+} from "@/lib/services/classService";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
-const NAME_RE = /^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/;
+const NAME_RE = /^[a-zA-ZÀ-ÖØ-öø-ÿ''-]+(?:[\s][a-zA-ZÀ-ÖØ-öø-ÿ''-]+)*$/;
 
 function nameValidator(label: string, required: boolean) {
   return (value: string) => {
@@ -92,7 +92,7 @@ function nameValidator(label: string, required: boolean) {
     if (t.length < 2) return `${label} must be at least 2 characters.`;
     if (t.length > 100) return `${label} must be 100 characters or less.`;
     if (!NAME_RE.test(t))
-      return `${label} must contain letters only (no numbers, symbols, or extra spaces).`;
+      return `${label} must contain letters, apostrophes, or hyphens only (no numbers or other symbols).`;
     return null;
   };
 }
@@ -342,7 +342,7 @@ export default function AddStudentModal({
     });
   }
 
-  // Partial_access: send a transfer request to the from_section adviser
+  // Partial_access: send a transfer request for administrator approval
   function handleRequestTransfer(
     student: LrnCheckStudent,
     currentSection: LrnCheckCurrentSection,
@@ -353,15 +353,16 @@ export default function AddStudentModal({
       children: (
         <Stack gap="xs">
           <Text size="sm">
-            Send a request to the adviser of{" "}
+            Submit a transfer request to move{" "}
+            <strong>{student.full_name.toUpperCase()}</strong> from{" "}
             <strong>
               {currentSection.grade_level_display} – {currentSection.name}
             </strong>{" "}
-            to transfer{" "}
-            <strong>{student.full_name.toUpperCase()}</strong> to your class?
+            to your class?
           </Text>
           <Text size="xs" c="dimmed">
-            The student will only be moved once the adviser approves the request.
+            The adviser of the student&apos;s current class will be notified.
+            An administrator will review and approve the transfer.
           </Text>
         </Stack>
       ),
@@ -426,8 +427,8 @@ export default function AddStudentModal({
                 transfer request to move them to this class?
               </Text>
               <Text size="xs" c="dimmed">
-                The student will only be moved once the adviser of their current
-                class approves the request.
+                The adviser of the student&apos;s current class will be
+                notified. An administrator will review and approve the transfer.
               </Text>
             </Stack>
           ),
@@ -917,7 +918,7 @@ export default function AddStudentModal({
               <>
                 <Text size="sm" c="dimmed">
                   This student is enrolled in another class. You need to send a
-                  transfer request to that class's adviser for approval.
+                  transfer request for administrator approval.
                 </Text>
                 <Button
                   variant="filled"
@@ -970,9 +971,9 @@ export default function AddStudentModal({
               </Text>
               <Text size="sm" c="dimmed" ta="center" maw={320}>
                 The adviser of{" "}
-                <strong>{phase.studentName.toUpperCase()}</strong>'s current
-                class has been notified. The student will be moved once they
-                approve the request.
+                <strong>{phase.studentName.toUpperCase()}</strong>&apos;s
+                current class has been notified. An administrator will review
+                and approve the transfer.
               </Text>
             </Stack>
             <Stack gap="xs" w="100%">
@@ -1014,7 +1015,7 @@ export default function AddStudentModal({
               placeholder="e.g. Dela Cruz"
               required
               maxLength={100}
-              description={`${form.values.last_name.trim().length}/100 — letters only, title case on save`}
+              description={`${form.values.last_name.trim().length}/100 — letters and apostrophes only, title case on save`}
               {...form.getInputProps("last_name")}
               disabled={saving}
             />
@@ -1023,7 +1024,7 @@ export default function AddStudentModal({
               placeholder="e.g. Juan"
               required
               maxLength={100}
-              description={`${form.values.first_name.trim().length}/100 — letters only, title case on save`}
+              description={`${form.values.first_name.trim().length}/100 — letters and apostrophes only, title case on save`}
               {...form.getInputProps("first_name")}
               disabled={saving}
             />
@@ -1031,7 +1032,7 @@ export default function AddStudentModal({
               label="Middle Name"
               placeholder="Optional"
               maxLength={100}
-              description={`${form.values.middle_name.trim().length}/100 — optional, letters only`}
+              description={`${form.values.middle_name.trim().length}/100 — optional, letters and apostrophes only`}
               {...form.getInputProps("middle_name")}
               disabled={saving}
             />

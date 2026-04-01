@@ -1,12 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 type SaveObjectivesBody = {
   examId?: number;
   objectives?: { objective: string; start_item: number; end_item: number }[];
 };
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -23,10 +24,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing examId or objectives" }, { status: 400 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   const { data, error } = await adminClient
     .from("exams")
@@ -36,7 +33,7 @@ export async function POST(request: Request) {
 
   if (error) {
     console.error("[api/exams/objectives] update error:", error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   if (!data || data.length === 0) {
@@ -45,3 +42,5 @@ export async function POST(request: Request) {
 
   return Response.json({ exam_id: data[0].exam_id });
 }
+
+export const POST = withErrorHandler(_POST)

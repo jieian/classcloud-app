@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { archiveSection } from "../../_lib/classService";
+import { archiveSection } from "@/lib/services/classService";
 
 interface Props {
   opened: boolean;

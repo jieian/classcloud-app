@@ -266,8 +266,6 @@ export interface TransferRequestItem {
   student_sex: "M" | "F";
   from_section_name: string;
   from_grade_level_display: string;
-  /** Adviser of the from_section (null if unassigned) */
-  from_adviser_name: string | null;
   to_section_name: string;
   to_grade_level_display: string;
   requester_name: string;
@@ -610,6 +608,52 @@ export async function createSection(data: {
   }
   return result as { section_id: number };
 }
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export interface NotificationItem {
+  notification_id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  reference_id: string | null;
+  reference_type: string | null;
+  action_url: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export async function fetchNotifications(): Promise<NotificationItem[]> {
+  const res = await fetch("/api/notifications", { cache: "no-store" });
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.notifications ?? [];
+}
+
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  const res = await fetch("/api/notifications/count", { cache: "no-store" });
+  if (!res.ok) return 0;
+  const data = await res.json();
+  return typeof data.count === "number" ? data.count : 0;
+}
+
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  await fetch("/api/notifications/mark-read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notification_ids: ids }),
+  });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await fetch("/api/notifications/mark-read", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notification_ids: [] }),
+  });
+}
+
+// ─── Sections ─────────────────────────────────────────────────────────────────
 
 export async function renameSectionName(
   sectionId: number,

@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function DELETE(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _DELETE = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -31,11 +32,6 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Partial-access users can only delete from sections they advise.
   if (!hasFullAccess) {
@@ -47,7 +43,7 @@ export async function DELETE(request: Request) {
       .maybeSingle();
 
     if (secErr) {
-      return Response.json({ error: secErr.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
     if (!section || section.adviser_id !== user.id) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
@@ -62,7 +58,7 @@ export async function DELETE(request: Request) {
     .maybeSingle();
 
   if (studentErr) {
-    return Response.json({ error: studentErr.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
   if (!student) {
     return Response.json({ error: "Student not found." }, { status: 404 });
@@ -74,10 +70,12 @@ export async function DELETE(request: Request) {
 
   if (error) {
     return Response.json(
-      { error: error.message || "Failed to delete student." },
+      { error: "Failed to delete student." },
       { status: 500 },
     );
   }
 
   return Response.json({ success: true });
 }
+
+export const DELETE = withErrorHandler(_DELETE)

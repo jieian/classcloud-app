@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 type RoleRow = { role_id: number; name: string; is_faculty: boolean };
 type UserRoleJoin = { roles: RoleRow | RoleRow[] | null };
 type CandidateUserRow = {
@@ -14,7 +15,7 @@ type CandidateUserRow = {
   user_roles: UserRoleJoin[] | null;
 };
 
-export async function GET(request: Request) {
+const _GET = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user: caller },
@@ -29,11 +30,6 @@ export async function GET(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
   const includeAssigned =
     new URL(request.url).searchParams.get("include_assigned") === "true";
 
@@ -49,7 +45,7 @@ export async function GET(request: Request) {
     .order("first_name", { ascending: true });
 
   if (usersError) {
-    return Response.json({ error: usersError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const { data: adviserRows, error: adviserRowsError } = await adminClient
@@ -59,7 +55,7 @@ export async function GET(request: Request) {
     .is("deleted_at", null);
 
   if (adviserRowsError) {
-    return Response.json({ error: adviserRowsError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const adviserSet = new Set(
@@ -97,3 +93,5 @@ export async function GET(request: Request) {
 
   return Response.json({ data });
 }
+
+export const GET = withErrorHandler(_GET)

@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function POST() {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function() {
   // Verify the caller has a valid session (just confirmed their email)
   const supabase = await createServerSupabaseClient();
   const {
@@ -12,11 +13,6 @@ export async function POST() {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Idempotency: if the user already has a profile row, treat as success
   // (handles the case where the confirmation link is clicked more than once)
@@ -61,7 +57,7 @@ export async function POST() {
 
   if (rpcResult?.success === false) {
     return Response.json(
-      { error: rpcResult.message || "Registration failed." },
+      { error: "Registration failed." },
       { status: 500 },
     );
   }
@@ -80,3 +76,5 @@ export async function POST() {
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

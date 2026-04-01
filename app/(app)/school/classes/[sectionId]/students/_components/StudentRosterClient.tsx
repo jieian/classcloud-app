@@ -43,7 +43,7 @@ import {
   fetchStudentRoster,
   type StudentRosterEntry,
   type StudentRosterSection,
-} from "../../../_lib/classService";
+} from "@/lib/services/classService";
 import AddStudentModal from "./AddStudentModal";
 import DownloadRosterModal from "./DownloadRosterModal";
 import EditStudentModal from "./EditStudentModal";

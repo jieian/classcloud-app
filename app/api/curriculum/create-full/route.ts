@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
 import { CURRICULUM_CACHE_TAG } from "@/app/(app)/school/curriculum/_lib/curriculumServerService";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -19,11 +20,6 @@ export async function POST(request: Request) {
   if (!subjects?.length) return Response.json({ error: "At least one subject is required." }, { status: 400 });
   if (!subject_groups?.length) return Response.json({ error: "At least one subject group is required." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
 
   const { data: rpcResult, error: rpcError } = await admin.rpc("create_curriculum_full", {
     p_name: name.trim(),
@@ -32,10 +28,12 @@ export async function POST(request: Request) {
     p_subject_groups: subject_groups,
   });
 
-  if (rpcError) return Response.json({ error: rpcError.message }, { status: 500 });
+  if (rpcError) return Response.json({ error: "Internal server error." }, { status: 500 });
   if (rpcResult?.success === false)
-    return Response.json({ error: rpcResult.message || "Failed to create curriculum." }, { status: 500 });
+    return Response.json({ error: "Failed to create curriculum." }, { status: 500 });
 
   revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
   return Response.json({ success: true, curriculum_id: rpcResult?.curriculum_id }, { status: 201 });
 }
+
+export const POST = withErrorHandler(_POST)

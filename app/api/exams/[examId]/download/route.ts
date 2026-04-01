@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
 type ExamRow = {
   exam_id: number;
   title: string;
@@ -49,7 +50,7 @@ function getProficiency(percent: number): string {
   return "Not";
 }
 
-export async function GET(
+const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ examId: string }> },
 ) {
@@ -76,11 +77,6 @@ export async function GET(
     return Response.json({ error: "Invalid exam ID." }, { status: 400 });
   }
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: exam, error: examError } = await admin
     .from("exams")
@@ -90,7 +86,7 @@ export async function GET(
     .maybeSingle<ExamRow>();
 
   if (examError) {
-    return Response.json({ error: examError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
   if (!exam) {
     return Response.json({ error: "Exam not found." }, { status: 404 });
@@ -103,7 +99,7 @@ export async function GET(
     .returns<AssignmentRow[]>();
 
   if (assignmentError) {
-    return Response.json({ error: assignmentError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const sectionIds = (assignments ?? []).map((a) => a.section_id);
@@ -135,7 +131,7 @@ export async function GET(
     .returns<EnrollmentRow[]>();
 
   if (enrollmentError) {
-    return Response.json({ error: enrollmentError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const assignmentIds = (assignments ?? []).map((a) => a.id);
@@ -147,7 +143,7 @@ export async function GET(
     .returns<ScoreRow[]>();
 
   if (scoreError) {
-    return Response.json({ error: scoreError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const latestScoreByEnrollment = new Map<number, ScoreRow>();
@@ -226,3 +222,5 @@ export async function GET(
     },
   });
 }
+
+export const GET = withErrorHandler(_GET)

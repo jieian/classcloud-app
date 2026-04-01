@@ -12,7 +12,7 @@ import {
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { fetchActiveSections } from '@/lib/services/sectionService';
-import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { createExamWithAssignments, fetchExamById } from '@/lib/services/examService';
 import type { Section, ExamWithRelations } from '@/lib/exam-supabase';

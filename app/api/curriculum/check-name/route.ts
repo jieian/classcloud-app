@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -20,7 +21,9 @@ export async function POST(request: Request) {
 
   const { data, error } = await query.maybeSingle();
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
 
   return Response.json({ available: data === null });
 }
+
+export const POST = withErrorHandler(_POST)

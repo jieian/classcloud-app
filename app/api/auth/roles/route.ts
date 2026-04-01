@@ -1,11 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
-export async function GET() {
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _GET = async function() {
 
   const { data, error } = await adminClient
     .from("roles")
@@ -19,3 +14,5 @@ export async function GET() {
 
   return Response.json({ data: data ?? [] });
 }
+
+export const GET = withErrorHandler(_GET)

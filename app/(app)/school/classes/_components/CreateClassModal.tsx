@@ -17,8 +17,8 @@ import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { IconChevronDown, IconInfoCircle } from "@tabler/icons-react";
-import type { GradeLevelRow } from "../_lib/classService";
-import { createSection, checkSectionAvailability } from "../_lib/classService";
+import type { GradeLevelRow } from "@/lib/services/classService";
+import { createSection, checkSectionAvailability } from "@/lib/services/classService";
 
 interface CreateClassModalProps {
   opened: boolean;

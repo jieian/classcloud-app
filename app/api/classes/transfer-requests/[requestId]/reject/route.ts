@@ -1,12 +1,14 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+import { dispatchTransferRequestRejected } from "@/lib/notifications";
 // ─── POST /api/classes/transfer-requests/[requestId]/reject ───────────────────
 
-export async function POST(
+const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ requestId: string }> },
 ) {
@@ -17,10 +19,7 @@ export async function POST(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  const hasStudentAccess =
-    permissions.includes("students.full_access") ||
-    permissions.includes("students.limited_access");
-  if (!hasStudentAccess)
+  if (!permissions.includes("students.full_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { requestId } = await params;
@@ -30,11 +29,6 @@ export async function POST(
   const body = (await request.json().catch(() => ({}))) as { notes?: string };
   const notes = (body.notes ?? "").trim() || null;
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { error } = await admin.rpc("reject_transfer_request", {
     p_request_id: requestId,
@@ -47,8 +41,12 @@ export async function POST(
       return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
     if (error.message.includes("NOT_AUTHORIZED"))
       return Response.json({ error: "Forbidden" }, { status: 403 });
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  void dispatchTransferRequestRejected({ requestId, notes });
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

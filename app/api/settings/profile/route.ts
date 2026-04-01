@@ -1,6 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
 function toTitleCase(str: string): string {
   return str
     .trim()
@@ -12,18 +13,13 @@ function toTitleCase(str: string): string {
 }
 
 // ─── GET /api/settings/profile ───────────────────────────────────────────────
-export async function GET() {
+const _GET = async function() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Email is already on the verified session user — no extra roundtrip needed.
   const email = user.email ?? "";
@@ -60,7 +56,7 @@ export async function GET() {
 }
 
 // ─── PATCH /api/settings/profile ─────────────────────────────────────────────
-export async function PATCH(request: Request) {
+const _PATCH = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -96,7 +92,7 @@ export async function PATCH(request: Request) {
   if (error) {
     if (error.message.includes("USER_NOT_FOUND"))
       return Response.json({ error: "User not found." }, { status: 404 });
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   return Response.json({
@@ -106,3 +102,6 @@ export async function PATCH(request: Request) {
     last_name: lastName,
   });
 }
+
+export const GET = withErrorHandler(_GET)
+export const PATCH = withErrorHandler(_PATCH)

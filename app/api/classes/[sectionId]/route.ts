@@ -1,4 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
@@ -6,9 +5,11 @@ import {
 import type {
   SectionDetail,
   SectionSubjectRow,
-} from "@/app/(app)/school/classes/_lib/classService";
+} from "@/lib/services/classService";
 
-export async function GET(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -30,11 +31,6 @@ export async function GET(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Wave 1: section info + active school year in parallel
   const [{ data: sRaw, error: secError }, { data: syData }] =
@@ -55,7 +51,7 @@ export async function GET(
         .maybeSingle(),
     ]);
 
-  if (secError) return Response.json({ error: secError.message }, { status: 500 });
+  if (secError) return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sRaw) return Response.json({ error: "Section not found." }, { status: 404 });
 
   const s = sRaw as any;
@@ -145,7 +141,7 @@ export async function GET(
   return Response.json({ section, subjects });
 }
 
-export async function PATCH(
+const _PATCH = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -175,11 +171,6 @@ export async function PATCH(
   if (!/^[a-zA-Z0-9\s]+$/.test(name))
     return Response.json({ error: "No symbols allowed." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { error } = await admin.rpc("rename_section", {
     p_section_id: sectionId,
@@ -188,14 +179,14 @@ export async function PATCH(
 
   if (error)
     return Response.json(
-      { error: error.message || "Failed to rename section." },
+      { error: "Failed to rename section." },
       { status: 500 },
     );
 
   return Response.json({ success: true });
 }
 
-export async function DELETE(
+const _DELETE = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -214,11 +205,6 @@ export async function DELETE(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { error } = await admin
     .from("sections")
@@ -228,9 +214,13 @@ export async function DELETE(
 
   if (error)
     return Response.json(
-      { error: error.message || "Failed to archive section." },
+      { error: "Failed to archive section." },
       { status: 500 },
     );
 
   return Response.json({ success: true });
 }
+
+export const GET = withErrorHandler(_GET)
+export const PATCH = withErrorHandler(_PATCH)
+export const DELETE = withErrorHandler(_DELETE)

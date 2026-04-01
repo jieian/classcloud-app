@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
 // ─── POST /api/classes/[sectionId]/students/import ────────────────────────────
 // Bulk-enrolls students that were reviewed and confirmed by the user.
 // Supports actions: new, enroll, restore_enroll, move.
@@ -17,7 +18,7 @@ interface ImportStudent {
   sex?: "M" | "F";
 }
 
-export async function POST(
+const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -52,11 +53,6 @@ export async function POST(
       { status: 400 },
     );
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Get section's sy_id + adviser_id
   const { data: sectionRaw } = await admin
@@ -214,3 +210,5 @@ export async function POST(
 
   return Response.json({ results });
 }
+
+export const POST = withErrorHandler(_POST)

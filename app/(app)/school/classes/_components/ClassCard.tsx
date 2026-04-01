@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Card, Divider, Group, Text, Tooltip } from "@mantine/core";
 import { IconPencil, IconUser, IconUsers } from "@tabler/icons-react";
-import type { SectionCard } from "../_lib/classService";
+import type { SectionCard } from "@/lib/services/classService";
 
 interface ClassCardProps {
   section: SectionCard;

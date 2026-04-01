@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function PATCH(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _PATCH = async function(request: Request) {
   // Verify caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -44,20 +45,16 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Admin client with service role key
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
   const { error } = await adminClient.auth.admin.updateUserById(
     uid,
     updatePayload,
   );
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   return Response.json({ success: true });
 }
+
+export const PATCH = withErrorHandler(_PATCH)

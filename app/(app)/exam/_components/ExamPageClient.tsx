@@ -54,7 +54,7 @@ import {
 import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
-import { fetchTeacherClassAssignments } from "@/app/(app)/school/classes/_lib/classService";
+import { fetchTeacherClassAssignments } from "@/lib/services/classService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 
 export default function ExamPageClient() {

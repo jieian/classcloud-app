@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function GET(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _GET = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -33,11 +34,6 @@ export async function GET(
       { status: 400 },
     );
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Look up the student — include soft-deleted (admin bypasses RLS)
   const { data: studentRaw, error: studentErr } = await admin
@@ -47,7 +43,7 @@ export async function GET(
     .maybeSingle();
 
   if (studentErr)
-    return Response.json({ error: studentErr.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
 
   if (!studentRaw) {
     return Response.json({ status: "not_found", student: null });
@@ -135,3 +131,5 @@ export async function GET(
 
   return Response.json({ status: "active", student });
 }
+
+export const GET = withErrorHandler(_GET)

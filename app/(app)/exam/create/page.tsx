@@ -17,7 +17,7 @@ import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
-import { fetchTeacherClassAssignments } from '@/app/(app)/school/classes/_lib/classService';
+import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';

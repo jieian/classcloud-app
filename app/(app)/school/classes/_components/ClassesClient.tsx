@@ -25,8 +25,11 @@ import type {
   GradeLevelRow,
   SchoolYearOption,
   SectionCard,
-} from "../_lib/classService";
-import { fetchPendingTransferCount } from "../_lib/classService";
+} from "@/lib/services/classService";
+import {
+  fetchPendingTransferCount,
+  fetchUnreadNotificationCount,
+} from "@/lib/services/classService";
 import ClassCard from "./ClassCard";
 import UtilitiesSection from "./UtilitiesSection";
 
@@ -57,6 +60,12 @@ export default function ClassesClient() {
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTransferCount, setPendingTransferCount] = useState(0);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+
+  const isAdmin = permissions.includes("students.full_access");
+  const isAdviser =
+    permissions.includes("students.limited_access") &&
+    !permissions.includes("students.full_access");
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const loadClasses = useCallback(async (syId: number) => {
@@ -86,10 +95,15 @@ export default function ClassesClient() {
       try {
         const [initRes] = await Promise.all([
           fetch("/api/classes/init"),
-          // Fetch pending transfer count in parallel (non-blocking)
-          canViewTransferRequests
+          // Fetch badge counts in parallel (non-blocking)
+          isAdmin
             ? fetchPendingTransferCount()
                 .then(setPendingTransferCount)
+                .catch(() => {})
+            : Promise.resolve(),
+          isAdviser
+            ? fetchUnreadNotificationCount()
+                .then(setUnreadNotifCount)
                 .catch(() => {})
             : Promise.resolve(),
         ]);
@@ -116,7 +130,7 @@ export default function ClassesClient() {
     }
 
     void init();
-  }, [user, canViewTransferRequests]);
+  }, [user, isAdmin, isAdviser]);
 
   const handleSyChange = useCallback(
     async (syId: number) => {
@@ -210,13 +224,14 @@ export default function ClassesClient() {
               radius="md"
               size="sm"
               leftSection={<IconArrowsTransferUp size={15} />}
-              rightSection={
-                pendingTransferCount > 0 ? (
+              rightSection={(() => {
+                const count = isAdmin ? pendingTransferCount : unreadNotifCount;
+                return count > 0 ? (
                   <Badge size="xs" color="red" variant="filled" circle>
-                    {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+                    {count > 99 ? "99+" : count}
                   </Badge>
-                ) : undefined
-              }
+                ) : undefined;
+              })()}
             >
               Transfer Requests
             </Button>

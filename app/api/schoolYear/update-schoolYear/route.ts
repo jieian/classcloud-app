@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function PUT(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _PUT = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -11,18 +12,6 @@ export async function PUT(request: Request) {
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  // 2. Admin client — bypasses RLS
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
 
   // 3. Permission check
   const { data: permsData, error: permsError } = await adminClient.rpc(
@@ -62,7 +51,7 @@ export async function PUT(request: Request) {
     .neq("sy_id", sy_id);
 
   if (dupError) {
-    return Response.json({ error: dupError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
   if ((dupCount ?? 0) > 0) {
     return Response.json(
@@ -101,7 +90,7 @@ export async function PUT(request: Request) {
     }
     console.error("School year update failed:", error.message);
     return Response.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 },
     );
   }
@@ -116,3 +105,5 @@ export async function PUT(request: Request) {
 
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const PUT = withErrorHandler(_PUT)

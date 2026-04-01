@@ -1,9 +1,10 @@
-import { createClient } from "@supabase/supabase-js";
 import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
 import { CURRICULUM_CACHE_TAG } from "@/app/(app)/school/curriculum/_lib/curriculumServerService";
 
-export async function DELETE(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _DELETE = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,20 +18,17 @@ export async function DELETE(request: Request) {
   if (!curriculumId || isNaN(curriculumId))
     return Response.json({ error: "Invalid curriculum ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data, error } = await admin.rpc("delete_curriculum", {
     p_curriculum_id: curriculumId,
   });
 
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
   if (data?.success === false)
     return Response.json({ error: data.message ?? "Failed to delete curriculum." }, { status: 409 });
 
   revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const DELETE = withErrorHandler(_DELETE)

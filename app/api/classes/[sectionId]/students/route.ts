@@ -1,9 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+import { dispatchDirectMove } from "@/lib/notifications";
 // ─── POST /api/classes/[sectionId]/students ──────────────────────────────────
 // Adds a student to a class roster. Handles 5 actions:
 //   new                  – create new student record + enroll
@@ -12,7 +14,7 @@ import {
 //   restore_enroll       – restore soft-deleted student + enroll
 //   restore_update_enroll – restore + update info + enroll
 
-export async function POST(
+const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -85,11 +87,6 @@ export async function POST(
       return Response.json({ error: "Sex must be M or F." }, { status: 400 });
   }
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Gate direct move/update_move: full_access may always proceed;
   // partial_access may only move students INTO their own advisory section.
@@ -133,7 +130,7 @@ export async function POST(
       p_sy_id: syId,
     });
     if (error)
-      return Response.json({ error: error.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     return null;
   }
 
@@ -152,7 +149,7 @@ export async function POST(
             { error: "A student with this LRN already exists." },
             { status: 409 },
           );
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: "Internal server error." }, { status: 500 });
       }
       const enrollErr = await insertEnrollment();
       if (enrollErr) return enrollErr;
@@ -175,7 +172,7 @@ export async function POST(
           sex,
         })
         .eq("lrn", lrn);
-      if (error) return Response.json({ error: error.message }, { status: 500 });
+      if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
       const enrollErr = await insertEnrollment();
       if (enrollErr) return enrollErr;
       break;
@@ -186,7 +183,7 @@ export async function POST(
         .from("students")
         .update({ deleted_at: null })
         .eq("lrn", lrn);
-      if (error) return Response.json({ error: error.message }, { status: 500 });
+      if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
       const enrollErr = await insertEnrollment();
       if (enrollErr) return enrollErr;
       break;
@@ -203,7 +200,7 @@ export async function POST(
           sex,
         })
         .eq("lrn", lrn);
-      if (error) return Response.json({ error: error.message }, { status: 500 });
+      if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
       const enrollErr = await insertEnrollment();
       if (enrollErr) return enrollErr;
       break;
@@ -211,6 +208,16 @@ export async function POST(
 
     // Move: atomically remove from current class + enroll in this class (RPC)
     case "move": {
+      // Pre-fetch from-section BEFORE the RPC — old enrollment is soft-deleted atomically inside it
+      const { data: currentEnroll } = await admin
+        .from("enrollments")
+        .select("section_id")
+        .eq("lrn", lrn)
+        .eq("sy_id", syId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      const fromSectionId = (currentEnroll as any)?.section_id as number | null;
+
       const { error } = await admin.rpc("move_student_enrollment", {
         p_lrn: lrn,
         p_sy_id: syId,
@@ -222,7 +229,7 @@ export async function POST(
             { error: "This student is already enrolled in this class." },
             { status: 409 },
           );
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: "Internal server error." }, { status: 500 });
       }
       // Cancel any open transfer requests — the student has already moved.
       await admin
@@ -230,11 +237,25 @@ export async function POST(
         .update({ status: "CANCELLED", cancellation_reason: "MOVED_BY_ADMIN" })
         .eq("lrn", lrn)
         .eq("status", "PENDING");
+
+      if (fromSectionId) {
+        void dispatchDirectMove({ lrn, fromSectionId, toSectionId: sectionId, actorUid: user.id });
+      }
       break;
     }
 
     // Update student info + move to this class (RPC — atomic)
     case "update_move": {
+      // Pre-fetch from-section BEFORE the RPC — old enrollment is soft-deleted atomically inside it
+      const { data: currentEnroll } = await admin
+        .from("enrollments")
+        .select("section_id")
+        .eq("lrn", lrn)
+        .eq("sy_id", syId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      const fromSectionId = (currentEnroll as any)?.section_id as number | null;
+
       const { error } = await admin.rpc("update_move_student", {
         p_lrn: lrn,
         p_last_name: lastName,
@@ -250,7 +271,7 @@ export async function POST(
             { error: "This student is already enrolled in this class." },
             { status: 409 },
           );
-        return Response.json({ error: error.message }, { status: 500 });
+        return Response.json({ error: "Internal server error." }, { status: 500 });
       }
       // Cancel any open transfer requests — the student has already moved.
       await admin
@@ -258,6 +279,10 @@ export async function POST(
         .update({ status: "CANCELLED", cancellation_reason: "MOVED_BY_ADMIN" })
         .eq("lrn", lrn)
         .eq("status", "PENDING");
+
+      if (fromSectionId) {
+        void dispatchDirectMove({ lrn, fromSectionId, toSectionId: sectionId, actorUid: user.id });
+      }
       break;
     }
   }
@@ -267,7 +292,7 @@ export async function POST(
 
 // ─── GET /api/classes/[sectionId]/students ────────────────────────────────────
 
-export async function GET(
+const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
@@ -289,11 +314,6 @@ export async function GET(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Fetch section + enrollments with student details in parallel
   const [{ data: sectionRaw, error: secError }, { data: enrollRaw, error: enrollError }] =
@@ -310,7 +330,7 @@ export async function GET(
     ]);
 
   if (secError)
-    return Response.json({ error: secError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sectionRaw)
     return Response.json({ error: "Section not found." }, { status: 404 });
 
@@ -332,7 +352,7 @@ export async function GET(
     .order("lrn");
 
   if (enrollErr)
-    return Response.json({ error: enrollErr.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
 
   const students = ((enrollData ?? []) as any[]).map((e: any) => {
     const student = Array.isArray(e.students) ? e.students[0] : e.students;
@@ -357,3 +377,6 @@ export async function GET(
     students,
   });
 }
+
+export const GET = withErrorHandler(_GET)
+export const POST = withErrorHandler(_POST)

@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -23,11 +24,6 @@ export async function POST(request: Request) {
   if (!name || !gradeLevelId || !["REGULAR", "SSES"].includes(sectionType))
     return Response.json({ error: "Invalid input." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: syData, error: syError } = await admin
     .from("school_years")
@@ -37,7 +33,7 @@ export async function POST(request: Request) {
     .maybeSingle();
 
   if (syError)
-    return Response.json({ error: syError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!syData)
     return Response.json(
       { error: "No active school year found." },
@@ -86,3 +82,5 @@ export async function POST(request: Request) {
 
   return Response.json({ available: true });
 }
+
+export const POST = withErrorHandler(_POST)

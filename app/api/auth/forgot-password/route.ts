@@ -1,7 +1,22 @@
-import { createClient } from "@supabase/supabase-js";
 import { sendPasswordResetEmail } from "@/lib/email/templates";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+
+import { adminClient } from "@/lib/supabase/admin";
+// 5 password-reset requests per IP per 15 minutes
+const resetLimiter = createRateLimiter({ maxRequests: 5, windowMs: 15 * 60_000 });
+
+const _POST = async function(request: Request) {
+  const ip = getClientIp(request);
+  const limit = resetLimiter.check(ip);
+  if (!limit.allowed) {
+    return Response.json(
+      { error: "Too many password reset requests. Please wait a few minutes and try again." },
+      { status: 429 },
+    );
+  }
+
   const { email } = await request.json();
 
   if (!email || typeof email !== "string") {
@@ -10,10 +25,6 @@ export async function POST(request: Request) {
 
   const trimmedEmail = email.trim().toLowerCase();
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   const forwardedHost = request.headers.get("x-forwarded-host");
   const forwardedProto =
@@ -69,3 +80,5 @@ export async function POST(request: Request) {
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

@@ -1,6 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
-
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const body = await request.json();
   const { token, uid } = body;
 
@@ -8,11 +8,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Fetch the auth user and validate the restore token
   const {
@@ -69,10 +64,12 @@ export async function POST(request: Request) {
 
   if (restoreResult?.success === false) {
     return Response.json(
-      { error: restoreResult.message || "Failed to restore account." },
+      { error: "Failed to restore account." },
       { status: 500 },
     );
   }
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

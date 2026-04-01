@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function GET() {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _GET = async function() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -11,16 +12,14 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   const { data, error } = await adminClient.rpc("get_faculty_list");
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   return Response.json({ data: data ?? [] });
 }
+
+export const GET = withErrorHandler(_GET)

@@ -1,6 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import { promises as dns } from "dns";
 import { sendVerificationEmail } from "@/lib/email/templates";
+
+import { withErrorHandler } from "@/lib/api-error";
+import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+
+import { adminClient } from "@/lib/supabase/admin";
+// 5 signup attempts per IP per 10 minutes
+const signupLimiter = createRateLimiter({ maxRequests: 5, windowMs: 10 * 60_000 });
 
 const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -24,8 +30,16 @@ async function domainHasMxRecords(email: string): Promise<boolean> {
   }
 }
 
-export async function POST(request: Request) {
-  console.log("[signup] POST /api/auth/signup");
+const _POST = async function(request: Request) {
+  // Rate limit: 5 signup attempts per IP per 10 minutes
+  const ip = getClientIp(request);
+  const limit = signupLimiter.check(ip);
+  if (!limit.allowed) {
+    return Response.json(
+      { error: "Too many signup attempts. Please wait a few minutes and try again." },
+      { status: 429 },
+    );
+  }
 
   // --- PARSE & VALIDATE ---
   const body = await request.json();
@@ -70,15 +84,6 @@ export async function POST(request: Request) {
     );
   }
 
-  console.log("[signup] Validation passed. Email:", trimmedEmail);
-
-  // --- ADMIN CLIENT ---
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
-
   // --- VALIDATE ROLE IDS (must be self-registrable) ---
   const { data: validRoles, error: rolesError } = await adminClient
     .from("roles")
@@ -98,8 +103,6 @@ export async function POST(request: Request) {
     );
   }
 
-  console.log("[signup] Roles valid:", validRoles.map((r) => r.role_id));
-
   // --- CHECK EMAIL STATUS ---
   const { data: emailStatus, error: emailCheckError } = await adminClient.rpc(
     "check_email_status",
@@ -114,8 +117,6 @@ export async function POST(request: Request) {
     );
   }
 
-  console.log("[signup] Email status:", emailStatus);
-
   if (emailStatus?.status === "active") {
     return Response.json({ error: "This email is already registered." }, { status: 409 });
   }
@@ -129,11 +130,8 @@ export async function POST(request: Request) {
       ? `${forwardedProto}://${forwardedHost}`
       : new URL(request.url).origin);
 
-  console.log("[signup] Resolved origin:", origin);
-
   // --- RESTORE PATH ---
   if (emailStatus?.status === "deleted") {
-    console.log("[signup] Restore path — soft-deleted account found. UID:", emailStatus.uid);
     const uid = emailStatus.uid as string;
     const restoreToken = crypto.randomUUID();
 
@@ -157,16 +155,13 @@ export async function POST(request: Request) {
     }
 
     const restoreLink = `${origin}/signup/confirmed?token=${restoreToken}&uid=${encodeURIComponent(uid)}`;
-    console.log("[signup] Restore link generated:", restoreLink);
 
     try {
-      console.log("[signup] Sending restore verification email to:", trimmedEmail);
       await sendVerificationEmail({
         to: trimmedEmail,
         verificationLink: restoreLink,
         firstName: first_name.trim(),
       });
-      console.log("[signup] Restore email sent successfully.");
     } catch (err) {
       console.error("[signup] Failed to send restore email:", err);
       await adminClient.auth.admin
@@ -185,10 +180,7 @@ export async function POST(request: Request) {
   }
 
   // --- NEW USER PATH ---
-  console.log("[signup] New user path.");
-
   const domainValid = await domainHasMxRecords(trimmedEmail);
-  console.log("[signup] MX record check:", domainValid);
   if (!domainValid) {
     return Response.json(
       {
@@ -200,7 +192,6 @@ export async function POST(request: Request) {
 
   let newAuthUserUuid: string | null = null;
 
-  console.log("[signup] Generating signup link...");
   const { data: linkData, error: linkError } =
     await adminClient.auth.admin.generateLink({
       type: "signup",
@@ -218,7 +209,7 @@ export async function POST(request: Request) {
     });
 
   if (linkError || !linkData?.user || !linkData?.properties?.action_link) {
-    console.error("[signup] generateLink error:", linkError?.message, "linkData:", linkData);
+    console.error("[signup] generateLink error:", linkError?.message);
     return Response.json(
       {
         error:
@@ -230,17 +221,13 @@ export async function POST(request: Request) {
   }
 
   newAuthUserUuid = linkData.user.id;
-  console.log("[signup] Auth user created. UUID:", newAuthUserUuid);
-  console.log("[signup] Action link:", linkData.properties.action_link);
 
   try {
-    console.log("[signup] Sending verification email to:", trimmedEmail);
     await sendVerificationEmail({
       to: trimmedEmail,
       verificationLink: linkData.properties.action_link,
       firstName: first_name.trim(),
     });
-    console.log("[signup] Verification email sent successfully.");
   } catch (err) {
     console.error("[signup] Failed to send verification email:", err);
     await adminClient.auth.admin.deleteUser(newAuthUserUuid).catch((e) =>
@@ -257,3 +244,5 @@ export async function POST(request: Request) {
 
   return Response.json({ success: true }, { status: 201 });
 }
+
+export const POST = withErrorHandler(_POST)

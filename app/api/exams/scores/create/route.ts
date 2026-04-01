@@ -1,7 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 type CreateScoreBody = {
   enrollment_id?: number;
   exam_assignment_id?: number;
@@ -9,7 +9,7 @@ type CreateScoreBody = {
   calculated_score?: number;
 };
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -31,15 +31,6 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-
-  const { url } = getSupabasePublicEnv();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceRoleKey) {
-    return Response.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
-  }
-
-  const adminClient = createClient(url, serviceRoleKey);
 
   const gradedAt = new Date().toISOString();
   const { data, error } = await adminClient.rpc("create_score", {
@@ -89,13 +80,13 @@ export async function POST(request: Request) {
 
       if (updateError) {
         console.error("[api/exams/scores/create] update fallback error:", updateError.message);
-        return Response.json({ error: updateError.message }, { status: 500 });
+        return Response.json({ error: "Internal server error." }, { status: 500 });
       }
 
       return Response.json({ score: updated }, { status: 201 });
     }
 
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   // Support several RPC return shapes:
@@ -136,7 +127,7 @@ export async function POST(request: Request) {
       .eq("score_id", scoreId)
       .single();
     if (fetchError) {
-      return Response.json({ error: fetchError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
     score = fetched;
   } else {
@@ -149,7 +140,7 @@ export async function POST(request: Request) {
       .limit(1)
       .maybeSingle();
     if (fetchError) {
-      return Response.json({ error: fetchError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
     score = fetched;
   }
@@ -160,3 +151,5 @@ export async function POST(request: Request) {
 
   return Response.json({ score }, { status: 201 });
 }
+
+export const POST = withErrorHandler(_POST)

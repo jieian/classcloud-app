@@ -25,7 +25,7 @@ import {
   fetchAvailableAdviserCandidates,
   type AdviserCandidate,
   type SectionSubjectRow,
-} from "../../_lib/classService";
+} from "@/lib/services/classService";
 
 interface Props {
   opened: boolean;

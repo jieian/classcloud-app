@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function PATCH(
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _PATCH = async function(
   request: Request,
   { params }: { params: Promise<{ lrn: string }> },
 ) {
@@ -50,11 +51,6 @@ export async function PATCH(
   if (!["M", "F"].includes(sex))
     return Response.json({ error: "Sex must be M or F." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // If LRN is changing, ensure the new one isn't taken
   if (newLrn !== oldLrn) {
@@ -82,9 +78,11 @@ export async function PATCH(
 
   if (error)
     return Response.json(
-      { error: error.message || "Failed to update student." },
+      { error: "Failed to update student." },
       { status: 500 },
     );
 
   return Response.json({ success: true });
 }
+
+export const PATCH = withErrorHandler(_PATCH)

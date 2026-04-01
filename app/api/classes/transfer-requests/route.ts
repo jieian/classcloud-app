@@ -1,14 +1,16 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+import { dispatchTransferRequestCreated } from "@/lib/notifications";
 // ─── POST /api/classes/transfer-requests ──────────────────────────────────────
 // Creates a transfer request via the atomic Postgres RPC.
 // Only partial_access advisers may call this; the RPC validates adviser ownership.
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -39,11 +41,6 @@ export async function POST(request: Request) {
       { status: 400 },
     );
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { data: requestId, error } = await admin.rpc("create_transfer_request", {
     p_lrn: lrn,
@@ -59,8 +56,16 @@ export async function POST(request: Request) {
       return Response.json({ error: "NOT_ENROLLED" }, { status: 422 });
     if (error.message.includes("NOT_ADVISER"))
       return Response.json({ error: "NOT_ADVISER" }, { status: 403 });
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  void dispatchTransferRequestCreated({
+    requestId: requestId as string,
+    lrn,
+    fromSectionId,
+    toSectionId,
+    requestedByUid: user.id,
+  });
 
   return Response.json({ request_id: requestId }, { status: 201 });
 }
@@ -75,11 +80,7 @@ const BASE_SELECT = `
   from_section_id, to_section_id,
   requested_at, expires_at, reviewed_at, notes, cancellation_reason,
   student:students(full_name, sex),
-  from_section:sections!from_section_id(
-    name,
-    grade_levels(display_name),
-    adviser:users!adviser_id(first_name, last_name)
-  ),
+  from_section:sections!from_section_id(name, grade_levels(display_name)),
   to_section:sections!to_section_id(name, grade_levels(display_name)),
   requester:users!requested_by(first_name, last_name)
 `;
@@ -95,9 +96,6 @@ function mapRow(r: any) {
   const toGl = Array.isArray(toSec?.grade_levels)
     ? toSec.grade_levels[0]
     : toSec?.grade_levels;
-  const adviser = Array.isArray(fromSec?.adviser)
-    ? fromSec.adviser[0]
-    : fromSec?.adviser;
 
   return {
     request_id: r.request_id as string,
@@ -114,9 +112,6 @@ function mapRow(r: any) {
     student_sex: (student?.sex ?? "M") as "M" | "F",
     from_section_name: (fromSec?.name ?? "") as string,
     from_grade_level_display: (fromGl?.display_name ?? "") as string,
-    from_adviser_name: adviser
-      ? (`${adviser.first_name ?? ""} ${adviser.last_name ?? ""}`.trim() || null)
-      : null,
     to_section_name: (toSec?.name ?? "") as string,
     to_grade_level_display: (toGl?.display_name ?? "") as string,
     requester_name: requester
@@ -125,7 +120,7 @@ function mapRow(r: any) {
   };
 }
 
-export async function GET(request: Request) {
+const _GET = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -133,17 +128,10 @@ export async function GET(request: Request) {
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = await getUserPermissions(user.id);
-  const hasStudentAccess =
-    permissions.includes("students.full_access") ||
-    permissions.includes("students.limited_access");
-  if (!hasStudentAccess)
+  const isAdmin = permissions.includes("students.full_access");
+  const isAdviser = permissions.includes("students.limited_access");
+  if (!isAdmin && !isAdviser)
     return Response.json({ error: "Forbidden" }, { status: 403 });
-
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type"); // "incoming" | "outgoing" | null
@@ -156,42 +144,28 @@ export async function GET(request: Request) {
       .eq("requested_by", user.id)
       .order("requested_at", { ascending: false });
 
-    if (error) return Response.json({ error: error.message }, { status: 500 });
+    if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
 
     return Response.json({ requests: ((raw ?? []) as any[]).map(mapRow) });
   }
 
-  // ── Incoming: requests for sections where user is adviser ──────────────────
-  // Covers both type=incoming (all statuses) and no-type (PENDING only, backward compat)
-  const { data: advisedSections } = await admin
-    .from("sections")
-    .select("section_id")
-    .eq("adviser_id", user.id)
-    .is("deleted_at", null);
-
-  const advisedIds = ((advisedSections ?? []) as any[]).map(
-    (s) => s.section_id as number,
-  );
-
-  if (advisedIds.length === 0) {
-    return Response.json({ requests: [] });
-  }
+  // ── Incoming: all requests, visible to administrators only ─────────────────
+  if (!isAdmin) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   let query = admin
     .from("section_transfer_requests")
-    .select(BASE_SELECT)
-    .in("from_section_id", advisedIds);
+    .select(BASE_SELECT);
 
   if (!type) {
     // Backward-compat: no type param → PENDING only, ordered oldest first
     query = query.eq("status", "PENDING").order("requested_at", { ascending: true });
   } else {
-    // type=incoming → all statuses, PENDING first then newest first
+    // type=incoming → all statuses, newest first
     query = query.order("requested_at", { ascending: false });
   }
 
   const { data: raw, error } = await query;
-  if (error) return Response.json({ error: error.message }, { status: 500 });
+  if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
 
   let requests = ((raw ?? []) as any[]).map(mapRow);
 
@@ -206,3 +180,6 @@ export async function GET(request: Request) {
 
   return Response.json({ requests });
 }
+
+export const GET = withErrorHandler(_GET)
+export const POST = withErrorHandler(_POST)

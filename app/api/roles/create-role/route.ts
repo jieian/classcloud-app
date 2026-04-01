@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -29,18 +30,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 4. ADMIN CLIENT: Initialize with Service Role Key (Bypasses RLS)
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
-
   // 5. RPC: Create role + assign permissions in a single atomic transaction
   const { data, error } = await adminClient.rpc(
     "create_role_with_permissions",
@@ -60,10 +49,12 @@ export async function POST(request: Request) {
     }
     console.error("Role Creation Failed:", error.message);
     return Response.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
 
   return Response.json({ success: true, role_id: data }, { status: 201 });
 }
+
+export const POST = withErrorHandler(_POST)

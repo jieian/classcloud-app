@@ -8,7 +8,7 @@ import {
 } from "@mantine/core";
 import { IconSchool, IconList, IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
-import type { GradeLevelRow, SchoolYearOption } from "../_lib/classService";
+import type { GradeLevelRow, SchoolYearOption } from "@/lib/services/classService";
 
 interface UtilitiesSectionProps {
   schoolYears: SchoolYearOption[];

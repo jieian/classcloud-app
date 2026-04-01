@@ -29,10 +29,11 @@
  * -----------------------------------------------------------------------
  */
 
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function DELETE(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -42,18 +43,6 @@ export async function DELETE(request: Request) {
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  // 2. Admin client — bypasses RLS
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    },
-  );
 
   // 3. Permission check
   const { data: permsData, error: permsError } = await adminClient.rpc(
@@ -86,10 +75,12 @@ export async function DELETE(request: Request) {
   if (error) {
     console.error("School year delete failed:", error.message);
     return Response.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 },
     );
   }
 
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const DELETE = withErrorHandler(_DELETE)

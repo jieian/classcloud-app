@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import BackButton from "@/components/BackButton";
 import {
+  Accordion,
   ActionIcon,
   Alert,
   Badge,
@@ -35,12 +36,16 @@ import {
   approveTransferRequest,
   cancelTransferRequest,
   fetchIncomingTransferRequests,
+  fetchNotifications,
   fetchOutgoingTransferRequests,
+  markAllNotificationsRead,
+  markNotificationsRead,
   rejectTransferRequest,
   type CancellationReason,
+  type NotificationItem,
   type TransferRequestItem,
   type TransferRequestStatus,
-} from "../../_lib/classService";
+} from "@/lib/services/classService";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -261,17 +266,7 @@ function RequestCard({
         )}
         {direction === "outgoing" && item.status === "PENDING" && (
           <Text size="xs" c="dimmed">
-            {item.from_adviser_name ? (
-              <>
-                Awaiting approval from{" "}
-                <Text span fw={500} c="var(--mantine-color-text)">
-                  {item.from_adviser_name}
-                </Text>
-              </>
-            ) : (
-              "Pending approval"
-            )}{" "}
-            · {formatRelativeTime(item.requested_at)}
+            Awaiting admin approval · {formatRelativeTime(item.requested_at)}
           </Text>
         )}
         {direction === "outgoing" && item.status !== "PENDING" && (
@@ -473,17 +468,180 @@ function RequestSection({
   );
 }
 
+// ─── Notifications Panel ──────────────────────────────────────────────────────
+
+function NotificationsSkeleton() {
+  return (
+    <Stack gap="xs">
+      {[0, 1].map((i) => (
+        <Paper key={i} withBorder p="sm" radius="md">
+          <Group gap="sm" align="flex-start">
+            <Skeleton height={10} width={10} radius="xl" mt={4} style={{ flexShrink: 0 }} />
+            <Stack gap={4} style={{ flex: 1 }}>
+              <Skeleton height={14} width="55%" radius="sm" />
+              <Skeleton height={12} width="80%" radius="sm" />
+            </Stack>
+            <Skeleton height={12} width={40} radius="sm" style={{ flexShrink: 0 }} />
+          </Group>
+        </Paper>
+      ))}
+    </Stack>
+  );
+}
+
+const NOTIF_PAGE_SIZE = 5;
+
+function NotificationsPanel({
+  notifs,
+  loading,
+  onMarkRead,
+  onMarkAllRead,
+}: {
+  notifs: NotificationItem[];
+  loading: boolean;
+  onMarkRead: (id: string) => void;
+  onMarkAllRead: () => void;
+}) {
+  const [page, setPage] = useState(1);
+
+  const unreadCount = notifs.filter((n) => !n.read_at).length;
+  const hasUnread = unreadCount > 0;
+
+  const sorted = [...notifs].sort((a, b) => {
+    if (!a.read_at && b.read_at) return -1;
+    if (a.read_at && !b.read_at) return 1;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / NOTIF_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = sorted.slice(
+    (safePage - 1) * NOTIF_PAGE_SIZE,
+    safePage * NOTIF_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    setPage(1);
+  }, [notifs.length]);
+
+  return (
+    <Box mb="lg">
+      <Accordion
+        multiple
+        defaultValue={["notifications"]}
+        variant="separated"
+        styles={{
+          item: { border: "1px solid var(--mantine-color-default-border)" },
+        }}
+      >
+        <Accordion.Item value="notifications">
+          <Accordion.Control>
+            <Group justify="space-between" align="center" pr="xs">
+              <Group gap="xs">
+                <Text fw={700} size="md">
+                  Notifications
+                </Text>
+                {hasUnread && (
+                  <Badge size="xs" color="red" variant="filled">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Badge>
+                )}
+              </Group>
+              {hasUnread && (
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  color="gray"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMarkAllRead();
+                  }}
+                >
+                  Mark all as read
+                </Button>
+              )}
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <Text size="xs" c="dimmed" mb="sm">
+              Notifications relevant to your classes and transfer requests.
+            </Text>
+
+            {loading ? (
+              <NotificationsSkeleton />
+            ) : (
+              <Stack gap="xs">
+                {paginated.map((n) => {
+                  const isUnread = !n.read_at;
+                  return (
+                    <Paper
+                      key={n.notification_id}
+                      withBorder
+                      p="sm"
+                      radius="md"
+                      style={{
+                        opacity: isUnread ? 1 : 0.6,
+                        cursor: isUnread ? "pointer" : "default",
+                      }}
+                      onClick={() => isUnread && onMarkRead(n.notification_id)}
+                    >
+                      <Group gap="sm" align="flex-start" wrap="nowrap">
+                        <div
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            backgroundColor: isUnread ? "#4EAE4A" : "#ccc",
+                            flexShrink: 0,
+                            marginTop: 4,
+                          }}
+                        />
+                        <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                          <Text fw={500} size="sm" style={{ wordBreak: "break-word" }}>
+                            {n.title}
+                          </Text>
+                          {n.body && (
+                            <Text size="xs" c="dimmed" style={{ wordBreak: "break-word" }}>
+                              {n.body}
+                            </Text>
+                          )}
+                        </Stack>
+                        <Text size="xs" c="dimmed" style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+                          {formatRelativeTime(n.created_at)}
+                        </Text>
+                      </Group>
+                    </Paper>
+                  );
+                })}
+                {totalPages > 1 && (
+                  <Group justify="center" mt="xs">
+                    <Pagination
+                      value={safePage}
+                      onChange={setPage}
+                      total={totalPages}
+                      size="sm"
+                      radius="md"
+                    />
+                  </Group>
+                )}
+              </Stack>
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
+
+      <Divider mt="lg" />
+    </Box>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function TransferRequestsClient() {
   const { user, permissions } = useAuth();
 
-  const canSeeIncoming =
-    permissions.includes("students.full_access") ||
-    permissions.includes("students.limited_access");
-  const canSeeOutgoing = permissions.includes(
-    "students.limited_access",
-  );
+  const canSeeIncoming = permissions.includes("students.full_access");
+  const canSeeOutgoing = permissions.includes("students.limited_access");
 
   const [incoming, setIncoming] = useState<TransferRequestItem[]>([]);
   const [outgoing, setOutgoing] = useState<TransferRequestItem[]>([]);
@@ -491,6 +649,9 @@ export default function TransferRequestsClient() {
   const [loadingOutgoing, setLoadingOutgoing] = useState(canSeeOutgoing);
   const [errorIncoming, setErrorIncoming] = useState<string | null>(null);
   const [errorOutgoing, setErrorOutgoing] = useState<string | null>(null);
+
+  const [notifs, setNotifs] = useState<NotificationItem[]>([]);
+  const [loadingNotifs, setLoadingNotifs] = useState(true);
   const [incomingFilter, setIncomingFilter] = useState("ALL");
   const [outgoingFilter, setOutgoingFilter] = useState("ALL");
   const [actioning, setActioning] = useState<Set<string>>(new Set());
@@ -519,7 +680,27 @@ export default function TransferRequestsClient() {
         .catch((e: Error) => setErrorOutgoing(e.message))
         .finally(() => setLoadingOutgoing(false));
     }
+    setLoadingNotifs(true);
+    fetchNotifications()
+      .then(setNotifs)
+      .catch(() => {})
+      .finally(() => setLoadingNotifs(false));
   }, [canSeeIncoming, canSeeOutgoing]);
+
+  const handleMarkRead = useCallback((id: string) => {
+    setNotifs((prev) =>
+      prev.map((n) =>
+        n.notification_id === id ? { ...n, read_at: new Date().toISOString() } : n,
+      ),
+    );
+    markNotificationsRead([id]).catch(() => {});
+  }, []);
+
+  const handleMarkAllRead = useCallback(() => {
+    const now = new Date().toISOString();
+    setNotifs((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? now })));
+    markAllNotificationsRead().catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -757,16 +938,24 @@ export default function TransferRequestsClient() {
         </Box>
       </Group>
       <p className="mb-6 text-sm text-[#808898]">
-        Track and manage classes/sections transfer requests. Incoming requests
-        are from students in your class; outgoing are requests you&apos;ve
-        submitted.
+        Track and manage student section transfer requests, and view
+        notifications relevant to your classes.
       </p>
+
+      {(loadingNotifs || notifs.length > 0) && (
+        <NotificationsPanel
+          notifs={notifs}
+          loading={loadingNotifs}
+          onMarkRead={handleMarkRead}
+          onMarkAllRead={handleMarkAllRead}
+        />
+      )}
 
       <Stack gap="xl">
         {canSeeIncoming && (
           <RequestSection
             title="Incoming Requests"
-            description="Transfer requests from students in your class that require your approval."
+            description="All section transfer requests submitted by advisers, pending administrator review."
             items={incoming}
             loading={loadingIncoming}
             error={errorIncoming}

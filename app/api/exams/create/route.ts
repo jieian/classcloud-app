@@ -1,6 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (!levelNumber) return 30;
   if (levelNumber <= 2) return 30;
@@ -9,7 +10,7 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   return 50;
 }
 
-export async function POST(request: Request) {
+const _POST = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -21,10 +22,6 @@ export async function POST(request: Request) {
   const { payload, sectionIds } = await request.json();
 
   // Use service role to bypass RLS
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
 
   const selectedSectionIds = Array.isArray(sectionIds)
     ? sectionIds.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0)
@@ -40,7 +37,7 @@ export async function POST(request: Request) {
     .in("section_id", selectedSectionIds);
 
   if (sectionError) {
-    return Response.json({ error: sectionError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const levelNumbers = new Set<number>();
@@ -78,7 +75,7 @@ export async function POST(request: Request) {
 
   if (dupError) {
     console.error("[api/exams/create] duplicate check error:", dupError.message);
-    return Response.json({ error: dupError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   const existingSectionIds = new Set<number>((existingDuplications ?? []).map((row: any) => row.section_id));
@@ -109,7 +106,7 @@ export async function POST(request: Request) {
 
   if (examError || !examRow?.exam_id) {
     console.error("[api/exams/create] exam insert error:", examError?.message);
-    return Response.json({ error: examError?.message ?? "Failed to create exam" }, { status: 500 });
+    return Response.json({ error: "Failed to create exam." }, { status: 500 });
   }
 
   const assignments = nonDuplicateSectionIds.map((sectionId) => ({
@@ -124,7 +121,7 @@ export async function POST(request: Request) {
   if (assignmentError) {
     console.error("[api/exams/create] assignment insert error:", assignmentError.message);
     await adminClient.from("exams").delete().eq("exam_id", examRow.exam_id);
-    return Response.json({ error: assignmentError.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   if (skippedSectionIds && skippedSectionIds.length > 0) {
@@ -133,3 +130,5 @@ export async function POST(request: Request) {
 
   return Response.json({ exam_id: examRow.exam_id });
 }
+
+export const POST = withErrorHandler(_POST)

@@ -152,28 +152,32 @@ export default function Navbar() {
   const [drawerTitle, setDrawerTitle] = useState("");
   const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
 
-  const { signOut, permissions, loading } = useAuth();
+  const { signOut, permissions } = useAuth();
 
-  // Pending transfer request count — drives the badge on the Classes sublink
-  const [pendingTransferCount, setPendingTransferCount] = useState(0);
-  const canReviewTransfers =
-    permissions.includes("students.full_access") ||
-    permissions.includes("students.limited_access");
+  // Badge count on the Classes sublink:
+  //   admins (students.full_access)   → pending transfer request count
+  //   advisers (students.limited_access) → unread notification count
+  const [badgeCount, setBadgeCount] = useState(0);
+  const isAdmin = permissions.includes("students.full_access");
+  const isAdviser = permissions.includes("students.limited_access");
 
   useEffect(() => {
-    if (!canReviewTransfers) {
-      setPendingTransferCount(0);
+    if (!isAdmin && !isAdviser) {
+      setBadgeCount(0);
       return;
     }
-    fetch("/api/classes/transfer-requests/count", { cache: "no-store" })
+    const url = isAdmin
+      ? "/api/classes/transfer-requests/count"
+      : "/api/notifications/count";
+    fetch(url, { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { count?: number }) => {
-        if (typeof d.count === "number") setPendingTransferCount(d.count);
+        if (typeof d.count === "number") setBadgeCount(d.count);
       })
       .catch(() => {}); // Badge is non-critical — fail silently
     // Re-check whenever the user navigates so the count stays fresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, canReviewTransfers]);
+  }, [pathname, isAdmin, isAdviser]);
 
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(
@@ -327,7 +331,7 @@ export default function Navbar() {
             {link.sublinks.map((sublink) => {
               const isSubActive = pathname.startsWith(sublink.href);
               const showBadge =
-                sublink.key === "classes" && pendingTransferCount > 0;
+                sublink.key === "classes" && badgeCount > 0;
               return (
                 <Link
                   href={sublink.href}
@@ -356,9 +360,9 @@ export default function Navbar() {
                         variant="filled"
                         style={{ flexShrink: 0 }}
                       >
-                        {pendingTransferCount > 99
+                        {badgeCount > 99
                           ? "99+"
-                          : pendingTransferCount}
+                          : badgeCount}
                       </Badge>
                     )}
                   </span>
@@ -373,7 +377,7 @@ export default function Navbar() {
 
   const drawerLinks = drawerSublinks.map((sublink: Sublink) => {
     const isActive = pathname === sublink.href;
-    const showBadge = sublink.key === "classes" && pendingTransferCount > 0;
+    const showBadge = sublink.key === "classes" && badgeCount > 0;
 
     return (
       <Link
@@ -403,7 +407,7 @@ export default function Navbar() {
               variant="filled"
               style={{ flexShrink: 0 }}
             >
-              {pendingTransferCount > 99 ? "99+" : pendingTransferCount}
+              {badgeCount > 99 ? "99+" : badgeCount}
             </Badge>
           )}
         </span>

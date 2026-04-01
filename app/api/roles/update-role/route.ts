@@ -1,7 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function PUT(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _PUT = async function(request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -12,20 +13,7 @@ export async function PUT(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2. ADMIN CLIENT: Initialize with Service Role Key (Bypasses RLS)
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    }
-  );
-
-  // 3. PERMISSIONS: Verify caller has the right to manage roles (via admin client to bypass RLS)
-  console.log("=== PERMISSIONS CHECK ===");
+  // 2. PERMISSIONS: Verify caller has the right to manage roles
   const { data: permsData, error: permsError } = await adminClient.rpc("get_user_permissions", {
     user_uuid: caller.id,
   });
@@ -59,10 +47,12 @@ export async function PUT(request: Request) {
     }
     console.error("Role Update Failed:", error.message);
     return Response.json(
-      { error: error.message || "Internal Server Error" },
+      { error: "Internal Server Error" },
       { status: 500 }
     );
   }
 
   return Response.json({ success: true }, { status: 200 });
 }
+
+export const PUT = withErrorHandler(_PUT)

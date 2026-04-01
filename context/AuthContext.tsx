@@ -123,14 +123,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
 
-  // Hydrate from storage on mount (client-only) so navigation can render
-  // immediately in new tabs while the fresh async fetch runs.
+  // Hydrate from sessionStorage on mount (UI-only cache, tab-scoped).
+  // This unblocks navigation rendering immediately while the authoritative
+  // DB fetch runs in the background. sessionStorage is cleared on tab close,
+  // so stale permissions from a previous session never persist here.
+  // NOTE: This cache is for UI display only. All permission checks that
+  // matter (data access, mutations) are enforced server-side in API routes.
   useEffect(() => {
     try {
-      const cachedRoles =
-        localStorage.getItem("cc_roles") ?? sessionStorage.getItem("cc_roles");
-      const cachedPermissions =
-        localStorage.getItem("cc_permissions") ?? sessionStorage.getItem("cc_permissions");
+      const cachedRoles = sessionStorage.getItem("cc_roles");
+      const cachedPermissions = sessionStorage.getItem("cc_permissions");
       if (cachedRoles) setRoles(JSON.parse(cachedRoles));
       if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
     } catch {
@@ -229,10 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRoles(fetchedRoles);
     setPermissions(fetchedPermissions);
 
-    // Cache for instant hydration on reload
+    // Cache in sessionStorage only (tab-scoped) for instant UI hydration on
+    // same-tab refreshes. Using localStorage here would persist permissions
+    // across sessions and could show stale UI after a role change.
     try {
-      localStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
-      localStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
       sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
       sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
     } catch {
@@ -261,8 +263,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const hasCached = (() => {
           try {
             return !!(
-              (localStorage.getItem("cc_roles") ?? sessionStorage.getItem("cc_roles")) &&
-              (localStorage.getItem("cc_permissions") ?? sessionStorage.getItem("cc_permissions"))
+              sessionStorage.getItem("cc_roles") &&
+              sessionStorage.getItem("cc_permissions")
             );
           } catch {
             return false;
@@ -375,10 +377,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clear app-specific cached auth data immediately.
+    // Clear sessionStorage UI cache immediately.
     try {
-      localStorage.removeItem("cc_roles");
-      localStorage.removeItem("cc_permissions");
       sessionStorage.removeItem("cc_roles");
       sessionStorage.removeItem("cc_permissions");
     } catch {

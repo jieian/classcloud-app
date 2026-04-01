@@ -1,11 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
-import type { SectionCard } from "@/app/(app)/school/classes/_lib/classService";
+import type { SectionCard } from "@/lib/services/classService";
 
-export async function GET(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient as admin } from "@/lib/supabase/admin";
+const _GET = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -23,11 +24,6 @@ export async function GET(request: Request) {
   if (!syId)
     return Response.json({ error: "Missing syId parameter." }, { status: 400 });
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   const isPartialAccess = !permissions.includes("classes.full_access");
 
@@ -55,9 +51,9 @@ export async function GET(request: Request) {
       : Promise.resolve({ data: [] as { section_id: number }[], error: null }),
   ]);
 
-  if (secErr) return Response.json({ error: secErr.message }, { status: 500 });
+  if (secErr) return Response.json({ error: "Internal server error." }, { status: 500 });
   if (enrollErr)
-    return Response.json({ error: enrollErr.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
 
   // Verify adviser IDs against deleted_at — embedded joins cannot filter joined tables.
   const adviserIds = ((secData ?? []) as any[])
@@ -104,3 +100,5 @@ export async function GET(request: Request) {
 
   return Response.json({ sections, assignedSectionIds });
 }
+
+export const GET = withErrorHandler(_GET)

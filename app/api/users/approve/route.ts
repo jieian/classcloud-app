@@ -1,8 +1,9 @@
-import { createClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendApprovalEmail } from "@/lib/email/templates";
 
-export async function POST(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
@@ -23,11 +24,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "At least one role is required." }, { status: 400 });
   }
 
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
 
   // Activate the user atomically (sets active_status = 1, updates names, replaces roles)
   const { data: result, error: rpcError } = await adminClient.rpc("activate_user_atomic", {
@@ -76,3 +72,5 @@ export async function POST(request: Request) {
 
   return Response.json({ success: true });
 }
+
+export const POST = withErrorHandler(_POST)

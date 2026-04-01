@@ -1,10 +1,11 @@
-import { createClient } from "@supabase/supabase-js";
 import {
   createServerSupabaseClient,
   getUserPermissions,
 } from "@/lib/supabase/server";
 
-export async function DELETE(request: Request) {
+import { withErrorHandler } from "@/lib/api-error";
+import { adminClient } from "@/lib/supabase/admin";
+const _DELETE = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -35,12 +36,6 @@ export async function DELETE(request: Request) {
     );
   }
 
-  // Create admin client with service role key
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  );
-
   if (soft) {
     // Soft delete: atomically clean up assignments/roles and stamp deleted_at
     const { data: rpcResult, error: rpcError } = await adminClient.rpc(
@@ -49,7 +44,7 @@ export async function DELETE(request: Request) {
     );
 
     if (rpcError) {
-      return Response.json({ error: rpcError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
     if (!rpcResult?.success) {
@@ -66,7 +61,7 @@ export async function DELETE(request: Request) {
     );
 
     if (banError) {
-      return Response.json({ error: banError.message }, { status: 500 });
+      return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
     return Response.json({ success: true });
@@ -76,8 +71,10 @@ export async function DELETE(request: Request) {
   const { error } = await adminClient.auth.admin.deleteUser(uuid);
 
   if (error) {
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   return Response.json({ success: true });
 }
+
+export const DELETE = withErrorHandler(_DELETE)
