@@ -2,6 +2,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, UpdateProfileSchema } from "@/lib/api-schemas";
+import { isRpcError, RpcError } from "@/lib/rpc-errors";
 function toTitleCase(str: string): string {
   return str
     .trim()
@@ -63,17 +65,12 @@ const _PATCH = async function(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await request.json()) as {
-    first_name?: string;
-    middle_name?: string;
-    last_name?: string;
-  };
+  const parsed = parseBody(UpdateProfileSchema, await request.json());
+  if (!parsed.success) return parsed.response;
 
-  const firstName = toTitleCase(body.first_name?.trim() ?? "");
-  const middleName = body.middle_name?.trim()
-    ? toTitleCase(body.middle_name.trim())
-    : "";
-  const lastName = toTitleCase(body.last_name?.trim() ?? "");
+  const firstName = toTitleCase(parsed.data.first_name ?? "");
+  const middleName = parsed.data.middle_name ? toTitleCase(parsed.data.middle_name) : "";
+  const lastName = toTitleCase(parsed.data.last_name ?? "");
 
   if (!firstName || !lastName) {
     return Response.json(
@@ -90,7 +87,7 @@ const _PATCH = async function(request: Request) {
   });
 
   if (error) {
-    if (error.message.includes("USER_NOT_FOUND"))
+    if (isRpcError(error, RpcError.USER_NOT_FOUND))
       return Response.json({ error: "User not found." }, { status: 404 });
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }

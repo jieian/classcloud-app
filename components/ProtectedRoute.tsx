@@ -31,7 +31,7 @@ export default function ProtectedRoute({
     typeof window !== "undefined"
       ? (() => {
           try {
-            const raw = localStorage.getItem("cc_permissions");
+            const raw = sessionStorage.getItem("cc_permissions");
             const parsed = raw ? JSON.parse(raw) : [];
             return Array.isArray(parsed) ? parsed as string[] : [];
           } catch {
@@ -42,24 +42,17 @@ export default function ProtectedRoute({
   const effectivePermissions =
     permissions.length > 0 ? permissions : cachedPermissions;
 
+  const hasPermission =
+    requiredPermissions.length === 0 ||
+    (match === 'all'
+      ? requiredPermissions.every((p) => effectivePermissions.includes(p))
+      : requiredPermissions.some((p) => effectivePermissions.includes(p)));
+
   useEffect(() => {
     if (loading) return;
-
-    if (!user) {
-      router.replace("/login");
-      return;
-    }
-
-    const hasPermission =
-      requiredPermissions.length === 0 ||
-      (match === 'all'
-        ? requiredPermissions.every((p) => effectivePermissions.includes(p))
-        : requiredPermissions.some((p) => effectivePermissions.includes(p)));
-
-    if (!hasPermission) {
-      router.replace("/unauthorized");
-    }
-  }, [user, effectivePermissions, loading, requiredPermissions, match, router]);
+    if (!user) { router.replace("/login"); return; }
+    if (!hasPermission) router.replace("/unauthorized");
+  }, [user, hasPermission, loading, router]);
 
   if (loading) {
     return loadingFallback ? (
@@ -72,13 +65,6 @@ export default function ProtectedRoute({
   }
 
   if (!user) return null;
-
-  const hasPermission =
-    requiredPermissions.length === 0 ||
-    (match === 'all'
-      ? requiredPermissions.every((p) => effectivePermissions.includes(p))
-      : requiredPermissions.some((p) => effectivePermissions.includes(p)));
-
   if (!hasPermission) return null;
 
   return <>{children}</>;

@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, MarkNotificationsReadSchema } from "@/lib/api-schemas";
 
 // ─── POST /api/notifications/mark-read ────────────────────────────────────────
 // Body: { notification_ids: string[] }
@@ -13,12 +14,9 @@ const _POST = async function (request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await request.json().catch(() => ({}))) as {
-    notification_ids?: string[];
-  };
-  const ids = Array.isArray(body.notification_ids)
-    ? body.notification_ids
-    : [];
+  const parsed = parseBody(MarkNotificationsReadSchema, await request.json().catch(() => ({})));
+  if (!parsed.success) return parsed.response;
+  const ids = parsed.data.notification_ids;
 
   const now = new Date().toISOString();
 

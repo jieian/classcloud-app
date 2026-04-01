@@ -6,6 +6,8 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestCreated } from "@/lib/notifications";
+import { parseBody, CreateTransferRequestSchema } from "@/lib/api-schemas";
+import { isRpcError, RpcError } from "@/lib/rpc-errors";
 // ─── POST /api/classes/transfer-requests ──────────────────────────────────────
 // Creates a transfer request via the atomic Postgres RPC.
 // Only partial_access advisers may call this; the RPC validates adviser ownership.
@@ -21,25 +23,9 @@ const _POST = async function(request: Request) {
   if (!permissions.includes("students.limited_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const body = (await request.json()) as {
-    lrn?: string;
-    from_section_id?: number;
-    to_section_id?: number;
-  };
-
-  const lrn = (body.lrn ?? "").trim();
-  const fromSectionId = Number(body.from_section_id ?? 0);
-  const toSectionId = Number(body.to_section_id ?? 0);
-
-  if (!/^\d{12}$/.test(lrn))
-    return Response.json({ error: "Invalid LRN." }, { status: 400 });
-  if (!fromSectionId || !toSectionId)
-    return Response.json({ error: "Missing section IDs." }, { status: 400 });
-  if (fromSectionId === toSectionId)
-    return Response.json(
-      { error: "Cannot transfer to the same section." },
-      { status: 400 },
-    );
+  const parsed = parseBody(CreateTransferRequestSchema, await request.json());
+  if (!parsed.success) return parsed.response;
+  const { lrn, from_section_id: fromSectionId, to_section_id: toSectionId } = parsed.data;
 
 
   const { data: requestId, error } = await admin.rpc("create_transfer_request", {
@@ -50,12 +36,10 @@ const _POST = async function(request: Request) {
   });
 
   if (error) {
-    if (error.message.includes("ALREADY_PENDING"))
+    if (isRpcError(error, RpcError.ALREADY_PENDING))
       return Response.json({ error: "ALREADY_PENDING" }, { status: 409 });
-    if (error.message.includes("NOT_ENROLLED"))
+    if (isRpcError(error, RpcError.NOT_ENROLLED))
       return Response.json({ error: "NOT_ENROLLED" }, { status: 422 });
-    if (error.message.includes("NOT_ADVISER"))
-      return Response.json({ error: "NOT_ADVISER" }, { status: 403 });
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 

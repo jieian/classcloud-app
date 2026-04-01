@@ -6,6 +6,7 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestApproved } from "@/lib/notifications";
+import { isRpcError, RpcError } from "@/lib/rpc-errors";
 // ─── POST /api/classes/transfer-requests/[requestId]/approve ──────────────────
 // The RPC validates that the caller is the adviser of the from_section.
 // The entire enrollment swap is atomic inside the Postgres function.
@@ -35,11 +36,9 @@ const _POST = async function(
   });
 
   if (error) {
-    if (error.message.includes("REQUEST_NOT_PENDING"))
+    if (isRpcError(error, RpcError.REQUEST_NOT_PENDING))
       return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
-    if (error.message.includes("NOT_AUTHORIZED"))
-      return Response.json({ error: "Forbidden" }, { status: 403 });
-    if (error.message.includes("ENROLLMENT_NOT_FOUND"))
+    if (isRpcError(error, RpcError.ENROLLMENT_NOT_FOUND))
       return Response.json(
         { error: "The student's enrollment could not be found." },
         { status: 422 },

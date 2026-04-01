@@ -76,6 +76,20 @@ CREATE TABLE public.grade_levels (
   display_name character varying NOT NULL,
   CONSTRAINT grade_levels_pkey PRIMARY KEY (grade_level_id)
 );
+CREATE TABLE public.notifications (
+  notification_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type text NOT NULL,
+  title text NOT NULL,
+  body text,
+  reference_id text,
+  reference_type text,
+  action_url text,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (notification_id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
+);
 CREATE TABLE public.permissions (
   permission_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   name character varying NOT NULL UNIQUE,
@@ -122,6 +136,8 @@ CREATE TABLE public.scores (
   responses jsonb NOT NULL,
   calculated_score integer NOT NULL,
   graded_at timestamp with time zone NOT NULL DEFAULT now(),
+  mpl real,
+  proficiency_level character varying,
   CONSTRAINT scores_pkey PRIMARY KEY (score_id),
   CONSTRAINT scores_enrollment_id_fkey FOREIGN KEY (enrollment_id) REFERENCES public.enrollments(enrollment_id),
   CONSTRAINT scores_exam_assignment_id_fkey FOREIGN KEY (exam_assignment_id) REFERENCES public.exam_assignments(id)

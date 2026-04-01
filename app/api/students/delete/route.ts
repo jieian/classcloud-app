@@ -5,6 +5,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, DeleteStudentSchema } from "@/lib/api-schemas";
 const _DELETE = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -21,16 +22,9 @@ const _DELETE = async function(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const body = (await request.json()) as { section_id?: number; lrn?: string };
-  const sectionId = Number(body.section_id);
-  const lrn = (body.lrn ?? "").trim();
-
-  if (!sectionId || !/^\d{12}$/.test(lrn)) {
-    return Response.json(
-      { error: "Invalid section ID or LRN." },
-      { status: 400 },
-    );
-  }
+  const parsed = parseBody(DeleteStudentSchema, await request.json());
+  if (!parsed.success) return parsed.response;
+  const { section_id: sectionId, lrn } = parsed.data;
 
 
   // Partial-access users can only delete from sections they advise.

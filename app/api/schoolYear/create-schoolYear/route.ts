@@ -1,4 +1,6 @@
+import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/classes/_lib/classesServerService";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -76,6 +78,7 @@ const _POST = async function(request: Request) {
     );
   }
 
+  revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
   return Response.json({ success: true }, { status: 201 });
 }
 

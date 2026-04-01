@@ -36,7 +36,7 @@ const _GET = async function(request: Request) {
     admin
       .from("sections")
       .select(
-        "section_id, name, section_type, grade_level_id, adviser_id, users(first_name, last_name)",
+        "section_id, name, section_type, grade_level_id, adviser_id, users(first_name, last_name, deleted_at)",
       )
       .eq("sy_id", syId)
       .is("deleted_at", null),
@@ -55,23 +55,6 @@ const _GET = async function(request: Request) {
   if (enrollErr)
     return Response.json({ error: "Internal server error." }, { status: 500 });
 
-  // Verify adviser IDs against deleted_at — embedded joins cannot filter joined tables.
-  const adviserIds = ((secData ?? []) as any[])
-    .map((s: any) => s.adviser_id)
-    .filter(Boolean) as string[];
-
-  let activeAdviserSet = new Set<string>();
-  if (adviserIds.length > 0) {
-    const { data: activeAdvisers } = await admin
-      .from("users")
-      .select("uid")
-      .in("uid", adviserIds)
-      .is("deleted_at", null);
-    activeAdviserSet = new Set(
-      ((activeAdvisers ?? []) as { uid: string }[]).map((u) => u.uid),
-    );
-  }
-
   const countMap: Record<number, number> = {};
   for (const e of (enrollData ?? []) as { section_id: number }[]) {
     countMap[e.section_id] = (countMap[e.section_id] ?? 0) + 1;
@@ -79,8 +62,9 @@ const _GET = async function(request: Request) {
 
   const sections: SectionCard[] = ((secData ?? []) as any[]).map((s) => {
     const u = Array.isArray(s.users) ? s.users[0] : s.users;
+    // deleted_at is included in the join — no extra round-trip needed.
     const adviserName =
-      u && s.adviser_id && activeAdviserSet.has(s.adviser_id)
+      u && s.adviser_id && u.deleted_at === null
         ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || null
         : null;
     return {

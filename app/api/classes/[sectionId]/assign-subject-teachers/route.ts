@@ -5,6 +5,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, AssignSubjectTeachersSchema } from "@/lib/api-schemas";
 const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -24,18 +25,14 @@ const _POST = async function(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const body = (await request.json()) as {
-    assignments: { curriculum_subject_id: number; teacher_id: string | null }[];
-  };
-
-  if (!Array.isArray(body.assignments))
-    return Response.json({ error: "Invalid payload." }, { status: 400 });
+  const parsed = parseBody(AssignSubjectTeachersSchema, await request.json());
+  if (!parsed.success) return parsed.response;
 
 
   // Single atomic RPC — soft-delete + re-insert in one transaction
   const { error } = await admin.rpc("set_section_subject_teachers", {
     p_section_id: sectionId,
-    p_assignments: body.assignments,
+    p_assignments: parsed.data.assignments,
   });
 
   if (error)

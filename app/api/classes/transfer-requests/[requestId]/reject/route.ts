@@ -6,6 +6,8 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestRejected } from "@/lib/notifications";
+import { parseBody, RejectTransferRequestSchema } from "@/lib/api-schemas";
+import { isRpcError, RpcError } from "@/lib/rpc-errors";
 // ─── POST /api/classes/transfer-requests/[requestId]/reject ───────────────────
 
 const _POST = async function(
@@ -26,8 +28,9 @@ const _POST = async function(
   if (!requestId)
     return Response.json({ error: "Missing request ID." }, { status: 400 });
 
-  const body = (await request.json().catch(() => ({}))) as { notes?: string };
-  const notes = (body.notes ?? "").trim() || null;
+  const parsed = parseBody(RejectTransferRequestSchema, await request.json().catch(() => ({})));
+  if (!parsed.success) return parsed.response;
+  const notes = parsed.data.notes?.trim() || null;
 
 
   const { error } = await admin.rpc("reject_transfer_request", {
@@ -37,10 +40,8 @@ const _POST = async function(
   });
 
   if (error) {
-    if (error.message.includes("REQUEST_NOT_PENDING"))
+    if (isRpcError(error, RpcError.REQUEST_NOT_PENDING))
       return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
-    if (error.message.includes("NOT_AUTHORIZED"))
-      return Response.json({ error: "Forbidden" }, { status: 403 });
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 

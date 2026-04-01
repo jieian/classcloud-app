@@ -5,6 +5,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, UpdateStudentSchema } from "@/lib/api-schemas";
 const _PATCH = async function(
   request: Request,
   { params }: { params: Promise<{ lrn: string }> },
@@ -25,31 +26,9 @@ const _PATCH = async function(
   if (!oldLrn)
     return Response.json({ error: "Invalid LRN." }, { status: 400 });
 
-  const body = (await request.json()) as {
-    lrn: string;
-    last_name: string;
-    first_name: string;
-    middle_name: string;
-    sex: string;
-  };
-
-  const newLrn = (body.lrn ?? "").trim();
-  const lastName = (body.last_name ?? "").trim();
-  const firstName = (body.first_name ?? "").trim();
-  const middleName = (body.middle_name ?? "").trim();
-  const sex = (body.sex ?? "").trim();
-
-  if (!/^\d{12}$/.test(newLrn))
-    return Response.json(
-      { error: "LRN must be exactly 12 numeric digits." },
-      { status: 400 },
-    );
-  if (!lastName || lastName.length < 2)
-    return Response.json({ error: "Last name is required (min 2 chars)." }, { status: 400 });
-  if (!firstName || firstName.length < 2)
-    return Response.json({ error: "First name is required (min 2 chars)." }, { status: 400 });
-  if (!["M", "F"].includes(sex))
-    return Response.json({ error: "Sex must be M or F." }, { status: 400 });
+  const parsed = parseBody(UpdateStudentSchema, await request.json());
+  if (!parsed.success) return parsed.response;
+  const { lrn: newLrn, last_name: lastName, first_name: firstName, middle_name: middleName, sex } = parsed.data;
 
 
   // If LRN is changing, ensure the new one isn't taken

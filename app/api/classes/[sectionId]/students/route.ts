@@ -6,6 +6,7 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchDirectMove } from "@/lib/notifications";
+import { parseBody, AddStudentSchema } from "@/lib/api-schemas";
 // ─── POST /api/classes/[sectionId]/students ──────────────────────────────────
 // Adds a student to a class roster. Handles 5 actions:
 //   new                  – create new student record + enroll
@@ -35,42 +36,16 @@ const _POST = async function(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const body = (await request.json()) as {
-    action: string;
-    lrn: string;
-    last_name?: string;
-    first_name?: string;
-    middle_name?: string;
-    sex?: string;
-  };
-
-  const action = body.action ?? "";
-  const lrn = (body.lrn ?? "").trim();
-
-  if (!/^\d{12}$/.test(lrn))
-    return Response.json(
-      { error: "LRN must be exactly 12 numeric digits." },
-      { status: 400 },
-    );
-
-  const validActions = [
-    "new",
-    "enroll",
-    "update_enroll",
-    "restore_enroll",
-    "restore_update_enroll",
-    "move",
-    "update_move",
-  ];
-  if (!validActions.includes(action))
-    return Response.json({ error: "Invalid action." }, { status: 400 });
+  const parsed = parseBody(AddStudentSchema, await request.json());
+  if (!parsed.success) return parsed.response;
+  const { action, lrn, last_name, first_name, middle_name, sex: sexRaw } = parsed.data;
 
   // Validate name fields for actions that write to students table
   const needsNameFields = ["new", "update_enroll", "restore_update_enroll", "update_move"].includes(action);
-  const lastName = (body.last_name ?? "").trim();
-  const firstName = (body.first_name ?? "").trim();
-  const middleName = (body.middle_name ?? "").trim();
-  const sex = (body.sex ?? "").trim();
+  const lastName = last_name ?? "";
+  const firstName = first_name ?? "";
+  const middleName = middle_name ?? "";
+  const sex = sexRaw ?? "";
 
   if (needsNameFields) {
     if (!lastName || lastName.length < 2)

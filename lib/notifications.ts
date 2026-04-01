@@ -88,10 +88,15 @@ async function getUsersWithPermission(
     .is("deleted_at", null);
   if (!publicUsers || (publicUsers as any[]).length === 0) return [];
 
-  // 5. Fetch all auth emails in one call and build a uid→email map
-  const { data: authList } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  // 5. Fetch emails only for the UIDs we need — avoids loading all auth users.
+  const authResults = await Promise.all(
+    (publicUsers as any[]).map((u) => admin.auth.admin.getUserById(u.uid as string)),
+  );
   const emailMap = new Map<string, string>(
-    (authList?.users ?? []).map((u) => [u.id, u.email ?? ""]),
+    (publicUsers as any[]).map((u, i) => [
+      u.uid as string,
+      authResults[i].data?.user?.email ?? "",
+    ]),
   );
 
   return ((publicUsers as any[])
@@ -129,6 +134,28 @@ async function insertNotifications(rows: NotificationInsert[]): Promise<void> {
   if (rows.length === 0) return;
   const { error } = await admin.from("notifications").insert(rows);
   if (error) console.error("[notifications] insert failed:", error.message);
+}
+
+/**
+ * Returns the UIDs from `candidates` that are non-null and not present in
+ * `excludeUids`. Deduplicates the result.
+ *
+ * Used to apply the deduplication rules (actor exclusion, role precedence)
+ * before building notification rows or fetching emails.
+ */
+function buildRecipientList(
+  candidates: (string | null)[],
+  excludeUids: (string | null)[] = [],
+): string[] {
+  const excluded = new Set(excludeUids.filter((u): u is string => u !== null));
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const uid of candidates) {
+    if (!uid || excluded.has(uid) || seen.has(uid)) continue;
+    seen.add(uid);
+    result.push(uid);
+  }
+  return result;
 }
 
 /** Builds a section display string: "Section Name (Grade Level)". */
@@ -205,14 +232,15 @@ export async function dispatchTransferRequestCreated({
     const fromAdviserUid = (fromSec?.adviser_id ?? null) as string | null;
 
     // Rule 2: from-adviser who is also an admin gets the from-adviser notif
-    const adminUids = new Set(admins.map((u) => u.uid));
-    if (fromAdviserUid) adminUids.delete(fromAdviserUid);
+    // and is excluded from the generic admin list.
+    const fromAdviserRecipients = buildRecipientList([fromAdviserUid]);
+    const adminRecipients = buildRecipientList(admins.map((u) => u.uid), [fromAdviserUid]);
 
     const notifRows: NotificationInsert[] = [];
 
-    if (fromAdviserUid) {
+    for (const uid of fromAdviserRecipients) {
       notifRows.push({
-        user_id: fromAdviserUid,
+        user_id: uid,
         type: "transfer_request.created",
         title: "Transfer Request for Your Student",
         body: `${studentName} from ${fromSectionName} has been requested for transfer to ${toSectionName} by ${requesterName}.`,
@@ -222,7 +250,7 @@ export async function dispatchTransferRequestCreated({
       });
     }
 
-    for (const uid of adminUids) {
+    for (const uid of adminRecipients) {
       notifRows.push({
         user_id: uid,
         type: "transfer_request.created",
@@ -237,8 +265,8 @@ export async function dispatchTransferRequestCreated({
     await insertNotifications(notifRows);
 
     // Emails (fire-and-forget per recipient)
-    if (fromAdviserUid) {
-      getUserWithEmail(fromAdviserUid).then((u) => {
+    for (const uid of fromAdviserRecipients) {
+      getUserWithEmail(uid).then((u) => {
         if (!u?.email) return;
         sendTransferRequestCreatedToFromAdviser({
           to: u.email,
@@ -248,15 +276,13 @@ export async function dispatchTransferRequestCreated({
           toSection: toSectionName,
           requestedByName: requesterName,
         }).catch((e) =>
-          console.error(
-            "[email] sendTransferRequestCreatedToFromAdviser:",
-            e,
-          ),
+          console.error("[email] sendTransferRequestCreatedToFromAdviser:", e),
         );
       });
     }
 
-    for (const a of admins.filter((u) => adminUids.has(u.uid))) {
+    const adminRecipientSet = new Set(adminRecipients);
+    for (const a of admins.filter((u) => adminRecipientSet.has(u.uid))) {
       if (!a.email) continue;
       sendTransferRequestCreatedToAdmin({
         to: a.email,
@@ -330,14 +356,14 @@ export async function dispatchTransferRequestApproved({
       action_url: ACTION_URL,
     });
 
-    // From-section adviser — Rule 1: skip if they reviewed (impossible) or submitted
-    const notifyFromAdviser =
-      fromAdviserUid &&
-      fromAdviserUid !== reviewedByUid &&
-      fromAdviserUid !== requestedByUid;
-    if (notifyFromAdviser) {
+    // From-section adviser — Rule 1: skip if same as reviewer or requester
+    const fromAdviserRecipients = buildRecipientList(
+      [fromAdviserUid],
+      [reviewedByUid, requestedByUid],
+    );
+    for (const uid of fromAdviserRecipients) {
       notifRows.push({
-        user_id: fromAdviserUid!,
+        user_id: uid,
         type: "transfer_request.approved",
         title: "Student Transferred Out",
         body: `${studentName} has been transferred from your class to ${toSectionName}.`,
@@ -352,7 +378,9 @@ export async function dispatchTransferRequestApproved({
     // Emails
     const [requesterUser, fromAdviserUser] = await Promise.all([
       getUserWithEmail(requestedByUid),
-      notifyFromAdviser ? getUserWithEmail(fromAdviserUid!) : Promise.resolve(null),
+      fromAdviserRecipients.length > 0
+        ? getUserWithEmail(fromAdviserRecipients[0])
+        : Promise.resolve(null),
     ]);
 
     if (requesterUser?.email) {
@@ -439,13 +467,13 @@ export async function dispatchTransferRequestRejected({
     });
 
     // From-section adviser — Rule 1: skip if same as reviewer or requester
-    const notifyFromAdviser =
-      fromAdviserUid &&
-      fromAdviserUid !== reviewedByUid &&
-      fromAdviserUid !== requestedByUid;
-    if (notifyFromAdviser) {
+    const fromAdviserRecipients = buildRecipientList(
+      [fromAdviserUid],
+      [reviewedByUid, requestedByUid],
+    );
+    for (const uid of fromAdviserRecipients) {
       notifRows.push({
-        user_id: fromAdviserUid!,
+        user_id: uid,
         type: "transfer_request.rejected",
         title: "Transfer Request Declined",
         body: `A transfer request for ${studentName} in your class has been declined.`,
@@ -460,7 +488,9 @@ export async function dispatchTransferRequestRejected({
     // Emails
     const [requesterUser, fromAdviserUser] = await Promise.all([
       getUserWithEmail(requestedByUid),
-      notifyFromAdviser ? getUserWithEmail(fromAdviserUid!) : Promise.resolve(null),
+      fromAdviserRecipients.length > 0
+        ? getUserWithEmail(fromAdviserRecipients[0])
+        : Promise.resolve(null),
     ]);
 
     if (requesterUser?.email) {
@@ -539,17 +569,14 @@ export async function dispatchDirectMove({
 
     const notifRows: NotificationInsert[] = [];
 
-    // Rule 1: skip if adviser is the actor
-    const notifyFromAdviser =
-      fromAdviserUid && fromAdviserUid !== actorUid;
-    const notifyToAdviser =
-      toAdviserUid &&
-      toAdviserUid !== actorUid &&
-      toAdviserUid !== fromAdviserUid; // avoid double-notifying if same adviser somehow
+    // Rule 1: skip if adviser is the actor; also avoid double-notifying
+    // if both sections share the same adviser.
+    const fromAdviserRecipients = buildRecipientList([fromAdviserUid], [actorUid]);
+    const toAdviserRecipients = buildRecipientList([toAdviserUid], [actorUid, fromAdviserUid]);
 
-    if (notifyFromAdviser) {
+    for (const uid of fromAdviserRecipients) {
       notifRows.push({
-        user_id: fromAdviserUid!,
+        user_id: uid,
         type: "direct_move.removed",
         title: "Student Transferred Out",
         body: `${studentName} has been transferred out of your class to ${toSectionName} by an administrator.`,
@@ -559,9 +586,9 @@ export async function dispatchDirectMove({
       });
     }
 
-    if (notifyToAdviser) {
+    for (const uid of toAdviserRecipients) {
       notifRows.push({
-        user_id: toAdviserUid!,
+        user_id: uid,
         type: "direct_move.added",
         title: "New Student Added to Your Class",
         body: `${studentName} has been transferred to your class from ${fromSectionName} by an administrator.`,
@@ -575,11 +602,11 @@ export async function dispatchDirectMove({
 
     // Emails
     const [fromAdviserUser, toAdviserUser] = await Promise.all([
-      notifyFromAdviser
-        ? getUserWithEmail(fromAdviserUid!)
+      fromAdviserRecipients.length > 0
+        ? getUserWithEmail(fromAdviserRecipients[0])
         : Promise.resolve(null),
-      notifyToAdviser
-        ? getUserWithEmail(toAdviserUid!)
+      toAdviserRecipients.length > 0
+        ? getUserWithEmail(toAdviserRecipients[0])
         : Promise.resolve(null),
     ]);
 

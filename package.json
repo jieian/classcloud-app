@@ -26,7 +26,8 @@
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "resend": "^6.10.0",
-    "xlsx-js-style": "^1.2.0"
+    "xlsx-js-style": "^1.2.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

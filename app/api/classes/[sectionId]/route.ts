@@ -9,6 +9,7 @@ import type {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, RenameSectionSchema } from "@/lib/api-schemas";
 const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -160,16 +161,9 @@ const _PATCH = async function(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const body = (await request.json()) as { name?: string };
-  const name = (body.name ?? "").trim();
-
-  if (!name)
-    return Response.json(
-      { error: "Section name cannot be empty." },
-      { status: 400 },
-    );
-  if (!/^[a-zA-Z0-9\s]+$/.test(name))
-    return Response.json({ error: "No symbols allowed." }, { status: 400 });
+  const parsed = parseBody(RenameSectionSchema, await request.json());
+  if (!parsed.success) return parsed.response;
+  const { name } = parsed.data;
 
 
   const { error } = await admin.rpc("rename_section", {

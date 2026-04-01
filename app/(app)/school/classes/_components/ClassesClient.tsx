@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import CreateClassModal from "./CreateClassModal";
 import Link from "next/link";
 import {
@@ -30,10 +30,15 @@ import {
   fetchPendingTransferCount,
   fetchUnreadNotificationCount,
 } from "@/lib/services/classService";
+import type { ClassesInitialData } from "../_lib/classesServerService";
 import ClassCard from "./ClassCard";
 import UtilitiesSection from "./UtilitiesSection";
 
-export default function ClassesClient() {
+interface Props {
+  initialData?: ClassesInitialData | null;
+}
+
+export default function ClassesClient({ initialData }: Props = {}) {
   const { user, roles, permissions } = useAuth();
 
   // Derived directly from AuthContext — no extra DB round-trips
@@ -47,16 +52,28 @@ export default function ClassesClient() {
     permissions.includes("students.limited_access") ||
     permissions.includes("students.full_access");
 
-  const [schoolYears, setSchoolYears] = useState<SchoolYearOption[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevelRow[]>([]);
-  const [sections, setSections] = useState<SectionCard[]>([]);
-  const [assignedSectionIds, setAssignedSectionIds] = useState<Set<number>>(
-    new Set(),
+  // Lazy-initialize from server-prefetched data if available — eliminates the
+  // secondary loading spinner after auth resolves.
+  const [schoolYears, setSchoolYears] = useState<SchoolYearOption[]>(
+    () => initialData?.schoolYears ?? [],
   );
-  const [selectedSyId, setSelectedSyId] = useState<number | null>(null);
+  const [gradeLevels, setGradeLevels] = useState<GradeLevelRow[]>(
+    () => initialData?.gradeLevels ?? [],
+  );
+  const [sections, setSections] = useState<SectionCard[]>(
+    () => initialData?.sections ?? [],
+  );
+  const [assignedSectionIds, setAssignedSectionIds] = useState<Set<number>>(
+    () => new Set(initialData?.assignedSectionIds ?? []),
+  );
+  const [selectedSyId, setSelectedSyId] = useState<number | null>(
+    () => initialData?.defaultSyId ?? null,
+  );
   const [search, setSearch] = useState("");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
-  const [initializing, setInitializing] = useState(true);
+  const [initializing, setInitializing] = useState(() => !initialData);
+  // Track whether init data has been loaded — skip the API call if prefetched.
+  const initDoneRef = useRef(!!initialData);
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingTransferCount, setPendingTransferCount] = useState(0);
@@ -91,23 +108,17 @@ export default function ClassesClient() {
   useEffect(() => {
     if (!user) return;
 
+    // Badge counts — non-blocking, always refreshed once permissions load.
+    if (isAdmin) fetchPendingTransferCount().then(setPendingTransferCount).catch(() => {});
+    if (isAdviser) fetchUnreadNotificationCount().then(setUnreadNotifCount).catch(() => {});
+
+    // Skip the API call if data was already server-prefetched.
+    if (initDoneRef.current) return;
+    initDoneRef.current = true;
+
     async function init() {
       try {
-        const [initRes] = await Promise.all([
-          fetch("/api/classes/init"),
-          // Fetch badge counts in parallel (non-blocking)
-          isAdmin
-            ? fetchPendingTransferCount()
-                .then(setPendingTransferCount)
-                .catch(() => {})
-            : Promise.resolve(),
-          isAdviser
-            ? fetchUnreadNotificationCount()
-                .then(setUnreadNotifCount)
-                .catch(() => {})
-            : Promise.resolve(),
-        ]);
-
+        const initRes = await fetch("/api/classes/init");
         const json = (await initRes.json()) as {
           schoolYears: SchoolYearOption[];
           gradeLevels: GradeLevelRow[];
