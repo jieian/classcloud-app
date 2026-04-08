@@ -30,20 +30,15 @@ const _POST = async function(request: Request) {
 
   const body = await request.json();
   const code = body?.code?.trim();
-  const sectionType: "REGULAR" | "SSES" =
-    body?.section_type === "SSES" ? "SSES" : "REGULAR";
 
   if (!code) {
     return Response.json({ error: "Subject code is required." }, { status: 400 });
   }
 
-  const subjectType = sectionType === "SSES" ? "SSES" : "BOTH";
-
   const { data: existing, error: dupError } = await adminClient
     .from("subjects")
     .select("subject_id, code, name, description, subject_type")
     .ilike("code", code)
-    .eq("subject_type", subjectType)
     .is("deleted_at", null)
     .limit(1);
 

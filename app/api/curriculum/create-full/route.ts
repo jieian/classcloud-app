@@ -29,8 +29,11 @@ const _POST = async function(request: Request) {
   });
 
   if (rpcError) return Response.json({ error: "Internal server error." }, { status: 500 });
-  if (rpcResult?.success === false)
+  if (rpcResult?.success === false) {
+    if (rpcResult?.code === "DUPLICATE_SUBJECT_CODE")
+      return Response.json({ error: rpcResult.message }, { status: 409 });
     return Response.json({ error: "Failed to create curriculum." }, { status: 500 });
+  }
 
   revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
   return Response.json({ success: true, curriculum_id: rpcResult?.curriculum_id }, { status: 201 });

@@ -31,8 +31,11 @@ const _POST = async function(request: Request) {
   });
 
   if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
-  if (data?.success === false)
+  if (data?.success === false) {
+    if (data?.code === "DUPLICATE_SUBJECT_CODE")
+      return Response.json({ error: data.message }, { status: 409 });
     return Response.json({ error: data.message ?? "Failed to update curriculum." }, { status: 409 });
+  }
 
   revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
   return Response.json({ success: true }, { status: 200 });

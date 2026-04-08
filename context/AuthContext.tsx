@@ -157,6 +157,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshName(user.id);
   }, [user, refreshName]);
 
+  // Prevent the authenticated shell from flashing while the client-side
+  // redirect to /login is queued. The useEffect above still fires the navigation.
+  if (!loading && !user) return null;
+
   return (
     <AuthContext.Provider
       value={{ user, roles, permissions, loading, firstName, lastName, signIn, signOut, refreshUserName }}
