@@ -208,8 +208,8 @@ CREATE TABLE public.subject_group_members (
   deleted_at timestamp with time zone,
   curriculum_subject_id integer NOT NULL,
   CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, curriculum_subject_id),
-  CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
-  CONSTRAINT subject_group_members_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id)
+  CONSTRAINT subject_group_members_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id)
 );
 CREATE TABLE public.subject_groups (
   subject_group_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -223,7 +223,7 @@ CREATE TABLE public.subject_groups (
 CREATE TABLE public.subjects (
   subject_id integer NOT NULL DEFAULT nextval('subjects_subject_id_seq'::regclass),
   name character varying NOT NULL,
-  code character varying NOT NULL,
+  code character varying NOT NULL UNIQUE,
   description text,
   deleted_at timestamp with time zone,
   subject_type USER-DEFINED NOT NULL DEFAULT 'BOTH'::subject_type_enum,

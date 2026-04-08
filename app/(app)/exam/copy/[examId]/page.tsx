@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -70,6 +72,7 @@ export default function CopyExamPage() {
   }, [activeStep, selectedSectionIds, draftKey]);
 
   useEffect(() => {
+    if (!Number.isFinite(examId)) return;
     const load = async () => {
       const [sec, subs, exam] = await Promise.all([
         fetchActiveSections(),
