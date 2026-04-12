@@ -11,11 +11,14 @@ import {
   Progress,
   Text,
   Alert,
+  ThemeIcon,
 } from "@mantine/core";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { notifications } from "@mantine/notifications";
+import { IconCheck, IconX, IconMailForward, IconAlertCircle } from "@tabler/icons-react";
+import Link from "next/link";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import classes from "@/components/loginPage/LoginPage.module.css";
@@ -26,21 +29,21 @@ import {
 
 type PageState = "loading" | "ready" | "invalid";
 
-function PasswordRequirement({
-  meets,
-  label,
-}: {
-  meets: boolean;
-  label: string;
-}) {
+function decodeJwtEmail(token: string): string | null {
+  try {
+    const payload = token.split(".")[1];
+    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+    return decoded?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
     <Text component="div" c={meets ? "teal" : "red"} mt={5} size="sm">
       <Center inline>
-        {meets ? (
-          <IconCheck size={14} stroke={1.5} />
-        ) : (
-          <IconX size={14} stroke={1.5} />
-        )}
+        {meets ? <IconCheck size={14} stroke={1.5} /> : <IconX size={14} stroke={1.5} />}
         <Box ml={7}>{label}</Box>
       </Center>
     </Text>
@@ -56,6 +59,60 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+
+  // Resend state (used on 'invalid' page state)
+  const [emailFromToken, setEmailFromToken] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startCooldown = () => {
+    setResendCooldown(60);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const handleResend = async () => {
+    if (!emailFromToken) return;
+
+    setResendLoading(true);
+    try {
+      const res = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailFromToken }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        notifications.show({
+          title: "Resend Failed",
+          message: data?.error ?? "Something went wrong. Please try again.",
+          color: "red",
+        });
+        return;
+      }
+
+      setResendSent(true);
+      startCooldown();
+    } catch {
+      notifications.show({
+        title: "Resend Failed",
+        message: "Something went wrong. Please try again.",
+        color: "red",
+      });
+    } finally {
+      setResendLoading(false);
+    }
+  };
 
   useEffect(() => {
     void (async () => {
@@ -74,6 +131,9 @@ export default function ResetPasswordPage() {
       const type = params.get("type");
 
       if (accessToken && refreshToken && type === "recovery") {
+        // Decode email from JWT before attempting session (token may be expired)
+        setEmailFromToken(decodeJwtEmail(accessToken));
+
         const { error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -88,6 +148,10 @@ export default function ResetPasswordPage() {
         setPageState("invalid");
       }
     })();
+
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
   }, [supabase]);
 
   const passwordStrength = getPasswordStrength(password);
@@ -105,21 +169,14 @@ export default function ResetPasswordPage() {
               ? 100
               : 0
         }
-        color={
-          passwordStrength > 80
-            ? "teal"
-            : passwordStrength > 50
-              ? "yellow"
-              : "red"
-        }
+        color={passwordStrength > 80 ? "teal" : passwordStrength > 50 ? "yellow" : "red"}
         size={4}
         aria-label={`Password strength segment ${index + 1}`}
       />
     ));
 
   const allRequirementsMet =
-    password.length >= 8 &&
-    passwordRequirements.every((req) => req.re.test(password));
+    password.length >= 8 && passwordRequirements.every((req) => req.re.test(password));
 
   const canSubmit = allRequirementsMet && confirmPassword === password;
 
@@ -161,7 +218,7 @@ export default function ResetPasswordPage() {
         <Container size={500} w="100%">
           <div className={classes.cardEntrance}>
             <Paper withBorder shadow="md" p={32} radius="lg" w="100%">
-              <Group gap={6} align="center">
+              <Group gap={6} align="center" mb="lg">
                 <img
                   src="/logo/CCLogo.png"
                   alt="ClassCloud Logo"
@@ -182,10 +239,58 @@ export default function ResetPasswordPage() {
               )}
 
               {pageState === "invalid" && (
-                <Alert color="red" mt="md" radius="md">
-                  This password reset link is invalid or has expired. Please
-                  request a new one.
-                </Alert>
+                <>
+                  <Alert
+                    color="orange"
+                    radius="md"
+                    mb="md"
+                    icon={<IconAlertCircle size={16} />}
+                  >
+                    This password reset link is invalid or has expired.
+                  </Alert>
+
+                  {resendSent ? (
+                    <>
+                      <Group justify="center" mb="md">
+                        <ThemeIcon color="teal" size={48} radius="xl" variant="light">
+                          <IconMailForward size={24} stroke={2} />
+                        </ThemeIcon>
+                      </Group>
+                      <Text ta="center" size="sm" c="#555" mb="sm">
+                        A new reset link has been sent. Check your inbox.
+                      </Text>
+                      <Button
+                        fullWidth
+                        radius="md"
+                        color="#4EAE4A"
+                        disabled={resendCooldown > 0}
+                        loading={resendLoading}
+                        onClick={handleResend}
+                        mb="sm"
+                      >
+                        {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Reset Link"}
+                      </Button>
+                    </>
+                  ) : emailFromToken ? (
+                    <Button
+                      fullWidth
+                      radius="md"
+                      color="#4EAE4A"
+                      loading={resendLoading}
+                      disabled={resendCooldown > 0}
+                      onClick={handleResend}
+                      mb="sm"
+                    >
+                      {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Send New Reset Link"}
+                    </Button>
+                  ) : null}
+
+                  <Link href="/forgot-password" style={{ textDecoration: "none" }}>
+                    <Text size="sm" c="#808898" ta="center">
+                      ← Request a new link
+                    </Text>
+                  </Link>
+                </>
               )}
 
               {pageState === "ready" && (

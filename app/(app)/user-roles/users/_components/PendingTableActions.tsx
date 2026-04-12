@@ -28,8 +28,7 @@ import type { Role } from "../_lib";
 
 const ROLES_PER_PAGE = 3;
 const PROTECTED_ROLE_NAMES = [
-  "class adviser",
-  "subject teacher",
+  "faculty",
   "grade level coordinator",
   "subject coordinator",
   "principal",

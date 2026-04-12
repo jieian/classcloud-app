@@ -1,7 +1,5 @@
 ﻿'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';

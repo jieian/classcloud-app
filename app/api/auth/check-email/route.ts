@@ -2,7 +2,9 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 
-const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com"];
+const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
+
+type EmailCheckStatus = "available" | "active" | "deleted" | "pending_verification";
 
 // 20 checks per IP per minute — enough for a fast typist, blocks bulk enumeration.
 const checkEmailLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60_000 });
@@ -31,7 +33,10 @@ const _GET = async function(request: Request) {
     return Response.json({ error: "Failed to check email." }, { status: 500 });
   }
 
-  return Response.json(data);
+  // Pass through all statuses including the new 'pending_verification' status
+  // returned by the updated check_email_status RPC.
+  const status = (data as { status: EmailCheckStatus }).status;
+  return Response.json({ status });
 }
 
 export const GET = withErrorHandler(_GET)

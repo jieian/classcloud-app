@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Alert,
   Box,
   Button,
   Center,
@@ -20,13 +21,13 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconMailForward, IconX } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import classes from "@/components/loginPage/LoginPage.module.css";
 
-const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com"];
+const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 const domainAllowed = (e: string) => ALLOWED_DOMAINS.some((d) => e.toLowerCase().endsWith(`@${d}`));
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,8 +78,7 @@ interface Role {
 const ROLES_PER_PAGE = 3;
 
 const PROTECTED_ROLE_NAMES = [
-  "class adviser",
-  "subject teacher",
+  "faculty",
   "grade level coordinator",
   "subject coordinator",
   "principal",
@@ -89,7 +89,8 @@ type EmailCheckStatus =
   | "checking"
   | "available"
   | "active"
-  | "deleted";
+  | "deleted"
+  | "pending_verification";
 
 export default function SignUpPage() {
   const [step, setStep] = useState(0);
@@ -128,9 +129,98 @@ export default function SignUpPage() {
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [shaking, setShaking] = useState(false);
 
+  // ── Resend (used when emailCheckStatus === 'pending_verification') ──
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const triggerShake = () => {
     setShaking(true);
     setTimeout(() => setShaking(false), 500);
+  };
+
+  const startCooldown = useCallback(() => {
+    setResendCooldown(60);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((prev) => {
+        if (prev <= 1) {
+          clearInterval(cooldownRef.current!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  const handleResend = async () => {
+    const trimmed = email.trim();
+    setResendLoading(true);
+    try {
+      const res = await fetch("/api/auth/signup/resend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: trimmed }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data?.code === "MAX_RESENDS_EXCEEDED") {
+          notifications.show({
+            title: "Maximum Resends Reached",
+            message: "You've reached the resend limit. Please sign up again.",
+            color: "orange",
+            autoClose: false,
+          });
+          // Reset so the user can fill the form again
+          setEmailCheckStatus("idle");
+          checkedEmailRef.current = null;
+          setResendSent(false);
+          setResendCooldown(0);
+          return;
+        }
+        if (data?.code === "NOT_FOUND" || data?.code === "EXPIRED") {
+          notifications.show({
+            title: "Session Expired",
+            message: "Your previous signup expired. Please sign up again.",
+            color: "orange",
+          });
+          setEmailCheckStatus("idle");
+          checkedEmailRef.current = null;
+          return;
+        }
+        notifications.show({
+          title: "Resend Failed",
+          message: data?.error ?? "Something went wrong. Please try again.",
+          color: data?.code === "EMAIL_DELIVERY_FAILED" ? "yellow" : "red",
+          autoClose: data?.code === "EMAIL_DELIVERY_FAILED" ? false : 5000,
+        });
+        return;
+      }
+
+      setResendSent(true);
+      startCooldown();
+    } catch {
+      notifications.show({
+        title: "Resend Failed",
+        message: "Something went wrong. Please try again.",
+        color: "red",
+      });
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  const handleStartOver = () => {
+    setEmail("");
+    setEmailError("");
+    setEmailCheckStatus("idle");
+    checkedEmailRef.current = null;
+    setPassword("");
+    setConfirmPassword("");
+    setResendSent(false);
+    setResendCooldown(0);
+    if (cooldownRef.current) clearInterval(cooldownRef.current);
   };
 
   const strength = getPasswordStrength(password);
@@ -145,6 +235,13 @@ export default function SignUpPage() {
     allPasswordMet &&
     confirmPassword === password &&
     confirmPassword.length > 0;
+
+  // Cleanup cooldown interval on unmount
+  useEffect(() => {
+    return () => {
+      if (cooldownRef.current) clearInterval(cooldownRef.current);
+    };
+  }, []);
 
   // Load self-registrable roles on mount
   useEffect(() => {
@@ -182,6 +279,9 @@ export default function SignUpPage() {
       setEmailCheckStatus(status);
       if (status === "active") {
         setEmailError("This email is already registered.");
+      }
+      if (status === "pending_verification") {
+        setEmailError("A verification email was already sent to this address.");
       }
       return status;
     } catch {
@@ -259,6 +359,11 @@ export default function SignUpPage() {
       triggerShake();
       return;
     }
+    if (status === "pending_verification") {
+      // Show the pending_verification interstitial — don't advance to step 2
+      setEmailCheckStatus("pending_verification");
+      return;
+    }
 
     setStep(1);
   };
@@ -302,6 +407,12 @@ export default function SignUpPage() {
 
       if (!res.ok) {
         if (res.status === 409) {
+          if (data.code === "PENDING_VERIFICATION") {
+            // Another request snuck in between step 1 check and step 2 submit
+            setEmailCheckStatus("pending_verification");
+            setStep(0);
+            return;
+          }
           setEmailError("This email is already registered.");
           setStep(0);
           triggerShake();
@@ -434,8 +545,67 @@ export default function SignUpPage() {
                     />
                   </Stepper>
 
+                  {/* ══════════════ PENDING VERIFICATION ══════════════ */}
+                  {emailCheckStatus === "pending_verification" && (
+                    <div>
+                      {resendSent ? (
+                        <>
+                          <Group justify="center" mb="md">
+                            <ThemeIcon color="teal" size={56} radius="xl" variant="light">
+                              <IconMailForward size={28} stroke={2} />
+                            </ThemeIcon>
+                          </Group>
+                          <Text ta="center" fw={700} fz="md" c="#45903B" mb="xs">
+                            Email Resent!
+                          </Text>
+                          <Text ta="center" size="sm" c="#555" mb="lg">
+                            A new verification email has been sent to{" "}
+                            <strong>{email.trim()}</strong>. Check your inbox.
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Alert
+                            color="yellow"
+                            radius="md"
+                            mb="md"
+                            icon={<IconMailForward size={16} />}
+                          >
+                            A verification email was already sent to{" "}
+                            <strong>{email.trim()}</strong>. Check your inbox or
+                            request a new link below.
+                          </Alert>
+                          <Button
+                            fullWidth
+                            radius="md"
+                            color="#4EAE4A"
+                            loading={resendLoading}
+                            disabled={resendCooldown > 0}
+                            onClick={handleResend}
+                            mb="sm"
+                          >
+                            {resendCooldown > 0
+                              ? `Resend in ${resendCooldown}s`
+                              : "Resend Verification Email"}
+                          </Button>
+                        </>
+                      )}
+                      <Group justify="center">
+                        <Button
+                          variant="subtle"
+                          color="gray"
+                          size="sm"
+                          radius="md"
+                          onClick={handleStartOver}
+                        >
+                          Wrong email? Start over
+                        </Button>
+                      </Group>
+                    </div>
+                  )}
+
                   {/* ══════════════ STEP 1 ══════════════ */}
-                  {step === 0 && (
+                  {emailCheckStatus !== "pending_verification" && step === 0 && (
                     <div
                       onKeyDown={(e) => {
                         if (
@@ -453,7 +623,7 @@ export default function SignUpPage() {
                       {/* Email */}
                       <TextInput
                         label="Email"
-                        placeholder={`you@${ALLOWED_DOMAINS[0]}`}
+                        placeholder="you@deped.gov.ph"
                         type="email"
                         required
                         radius="md"
@@ -565,7 +735,7 @@ export default function SignUpPage() {
                   )}
 
                   {/* ══════════════ STEP 2 ══════════════ */}
-                  {step === 1 && (
+                  {emailCheckStatus !== "pending_verification" && step === 1 && (
                     <div
                       onKeyDown={(e) => {
                         if (

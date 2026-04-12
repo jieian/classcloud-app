@@ -39,13 +39,10 @@ interface Props {
 }
 
 export default function ClassesClient({ initialData }: Props = {}) {
-  const { user, roles, permissions } = useAuth();
+  const { user, permissions } = useAuth();
 
   // Derived directly from AuthContext — no extra DB round-trips
   const hasCreatePermission = permissions.includes("classes.full_access");
-  const isClassAdviser = roles.some(
-    (r) => r.name.trim().toLowerCase() === "class adviser",
-  );
   const isPartialAccess = !permissions.includes("classes.full_access");
 
   const canViewTransferRequests =
@@ -62,6 +59,11 @@ export default function ClassesClient({ initialData }: Props = {}) {
   );
   const [sections, setSections] = useState<SectionCard[]>(
     () => initialData?.sections ?? [],
+  );
+  // Derived from section data — true if the logged-in user is the adviser of any section
+  const isClassAdviser = useMemo(
+    () => !!user && sections.some((s) => s.adviser_id === user.id),
+    [sections, user],
   );
   const [assignedSectionIds, setAssignedSectionIds] = useState<Set<number>>(
     () => new Set(initialData?.assignedSectionIds ?? []),
@@ -192,13 +194,10 @@ export default function ClassesClient({ initialData }: Props = {}) {
     user,
   ]);
 
-  // Current user's advisory section (only relevant if class adviser)
+  // Current user's advisory section — null if not assigned as adviser of any section
   const advisorySection = useMemo(
-    () =>
-      isClassAdviser && user
-        ? (sections.find((s) => s.adviser_id === user.id) ?? null)
-        : null,
-    [sections, isClassAdviser, user],
+    () => (user ? (sections.find((s) => s.adviser_id === user.id) ?? null) : null),
+    [sections, user],
   );
 
   // Group filtered sections by grade level, SSES first, skip empty groups

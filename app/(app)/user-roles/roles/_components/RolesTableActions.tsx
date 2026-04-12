@@ -39,8 +39,7 @@ export default function RolesTableActions({
 
   const isAdmin = role.role_id === 1;
   const isProtectedRole = [
-    "class adviser",
-    "subject teacher",
+    "faculty",
     "grade level coordinator",
     "subject coordinator",
     "principal",

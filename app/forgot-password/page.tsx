@@ -1,11 +1,12 @@
 "use client";
 
-import { Button, Container, Paper, Text, TextInput } from "@mantine/core";
+import { Button, Container, Paper, Text, TextInput, ThemeIcon, Group } from "@mantine/core";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
 import { useState } from "react";
 import classes from "@/components/loginPage/LoginPage.module.css";
 import { notify } from "@/components/notificationIcon/notificationIcon";
+import { IconMailForward } from "@tabler/icons-react";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -82,12 +83,17 @@ export default function ForgotPasswordPage() {
             >
               {sent ? (
                 <>
+                  <Group justify="center" mb="md">
+                    <ThemeIcon color="teal" size={48} radius="xl" variant="light">
+                      <IconMailForward size={24} stroke={2} />
+                    </ThemeIcon>
+                  </Group>
                   <Text size="sm" c="#555" mb="md">
                     A password reset link has been sent to{" "}
                     <strong>{email}</strong>. Check your inbox.
                   </Text>
                   <Link href="/login" style={{ textDecoration: "none" }}>
-                    <Text size="sm" c="#4EAE4A">
+                    <Text size="sm" c="#4EAE4A" ta="center">
                       ← Back to login page
                     </Text>
                   </Link>
