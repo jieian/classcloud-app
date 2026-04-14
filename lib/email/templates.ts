@@ -14,37 +14,85 @@ export async function sendPasswordResetEmail({
   await resend.emails.send({
     from: FROM,
     to,
-    subject: "Reset Your ClassCloud Password",
+    subject: "[ClassCloud] Password Reset Request",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
-        </div>
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="600"
+          style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
 
-        <h2 style="color: #333;">Password Reset Request</h2>
-        <p style="color: #555; font-size: 16px;">
-          We received a request to reset your ClassCloud account password. Click the button below to set a new password:
-        </p>
+          <!-- Header -->
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+                <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+              </h1>
+            </td>
+          </tr>
 
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetLink}" style="background-color: #4EAE4A; color: #ffffff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: bold; display: inline-block;">
-            Reset Password
-          </a>
-        </div>
+          <!-- Body -->
+          <tr>
+            <td style="padding: 0 40px 20px 40px;">
+              <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Password Reset Request</h2>
+              <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+                We received a request to reset your <strong>ClassCloud</strong> account password.
+                Click the button below to set a new secure password.
+              </p>
+            </td>
+          </tr>
 
-        <p style="color: #555; font-size: 14px;">
-          If the button above doesn't work, copy and paste this link into your browser:
-        </p>
-        <p style="color: #4EAE4A; font-size: 13px; word-break: break-all;">${resetLink}</p>
+          <!-- Button -->
+          <tr>
+            <td align="center" style="padding: 30px 40px;">
+              <table border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" bgcolor="#45903B" style="padding: 14px 28px;">
+                    <a href="${resetLink}" target="_blank"
+                      style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; white-space: nowrap;">
+                      Reset My Password
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <p style="color: #e74c3c; font-size: 14px; font-weight: bold;">
-          This link will expire shortly. If you did not request a password reset, you can safely ignore this email.
-        </p>
+          <!-- Security note -->
+          <tr>
+            <td style="padding: 0 40px 30px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-left: 4px solid #e74c3c; border-collapse: collapse;">
+                <tr>
+                  <td bgcolor="#fff9f9" style="padding: 15px;">
+                    <p style="color: #c0392b; font-size: 14px; margin: 0; line-height: 1.5;">
+                      <strong>Security Note:</strong> This link will expire in 1 hour.
+                      If you didn't request this, you can safely ignore this email.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          This is an automated message from ClassCloud. Please do not reply to this email.
-        </p>
+          <!-- Fallback link -->
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="${resetLink}" style="color: #45903B; word-break: break-all;">${resetLink}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+                This is an automated message, please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
       </div>
     `,
   });
@@ -64,41 +112,154 @@ export async function sendVerificationEmail({
   await resend.emails.send({
     from: FROM,
     to,
-    subject: "Verify Your ClassCloud Email",
+    subject: "[ClassCloud] Verify Email Address",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
-        </div>
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="600"
+          style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
 
-        <h2 style="color: #333;">Hello, ${firstName}!</h2>
-        <p style="color: #555; font-size: 16px;">
-          Thank you for signing up. Please verify your email address by clicking the button below:
-        </p>
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+                <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+              </h1>
+            </td>
+          </tr>
 
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${verificationLink}" style="background-color: #4EAE4A; color: #ffffff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-size: 15px; font-weight: bold; display: inline-block;">
-            Verify Email Address
-          </a>
-        </div>
+          <tr>
+            <td style="padding: 0 40px 20px 40px;">
+              <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
+              <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+                Thank you for signing up for <strong>ClassCloud</strong>. To get started, please verify your email address by clicking the button below:
+              </p>
+            </td>
+          </tr>
 
-        <p style="color: #555; font-size: 14px;">
-          If the button above doesn't work, copy and paste this link into your browser:
-        </p>
-        <p style="color: #4EAE4A; font-size: 13px; word-break: break-all;">${verificationLink}</p>
+          <tr>
+            <td align="center" style="padding: 30px 40px;">
+              <table border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" bgcolor="#45903B" style="padding: 14px 28px;">
+                    <a href="${verificationLink}" target="_blank"
+                      style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; white-space: nowrap;">
+                      Verify Email Address
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <p style="color: #555; font-size: 14px;">
-          Once verified, your account will be reviewed by an administrator before you can log in.
-        </p>
+          <tr>
+            <td style="padding: 0 40px 30px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-left: 4px solid #45903B; border-collapse: collapse;">
+                <tr>
+                  <td bgcolor="#f0f7ef" style="padding: 15px;">
+                    <p style="color: #2e5c2a; font-size: 14px; margin: 0; line-height: 1.5;">
+                      <strong>Note:</strong> Once verified, your account will be reviewed by an administrator. You will be notified once you are approved to log in.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <p style="color: #e74c3c; font-size: 14px; font-weight: bold;">
-          If you did not create a ClassCloud account, you can safely ignore this email.
-        </p>
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="${verificationLink}" style="color: #45903B; word-break: break-all;">${verificationLink}</a>
+              </p>
+              <p style="color: #b0b0b0; font-size: 12px; margin-top: 20px; margin-bottom: 0;">
+                If you did not create a ClassCloud account, you can safely ignore this email.
+              </p>
+            </td>
+          </tr>
 
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          This is an automated message from ClassCloud. Please do not reply to this email.
-        </p>
+          <tr>
+            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+                This is an automated message, please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </div>
+    `,
+  });
+}
+
+interface EmailVerifiedEmailParams {
+  to: string;
+  firstName: string;
+}
+
+export async function sendEmailVerifiedEmail({
+  to,
+  firstName,
+}: EmailVerifiedEmailParams) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Email Verified Successfully",
+    html: `
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="600"
+          style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
+
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+                <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+              </h1>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding: 0 40px 20px 40px;">
+              <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Email Verified!</h2>
+              <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+                Hello ${firstName}, your email address has been successfully verified. Your <strong>ClassCloud</strong> registration has now been queued for administrative review.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding: 0 40px 30px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                <tr>
+                  <td bgcolor="#f0f7ef" style="padding: 25px;">
+                    <h3 style="color: #2e5c2a; font-size: 18px; margin: 0 0 10px 0;">What happens next?</h3>
+                    <ul style="color: #4a4a4a; font-size: 15px; line-height: 1.6; margin: 0; padding-left: 20px;">
+                      <li>An administrator will review your registration details to ensure security and eligibility.</li>
+                      <li><strong>You will receive an email once a decision has been made regarding your request.</strong></li>
+                    </ul>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding: 0 40px 40px 40px; text-align: center;">
+              <p style="color: #888; font-size: 14px; line-height: 1.5; margin: 0;">
+                No further action is required from you at this time.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+                This is an automated message, please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
       </div>
     `,
   });
@@ -116,24 +277,63 @@ export async function sendApprovalEmail({
   await resend.emails.send({
     from: FROM,
     to,
-    subject: "Your ClassCloud Account Has Been Approved",
+    subject: "[ClassCloud] Account Approved",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
-        </div>
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" 
+        style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
+        
+        <tr>
+          <td align="center" style="padding: 40px 20px;">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+              <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+            </h1>
+          </td>
+        </tr>
 
-        <h2 style="color: #333;">Hello, ${firstName}!</h2>
-        <p style="color: #555; font-size: 16px;">
-          Great news — your ClassCloud account has been reviewed and approved by an administrator.
-          You can now log in and start using the platform.
-        </p>
+        <tr>
+          <td style="padding: 0 40px 10px 40px;">
+            <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
+            <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+              Welcome to <strong>ClassCloud</strong>! Your account has been reviewed and approved by an administrator. You now have full access to the platform.
+            </p>
+          </td>
+        </tr>
 
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          This is an automated message from ClassCloud. Please do not reply to this email.
-        </p>
-      </div>
+        <tr>
+          <td align="center" style="padding: 30px 40px;">
+            <table border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td align="center" bgcolor="#45903B" style="padding: 14px 28px;">
+                  <a href="https://classcloudph.app/login" target="_blank"
+                    style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; white-space: nowrap;">
+                    Log In to Your Account
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding: 0 40px 40px 40px;">
+            <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+              If you have any questions about getting started, feel free to reach out to an administrator.
+            </p>
+          </td>
+        </tr>
+
+        <tr>
+          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+              &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+              This is an automated message, please do not reply.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </div>
     `,
   });
 }
@@ -152,31 +352,62 @@ export async function sendRejectionEmail({
   await resend.emails.send({
     from: FROM,
     to,
-    subject: "Your ClassCloud Registration Has Been Rejected",
+    subject: "[ClassCloud] Account Registration Rejected",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
-        </div>
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" 
+        style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
+        
+        <tr>
+          <td align="center" style="padding: 40px 20px;">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+              <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+            </h1>
+          </td>
+        </tr>
 
-        <h2 style="color: #333;">Hello, ${firstName}!</h2>
-        <p style="color: #555; font-size: 16px;">
-          We regret to inform you that your ClassCloud registration request has been reviewed and rejected for the following reason:
-        </p>
+        <tr>
+          <td style="padding: 0 40px 20px 40px;">
+            <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
+            <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+              We regret to inform you that your <strong>ClassCloud</strong> registration request has been reviewed and declined for the following reason:
+            </p>
+          </td>
+        </tr>
 
-        <div style="background-color: #fff3f3; border-left: 4px solid #e74c3c; padding: 14px 18px; margin: 20px 0; border-radius: 4px;">
-          <p style="margin: 0; color: #333; font-size: 15px;">${reason}</p>
-        </div>
+        <tr>
+          <td style="padding: 10px 40px 30px 40px;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-left: 4px solid #e74c3c; border-collapse: collapse;">
+              <tr>
+                <td bgcolor="#fff3f3" style="padding: 15px;">
+                  <p style="color: #333333; font-size: 15px; margin: 0; line-height: 1.5;">
+                    ${reason}
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-        <p style="color: #555; font-size: 14px;">
-          If you believe this is a mistake, please contact your school administrator.
-        </p>
+        <tr>
+          <td style="padding: 0 40px 40px 40px;">
+            <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+              If you believe this was a mistake, or if you wish to provide more information, please contact your school administrator.
+            </p>
+          </td>
+        </tr>
 
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          This is an automated message from ClassCloud. Please do not reply to this email.
-        </p>
-      </div>
+        <tr>
+          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+              &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+              This is an automated message, please do not reply.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </div>
     `,
   });
 }
@@ -197,58 +428,185 @@ export async function sendWelcomeEmail({
   await resend.emails.send({
     from: FROM,
     to,
-    subject: "Your ClassCloud Account Has Been Created",
+    subject: "[ClassCloud] Your Account Credentials",
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1>
-        </div>
+      <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+        <table align="center" border="0" cellpadding="0" cellspacing="0" width="600" 
+          style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
+          
+          <tr>
+            <td align="center" style="padding: 40px 20px;">
+              <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+                <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+              </h1>
+            </td>
+          </tr>
 
-        <h2 style="color: #333;">Welcome, ${firstName} ${lastName}!</h2>
-        <p style="color: #555; font-size: 16px;">
-          An account has been created for you on ClassCloud. Below are your login credentials:
-        </p>
+          <tr>
+            <td style="padding: 0 40px 20px 40px;">
+              <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Welcome, ${firstName} ${lastName}!</h2>
+              <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+                An account has been created for you on <strong>ClassCloud</strong>. You can use the temporary credentials below to access your account:
+              </p>
+            </td>
+          </tr>
 
-        <div style="background-color: #f5f5f5; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          <p style="margin: 8px 0; font-size: 15px;">
-            <strong>Email:</strong> ${to}
-          </p>
-          <p style="margin: 8px 0; font-size: 15px;">
-            <strong>Password:</strong> ${password}
-          </p>
-        </div>
+          <tr>
+            <td style="padding: 0 40px 20px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+                <tr>
+                  <td bgcolor="#f5f5f5" style="padding: 20px;">
+                    <p style="margin: 0 0 10px 0; font-size: 15px; color: #333;">
+                      <strong>Email:</strong> <span style="color: #4a4a4a;">${to}</span>
+                    </p>
+                    <p style="margin: 0; font-size: 15px; color: #333;">
+                      <strong>Temporary Password:</strong> <span style="color: #4a4a4a;">${password}</span>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <p style="color: #e74c3c; font-size: 14px; font-weight: bold;">
-          Please change your password after your first login.
-        </p>
+          <tr>
+            <td style="padding: 0 40px 30px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-left: 4px solid #e74c3c; border-collapse: collapse;">
+                <tr>
+                  <td bgcolor="#fff3f3" style="padding: 12px 15px;">
+                    <p style="color: #c0392b; font-size: 14px; margin: 0; font-weight: bold; line-height: 1.4;">
+                      Important: This is a temporary password. For your security, you will be required to change it immediately after your first login.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="color: #999; font-size: 12px; text-align: center;">
-          This is an automated message from ClassCloud. Please do not reply to this email.
-        </p>
+          <tr>
+            <td align="center" style="padding: 0 40px 40px 40px;">
+              <table border="0" cellspacing="0" cellpadding="0">
+                <tr>
+                  <td align="center" bgcolor="#45903B" style="padding: 14px 28px; border-radius: 4px;">
+                    <a href="https://classcloudph.app/login" target="_blank" 
+                      style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; white-space: nowrap; display: inline-block;">
+                      Log In to Your Account
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+          <tr>
+            <td style="padding: 0 40px 40px 40px;">
+              <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+                If you encounter any problem, please contact an administrator.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+                This is an automated message, please do not reply.
+              </p>
+            </td>
+          </tr>
+
+        </table>
       </div>
     `,
   });
 }
 
-// ─── Shared layout helpers (transfer request / direct move emails) ─────────────
+// ─── Shared layout helpers ────────────────────────────────────────────────────
 
-const NOTIF_HEADER = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;"><div style="text-align: center; margin-bottom: 30px;"><h1 style="color: #4EAE4A; margin: 0;">ClassCloud</h1></div>`;
-const NOTIF_FOOTER = `<hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" /><p style="color: #999; font-size: 12px; text-align: center;">This is an automated notification from ClassCloud. Please do not reply to this email.</p></div>`;
+function startEmailLayout(): string {
+  return `
+    <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="600"
+        style="background-color: #ffffff; border: 1px solid #e0e0e0; border-collapse: collapse;">
+        <tr>
+          <td align="center" style="padding: 40px 20px;">
+            <h1 style="margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.5px;">
+              <span style="color: #45903B;">Class</span><span style="color: #076E3F;">Cloud</span>
+            </h1>
+          </td>
+        </tr>`;
+}
+
+function endEmailLayout(): string {
+  return `
+        <tr>
+          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+              &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+              This is an automated message, please do not reply.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </div>`;
+}
 
 function infoBox(rows: { label: string; value: string }[]): string {
   const cells = rows
-    .map(({ label, value }) => `<tr><td style="padding:5px 0;color:#666;font-size:13px;white-space:nowrap;padding-right:16px;vertical-align:top;">${label}</td><td style="padding:5px 0;color:#222;font-size:13px;font-weight:500;">${value}</td></tr>`)
+    .map(({ label, value }) => `
+              <tr>
+                <td style="padding: 8px 0; color: #666; font-size: 13px; width: 40%; vertical-align: top;"><strong>${label}</strong></td>
+                <td style="padding: 8px 0; color: #222; font-size: 14px; font-weight: 500;">${value}</td>
+              </tr>`)
     .join("");
-  return `<div style="background-color:#f8f9fa;border:1px solid #e0e0e0;border-radius:6px;padding:16px 20px;margin:20px 0;"><table style="width:100%;border-collapse:collapse;">${cells}</table></div>`;
+  return `
+        <tr>
+          <td style="padding: 0 40px 20px 40px;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse;">
+              <tr>
+                <td bgcolor="#f8f9fa" style="padding: 20px;">
+                  <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                    ${cells}
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+}
+
+function notesBox(notes: string, isAlert = false): string {
+  const borderColor = isAlert ? "#e74c3c" : "#45903B";
+  const bgColor = isAlert ? "#fff3f3" : "#f0f7ef";
+  return `
+        <tr>
+          <td style="padding: 0 40px 20px 40px;">
+            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-left: 4px solid ${borderColor}; border-collapse: collapse;">
+              <tr>
+                <td bgcolor="${bgColor}" style="padding: 15px;">
+                  <p style="color: #333; font-size: 14px; margin: 0; line-height: 1.5;">${notes}</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
 }
 
 function ctaButton(label: string, href: string): string {
-  return `<div style="text-align:center;margin:28px 0;"><a href="${href}" style="background-color:#4EAE4A;color:#ffffff;padding:13px 28px;border-radius:8px;text-decoration:none;font-size:15px;font-weight:bold;display:inline-block;">${label}</a></div>`;
-}
-
-function notesBox(notes: string): string {
-  return `<div style="background-color:#fff3f3;border-left:4px solid #e74c3c;padding:14px 18px;margin:20px 0;border-radius:4px;"><p style="margin:0;color:#333;font-size:14px;font-style:italic;">${notes}</p></div>`;
+  return `
+        <tr>
+          <td align="center" style="padding: 0 40px 30px 40px;">
+            <table border="0" cellspacing="0" cellpadding="0">
+              <tr>
+                <td align="center" bgcolor="#45903B" style="padding: 14px 28px;">
+                  <a href="${href}" target="_blank"
+                    style="font-size: 16px; font-weight: bold; color: #ffffff; text-decoration: none; white-space: nowrap;">
+                    ${label}
+                  </a>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
 }
 
 function emailDate(): string {
@@ -272,7 +630,32 @@ export async function sendTransferRequestCreatedToFromAdviser({
     from: FROM,
     to,
     subject: `Notice of Section Transfer Request — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that a section transfer request has been submitted for one of your students. The request is currently pending administrator review.</p>${infoBox([{ label: "Student", value: studentName }, { label: "Current Section", value: fromSection }, { label: "Requested Section", value: toSection }, { label: "Requested By", value: requestedByName }, { label: "Date", value: emailDate() }])}<p style="color:#555;font-size:14px;">No further action is required from you at this time. You will be notified once a decision has been made.</p>${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            A section transfer request has been submitted for one of your students. The request is currently pending administrator review.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "Current Section", value: fromSection },
+        { label: "Requested Section", value: toSection },
+        { label: "Requested By", value: requestedByName },
+        { label: "Date", value: emailDate() },
+      ])}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+            No further action is required from you at this time. You will be notified once a decision has been made.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -292,7 +675,26 @@ export async function sendTransferRequestCreatedToAdmin({
     from: FROM,
     to,
     subject: `New Section Transfer Request Requires Your Review — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">A new section transfer request has been submitted and requires your review and approval.</p>${infoBox([{ label: "Student", value: studentName }, { label: "From Section", value: fromSection }, { label: "To Section", value: toSection }, { label: "Requested By", value: requestedByName }, { label: "Date", value: emailDate() }])}${ctaButton("Review Request", actionUrl)}<p style="color:#555;font-size:14px;">Please log in to ClassCloud to approve or decline this request.</p>${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            A new section transfer request has been submitted and requires your review and approval.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "From Section", value: fromSection },
+        { label: "To Section", value: toSection },
+        { label: "Requested By", value: requestedByName },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${ctaButton("Review Request", actionUrl)}
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -312,7 +714,24 @@ export async function sendTransferRequestApprovedToRequester({
     from: FROM,
     to,
     subject: `Section Transfer Approved — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that your section transfer request has been reviewed and approved. The student has been officially transferred to the requested section.</p>${infoBox([{ label: "Student", value: studentName }, { label: "From Section", value: fromSection }, { label: "To Section", value: toSection }, { label: "Date", value: emailDate() }])}${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Your section transfer request has been reviewed and approved. The student has been officially transferred to the requested section.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "From Section", value: fromSection },
+        { label: "To Section", value: toSection },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -328,7 +747,23 @@ export async function sendTransferRequestApprovedToFromAdviser({
     from: FROM,
     to,
     subject: `Notice of Approved Section Transfer — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that the section transfer request for one of your students has been approved by an administrator. The student has been officially transferred to another section.</p>${infoBox([{ label: "Student", value: studentName }, { label: "Transferred To", value: toSection }, { label: "Date", value: emailDate() }])}${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            The section transfer request for one of your students has been approved by an administrator. The student has been officially transferred to another section.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "Transferred To", value: toSection },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -349,7 +784,32 @@ export async function sendTransferRequestRejectedToRequester({
     from: FROM,
     to,
     subject: `Section Transfer Request Declined — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that your section transfer request has been reviewed and declined by an administrator.</p>${infoBox([{ label: "Student", value: studentName }, { label: "From Section", value: fromSection }, { label: "Requested Section", value: toSection }, { label: "Date", value: emailDate() }])}${notes ? `<p style="color:#555;font-size:14px;margin-top:16px;"><strong>Reason for Decline:</strong></p>${notesBox(notes)}` : ""}<p style="color:#555;font-size:14px;">If you have questions, please contact your school administrator.</p>${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Your section transfer request has been reviewed and declined by an administrator.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "From Section", value: fromSection },
+        { label: "Requested Section", value: toSection },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${notes ? notesBox(notes, true) : ""}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+            If you have questions, please contact your school administrator.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -364,7 +824,22 @@ export async function sendTransferRequestRejectedToFromAdviser({
     from: FROM,
     to,
     subject: `Notice of Declined Section Transfer Request — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that the section transfer request for <strong>${studentName}</strong>, a student in your class, has been reviewed and declined by an administrator. The student remains enrolled in your section.</p>${infoBox([{ label: "Student", value: studentName }, { label: "Date", value: emailDate() }])}${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            The section transfer request for <strong>${studentName}</strong>, a student in your class, has been reviewed and declined by an administrator. The student remains enrolled in your section.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -384,7 +859,31 @@ export async function sendDirectMoveToFromAdviser({
     from: FROM,
     to,
     subject: `Notice of Student Transfer — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that a student from your class has been transferred to another section by an administrator.</p>${infoBox([{ label: "Student", value: studentName }, { label: "From Section", value: fromSection }, { label: "Transferred To", value: toSection }, { label: "Date", value: emailDate() }])}<p style="color:#555;font-size:14px;">If you have questions regarding this transfer, please contact your school administrator.</p>${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            A student from your class has been transferred to another section by an administrator.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "From Section", value: fromSection },
+        { label: "Transferred To", value: toSection },
+        { label: "Date", value: emailDate() },
+      ])}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+            If you have questions regarding this transfer, please contact your school administrator.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
   });
 }
 
@@ -402,6 +901,23 @@ export async function sendDirectMoveToToAdviser({
     from: FROM,
     to,
     subject: `Notice of New Student Enrollment — ${studentName}`,
-    html: `${NOTIF_HEADER}<h2 style="color:#333;">Dear ${firstName},</h2><p style="color:#555;font-size:15px;">This is to inform you that a student has been transferred to your class by an administrator.</p>${infoBox([{ label: "Student", value: studentName }, { label: "From Section", value: fromSection }, { label: "Your Section", value: toSection }, { label: "Date", value: emailDate() }])}${NOTIF_FOOTER}`,
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            A student has been transferred to your class by an administrator.
+          </p>
+        </td>
+      </tr>
+      ${infoBox([
+        { label: "Student", value: studentName },
+        { label: "From Section", value: fromSection },
+        { label: "Your Section", value: toSection },
+        { label: "Date", value: emailDate() },
+      ])}
+      ${endEmailLayout()}
+    `,
   });
 }

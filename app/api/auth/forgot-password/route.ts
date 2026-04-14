@@ -40,7 +40,7 @@ const _POST = async function(request: Request) {
     type: "recovery",
     email: trimmedEmail,
     options: {
-      redirectTo: `${origin}/reset-password`,
+      redirectTo: `${origin}/reset-password?email=${encodeURIComponent(trimmedEmail)}`,
     },
   });
 

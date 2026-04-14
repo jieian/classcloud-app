@@ -1,6 +1,7 @@
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { hashToken, decryptPassword } from "@/lib/crypto";
+import { sendEmailVerifiedEmail } from "@/lib/email/templates";
 
 /** Masks an email for display: j***@gmail.com */
 function maskEmail(email: string): string {
@@ -147,6 +148,11 @@ const _POST = async function (request: Request) {
     console.error("[confirm] RPC returned success=false for uid:", uid);
     return Response.json({ status: "error" }, { status: 500 });
   }
+
+  // Send "email verified, pending review" notification (fire-and-forget)
+  sendEmailVerifiedEmail({ to: row.email, firstName: row.first_name }).catch((err) =>
+    console.error("[confirm] Failed to send email-verified notification:", err),
+  );
 
   return Response.json({ status: "success" });
 };

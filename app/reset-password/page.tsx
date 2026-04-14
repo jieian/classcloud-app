@@ -29,15 +29,6 @@ import {
 
 type PageState = "loading" | "ready" | "invalid";
 
-function decodeJwtEmail(token: string): string | null {
-  try {
-    const payload = token.split(".")[1];
-    const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-    return decoded?.email ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
@@ -115,6 +106,15 @@ export default function ResetPasswordPage() {
   };
 
   useEffect(() => {
+    // Read and strip email from URL params (set by forgot-password API for resend UX)
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailParam = urlParams.get("email");
+    if (emailParam) {
+      setEmailFromToken(emailParam);
+      // Strip email from URL bar immediately, preserving hash for session handling below
+      window.history.replaceState(null, "", window.location.pathname + window.location.hash);
+    }
+
     void (async () => {
       // Check existing session first (page refresh case)
       const { data } = await supabase.auth.getSession();
@@ -131,9 +131,6 @@ export default function ResetPasswordPage() {
       const type = params.get("type");
 
       if (accessToken && refreshToken && type === "recovery") {
-        // Decode email from JWT before attempting session (token may be expired)
-        setEmailFromToken(decodeJwtEmail(accessToken));
-
         const { error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -259,17 +256,6 @@ export default function ResetPasswordPage() {
                       <Text ta="center" size="sm" c="#555" mb="sm">
                         A new reset link has been sent. Check your inbox.
                       </Text>
-                      <Button
-                        fullWidth
-                        radius="md"
-                        color="#4EAE4A"
-                        disabled={resendCooldown > 0}
-                        loading={resendLoading}
-                        onClick={handleResend}
-                        mb="sm"
-                      >
-                        {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend Reset Link"}
-                      </Button>
                     </>
                   ) : emailFromToken ? (
                     <Button
@@ -283,13 +269,13 @@ export default function ResetPasswordPage() {
                     >
                       {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Send New Reset Link"}
                     </Button>
-                  ) : null}
-
-                  <Link href="/forgot-password" style={{ textDecoration: "none" }}>
-                    <Text size="sm" c="#808898" ta="center">
-                      ← Request a new link
-                    </Text>
-                  </Link>
+                  ) : (
+                    <Link href="/forgot-password" style={{ textDecoration: "none" }}>
+                      <Text size="sm" c="#808898" ta="center">
+                        ← Request a new link
+                      </Text>
+                    </Link>
+                  )}
                 </>
               )}
 
