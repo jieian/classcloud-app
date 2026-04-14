@@ -149,10 +149,12 @@ const _POST = async function (request: Request) {
     return Response.json({ status: "error" }, { status: 500 });
   }
 
-  // Send "email verified, pending review" notification (fire-and-forget)
-  sendEmailVerifiedEmail({ to: row.email, firstName: row.first_name }).catch((err) =>
-    console.error("[confirm] Failed to send email-verified notification:", err),
-  );
+  // Send "email verified, pending review" notification
+  try {
+    await sendEmailVerifiedEmail({ to: row.email, firstName: row.first_name });
+  } catch (err) {
+    console.error("[confirm] Failed to send email-verified notification:", err);
+  }
 
   return Response.json({ status: "success" });
 };

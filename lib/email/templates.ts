@@ -521,7 +521,6 @@ export async function sendWelcomeEmail({
 }
 
 // ─── Shared layout helpers ────────────────────────────────────────────────────
-
 function startEmailLayout(): string {
   return `
     <div style="background-color: #f9f9f9; padding: 40px 0; font-family: 'Segoe UI', Helvetica, Arial, sans-serif;">
