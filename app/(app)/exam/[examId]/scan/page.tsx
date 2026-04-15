@@ -106,12 +106,14 @@ export default function ScanPapersPage() {
 
   // â"€â"€ Fetch exam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
+    console.log('[scan] examId:', examId, typeof examId);
     const examIdNum = Number(examId);
     if (!examId || !Number.isFinite(examIdNum)) {
       setExamLoading(false);
       return;
     }
     fetchExamById(examIdNum).then(data => {
+      console.log('[scan] fetchExamById result:', data);
       setExam(data);
     }).catch(console.error).finally(() => setExamLoading(false));
   }, [examId]);
