@@ -25,6 +25,8 @@ export type AuditAction =
   | "user_invite_edited"
   | "user_activated_invite"
   | "forced_password_changed"
+  | "user_edited"
+  | "user_deleted"
   // ── Security events ──────────────────────────────────────────────────────
   | "rate_limit_exceeded"
   | "honeypot_triggered"

@@ -159,6 +159,35 @@ function buildRecipientList(
   return result;
 }
 
+// ── User signup dispatcher ─────────────────────────────────────────────────────
+
+/**
+ * Called after a self-registration email is verified.
+ * Uses a single SQL RPC to find all users.full_access recipients and insert
+ * notification rows atomically — one DB round-trip regardless of admin count.
+ * Fire-and-forget: never throws.
+ */
+export async function dispatchNewSignup({
+  newUserUid,
+  firstName,
+  lastName,
+}: {
+  newUserUid: string;
+  firstName: string;
+  lastName: string;
+}): Promise<void> {
+  try {
+    const fullName = `${firstName} ${lastName}`.trim();
+    const { error } = await admin.rpc("notify_new_signup", {
+      p_uid: newUserUid,
+      p_full_name: fullName,
+    });
+    if (error) console.error("[notifications] notify_new_signup RPC:", error.message);
+  } catch (err) {
+    console.error("[notifications] dispatchNewSignup:", err);
+  }
+}
+
 /** Builds a section display string: "Section Name (Grade Level)". */
 function sectionDisplay(name: string, glDisplayName: string): string {
   return glDisplayName ? `${name} (${glDisplayName})` : name;

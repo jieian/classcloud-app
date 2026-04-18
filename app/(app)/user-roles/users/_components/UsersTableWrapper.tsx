@@ -121,11 +121,12 @@ interface UsersTableWrapperProps {
   search?: string;
   filter?: FacultyFilter;
   onCountChange?: (count: number) => void;
+  onPrincipalCountChange?: (count: number) => void;
 }
 
 export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
   function UsersTableWrapper(
-    { search = "", filter = "all", onCountChange },
+    { search = "", filter = "all", onCountChange, onPrincipalCountChange },
     ref,
   ) {
     const [users, setUsers] = useState<UserWithRoles[]>([]);
@@ -165,6 +166,10 @@ export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
         setError(null);
         const data = await fetchActiveUsersWithRoles();
         setUsers(data);
+        const principalCount = data.filter((u) =>
+          u.roles.some((r) => r.name === "Principal"),
+        ).length;
+        onPrincipalCountChange?.(principalCount);
       } catch (err) {
         setError("Failed to load users. Please try again later.");
         console.error(err);

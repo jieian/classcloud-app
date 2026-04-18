@@ -179,6 +179,24 @@ export default function Navbar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, isAdmin, isAdviser]);
 
+  // Badge count on the User Management sublink (unread self-registration signups)
+  const [usersBadgeCount, setUsersBadgeCount] = useState(0);
+  const hasUsersAccess = permissions.includes("users.full_access");
+
+  useEffect(() => {
+    if (!hasUsersAccess) {
+      setUsersBadgeCount(0);
+      return;
+    }
+    fetch("/api/users/signup-notifications/count", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { count?: number }) => {
+        if (typeof d.count === "number") setUsersBadgeCount(d.count);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, hasUsersAccess]);
+
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(
     (requiredPermissions: string[]) => {
@@ -304,6 +322,9 @@ export default function Navbar() {
       link.sublinks.some((sublink) => pathname.startsWith(sublink.href));
     const isExpanded = isMobile && isDrawerOpen && drawerTitle === link.label;
 
+    const hasUserManagement = link.sublinks.some((s) => s.key === "user-management");
+    const showUsersDot = hasUserManagement && usersBadgeCount > 0;
+
     return (
       <div key={link.label}>
         <Tooltip
@@ -319,7 +340,25 @@ export default function Navbar() {
               className={classes.mainLink}
               data-active={isActive || undefined}
             >
-              <link.icon size={22} stroke={1.5} />
+              {showUsersDot ? (
+                <div style={{ position: "relative", display: "inline-flex" }}>
+                  <link.icon size={22} stroke={1.5} />
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      right: -3,
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      backgroundColor: "#fa5252",
+                      border: "1.5px solid white",
+                    }}
+                  />
+                </div>
+              ) : (
+                <link.icon size={22} stroke={1.5} />
+              )}
               {isMobile && <span>{link.label}</span>}
             </UnstyledButton>
           </Link>
@@ -330,8 +369,8 @@ export default function Navbar() {
           <div className={classes.inlineSublinks}>
             {link.sublinks.map((sublink) => {
               const isSubActive = pathname.startsWith(sublink.href);
-              const showBadge =
-                sublink.key === "classes" && badgeCount > 0;
+              const showClassesBadge = sublink.key === "classes" && badgeCount > 0;
+              const showUsersBadge = sublink.key === "user-management" && usersBadgeCount > 0;
               return (
                 <Link
                   href={sublink.href}
@@ -353,16 +392,24 @@ export default function Navbar() {
                     }}
                   >
                     <span>{sublink.label}</span>
-                    {showBadge && (
+                    {showClassesBadge && (
                       <Badge
                         size="xs"
                         color="red"
                         variant="filled"
                         style={{ flexShrink: 0 }}
                       >
-                        {badgeCount > 99
-                          ? "99+"
-                          : badgeCount}
+                        {badgeCount > 99 ? "99+" : badgeCount}
+                      </Badge>
+                    )}
+                    {showUsersBadge && (
+                      <Badge
+                        size="xs"
+                        color="red"
+                        variant="filled"
+                        style={{ flexShrink: 0 }}
+                      >
+                        {usersBadgeCount > 99 ? "99+" : usersBadgeCount}
                       </Badge>
                     )}
                   </span>
@@ -377,7 +424,8 @@ export default function Navbar() {
 
   const drawerLinks = drawerSublinks.map((sublink: Sublink) => {
     const isActive = pathname === sublink.href;
-    const showBadge = sublink.key === "classes" && badgeCount > 0;
+    const showClassesBadge = sublink.key === "classes" && badgeCount > 0;
+    const showUsersBadge = sublink.key === "user-management" && usersBadgeCount > 0;
 
     return (
       <Link
@@ -400,7 +448,7 @@ export default function Navbar() {
           }}
         >
           <span>{sublink.label}</span>
-          {showBadge && (
+          {showClassesBadge && (
             <Badge
               size="xs"
               color="red"
@@ -408,6 +456,16 @@ export default function Navbar() {
               style={{ flexShrink: 0 }}
             >
               {badgeCount > 99 ? "99+" : badgeCount}
+            </Badge>
+          )}
+          {showUsersBadge && (
+            <Badge
+              size="xs"
+              color="red"
+              variant="filled"
+              style={{ flexShrink: 0 }}
+            >
+              {usersBadgeCount > 99 ? "99+" : usersBadgeCount}
             </Badge>
           )}
         </span>

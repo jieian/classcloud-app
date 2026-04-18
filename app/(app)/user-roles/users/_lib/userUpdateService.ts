@@ -12,7 +12,6 @@ export interface UpdateUserData {
   first_name: string;
   middle_name?: string;
   last_name: string;
-  newEmail?: string;
   newPassword?: string;
   role_ids: number[];
 }
@@ -50,9 +49,9 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
     throw new Error(msg || "Failed to update user. Please check your connection and try again.");
   }
 
-  // Step 2: Update auth.users (email/password) if needed
-  if (data.newEmail || data.newPassword) {
-    await updateAuthUser(data.uid, data.newEmail, data.newPassword);
+  // Step 2: Update password in auth.users if changed
+  if (data.newPassword) {
+    await updateAuthUser(data.uid, undefined, data.newPassword);
   }
 }
 

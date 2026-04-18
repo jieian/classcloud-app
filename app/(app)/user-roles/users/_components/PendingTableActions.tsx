@@ -18,12 +18,12 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { IconCheck, IconX } from "@tabler/icons-react";
+import { IconCheck, IconLock, IconX } from "@tabler/icons-react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { modals } from "@mantine/modals";
 import type { PendingUser } from "../_lib";
-import { activateUser, rejectPendingUser } from "../_lib";
+import { activateUser, rejectPendingUser, checkPrincipalExists } from "../_lib";
 import type { Role } from "../_lib";
 import { sortRoles } from "@/lib/roleUtils";
 
@@ -55,6 +55,8 @@ export default function PendingTableActions({
   const [lastName, setLastName] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [rolePage, setRolePage] = useState(1);
+  const [rolesExpanded, setRolesExpanded] = useState(false);
+  const [principalWarning, setPrincipalWarning] = useState(false);
   const [approving, setApproving] = useState(false);
 
   const sortedRoles = sortRoles(roles);
@@ -78,6 +80,20 @@ export default function PendingTableActions({
       setRolePage(1);
     }
   }, [approveOpened]);
+
+  // Principal warning — soft check whenever selected roles change
+  useEffect(() => {
+    const hasPrincipal = selectedRoles.some(
+      (id) => roles.find((r) => r.role_id.toString() === id)?.name === "Principal",
+    );
+    if (!hasPrincipal) {
+      setPrincipalWarning(false);
+      return;
+    }
+    checkPrincipalExists()
+      .then(setPrincipalWarning)
+      .catch(() => setPrincipalWarning(false));
+  }, [selectedRoles]);
 
   const handleRevert = () => {
     setFirstName(user.first_name);
@@ -214,14 +230,19 @@ export default function PendingTableActions({
               Demographic Profile
             </Text>
             <Stack gap="xs">
-              <TextInput
-                label="Email"
-                value={user.email}
-                readOnly
-                styles={{
-                  input: { backgroundColor: "#f5f5f5", cursor: "default" },
-                }}
-              />
+              <Tooltip label="Email is locked and cannot be changed" position="top" withArrow>
+                <Box>
+                  <TextInput
+                    label="Email"
+                    value={user.email}
+                    readOnly
+                    rightSection={<IconLock size={16} style={{ color: "#808898" }} />}
+                    styles={{
+                      input: { backgroundColor: "#f5f5f5", cursor: "default", color: "#808898" },
+                    }}
+                  />
+                </Box>
+              </Tooltip>
               <SimpleGrid cols={2}>
                 <TextInput
                   label="First Name"
@@ -252,7 +273,7 @@ export default function PendingTableActions({
                 *
               </Text>
             </Text>
-            <>
+<>
               <Box
                 p="md"
                 style={{
@@ -291,7 +312,35 @@ export default function PendingTableActions({
                             <Checkbox
                               value={role.role_id.toString()}
                               color="#4EAE4A"
-                              label={<Text size="sm">{role.name}</Text>}
+                              label={
+                                <Group gap={6} wrap="nowrap">
+                                  <Text size="sm">{role.name}</Text>
+                                  {role.name === "Principal" && principalWarning && (
+                                    <Tooltip
+                                      label="A Principal already exists. Assigning this role to another user may cause conflicts."
+                                      withArrow
+                                      multiline
+                                      w={260}
+                                    >
+                                      <Box
+                                        style={{
+                                          width: 16,
+                                          height: 16,
+                                          borderRadius: "50%",
+                                          backgroundColor: "#f59e0b",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          flexShrink: 0,
+                                          cursor: "default",
+                                        }}
+                                      >
+                                        <Text size="xs" fw={700} c="white" lh={1}>!</Text>
+                                      </Box>
+                                    </Tooltip>
+                                  )}
+                                </Group>
+                              }
                             />
                           </Box>
                         );
@@ -314,35 +363,47 @@ export default function PendingTableActions({
 
               {(() => {
                 const selectedRoleNames = selectedRoles
-                  .map(
-                    (id) =>
-                      roles.find((r) => r.role_id.toString() === id)?.name,
-                  )
+                  .map((id) => roles.find((r) => r.role_id.toString() === id)?.name)
                   .filter((n): n is string => Boolean(n));
-                const CHAR_BUDGET = 55;
-                const displayed: string[] = [];
-                let used = 0;
-                for (const name of selectedRoleNames) {
-                  const cost = used > 0 ? name.length + 2 : name.length;
-                  if (used > 0 && used + cost > CHAR_BUDGET) break;
-                  displayed.push(name);
-                  used += cost;
-                }
-                const hidden = selectedRoleNames.length - displayed.length;
                 if (selectedRoleNames.length === 0) return null;
+                const MAX_VISIBLE = 2;
+                const hiddenCount = selectedRoleNames.length - MAX_VISIBLE;
+                const visibleNames = rolesExpanded
+                  ? selectedRoleNames
+                  : selectedRoleNames.slice(0, MAX_VISIBLE);
                 return (
-                  <Text size="xs" c="#808898" mt={6}>
-                    <Text span fw={600} c="#45903B">
-                      Selected Roles ({selectedRoleNames.length}):{" "}
-                    </Text>
-                    {displayed.length === 2 && hidden === 0
-                      ? `${displayed[0]} and ${displayed[1]}`
-                      : displayed.join(", ")}
-                    {hidden > 0 && (
-                      <Text span fw={500} c="#4EAE4A">
+                  <Text size="sm" c="dimmed" mt="sm">
+                    <strong style={{ color: "#1a1a1a" }}>
+                      Selected Roles ({selectedRoleNames.length}):
+                    </strong>{" "}
+                    {visibleNames.join(", ")}
+                    {!rolesExpanded && hiddenCount > 0 && (
+                      <>
                         {" "}
-                        +{hidden} more
-                      </Text>
+                        <Text
+                          component="span"
+                          size="sm"
+                          c="#4EAE4A"
+                          style={{ cursor: "pointer", textDecoration: "underline" }}
+                          onClick={() => setRolesExpanded(true)}
+                        >
+                          +{hiddenCount} more
+                        </Text>
+                      </>
+                    )}
+                    {rolesExpanded && hiddenCount > 0 && (
+                      <>
+                        {" "}
+                        <Text
+                          component="span"
+                          size="sm"
+                          c="#4EAE4A"
+                          style={{ cursor: "pointer", textDecoration: "underline" }}
+                          onClick={() => setRolesExpanded(false)}
+                        >
+                          Show less
+                        </Text>
+                      </>
                     )}
                   </Text>
                 );

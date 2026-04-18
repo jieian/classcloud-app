@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   ActionIcon,
+  Alert,
   Button,
   Group,
   Select,
   Tooltip,
 } from "@mantine/core";
-import { IconRefresh, IconList } from "@tabler/icons-react";
+import { IconRefresh, IconList, IconAlertTriangle } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import UsersTableWrapper, {
   type UsersTableWrapperRef,
@@ -24,6 +25,7 @@ const FILTER_OPTIONS = [
 
 export function ActiveUsersSection() {
   const [userCount, setUserCount] = useState<number | null>(null);
+  const [principalCount, setPrincipalCount] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FacultyFilter>("all");
   const tableRef = useRef<UsersTableWrapperRef>(null);
@@ -85,11 +87,24 @@ export function ActiveUsersSection() {
           clearable={false}
         />
       </Group>
+      {principalCount > 1 && (
+        <Alert
+          icon={<IconAlertTriangle size={14} />}
+          color="yellow"
+          title="Multiple Principals Detected"
+          mb="md"
+          styles={{ title: { fontSize: "var(--mantine-font-size-sm)" }, message: { fontSize: "var(--mantine-font-size-xs)" } }}
+        >
+          There are currently <strong>{principalCount} users</strong> with the{" "}
+          <strong>Principal</strong> role. Only one Principal is expected.
+        </Alert>
+      )}
       <UsersTableWrapper
         ref={tableRef}
         search={search}
         filter={filter}
         onCountChange={setUserCount}
+        onPrincipalCountChange={setPrincipalCount}
       />
     </>
   );

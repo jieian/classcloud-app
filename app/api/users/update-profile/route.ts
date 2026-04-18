@@ -2,6 +2,7 @@ import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supaba
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { insertAuditLog } from "@/lib/audit";
 
 const _PATCH = async function (request: Request) {
   // 1. Verify caller is authenticated
@@ -34,7 +35,7 @@ const _PATCH = async function (request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 4. Update profile + roles atomically
+  // 4. Update profile + roles atomically (RPC returns old values for audit)
   const { data: result, error: rpcError } = await adminClient.rpc(
     "update_user_atomic",
     {
@@ -68,6 +69,22 @@ const _PATCH = async function (request: Request) {
   syncUserPermissions(uid).catch((err) =>
     console.error("syncUserPermissions failed after update-profile:", err),
   );
+
+  insertAuditLog({
+    actor_id: caller.id,
+    category: "ADMIN",
+    action: "user_edited",
+    entity_type: "user",
+    entity_id: uid,
+    entity_label: `${first_name} ${last_name}`,
+    old_values: {
+      first_name: result.old_first_name,
+      middle_name: result.old_middle_name ?? null,
+      last_name: result.old_last_name,
+      role_ids: result.old_role_ids ?? [],
+    },
+    new_values: { first_name, middle_name, last_name, role_ids },
+  }).catch(() => {});
 
   return Response.json({ success: true });
 };

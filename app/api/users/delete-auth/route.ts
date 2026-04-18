@@ -6,6 +6,8 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { insertAuditLog } from "@/lib/audit";
+import { sendAccountDeactivationEmail } from "@/lib/email/templates";
 const _DELETE = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -38,6 +40,16 @@ const _DELETE = async function(request: Request) {
   }
 
   if (soft) {
+    // Fetch profile for audit label before deletion
+    const { data: profile } = await adminClient
+      .from("users")
+      .select("first_name, last_name, email")
+      .eq("uid", uuid)
+      .single();
+    const entityLabel = profile
+      ? `${profile.first_name} ${profile.last_name}`
+      : uuid;
+
     // Soft delete: atomically clean up assignments/roles and stamp deleted_at
     const { data: rpcResult, error: rpcError } = await adminClient.rpc(
       "soft_delete_user_atomic",
@@ -69,6 +81,22 @@ const _DELETE = async function(request: Request) {
     syncUserPermissions(uuid).catch((err) =>
       console.error("syncUserPermissions failed after soft-delete:", err),
     );
+
+    insertAuditLog({
+      actor_id: user.id,
+      category: "ADMIN",
+      action: "user_deleted",
+      entity_type: "user",
+      entity_id: uuid,
+      entity_label: entityLabel,
+    }).catch(() => {});
+
+    if (profile?.email && profile?.first_name) {
+      sendAccountDeactivationEmail({
+        to: profile.email,
+        firstName: profile.first_name,
+      }).catch(() => {});
+    }
 
     return Response.json({ success: true });
   }

@@ -198,7 +198,7 @@ export default function SignUpConfirmedPage() {
               {pageState === "success" && (
                 <>
                   <Group justify="center" mb="md">
-                    <ThemeIcon color="teal" size={64} radius="xl" variant="light">
+                    <ThemeIcon color="#4EAE4A" size={64} radius="xl" variant="filled">
                       <IconCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
@@ -210,7 +210,7 @@ export default function SignUpConfirmedPage() {
                     your account — you&apos;ll be notified once you&apos;re approved.
                   </Text>
                   <Link href="/login" style={{ textDecoration: "none" }}>
-                    <Text ta="center" size="sm" c="#4EAE4A">
+                    <Text ta="center" size="sm" c="#808898">
                       ← Back to login page
                     </Text>
                   </Link>
@@ -221,7 +221,7 @@ export default function SignUpConfirmedPage() {
               {pageState === "already_verified" && (
                 <>
                   <Group justify="center" mb="md">
-                    <ThemeIcon color="teal" size={64} radius="xl" variant="light">
+                    <ThemeIcon color="#4EAE4A" size={64} radius="xl" variant="filled">
                       <IconCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
@@ -233,7 +233,7 @@ export default function SignUpConfirmedPage() {
                     administrator approval.
                   </Text>
                   <Link href="/login" style={{ textDecoration: "none" }}>
-                    <Text ta="center" size="sm" c="#4EAE4A">
+                    <Text ta="center" size="sm" c="#808898">
                       ← Back to login page
                     </Text>
                   </Link>
@@ -258,7 +258,7 @@ export default function SignUpConfirmedPage() {
                   {resendSent ? (
                     <>
                       <Group justify="center" mb="md">
-                        <ThemeIcon color="teal" size={48} radius="xl" variant="light">
+                        <ThemeIcon color="#4EAE4A" size={48} radius="xl" variant="filled">
                           <IconMailForward size={24} stroke={2} />
                         </ThemeIcon>
                       </Group>
@@ -352,18 +352,11 @@ export default function SignUpConfirmedPage() {
                   >
                     This verification link has already been used or has expired.
                   </Alert>
-                  <Group justify="space-between">
-                    <Link href="/login" style={{ textDecoration: "none" }}>
-                      <Text size="sm" c="#808898">
-                        ← Back to login
-                      </Text>
-                    </Link>
-                    <Link href="/signup" style={{ textDecoration: "none" }}>
-                      <Text size="sm" c="#4EAE4A">
-                        Sign up again
-                      </Text>
-                    </Link>
-                  </Group>
+                  <Link href="/login" style={{ textDecoration: "none" }}>
+                    <Text ta="center" size="sm" c="#808898">
+                      ← Back to login page
+                    </Text>
+                  </Link>
                 </>
               )}
 

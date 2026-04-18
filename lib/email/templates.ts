@@ -130,7 +130,7 @@ export async function sendVerificationEmail({
             <td style="padding: 0 40px 20px 40px;">
               <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
               <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
-                Thank you for signing up for <strong>ClassCloud</strong>. To get started, please verify your email address by clicking the button below:
+                Thank you for signing up for ClassCloud. To get started, please <strong>verify your email address</strong> by clicking the button below:
               </p>
             </td>
           </tr>
@@ -221,7 +221,7 @@ export async function sendEmailVerifiedEmail({
             <td style="padding: 0 40px 20px 40px;">
               <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Email Verified!</h2>
               <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
-                Hello ${firstName}, your email address has been successfully verified. Your <strong>ClassCloud</strong> registration has now been queued for administrative review.
+                Hello ${firstName}, your email address has been <strong>successfully verified</strong>. Your ClassCloud registration has now been queued for administrative review.
               </p>
             </td>
           </tr>
@@ -295,7 +295,7 @@ export async function sendApprovalEmail({
           <td style="padding: 0 40px 10px 40px;">
             <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
             <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
-              Welcome to <strong>ClassCloud</strong>! Your account has been reviewed and approved by an administrator. You now have full access to the platform.
+              Welcome to ClassCloud! Your account has been <strong>reviewed and approved</strong> by an administrator. You now have full access to the platform.
             </p>
           </td>
         </tr>
@@ -370,7 +370,7 @@ export async function sendRejectionEmail({
           <td style="padding: 0 40px 20px 40px;">
             <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
             <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
-              We regret to inform you that your <strong>ClassCloud</strong> registration request has been reviewed and declined for the following reason:
+              We regret to inform you that your ClassCloud registration request has been <strong>reviewed and declined</strong> for the following reason:
             </p>
           </td>
         </tr>
@@ -765,6 +765,68 @@ export async function sendInviteCancelledEmail({
         </td>
       </tr>
       ${endEmailLayout()}
+    `,
+  });
+}
+
+// ─── Account Deactivation ─────────────────────────────────────────────────────
+
+interface AccountDeactivationEmailParams {
+  to: string;
+  firstName: string;
+}
+
+export async function sendAccountDeactivationEmail({
+  to,
+  firstName,
+}: AccountDeactivationEmailParams) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Account Deactivation Notice",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Sorry to see you go!</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Hello ${firstName}, we're reaching out to let you know that your ClassCloud account has been <strong>officially deleted</strong> by an administrator.
+          </p>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 15px 0 0 0;">
+            We've truly appreciated your time with us. While your journey with ClassCloud ends here for now, we want to thank you for being part of our community.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 0 40px 30px 40px;">
+          <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fff5f5; border-left: 4px solid #e53e3e; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 15px;">
+                <p style="color: #c53030; font-size: 14px; margin: 0; line-height: 1.5;">
+                  <strong>Note:</strong> Your login access has been disabled, and any personal configurations have been removed from your active profile.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6; margin: 0;">
+            If you believe this was a mistake, please contact your school administrator.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
+          <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+            &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
+            This is an automated security notification.
+          </p>
+        </td>
+      </tr>
+    </table>
+  </div>
     `,
   });
 }

@@ -92,7 +92,7 @@ export default function ForgotPasswordPage() {
               {sent ? (
                 <>
                   <Group justify="center" mb="md">
-                    <ThemeIcon color="teal" size={48} radius="xl" variant="light">
+                    <ThemeIcon color="#4EAE4A" size={48} radius="xl" variant="filled">
                       <IconMailForward size={24} stroke={2} />
                     </ThemeIcon>
                   </Group>

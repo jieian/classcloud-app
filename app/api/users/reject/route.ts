@@ -34,7 +34,6 @@ const _POST = async function(request: Request) {
 
   const authUser = authData.user;
   const email = authUser.email;
-  const firstName = authUser.user_metadata?.first_name ?? "Applicant";
   const isBanned = authUser.banned_until && new Date(authUser.banned_until) > new Date();
 
   // Fetch profile name before deletion for the audit label
@@ -43,6 +42,7 @@ const _POST = async function(request: Request) {
     .select("first_name, last_name")
     .eq("uid", uid)
     .maybeSingle();
+  const firstName = profileData?.first_name ?? "Applicant";
   const entityLabel = profileData
     ? `${profileData.first_name} ${profileData.last_name}`
     : firstName;

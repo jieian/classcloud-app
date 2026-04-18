@@ -17,12 +17,18 @@ import {
   Skeleton,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
-import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconX,
+  IconInfoCircle,
+  IconLock,
+} from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import type { UserWithRoles, Role } from "../_lib";
-import { updateUser, fetchAllRoles, checkEmailExists } from "../_lib";
+import { updateUser, fetchAllRoles } from "../_lib";
 import { sortRoles } from "@/lib/roleUtils";
 
 interface EditUserDrawerProps {
@@ -36,7 +42,6 @@ interface FormValues {
   first_name: string;
   middle_name: string;
   last_name: string;
-  email: string;
   changePassword: boolean;
   newPassword: string;
   confirmPassword: string;
@@ -109,6 +114,19 @@ export default function EditUserDrawer({
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: {
+            width: "100%",
+            maxWidth: "100%",
+            borderRadius: "12px 12px 0 0",
+          },
+        },
+      }
+    : {};
 
   const form = useForm<FormValues>({
     validateInputOnChange: true,
@@ -116,7 +134,6 @@ export default function EditUserDrawer({
       first_name: user.first_name,
       middle_name: user.middle_name || "",
       last_name: user.last_name,
-      email: user.email,
       changePassword: false,
       newPassword: "",
       confirmPassword: "",
@@ -153,13 +170,6 @@ export default function EditUserDrawer({
           return "Last name must contain only letters and apostrophes (no extra spaces)";
         return null;
       },
-      email: (value) => {
-        const trimmed = value.trim();
-        if (!trimmed) return "Email is required";
-        if (trimmed.length > 255) return "Email must be 255 characters or less";
-        if (!/^\S+@\S+\.\S+$/.test(trimmed)) return "Invalid email format";
-        return null;
-      },
       newPassword: (value, values) => {
         if (!values.changePassword) return null;
         if (!value) return "New password is required";
@@ -190,7 +200,6 @@ export default function EditUserDrawer({
         first_name: user.first_name,
         middle_name: user.middle_name || "",
         last_name: user.last_name,
-        email: user.email,
         changePassword: false,
         newPassword: "",
         confirmPassword: "",
@@ -254,6 +263,7 @@ export default function EditUserDrawer({
           form.reset();
           onClose();
         },
+        ...confirmModalProps,
       });
     } else {
       onClose();
@@ -283,6 +293,7 @@ export default function EditUserDrawer({
       onConfirm: async () => {
         await submitForm();
       },
+      ...confirmModalProps,
     });
   };
 
@@ -290,27 +301,6 @@ export default function EditUserDrawer({
     try {
       setLoading(true);
 
-      const trimmedEmail = form.values.email.trim();
-
-      // Check email uniqueness before submitting
-      const emailChanged = trimmedEmail !== user.email;
-      if (emailChanged) {
-        const emailTaken = await checkEmailExists(trimmedEmail, user.uid);
-        if (emailTaken) {
-          form.setFieldError(
-            "email",
-            "This email is already in use by another user",
-          );
-          notifications.show({
-            title: "Email Already In Use",
-            message: "Please use a different email address.",
-            color: "red",
-          });
-          return;
-        }
-      }
-
-      // Transform names to title case
       const formattedData = {
         uid: user.uid,
         first_name: toTitleCase(form.values.first_name.trim()),
@@ -318,7 +308,6 @@ export default function EditUserDrawer({
           ? toTitleCase(form.values.middle_name.trim())
           : undefined,
         last_name: toTitleCase(form.values.last_name.trim()),
-        newEmail: emailChanged ? trimmedEmail : undefined,
         newPassword: form.values.changePassword
           ? form.values.newPassword
           : undefined,
@@ -401,6 +390,29 @@ export default function EditUserDrawer({
             <Text size="sm" fw={600} mb="md">
               User Information
             </Text>
+            <Tooltip
+              label="Email is locked and cannot be changed"
+              position="top"
+              withArrow
+            >
+              <Box mb="md">
+                <TextInput
+                  label="Email"
+                  value={user.email}
+                  readOnly
+                  rightSection={
+                    <IconLock size={16} style={{ color: "#808898" }} />
+                  }
+                  styles={{
+                    input: {
+                      backgroundColor: "#f5f5f5",
+                      cursor: "default",
+                      color: "#808898",
+                    },
+                  }}
+                />
+              </Box>
+            </Tooltip>
             <TextInput
               label="First Name"
               placeholder="Enter first name"
@@ -456,24 +468,6 @@ export default function EditUserDrawer({
                 ) : null
               }
               mb="md"
-            />
-            <TextInput
-              label="Email"
-              placeholder="Enter email"
-              required
-              maxLength={255}
-              withErrorStyles
-              {...form.getInputProps("email")}
-              description={`${form.values.email.length}/255 characters`}
-              rightSection={
-                form.errors.email ? (
-                  <Tooltip label={form.errors.email} position="top">
-                    <ActionIcon variant="transparent" color="red" size="sm">
-                      <IconInfoCircle size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : null
-              }
             />
           </Grid.Col>
 

@@ -10,6 +10,7 @@ import {
   TableTd,
   Text,
   Group,
+  Badge,
   VisuallyHidden,
 } from "@mantine/core";
 import type { PendingUser, Role } from "../_lib";
@@ -20,12 +21,16 @@ interface PendingUsersTableProps {
   users: PendingUser[];
   roles: Role[];
   onUpdate: () => void;
+  unreadMap: Map<string, string>;
+  onMarkRead: (uid: string) => void;
 }
 
 export default function PendingUsersTable({
   users,
   roles,
   onUpdate,
+  unreadMap,
+  onMarkRead,
 }: PendingUsersTableProps) {
   if (users.length === 0) {
     return (
@@ -40,13 +45,24 @@ export default function PendingUsersTable({
       .filter(Boolean)
       .join(" ");
 
+    const isUnread = user.source === "self_register" && unreadMap.has(user.uid);
+
     return (
-      <TableTr key={user.uid}>
+      <TableTr
+        key={user.uid}
+        onClick={() => { if (isUnread) onMarkRead(user.uid); }}
+        style={isUnread ? { cursor: "pointer" } : undefined}
+      >
         <TableTd>
           <Group gap="sm">
             <Text fz="sm" fw={500}>
               {fullName}
             </Text>
+            {isUnread && (
+              <Badge size="xs" color="red" variant="filled">
+                New
+              </Badge>
+            )}
           </Group>
         </TableTd>
         <TableTd>

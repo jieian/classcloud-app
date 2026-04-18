@@ -60,6 +60,7 @@ function clearSupabaseClientAuthArtifacts() {
       if (key && key.startsWith("sb-")) sessionKeys.push(key);
     }
     sessionKeys.forEach((k) => sessionStorage.removeItem(k));
+    sessionStorage.removeItem("cc_perm_version");
   } catch {
     // ignore storage failures
   }

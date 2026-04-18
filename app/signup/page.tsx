@@ -21,7 +21,7 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconCheck, IconMailForward, IconX } from "@tabler/icons-react";
+import { IconCheck, IconMailCheck, IconMailForward, IconX } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -104,8 +104,11 @@ export default function SignUpPage() {
 
   // ── Step 2 ──
   const [firstName, setFirstName] = useState("");
+  const [firstNameError, setFirstNameError] = useState("");
   const [middleName, setMiddleName] = useState("");
+  const [middleNameError, setMiddleNameError] = useState("");
   const [lastName, setLastName] = useState("");
+  const [lastNameError, setLastNameError] = useState("");
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [rolesError, setRolesError] = useState("");
   const [roles, setRoles] = useState<Role[]>([]);
@@ -135,6 +138,32 @@ export default function SignUpPage() {
   const triggerShake = () => {
     setShaking(true);
     setTimeout(() => setShaking(false), 500);
+  };
+
+  const NAME_REGEX = /^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/;
+
+  const validateFirstName = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "First name is required";
+    if (trimmed.length > 100) return "First name must be 100 characters or less";
+    if (!NAME_REGEX.test(trimmed)) return "First name must contain only letters";
+    return "";
+  };
+
+  const validateMiddleName = (value: string) => {
+    if (!value) return "";
+    const trimmed = value.trim();
+    if (trimmed.length > 100) return "Middle name must be 100 characters or less";
+    if (!NAME_REGEX.test(trimmed)) return "Middle name must contain only letters";
+    return "";
+  };
+
+  const validateLastName = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "Last name is required";
+    if (trimmed.length > 100) return "Last name must be 100 characters or less";
+    if (!NAME_REGEX.test(trimmed)) return "Last name must contain only letters";
+    return "";
   };
 
   const startCooldown = useCallback(() => {
@@ -282,12 +311,12 @@ export default function SignUpPage() {
       }
       const status = data.status as EmailCheckStatus;
       checkedEmailRef.current = emailToCheck.toLowerCase();
-      setEmailCheckStatus(status);
+      setEmailCheckStatus(status === "pending_verification" ? "active" : status);
       if (status === "active") {
         setEmailError("This email is already registered.");
       }
       if (status === "pending_verification") {
-        setEmailError("A verification email was already sent to this address.");
+        setEmailError("A verification email was already sent to this address. Check your inbox.");
       }
       return status;
     } catch {
@@ -301,7 +330,7 @@ export default function SignUpPage() {
     if (!trimmed) return;
 
     if (!domainAllowed(trimmed)) {
-      setEmailError(`Email must end with @${ALLOWED_DOMAINS.join(" or @")}.`);
+      setEmailError(`Email must end with @deped.gov.ph.`);
       return;
     }
     if (!EMAIL_REGEX.test(trimmed)) {
@@ -322,7 +351,7 @@ export default function SignUpPage() {
     const trimmed = email.trim();
 
     if (!domainAllowed(trimmed)) {
-      setEmailError(`Email must end with @${ALLOWED_DOMAINS.join(" or @")}.`);
+      setEmailError(`Email must end with @deped.gov.ph.`);
       triggerShake();
       return;
     }
@@ -366,8 +395,8 @@ export default function SignUpPage() {
       return;
     }
     if (status === "pending_verification") {
-      // Show the pending_verification interstitial — don't advance to step 2
-      setEmailCheckStatus("pending_verification");
+      setEmailError("A verification email was already sent to this address. Check your inbox.");
+      triggerShake();
       return;
     }
 
@@ -378,13 +407,14 @@ export default function SignUpPage() {
   const handleSubmit = async () => {
     setRolesError("");
 
-    if (!firstName.trim() || !lastName.trim()) {
+    const fnErr = validateFirstName(firstName);
+    const mnErr = validateMiddleName(middleName);
+    const lnErr = validateLastName(lastName);
+    setFirstNameError(fnErr);
+    setMiddleNameError(mnErr);
+    setLastNameError(lnErr);
+    if (fnErr || mnErr || lnErr) {
       triggerShake();
-      notifications.show({
-        title: "Missing Fields",
-        message: "First name and last name are required.",
-        color: "red",
-      });
       return;
     }
 
@@ -416,8 +446,7 @@ export default function SignUpPage() {
       if (!res.ok) {
         if (res.status === 409) {
           if (data.code === "PENDING_VERIFICATION") {
-            // Another request snuck in between step 1 check and step 2 submit
-            setEmailCheckStatus("pending_verification");
+            setEmailError("A verification email was already sent to this address. Check your inbox.");
             setStep(0);
             return;
           }
@@ -501,25 +530,17 @@ export default function SignUpPage() {
                 </Text>
               </Group>
 
-              <Text
-                ta="center"
-                fw={750}
-                className={`${classes.greenColor} ${classes.welcomeText}`}
-              >
-                Create an Account
-              </Text>
-
-              {/* ── Success state ── */}
+{/* ── Success state ── */}
               {submitted ? (
                 <>
                   <Group justify="center" mb="md">
                     <ThemeIcon
-                      color="teal"
+                      color="#4EAE4A"
                       size={64}
                       radius="xl"
-                      variant="light"
+                      variant="filled"
                     >
-                      <IconCheck size={36} stroke={2} />
+                      <IconMailCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
                   <Text ta="center" fw={700} fz="lg" c="#45903B" mb="xs">
@@ -527,9 +548,9 @@ export default function SignUpPage() {
                   </Text>
                   <Text ta="center" size="sm" c="#555" mb="lg">
                     A verification link has been sent to{" "}
-                    <strong>{submittedEmail}</strong>. Click the link in your
-                    inbox to confirm your email — your account will then be
-                    reviewed by an administrator.
+                    <strong>{submittedEmail}</strong>.{" "}
+                    <br />
+                    Click the link in your inbox to verify your email.
                   </Text>
                   <Link href="/login" style={{ textDecoration: "none" }}>
                     <Text ta="center" size="sm" c="#808898">
@@ -569,67 +590,8 @@ export default function SignUpPage() {
                     />
                   </Stepper>
 
-                  {/* ══════════════ PENDING VERIFICATION ══════════════ */}
-                  {emailCheckStatus === "pending_verification" && (
-                    <div>
-                      {resendSent ? (
-                        <>
-                          <Group justify="center" mb="md">
-                            <ThemeIcon color="teal" size={56} radius="xl" variant="light">
-                              <IconMailForward size={28} stroke={2} />
-                            </ThemeIcon>
-                          </Group>
-                          <Text ta="center" fw={700} fz="md" c="#45903B" mb="xs">
-                            Email Resent!
-                          </Text>
-                          <Text ta="center" size="sm" c="#555" mb="lg">
-                            A new verification email has been sent to{" "}
-                            <strong>{email.trim()}</strong>. Check your inbox.
-                          </Text>
-                        </>
-                      ) : (
-                        <>
-                          <Alert
-                            color="yellow"
-                            radius="md"
-                            mb="md"
-                            icon={<IconMailForward size={16} />}
-                          >
-                            A verification email was already sent to{" "}
-                            <strong>{email.trim()}</strong>. Check your inbox or
-                            request a new link below.
-                          </Alert>
-                          <Button
-                            fullWidth
-                            radius="md"
-                            color="#4EAE4A"
-                            loading={resendLoading}
-                            disabled={resendCooldown > 0}
-                            onClick={handleResend}
-                            mb="sm"
-                          >
-                            {resendCooldown > 0
-                              ? `Resend in ${resendCooldown}s`
-                              : "Resend Verification Email"}
-                          </Button>
-                        </>
-                      )}
-                      <Group justify="center">
-                        <Button
-                          variant="subtle"
-                          color="gray"
-                          size="sm"
-                          radius="md"
-                          onClick={handleStartOver}
-                        >
-                          Wrong email? Start over
-                        </Button>
-                      </Group>
-                    </div>
-                  )}
-
                   {/* ══════════════ STEP 1 ══════════════ */}
-                  {emailCheckStatus !== "pending_verification" && step === 0 && (
+                  {step === 0 && (
                     <div
                       onKeyDown={(e) => {
                         if (
@@ -759,7 +721,7 @@ export default function SignUpPage() {
                   )}
 
                   {/* ══════════════ STEP 2 ══════════════ */}
-                  {emailCheckStatus !== "pending_verification" && step === 1 && (
+                  {step === 1 && (
                     <div
                       onKeyDown={(e) => {
                         if (
@@ -783,10 +745,15 @@ export default function SignUpPage() {
                           required
                           radius="md"
                           value={firstName}
-                          onChange={(e) => setFirstName(e.currentTarget.value)}
+                          error={firstNameError}
+                          onChange={(e) => {
+                            setFirstName(e.currentTarget.value);
+                            setFirstNameError("");
+                          }}
+                          onBlur={() => setFirstNameError(validateFirstName(firstName))}
                           classNames={{
                             label: classes.blackInputLabel,
-                            input: classes.greenInputBorder,
+                            input: firstNameError ? classes.redInputBorder : classes.greenInputBorder,
                           }}
                         />
                         <TextInput
@@ -794,10 +761,15 @@ export default function SignUpPage() {
                           placeholder="(Optional)"
                           radius="md"
                           value={middleName}
-                          onChange={(e) => setMiddleName(e.currentTarget.value)}
+                          error={middleNameError}
+                          onChange={(e) => {
+                            setMiddleName(e.currentTarget.value);
+                            setMiddleNameError("");
+                          }}
+                          onBlur={() => setMiddleNameError(validateMiddleName(middleName))}
                           classNames={{
                             label: classes.blackInputLabel,
-                            input: classes.greenInputBorder,
+                            input: middleNameError ? classes.redInputBorder : classes.greenInputBorder,
                           }}
                         />
                         <TextInput
@@ -806,10 +778,15 @@ export default function SignUpPage() {
                           required
                           radius="md"
                           value={lastName}
-                          onChange={(e) => setLastName(e.currentTarget.value)}
+                          error={lastNameError}
+                          onChange={(e) => {
+                            setLastName(e.currentTarget.value);
+                            setLastNameError("");
+                          }}
+                          onBlur={() => setLastNameError(validateLastName(lastName))}
                           classNames={{
                             label: classes.blackInputLabel,
-                            input: classes.greenInputBorder,
+                            input: lastNameError ? classes.redInputBorder : classes.greenInputBorder,
                           }}
                         />
                       </SimpleGrid>

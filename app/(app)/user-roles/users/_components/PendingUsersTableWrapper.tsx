@@ -24,12 +24,25 @@ interface PendingUsersTableWrapperProps {
   search?: string;
   filter?: PendingFilter;
   onCountChange?: (count: number) => void;
+  onSelfRegCountChange?: (count: number) => void;
+  unreadMap?: Map<string, string>;
+  onMarkRead?: (uid: string) => void;
 }
 
 export default forwardRef<
   PendingUsersTableWrapperRef,
   PendingUsersTableWrapperProps
->(function PendingUsersTableWrapper({ search = "", filter = "self_register", onCountChange }, ref) {
+>(function PendingUsersTableWrapper(
+  {
+    search = "",
+    filter = "self_register",
+    onCountChange,
+    onSelfRegCountChange,
+    unreadMap = new Map(),
+    onMarkRead = () => {},
+  },
+  ref,
+) {
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,6 +76,9 @@ export default forwardRef<
       setUsers(data);
       setRoles(allRoles);
       onCountChange?.(data.length);
+      onSelfRegCountChange?.(
+        data.filter((u) => u.source === "self_register").length,
+      );
     } catch (err) {
       setError("Failed to load pending users. Please try again later.");
       console.error(err);
@@ -110,5 +126,13 @@ export default forwardRef<
     );
   }
 
-  return <PendingUsersTable users={filteredUsers} roles={roles} onUpdate={handleUpdate} />;
+  return (
+    <PendingUsersTable
+      users={filteredUsers}
+      roles={roles}
+      onUpdate={handleUpdate}
+      unreadMap={unreadMap}
+      onMarkRead={onMarkRead}
+    />
+  );
 });

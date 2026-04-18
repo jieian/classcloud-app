@@ -2,17 +2,20 @@
 
 import {
   Box,
+  Checkbox,
+  Divider,
+  Group,
+  Pagination,
+  Skeleton,
   Text,
   TextInput,
-  Checkbox,
-  Skeleton,
-  Divider,
-  Pagination,
+  Tooltip,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { CreateUserForm } from "../_lib/types";
 import type { Role } from "../_lib/userRolesService";
+import { checkPrincipalExists } from "../_lib/userRolesService";
 import { sortRoles } from "@/lib/roleUtils";
 
 interface StepAssignRoleProps {
@@ -32,6 +35,20 @@ export default function StepAssignRole({
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rolesExpanded, setRolesExpanded] = useState(false);
+  const [principalWarning, setPrincipalWarning] = useState(false);
+
+  useEffect(() => {
+    const hasPrincipal = form.values.role_ids.some(
+      (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name === "Principal",
+    );
+    if (!hasPrincipal) {
+      setPrincipalWarning(false);
+      return;
+    }
+    checkPrincipalExists()
+      .then(setPrincipalWarning)
+      .catch(() => setPrincipalWarning(false));
+  }, [form.values.role_ids]);
 
   // Sort then filter
   const sortedRoles = useMemo(() => sortRoles(availableRoles), [availableRoles]);
@@ -119,8 +136,36 @@ export default function StepAssignRole({
                   <Box key={role.role_id}>
                     <Checkbox
                       value={role.role_id.toString()}
-                      label={role.name}
                       py="sm"
+                      label={
+                        <Group gap={6} wrap="nowrap">
+                          <Text size="sm">{role.name}</Text>
+                          {role.name === "Principal" && principalWarning && (
+                            <Tooltip
+                              label="A Principal already exists. Assigning this role to another user may cause conflicts."
+                              withArrow
+                              multiline
+                              w={260}
+                            >
+                              <Box
+                                style={{
+                                  width: 16,
+                                  height: 16,
+                                  borderRadius: "50%",
+                                  backgroundColor: "#f59e0b",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  flexShrink: 0,
+                                  cursor: "default",
+                                }}
+                              >
+                                <Text size="xs" fw={700} c="white" lh={1}>!</Text>
+                              </Box>
+                            </Tooltip>
+                          )}
+                        </Group>
+                      }
                     />
                     {index < displayedRoles.length - 1 && <Divider />}
                   </Box>
