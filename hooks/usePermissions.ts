@@ -1,27 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 interface Role {
   role_id: number;
   name: string;
-}
-
-interface UserRoleJoinRow {
-  roles: Role | null;
-}
-
-interface PermissionRow {
-  permission_name: string;
-}
-
-function isSupabaseLockTimeout(message: string): boolean {
-  return /Navigator LockManager lock/i.test(message) && /timed out/i.test(message);
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface UsePermissionsResult {
@@ -29,10 +14,11 @@ export interface UsePermissionsResult {
   permissions: string[];
   firstName: string;
   lastName: string;
-  /** Load fresh roles/permissions/name for a given user ID. */
-  loadForUser: (userId: string) => Promise<boolean>;
+  /** Read permissions and roles from the user's JWT app_metadata (sync, no DB). */
+  loadFromUser: (user: User | null) => void;
   /** Wipe all in-memory permission state (on sign-out). */
   clearAll: () => void;
+  /** Fetch the user's display name from the DB. */
   refreshUserName: (userId: string) => Promise<void>;
 }
 
@@ -43,65 +29,20 @@ export function usePermissions(): UsePermissionsResult {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
-  // Hydrate from sessionStorage on mount — unblocks navigation immediately
-  // while the authoritative DB fetch runs in the background.
-  // sessionStorage is cleared on tab close, so stale data never persists.
-  useEffect(() => {
-    try {
-      const cachedRoles = sessionStorage.getItem("cc_roles");
-      const cachedPermissions = sessionStorage.getItem("cc_permissions");
-      if (cachedRoles) setRoles(JSON.parse(cachedRoles));
-      if (cachedPermissions) setPermissions(JSON.parse(cachedPermissions));
-    } catch {
-      // storage unavailable
+  /**
+   * Reads permissions and roles directly from the user's JWT app_metadata.
+   * No DB round-trip — data is embedded in the session token by syncUserPermissions.
+   */
+  const loadFromUser = useCallback((user: User | null) => {
+    if (!user) {
+      setRoles([]);
+      setPermissions([]);
+      return;
     }
+    const meta = user.app_metadata ?? {};
+    setPermissions(Array.isArray(meta.permissions) ? (meta.permissions as string[]) : []);
+    setRoles(Array.isArray(meta.roles) ? (meta.roles as Role[]) : []);
   }, []);
-
-  const fetchUserRoles = useCallback(
-    async (authUserId: string, retries = 2): Promise<Role[] | null> => {
-      const { data, error } = await supabase
-        .from("users")
-        .select("user_roles(role_id, roles(role_id, name))")
-        .eq("uid", authUserId)
-        .eq("active_status", 1)
-        .maybeSingle();
-
-      if (error) {
-        if (retries > 0 && isSupabaseLockTimeout(error.message)) {
-          await delay(250);
-          return fetchUserRoles(authUserId, retries - 1);
-        }
-        console.error("Failed to fetch roles:", error.message);
-        return null;
-      }
-
-      const userRoles = (data?.user_roles ?? []) as UserRoleJoinRow[];
-      return userRoles
-        .filter((row) => row.roles !== null)
-        .map((row) => ({ role_id: row.roles!.role_id, name: row.roles!.name }));
-    },
-    [supabase],
-  );
-
-  const fetchUserPermissions = useCallback(
-    async (authUserId: string, retries = 2): Promise<string[] | null> => {
-      const { data, error } = await supabase.rpc("get_user_permissions", {
-        user_uuid: authUserId,
-      });
-
-      if (error) {
-        if (retries > 0 && isSupabaseLockTimeout(error.message)) {
-          await delay(250);
-          return fetchUserPermissions(authUserId, retries - 1);
-        }
-        console.error("Failed to fetch permissions:", error.message);
-        return null;
-      }
-
-      return ((data ?? []) as PermissionRow[]).map((p) => p.permission_name);
-    },
-    [supabase],
-  );
 
   const refreshUserName = useCallback(
     async (userId: string): Promise<void> => {
@@ -118,59 +59,11 @@ export function usePermissions(): UsePermissionsResult {
     [supabase],
   );
 
-  /**
-   * Fetches roles, permissions, and name in parallel.
-   * Returns true if sessionStorage cache existed (caller can setLoading(false) early).
-   * Returns false if no cache — caller should wait for the fetch to complete.
-   * Does nothing (returns false) if the fetch fails due to lock contention.
-   */
-  const loadForUser = useCallback(
-    async (userId: string): Promise<boolean> => {
-      const hasCached = (() => {
-        try {
-          return !!(
-            sessionStorage.getItem("cc_roles") &&
-            sessionStorage.getItem("cc_permissions")
-          );
-        } catch {
-          return false;
-        }
-      })();
-
-      const [fetchedRoles, fetchedPermissions] = await Promise.all([
-        fetchUserRoles(userId),
-        fetchUserPermissions(userId),
-        refreshUserName(userId),
-      ]);
-
-      if (!fetchedRoles || !fetchedPermissions) return hasCached;
-
-      setRoles(fetchedRoles);
-      setPermissions(fetchedPermissions);
-
-      try {
-        sessionStorage.setItem("cc_roles", JSON.stringify(fetchedRoles));
-        sessionStorage.setItem("cc_permissions", JSON.stringify(fetchedPermissions));
-      } catch {
-        // storage unavailable
-      }
-
-      return hasCached;
-    },
-    [fetchUserRoles, fetchUserPermissions, refreshUserName],
-  );
-
   const clearAll = useCallback(() => {
     setRoles([]);
     setPermissions([]);
     setFirstName("");
     setLastName("");
-    try {
-      sessionStorage.removeItem("cc_roles");
-      sessionStorage.removeItem("cc_permissions");
-    } catch {
-      // storage unavailable
-    }
   }, []);
 
   return {
@@ -178,7 +71,7 @@ export function usePermissions(): UsePermissionsResult {
     permissions,
     firstName,
     lastName,
-    loadForUser,
+    loadFromUser,
     clearAll,
     refreshUserName,
   };

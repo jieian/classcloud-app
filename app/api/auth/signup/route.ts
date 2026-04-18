@@ -2,6 +2,8 @@ import { promises as dns } from "dns";
 import { sendVerificationEmail } from "@/lib/email/templates";
 import { withErrorHandler } from "@/lib/api-error";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { insertAuditLog } from "@/lib/audit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { adminClient } from "@/lib/supabase/admin";
 import { generateRawToken, hashToken, encryptPassword } from "@/lib/crypto";
 
@@ -33,7 +35,16 @@ async function domainHasMxRecords(email: string): Promise<boolean> {
 const _POST = async function (request: Request) {
   // ── Rate limit ────────────────────────────────────────────────────────────
   const ip = getClientIp(request);
-  if (!signupLimiter.check(ip).allowed) {
+  if (!(await signupLimiter.check(ip)).allowed) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/signup",
+      metadata: { endpoint: "/api/auth/signup" },
+    });
     return Response.json(
       { error: "Too many signup attempts. Please wait a few minutes and try again." },
       { status: 429 },
@@ -42,7 +53,36 @@ const _POST = async function (request: Request) {
 
   // ── Parse + validate body ─────────────────────────────────────────────────
   const body = await request.json();
-  const { first_name, middle_name, last_name, email, password, role_ids } = body;
+  const { first_name, middle_name, last_name, email, password, role_ids, website, turnstile_token } = body;
+
+  if (website) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "honeypot_triggered",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/signup",
+      metadata: { endpoint: "/api/auth/signup" },
+    });
+    return Response.json({ success: true }, { status: 201 });
+  }
+
+  if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token, ip))) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "turnstile_failed",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/signup",
+      metadata: { endpoint: "/api/auth/signup" },
+    });
+    return Response.json(
+      { error: "Security verification failed. Please refresh and try again." },
+      { status: 400 },
+    );
+  }
 
   if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !password) {
     return Response.json({ error: "Missing required fields." }, { status: 400 });

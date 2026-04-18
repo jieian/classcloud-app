@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -13,18 +13,7 @@ const _POST = async function(request: Request) {
   }
 
 
-  const { data: permsData, error: permsError } = await adminClient.rpc(
-    "get_user_permissions",
-    { user_uuid: caller.id },
-  );
-
-  if (
-    permsError ||
-    !permsData?.some(
-      (p: { permission_name: string }) =>
-        p.permission_name === "curriculum.full_access",
-    )
-  ) {
+  if (!getPermissionsFromUser(caller).includes("curriculum.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

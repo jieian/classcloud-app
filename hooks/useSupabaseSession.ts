@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
-import type { Session, AuthChangeEvent } from "@supabase/supabase-js";
-import type { User } from "@supabase/supabase-js";
+import type { Session, AuthChangeEvent, User } from "@supabase/supabase-js";
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -16,12 +15,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 interface UseSupabaseSessionOptions {
   /**
-   * Called when a session is resolved. Receives the user ID and should load
-   * permissions. Returns true if cached data existed (allows early loading=false).
+   * Called synchronously when a session is resolved.
+   * Receives the full User object — permissions are read from app_metadata,
+   * so no DB fetch is needed and this never blocks loading.
    */
-  onUserResolved: (userId: string) => Promise<boolean>;
+  onUserResolved: (user: User | null) => void;
   /** Called when the session is cleared (sign-out, token failure). */
   onSessionCleared: () => void;
+  /**
+   * Called after loading is set to false to refresh the display name
+   * from the DB in the background (non-blocking).
+   */
+  onRefreshName: (userId: string) => Promise<void>;
 }
 
 export interface UseSupabaseSessionResult {
@@ -32,55 +37,47 @@ export interface UseSupabaseSessionResult {
 export function useSupabaseSession({
   onUserResolved,
   onSessionCleared,
+  onRefreshName,
 }: UseSupabaseSessionOptions): UseSupabaseSessionResult {
   const supabase = getSupabase();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Prevent concurrent applySession calls and double-invocation from
-  // onAuthStateChange + getSession bootstrap racing each other.
+  // Prevent concurrent applySession calls racing each other.
   const applyInFlightRef = useRef(false);
 
   useEffect(() => {
     let alive = true;
     let settled = false;
 
-    const applySession = async (session: Session | null) => {
+    const applySession = (session: Session | null) => {
       if (!alive || applyInFlightRef.current) return;
       applyInFlightRef.current = true;
 
       const currentUser = session?.user ?? null;
       setUser(currentUser);
 
-      if (currentUser) {
-        try {
-          const hasCached = await withTimeout(
-            onUserResolved(currentUser.id),
-            15000,
-            "loadForUser",
-          );
-          // Unblock the UI immediately if cache existed; the fresh fetch
-          // already ran inside onUserResolved.
-          if (hasCached && alive) {
-            setLoading(false);
-            settled = true;
-          }
-        } catch (error) {
-          console.warn("[auth] loadForUser background refresh failed:", error);
-        }
-      } else {
+      // Permissions and roles come from app_metadata — synchronous, no DB wait.
+      onUserResolved(currentUser);
+
+      if (!currentUser) {
         onSessionCleared();
       }
 
       if (alive) setLoading(false);
       settled = true;
       applyInFlightRef.current = false;
+
+      // Refresh display name in background after unblocking the UI.
+      if (currentUser) {
+        onRefreshName(currentUser.id).catch(() => {});
+      }
     };
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
-      async (event: AuthChangeEvent, session: Session | null) => {
+      (event: AuthChangeEvent, session: Session | null) => {
         if (event === "TOKEN_REFRESHED" && !session) {
           setUser(null);
           onSessionCleared();
@@ -96,7 +93,7 @@ export function useSupabaseSession({
           return;
         }
 
-        await applySession(session);
+        applySession(session);
       },
     );
 
@@ -106,8 +103,8 @@ export function useSupabaseSession({
       10000,
       "getSession",
     )
-      .then(async ({ data }) => {
-        await applySession(data.session ?? null);
+      .then(({ data }) => {
+        applySession(data.session ?? null);
       })
       .catch(() => {
         if (!alive) return;

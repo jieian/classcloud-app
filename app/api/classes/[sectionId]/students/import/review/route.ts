@@ -1,7 +1,7 @@
 import * as XLSXStyle from "xlsx-js-style";
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -86,7 +86,7 @@ const _POST = async function(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   const hasFullAccess = permissions.includes("students.full_access");
   const hasPartialAccess = permissions.includes(
     "students.limited_access",

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -13,15 +13,11 @@ const _DELETE = async function(request: Request) {
   }
 
 
-  const { data: permsData, error: permsError } = await adminClient.rpc(
-    "get_user_permissions",
-    { user_uuid: user.id },
-  );
+  const permissions = getPermissionsFromUser(user);
+  const hasFullAccess = permissions.includes("exams.full_access");
+  const hasLimitedAccess = permissions.includes("exams.limited_access");
 
-  const hasFullAccess = permsData?.some((p: any) => p.permission_name === "exams.full_access");
-  const hasLimitedAccess = permsData?.some((p: any) => p.permission_name === "exams.limited_access");
-
-  if (permsError || (!hasFullAccess && !hasLimitedAccess)) {
+  if (!hasFullAccess && !hasLimitedAccess) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

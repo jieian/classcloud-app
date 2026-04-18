@@ -1,6 +1,6 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -25,7 +25,7 @@ const _POST = async function(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   const hasAccess =
     permissions.includes("students.full_access") ||
     permissions.includes("students.limited_access");
@@ -104,8 +104,14 @@ const _POST = async function(
       p_section_id: sectionId,
       p_sy_id: syId,
     });
-    if (error)
+    if (error) {
+      if (error.code === "23505")
+        return Response.json(
+          { error: "This student is already enrolled in another class for this school year." },
+          { status: 409 },
+        );
       return Response.json({ error: "Internal server error." }, { status: 500 });
+    }
     return null;
   }
 
@@ -277,7 +283,7 @@ const _GET = async function(
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   const hasAccess =
     permissions.includes("students.full_access") ||
     permissions.includes("students.limited_access") ||

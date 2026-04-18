@@ -1,15 +1,25 @@
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { insertAuditLog } from "@/lib/audit";
 
 // 10 checks per IP per minute — matches realistic login-page usage.
 const checkPendingLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000 });
 
 const _POST = async function(request: Request) {
   const ip = getClientIp(request);
-  const limit = checkPendingLimiter.check(ip);
+  const limit = await checkPendingLimiter.check(ip);
   if (!limit.allowed) {
-    return Response.json({ pending: false }, { status: 429 });
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/check-pending",
+      metadata: { endpoint: "/api/auth/check-pending" },
+    });
+    return Response.json({ error: "Too many attempts. Please wait a minute before trying again." }, { status: 429 });
   }
 
   const { email } = await request.json();

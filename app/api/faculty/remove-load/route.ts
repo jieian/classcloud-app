@@ -1,7 +1,8 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { syncUserPermissions } from "@/lib/permissions-sync";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -14,17 +15,7 @@ const _POST = async function(request: Request) {
 
 
   // Permission check
-  const { data: permsData, error: permsError } = await adminClient.rpc(
-    "get_user_permissions",
-    { user_uuid: caller.id },
-  );
-
-  if (
-    permsError ||
-    !permsData?.some(
-      (p: any) => p.permission_name === "faculty.full_access",
-    )
-  ) {
+  if (!getPermissionsFromUser(caller).includes("faculty.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -46,6 +37,11 @@ const _POST = async function(request: Request) {
       { status: 500 },
     );
   }
+
+  // Sync JWT claims — remove_faculty_academic_load strips the Faculty role
+  syncUserPermissions(faculty_id).catch((err) =>
+    console.error("syncUserPermissions failed after remove-load:", err),
+  );
 
   return Response.json({ success: true }, { status: 200 });
 }

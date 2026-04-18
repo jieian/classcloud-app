@@ -26,6 +26,8 @@ import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
 import classes from "@/components/loginPage/LoginPage.module.css";
+import { sortRoles } from "@/lib/roleUtils";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 const domainAllowed = (e: string) => ALLOWED_DOMAINS.some((d) => e.toLowerCase().endsWith(`@${d}`));
@@ -73,16 +75,11 @@ function PasswordRequirement({
 interface Role {
   role_id: number;
   name: string;
+  is_faculty: boolean;
+  is_protected: boolean;
 }
 
 const ROLES_PER_PAGE = 3;
-
-const PROTECTED_ROLE_NAMES = [
-  "faculty",
-  "grade level coordinator",
-  "subject coordinator",
-  "principal",
-];
 
 type EmailCheckStatus =
   | "idle"
@@ -114,14 +111,14 @@ export default function SignUpPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [rolePage, setRolePage] = useState(1);
-  const sortedRoles = [
-    ...roles.filter((r) =>
-      PROTECTED_ROLE_NAMES.includes(r.name.trim().toLowerCase()),
-    ),
-    ...roles.filter(
-      (r) => !PROTECTED_ROLE_NAMES.includes(r.name.trim().toLowerCase()),
-    ),
-  ];
+  const sortedRoles = sortRoles(roles);
+
+  // ── Honeypot ──
+  const [honeypot, setHoneypot] = useState("");
+
+  // ── Turnstile ──
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
 
   // ── Submit ──
   const [loading, setLoading] = useState(false);
@@ -221,6 +218,8 @@ export default function SignUpPage() {
     setResendSent(false);
     setResendCooldown(0);
     if (cooldownRef.current) clearInterval(cooldownRef.current);
+    setTurnstileToken(null);
+    turnstileRef.current?.reset();
   };
 
   const strength = getPasswordStrength(password);
@@ -271,6 +270,13 @@ export default function SignUpPage() {
       );
       const data = await res.json();
       if (!res.ok) {
+        if (data?.error) {
+          notifications.show({
+            title: "Email Check Failed",
+            message: data.error,
+            color: "red",
+          });
+        }
         setEmailCheckStatus("idle");
         return "idle";
       }
@@ -400,6 +406,8 @@ export default function SignUpPage() {
           email: email.trim(),
           password,
           role_ids: selectedRoles.map(Number),
+          website: honeypot,
+          turnstile_token: turnstileToken,
         }),
       });
 
@@ -418,6 +426,8 @@ export default function SignUpPage() {
           triggerShake();
           return;
         }
+        setTurnstileToken(null);
+        turnstileRef.current?.reset();
         triggerShake();
         notifications.show({
           title: "Sign Up Failed",
@@ -431,6 +441,8 @@ export default function SignUpPage() {
       setSubmittedEmail(email.trim());
       setSubmitted(true);
     } catch {
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
       triggerShake();
       notifications.show({
         title: "Sign Up Failed",
@@ -527,6 +539,18 @@ export default function SignUpPage() {
                 </>
               ) : (
                 <>
+                  {/* ── Honeypot ── */}
+                  <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }} aria-hidden="true">
+                    <input
+                      type="text"
+                      name="website"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.currentTarget.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+                  </div>
+
                   {/* ── Step indicator ── */}
                   <Stepper
                     active={step}
@@ -941,6 +965,16 @@ export default function SignUpPage() {
                         })()
                       )}
 
+                      <Turnstile
+                        ref={turnstileRef}
+                        style={{ marginTop: "1.5rem" }}
+                        siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+                        onSuccess={(token) => setTurnstileToken(token)}
+                        onError={() => setTurnstileToken(null)}
+                        onExpire={() => setTurnstileToken(null)}
+                        options={{ appearance: "interaction-only", theme: "light" }}
+                      />
+
                       <Group justify="space-between" mt="lg">
                         <Button
                           variant="default"
@@ -957,11 +991,12 @@ export default function SignUpPage() {
                           disabled={
                             !firstName.trim() ||
                             !lastName.trim() ||
-                            selectedRoles.length === 0
+                            selectedRoles.length === 0 ||
+                            !turnstileToken
                           }
                           onClick={handleSubmit}
                         >
-                          Create Account
+                          Sign Up
                         </Button>
                       </Group>
                     </div>

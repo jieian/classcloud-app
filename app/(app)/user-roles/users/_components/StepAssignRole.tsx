@@ -7,11 +7,13 @@ import {
   Checkbox,
   Skeleton,
   Divider,
+  Pagination,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { useMemo, useState } from "react";
 import type { CreateUserForm } from "../_lib/types";
 import type { Role } from "../_lib/userRolesService";
+import { sortRoles } from "@/lib/roleUtils";
 
 interface StepAssignRoleProps {
   form: UseFormReturnType<CreateUserForm>;
@@ -19,24 +21,54 @@ interface StepAssignRoleProps {
   loadingRoles: boolean;
 }
 
+const ROLES_PER_PAGE = 5;
+const MAX_VISIBLE_NAMES = 2;
+
 export default function StepAssignRole({
   form,
   availableRoles,
   loadingRoles,
 }: StepAssignRoleProps) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rolesExpanded, setRolesExpanded] = useState(false);
 
-  // Client-side search filtering
-  const filteredRoles = useMemo(
-    () =>
-      availableRoles.filter((role) =>
-        role.name.toLowerCase().includes(searchQuery.toLowerCase()),
-      ),
-    [availableRoles, searchQuery],
+  // Sort then filter
+  const sortedRoles = useMemo(() => sortRoles(availableRoles), [availableRoles]);
+
+  const filteredRoles = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return q
+      ? sortedRoles.filter((role) => role.name.toLowerCase().includes(q))
+      : sortedRoles;
+  }, [sortedRoles, searchQuery]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRoles.length / ROLES_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const displayedRoles = filteredRoles.slice(
+    (safePage - 1) * ROLES_PER_PAGE,
+    safePage * ROLES_PER_PAGE,
   );
 
-  const displayedRoles = showAll ? filteredRoles : filteredRoles.slice(0, 5);
+  // Handle search: reset to page 1
+  function handleSearch(value: string) {
+    setSearchQuery(value);
+    setCurrentPage(1);
+  }
+
+  // Selected role names for the summary label
+  const selectedRoleNames = useMemo(
+    () =>
+      form.values.role_ids
+        .map((id) => availableRoles.find((r) => r.role_id.toString() === id)?.name)
+        .filter((n): n is string => Boolean(n)),
+    [form.values.role_ids, availableRoles],
+  );
+
+  const hiddenCount = selectedRoleNames.length - MAX_VISIBLE_NAMES;
+  const visibleNames = rolesExpanded
+    ? selectedRoleNames
+    : selectedRoleNames.slice(0, MAX_VISIBLE_NAMES);
 
   return (
     <Box>
@@ -63,7 +95,7 @@ export default function StepAssignRole({
         <TextInput
           placeholder="Search"
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onChange={(e) => handleSearch(e.target.value)}
           mb="md"
         />
 
@@ -100,24 +132,55 @@ export default function StepAssignRole({
               </Text>
             )}
 
-            {filteredRoles.length > 5 && (
-              <>
-                <Divider />
-                <Text
-                  size="sm"
-                  ta="center"
-                  py="sm"
-                  style={{ cursor: "pointer" }}
-                  onClick={() => setShowAll(!showAll)}
-                >
-                  {showAll ? "Show Less" : "See More"}
-                </Text>
-                <Divider />
-              </>
+            {totalPages > 1 && (
+              <Pagination
+                total={totalPages}
+                value={safePage}
+                onChange={setCurrentPage}
+                size="sm"
+                mt="md"
+              />
+            )}
+
+            {/* Selected roles summary */}
+            {selectedRoleNames.length > 0 && (
+              <Text size="sm" c="dimmed" mt="sm">
+                <strong style={{ color: "#1a1a1a" }}>
+                  Selected Roles ({selectedRoleNames.length}):
+                </strong>{" "}
+                {visibleNames.join(", ")}
+                {!rolesExpanded && hiddenCount > 0 && (
+                  <>
+                    {" "}
+                    <Text
+                      component="span"
+                      size="sm"
+                      c="#4EAE4A"
+                      style={{ cursor: "pointer", textDecoration: "underline" }}
+                      onClick={() => setRolesExpanded(true)}
+                    >
+                      +{hiddenCount} more
+                    </Text>
+                  </>
+                )}
+                {rolesExpanded && hiddenCount > 0 && (
+                  <>
+                    {" "}
+                    <Text
+                      component="span"
+                      size="sm"
+                      c="#4EAE4A"
+                      style={{ cursor: "pointer", textDecoration: "underline" }}
+                      onClick={() => setRolesExpanded(false)}
+                    >
+                      Show less
+                    </Text>
+                  </>
+                )}
+              </Text>
             )}
           </>
         )}
-
       </Box>
     </Box>
   );

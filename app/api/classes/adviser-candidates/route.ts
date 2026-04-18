@@ -1,6 +1,6 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -25,7 +25,7 @@ const _GET = async function(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const permissions = await getUserPermissions(caller.id);
+  const permissions = getPermissionsFromUser(caller);
   if (!permissions.includes("classes.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

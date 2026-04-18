@@ -1,8 +1,9 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendApprovalEmail } from "@/lib/email/templates";
-
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { syncUserPermissions } from "@/lib/permissions-sync";
+import { insertAuditLog } from "@/lib/audit";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -69,6 +70,21 @@ const _POST = async function(request: Request) {
       console.error("Failed to send approval email:", err),
     );
   }
+
+  // Sync JWT claims + Redis version (non-fatal)
+  syncUserPermissions(uid).catch((err) =>
+    console.error("syncUserPermissions failed after approve:", err),
+  );
+
+  // Audit log (non-fatal)
+  insertAuditLog({
+    actor_id: user.id,
+    category: "ADMIN",
+    action: "user_approved",
+    entity_type: "user",
+    entity_id: uid,
+    entity_label: `${first_name.trim()} ${last_name.trim()}`,
+  }).catch(() => {});
 
   return Response.json({ success: true });
 }

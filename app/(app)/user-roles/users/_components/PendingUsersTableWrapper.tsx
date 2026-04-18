@@ -14,19 +14,22 @@ import PendingUsersTable from "./PendingUsersTable";
 import PendingUsersTableSkeleton from "./PendingUsersTableSkeleton";
 import { fetchPendingUsers, fetchAllRoles, type PendingUser, type Role } from "../_lib";
 
+export type PendingFilter = "self_register" | "admin_invite";
+
 export interface PendingUsersTableWrapperRef {
   refresh: () => void;
 }
 
 interface PendingUsersTableWrapperProps {
   search?: string;
+  filter?: PendingFilter;
   onCountChange?: (count: number) => void;
 }
 
 export default forwardRef<
   PendingUsersTableWrapperRef,
   PendingUsersTableWrapperProps
->(function PendingUsersTableWrapper({ search = "", onCountChange }, ref) {
+>(function PendingUsersTableWrapper({ search = "", filter = "self_register", onCountChange }, ref) {
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,18 +72,27 @@ export default forwardRef<
   }
 
   const filteredUsers = useMemo(() => {
-    if (!search.trim()) return users;
+    let result = users;
+
+    // Source filter — always applied (no "all" option)
+    result = result.filter((u) => u.source === filter);
+
+    // Search filter
     const query = search.toLowerCase().trim();
-    return users.filter((user) => {
-      const fullName = `${user.first_name} ${user.last_name}`.toLowerCase();
-      return (
-        fullName.includes(query) ||
-        user.first_name.toLowerCase().includes(query) ||
-        user.last_name.toLowerCase().includes(query) ||
-        user.email.toLowerCase().includes(query)
-      );
-    });
-  }, [users, search]);
+    if (query) {
+      result = result.filter((user) => {
+        const fullName = `${user.first_name} ${user.last_name}`.toLowerCase();
+        return (
+          fullName.includes(query) ||
+          user.first_name.toLowerCase().includes(query) ||
+          user.last_name.toLowerCase().includes(query) ||
+          user.email.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    return result;
+  }, [users, search, filter]);
 
   const handleUpdate = () => {
     loadUsers();

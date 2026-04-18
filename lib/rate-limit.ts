@@ -1,16 +1,18 @@
+import { Ratelimit } from "@upstash/ratelimit";
+import { redis } from "@/lib/redis";
+
 /**
- * In-process sliding-window rate limiter.
+ * Sliding-window rate limiter backed by Upstash Redis.
  *
- * Trade-offs:
- *   + Zero external dependencies, works on any runtime.
- *   - State is per-serverless-instance (not shared across Vercel instances).
- *     For this school app's traffic level this is sufficient protection; if
- *     you scale to multiple instances, swap the Map for an Upstash Redis
- *     counter (upstash/ratelimit) without changing the call-site API.
+ * Primary:  Upstash Redis — shared across all serverless instances, so limits
+ *           are enforced correctly even under horizontal scaling.
+ * Fallback: In-process Map — used automatically when Redis is unavailable
+ *           (network error, cold-start before Redis is reachable, etc.).
+ *           Per-instance only, but still provides meaningful protection.
  *
  * Usage:
  *   const limiter = createRateLimiter({ maxRequests: 5, windowMs: 60_000 })
- *   const result = limiter.check(ip)
+ *   const result = await limiter.check(ip)
  *   if (!result.allowed) {
  *     return Response.json({ error: "Too many requests." }, { status: 429 })
  *   }
@@ -37,11 +39,18 @@ interface WindowEntry {
 
 export function createRateLimiter(options: RateLimiterOptions) {
   const { maxRequests, windowMs } = options;
+  const windowSeconds = Math.ceil(windowMs / 1000);
+
+  // ── Primary: Redis-backed (shared across instances) ────────────────────────
+  const upstashLimiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(maxRequests, `${windowSeconds} s`),
+  });
+
+  // ── Fallback: In-process sliding window ────────────────────────────────────
   const store = new Map<string, WindowEntry>();
 
   // Periodically purge stale keys to prevent unbounded memory growth.
-  // setInterval is fine here; Node.js will GC the closure once the module
-  // is unloaded (serverless cold-start lifecycle).
   const cleanup = setInterval(
     () => {
       const cutoff = Date.now() - windowMs;
@@ -56,12 +65,11 @@ export function createRateLimiter(options: RateLimiterOptions) {
   // Prevent the interval from keeping a Node.js process alive in tests.
   if (cleanup.unref) cleanup.unref();
 
-  function check(identifier: string): RateLimitResult {
+  function inProcessCheck(identifier: string): RateLimitResult {
     const now = Date.now();
     const cutoff = now - windowMs;
 
     const entry = store.get(identifier) ?? { timestamps: [] };
-    // Drop timestamps outside the window (sliding window)
     entry.timestamps = entry.timestamps.filter((t) => t >= cutoff);
     entry.timestamps.push(now);
     store.set(identifier, entry);
@@ -72,6 +80,17 @@ export function createRateLimiter(options: RateLimiterOptions) {
     const resetAt = entry.timestamps[0] + windowMs;
 
     return { allowed, remaining, resetAt };
+  }
+
+  // ── check — try Redis, fall back to in-process ─────────────────────────────
+  async function check(identifier: string): Promise<RateLimitResult> {
+    try {
+      const { success, remaining, reset } = await upstashLimiter.limit(identifier);
+      return { allowed: success, remaining, resetAt: reset };
+    } catch {
+      // Redis unavailable — degrade gracefully to per-instance in-process check.
+      return inProcessCheck(identifier);
+    }
   }
 
   return { check };

@@ -612,6 +612,163 @@ function emailDate(): string {
   return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 }
 
+// ─── Admin Invitation ─────────────────────────────────────────────────────────
+
+interface InvitationEmailParams {
+  to: string;
+  firstName: string;
+  middleName?: string;
+  lastName: string;
+  roles: string[];
+  tempPassword: string;
+  activationLink: string;
+  isResend?: boolean;
+}
+
+export async function sendInvitationEmail({
+  to,
+  firstName,
+  middleName,
+  lastName,
+  roles,
+  tempPassword,
+  activationLink,
+  isResend = false,
+}: InvitationEmailParams) {
+  const nameRows: { label: string; value: string }[] = [
+    { label: "First Name", value: firstName },
+  ];
+  if (middleName?.trim()) {
+    nameRows.push({ label: "Middle Name", value: middleName.trim() });
+  }
+  nameRows.push({ label: "Last Name", value: lastName });
+
+  const roleRows =
+    roles.length > 0
+      ? roles.map((r, i) => `[${i + 1}] ${r}`).join("<br>")
+      : "No roles assigned";
+  nameRows.push({ label: roles.length === 1 ? "Role" : "Roles", value: roleRows });
+
+  const resendNote = isResend
+    ? notesBox(
+        "<strong>Note:</strong> Your previous invitation link has been invalidated. Please use this new link only.",
+      )
+    : "";
+
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: isResend
+      ? "[ClassCloud] New ClassCloud Invitation — Activate Your Account"
+      : "[ClassCloud] ClassCloud Invitation — Activate Your Account",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            An account has been created for you on <strong>ClassCloud</strong>. Please activate your account by clicking the button below.
+          </p>
+        </td>
+      </tr>
+      ${resendNote}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <p style="color: #1a1a1a; font-size: 14px; font-weight: 600; margin: 0 0 8px 0;">Account Information</p>
+          ${infoBox(nameRows)}
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <p style="color: #1a1a1a; font-size: 14px; font-weight: 600; margin: 0 0 8px 0;">Account Credentials</p>
+          ${infoBox([
+            { label: "Email", value: to },
+            { label: "Temporary Password", value: `<code style="background:#f5f5f5;padding:2px 6px;border-radius:3px;font-size:14px;">${tempPassword}</code>` },
+          ])}
+        </td>
+      </tr>
+      ${notesBox(
+        "<strong>Important:</strong> This is a temporary password. You will be required to change it upon first login.",
+        true,
+      )}
+      ${ctaButton("Activate Your Account", activationLink)}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #888; font-size: 13px; line-height: 1.5; margin: 0;">
+            If the button doesn't work, copy and paste this link into your browser:<br>
+            <a href="${activationLink}" style="color: #45903B; word-break: break-all;">${activationLink}</a>
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+interface InviteActivatedEmailParams {
+  to: string;
+  firstName: string;
+}
+
+export async function sendInviteActivatedEmail({
+  to,
+  firstName,
+}: InviteActivatedEmailParams) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Account Activated Successfully",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Account Activated!</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Hello ${firstName}, you have successfully activated your <strong>ClassCloud</strong> account. Welcome!
+          </p>
+        </td>
+      </tr>
+      ${notesBox(
+        "<strong>Reminder:</strong> You will be prompted to change your temporary password upon first login.",
+      )}
+      ${ctaButton("Go to ClassCloud", "https://classcloudph.app/login")}
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+interface InviteCancelledEmailParams {
+  to: string;
+  firstName: string;
+}
+
+export async function sendInviteCancelledEmail({
+  to,
+  firstName,
+}: InviteCancelledEmailParams) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Invitation Cancelled",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Hello, ${firstName}!</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Your <strong>ClassCloud</strong> invitation has been cancelled by an administrator.
+            Any previously sent invitation links are no longer valid.
+          </p>
+          <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6; margin-top: 16px;">
+            If you believe this was a mistake, please contact your school administrator.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
+  });
+}
+
 // ─── Transfer Request — Created ───────────────────────────────────────────────
 
 export async function sendTransferRequestCreatedToFromAdviser({

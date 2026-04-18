@@ -8,18 +8,26 @@ import {
   ActionIcon,
   Tooltip,
   UnstyledButton,
+  Select,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { IconRefresh, IconChevronDown } from "@tabler/icons-react";
+import { IconRefresh, IconChevronDown, IconList } from "@tabler/icons-react";
 import { SearchBar } from "../../../../../components/searchBar/SearchBar";
 import PendingUsersTableWrapper, {
   type PendingUsersTableWrapperRef,
+  type PendingFilter,
 } from "./PendingUsersTableWrapper";
+
+const FILTER_OPTIONS = [
+  { value: "self_register", label: "Self-Registration" },
+  { value: "admin_invite", label: "Admin-Invited" },
+];
 
 export function PendingSection() {
   const [opened, { toggle }] = useDisclosure(false);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<PendingFilter>("self_register");
   const tableRef = useRef<PendingUsersTableWrapperRef>(null);
 
   return (
@@ -49,7 +57,7 @@ export function PendingSection() {
             cannot access ClassCloud.
           </p>
 
-          <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+          <Group mb="xs" wrap="nowrap" align="flex-end" gap="sm">
             <SearchBar
               id="search-pending-users"
               placeholder="Search pending users..."
@@ -73,9 +81,24 @@ export function PendingSection() {
             </Tooltip>
           </Group>
 
+          <Group mb="md" gap="sm">
+            <Select
+              data={FILTER_OPTIONS}
+              value={filter}
+              onChange={(val) =>
+                setFilter((val as PendingFilter) ?? "self_register")
+              }
+              leftSection={<IconList size={16} />}
+              w={180}
+              clearable={false}
+              allowDeselect={false}
+            />
+          </Group>
+
           <PendingUsersTableWrapper
             ref={tableRef}
             search={search}
+            filter={filter}
             onCountChange={setPendingCount}
           />
         </div>

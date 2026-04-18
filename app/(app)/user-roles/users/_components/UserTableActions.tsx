@@ -14,21 +14,20 @@ import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import type { UserWithRoles } from "../_lib";
 import { deleteUser } from "../_lib";
-import EditUserDrawer from "./EditUserDrawer";
 
 interface UserTableActionsProps {
   user: UserWithRoles;
   onUpdate: () => void;
+  onEdit: () => void;
   currentUid: string | null;
 }
 
 export default function UserTableActions({
   user,
   onUpdate,
+  onEdit,
   currentUid,
 }: UserTableActionsProps) {
-  const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
-    useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
@@ -37,10 +36,6 @@ export default function UserTableActions({
   const isSelf = currentUid === user.uid;
 
   const fullName = `${user.first_name} ${user.last_name}`;
-
-  const handleSuccess = () => {
-    onUpdate();
-  };
 
   const handleCloseDelete = () => {
     setConfirmText("");
@@ -68,7 +63,7 @@ export default function UserTableActions({
             variant="subtle"
             color="gray"
             aria-label="Edit user"
-            onClick={openDrawer}
+            onClick={onEdit}
           >
             <IconPencil size={16} stroke={1.5} />
           </ActionIcon>
@@ -87,13 +82,6 @@ export default function UserTableActions({
           </Tooltip>
         </Tooltip>
       </Group>
-
-      <EditUserDrawer
-        opened={drawerOpened}
-        onClose={closeDrawer}
-        user={user}
-        onSuccess={handleSuccess}
-      />
 
       <Modal
         opened={deleteOpened}

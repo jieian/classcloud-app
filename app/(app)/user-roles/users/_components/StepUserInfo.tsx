@@ -11,6 +11,7 @@ import {
   Group,
   Center,
   Tooltip,
+  Loader,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
@@ -23,6 +24,8 @@ import type { CreateUserForm } from "../_lib/types";
 
 interface StepUserInfoProps {
   form: UseFormReturnType<CreateUserForm>;
+  checkingEmail?: boolean;
+  onEmailBlur?: () => void;
 }
 
 function PasswordRequirement({
@@ -46,7 +49,7 @@ function PasswordRequirement({
   );
 }
 
-export default function StepUserInfo({ form }: StepUserInfoProps) {
+export default function StepUserInfo({ form, checkingEmail, onEmailBlur }: StepUserInfoProps) {
   const passwordStrength = getPasswordStrength(form.values.password);
 
   const passwordChecks = passwordRequirements.map((requirement, index) => (
@@ -170,13 +173,19 @@ export default function StepUserInfo({ form }: StepUserInfoProps) {
 
         <TextInput
           label="Email"
-          placeholder="your@gmail.com"
+          placeholder="your@deped.gov.ph"
           required
           maxLength={255}
           withErrorStyles
           {...form.getInputProps("email")}
           description={`${form.values.email.length}/255 characters`}
           mb="md"
+          onBlur={onEmailBlur}
+          rightSection={
+            checkingEmail ? (
+              <Loader size="xs" color="#4EAE4A" />
+            ) : undefined
+          }
         />
 
         {/* Password */}

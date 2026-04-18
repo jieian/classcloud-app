@@ -1,10 +1,11 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { syncUserPermissions } from "@/lib/permissions-sync";
 const _DELETE = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -17,7 +18,7 @@ const _DELETE = async function(request: Request) {
   }
 
   // Verify the caller has user management permissions
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   if (!permissions.includes("users.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -63,6 +64,11 @@ const _DELETE = async function(request: Request) {
     if (banError) {
       return Response.json({ error: "Internal server error." }, { status: 500 });
     }
+
+    // Clear JWT claims — user is banned but token still exists until expiry
+    syncUserPermissions(uuid).catch((err) =>
+      console.error("syncUserPermissions failed after soft-delete:", err),
+    );
 
     return Response.json({ success: true });
   }

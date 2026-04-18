@@ -1,6 +1,7 @@
 import { sendVerificationEmail } from "@/lib/email/templates";
 import { withErrorHandler } from "@/lib/api-error";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { insertAuditLog } from "@/lib/audit";
 import { adminClient } from "@/lib/supabase/admin";
 import { generateRawToken, hashToken } from "@/lib/crypto";
 
@@ -15,8 +16,17 @@ const resendIpLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000 })
 const _POST = async function (request: Request) {
   // ── Rate limit by IP ──────────────────────────────────────────────────────
   const ip = getClientIp(request);
-  if (!resendIpLimiter.check(ip).allowed) {
-    return Response.json({ error: "Too many requests." }, { status: 429 });
+  if (!(await resendIpLimiter.check(ip)).allowed) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/signup/resend (ip)",
+      metadata: { endpoint: "/api/auth/signup/resend", limit_type: "ip" },
+    });
+    return Response.json({ error: "Too many attempts. Please wait a minute before trying again." }, { status: 429 });
   }
 
   // ── Parse + validate body ─────────────────────────────────────────────────
@@ -31,7 +41,16 @@ const _POST = async function (request: Request) {
   }
 
   // ── Rate limit by email ───────────────────────────────────────────────────
-  if (!resendEmailLimiter.check(email).allowed) {
+  if (!(await resendEmailLimiter.check(email)).allowed) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/signup/resend (email)",
+      metadata: { endpoint: "/api/auth/signup/resend", limit_type: "email", email },
+    });
     return Response.json({ error: "Too many resend attempts for this email. Please wait before trying again." }, { status: 429 });
   }
 

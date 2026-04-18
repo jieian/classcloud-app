@@ -1,6 +1,6 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -19,7 +19,7 @@ const _POST = async function(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   if (!permissions.includes("students.limited_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
@@ -111,7 +111,7 @@ const _GET = async function(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   const isAdmin = permissions.includes("students.full_access");
   const isAdviser = permissions.includes("students.limited_access");
   if (!isAdmin && !isAdviser)

@@ -5,7 +5,6 @@
  * INTEGRITY: Rollback on any failure prevents data inconsistency
  */
 
-import { getSupabase } from "@/lib/supabase/client";
 import type { CreateUserData } from "./types";
 
 export interface UpdateUserData {
@@ -19,55 +18,41 @@ export interface UpdateUserData {
 }
 
 /**
- * Updates user profile (names + roles) via RPC,
+ * Updates user profile (names + roles) via the secure API route,
  * then updates auth.users (email/password) via API route if needed.
  */
 export async function updateUser(data: UpdateUserData): Promise<void> {
-  const supabase = getSupabase();
-  try {
-    // Step 1: Update profile (names + roles) atomically via RPC
-    const { data: result, error } = await supabase.rpc("update_user_atomic", {
-      p_uid: data.uid,
-      p_first_name: data.first_name,
-      p_middle_name: data.middle_name || "",
-      p_last_name: data.last_name,
-      p_role_ids: data.role_ids,
-    });
+  // Step 1: Update profile (names + roles) via server-side route.
+  // The route runs update_user_atomic via the admin client and calls
+  // syncUserPermissions to keep JWT claims fresh.
+  const response = await fetch("/api/users/update-profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      uid: data.uid,
+      first_name: data.first_name,
+      middle_name: data.middle_name ?? "",
+      last_name: data.last_name,
+      role_ids: data.role_ids,
+    }),
+  });
 
-    if (error) {
-      console.error("RPC Error:", error);
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    const msg: string = result.error ?? "";
 
-      if (error.message.includes("not found")) {
-        throw new Error("User not found. Please refresh and try again.");
-      }
-
-      if (error.message.includes("role")) {
-        throw new Error(
-          "Invalid role selection. Please check roles and try again."
-        );
-      }
-
-      throw new Error(
-        "Failed to update user. Please check your connection and try again."
-      );
+    if (msg.includes("not found")) {
+      throw new Error("User not found. Please refresh and try again.");
     }
-
-    if (!result || !result.success) {
-      throw new Error("Update operation did not complete successfully.");
+    if (msg.includes("role")) {
+      throw new Error("Invalid role selection. Please check roles and try again.");
     }
+    throw new Error(msg || "Failed to update user. Please check your connection and try again.");
+  }
 
-    // Step 2: Update auth.users (email/password) if needed
-    if (data.newEmail || data.newPassword) {
-      await updateAuthUser(data.uid, data.newEmail, data.newPassword);
-    }
-  } catch (error) {
-    console.error("Failed to update user:", error);
-
-    if (error instanceof Error) {
-      throw error;
-    }
-
-    throw new Error("An unexpected error occurred. Please try again.");
+  // Step 2: Update auth.users (email/password) if needed
+  if (data.newEmail || data.newPassword) {
+    await updateAuthUser(data.uid, data.newEmail, data.newPassword);
   }
 }
 
@@ -165,8 +150,8 @@ async function updateAuthUser(
 }
 
 /**
- * Creates a new user by sending all data to the Secure API Route.
- * The API handles Auth + Database + Roles + Rollback automatically.
+ * Creates and invites a new user via the secure API route.
+ * The user is created with active_status=0 and an invitation email is sent.
  */
 export async function createUser(data: CreateUserData): Promise<void> {
   const response = await fetch("/api/users/create-auth", {
@@ -181,6 +166,86 @@ export async function createUser(data: CreateUserData): Promise<void> {
     const err = new Error(result.error || "Failed to create user.");
     (err as any).code = result.code;
     throw err;
+  }
+}
+
+/**
+ * Cancels a pending admin invitation and deletes the auth account.
+ */
+export async function cancelInvite(uid: string): Promise<void> {
+  const response = await fetch("/api/users/cancel-invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to cancel invitation.");
+  }
+}
+
+/**
+ * Resends the invitation email with a new token (invalidates the old link).
+ */
+export async function resendInvite(uid: string): Promise<void> {
+  const response = await fetch("/api/users/resend-invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ uid }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to resend invitation.");
+  }
+}
+
+export interface EditInviteData {
+  uid: string;
+  email: string;
+  first_name: string;
+  middle_name?: string;
+  last_name: string;
+  password?: string;
+  role_ids: number[];
+}
+
+/**
+ * Edits a pending invited user's details, invalidates the old token,
+ * and resends the invitation email.
+ */
+export async function editInvite(data: EditInviteData): Promise<void> {
+  const response = await fetch("/api/users/edit-invite", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to update invitation.");
+  }
+}
+
+/**
+ * Changes the current user's password (forced change on first login).
+ * Clears must_change_password and adds an audit log entry.
+ */
+export async function changePasswordForced(newPassword: string): Promise<void> {
+  const response = await fetch("/api/users/change-password-forced", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ newPassword }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to change password.");
   }
 }
 

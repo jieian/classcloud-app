@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import type { PendingUser, Role } from "../_lib";
 import PendingTableActions from "./PendingTableActions";
+import AdminInviteTableActions from "./AdminInviteTableActions";
 
 interface PendingUsersTableProps {
   users: PendingUser[];
@@ -52,7 +53,11 @@ export default function PendingUsersTable({
           <Text fz="sm">{user.email}</Text>
         </TableTd>
         <TableTd>
-          <PendingTableActions user={user} roles={roles} onUpdate={onUpdate} />
+          {user.source === "admin_invite" ? (
+            <AdminInviteTableActions user={user} roles={roles} onUpdate={onUpdate} />
+          ) : (
+            <PendingTableActions user={user} roles={roles} onUpdate={onUpdate} />
+          )}
         </TableTd>
       </TableTr>
     );

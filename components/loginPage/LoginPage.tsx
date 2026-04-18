@@ -22,7 +22,7 @@ import classes from "./LoginPage.module.css";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 
@@ -33,6 +33,15 @@ export default function LoginPage() {
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [shaking, setShaking] = useState(false);
+
+  // Pre-fill email from ?email= query param (e.g., from invitation activation page)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get("email");
+    if (emailParam) {
+      setEmail(decodeURIComponent(emailParam));
+    }
+  }, []);
 
   const triggerShake = () => {
     setShaking(true);
@@ -58,7 +67,7 @@ export default function LoginPage() {
       // Check if the account is activated and not soft-deleted
       const { data: userData } = await supabase
         .from("users")
-        .select("active_status, deleted_at")
+        .select("active_status, deleted_at, must_change_password")
         .eq("uid", authData.user.id)
         .maybeSingle();
 
@@ -101,6 +110,15 @@ export default function LoginPage() {
         type: "success",
       });
 
+      // Fire-and-forget audit log — non-blocking, session cookie is live at this point.
+      void fetch("/api/auth/audit-login", { method: "POST" });
+
+      // If the user must change their password, redirect to welcome flow
+      if (userData.must_change_password) {
+        router.push("/?welcome=1");
+        return;
+      }
+
       const requestedNext =
         typeof window !== "undefined"
           ? new URLSearchParams(window.location.search).get("next")
@@ -122,6 +140,20 @@ export default function LoginPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: email.trim() }),
         });
+
+        if (res.status === 429) {
+          const { error: errMsg } = await res.json();
+          setError(true);
+          triggerShake();
+          notify({
+            title: "Too Many Attempts",
+            message: errMsg ?? "Too many attempts. Please wait a minute before trying again.",
+            type: "error",
+            autoClose: 8000,
+          });
+          return;
+        }
+
         const { pending } = await res.json();
 
         if (pending) {

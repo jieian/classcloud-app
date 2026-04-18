@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ClassesClient from "./_components/ClassesClient";
 import ClassesSkeleton from "./_components/ClassesSkeleton";
@@ -28,7 +28,7 @@ export default async function Classes() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const permissions = user ? await getUserPermissions(user.id) : [];
+  const permissions = user ? getPermissionsFromUser(user) : [];
 
   return (
     <ProtectedRoute match="any" requiredPermissions={[...REQUIRED_PERMISSIONS]}>

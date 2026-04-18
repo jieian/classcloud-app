@@ -1,5 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { createServerSupabaseClient, getUserPermissions } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { CURRICULUM_CACHE_TAG } from "@/app/(app)/school/curriculum/_lib/curriculumServerService";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -9,7 +9,7 @@ const _DELETE = async function(request: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   if (!permissions.includes("curriculum.full_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 

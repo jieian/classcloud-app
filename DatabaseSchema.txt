@@ -1,6 +1,21 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.audit_logs (
+  audit_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  actor_id uuid,
+  category text NOT NULL CHECK (category = ANY (ARRAY['ACCESS'::text, 'SECURITY'::text, 'ACADEMIC'::text, 'ADMIN'::text, 'SYSTEM'::text])),
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text NOT NULL,
+  entity_label text,
+  old_values jsonb,
+  new_values jsonb,
+  metadata jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT audit_logs_pkey PRIMARY KEY (audit_id),
+  CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(uid)
+);
 CREATE TABLE public.curriculum_subjects (
   curriculum_subject_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   curriculum_id integer NOT NULL,
@@ -27,17 +42,20 @@ CREATE TABLE public.enrollments (
   lrn text,
   deleted_at timestamp with time zone,
   CONSTRAINT enrollments_pkey PRIMARY KEY (enrollment_id),
+
   CONSTRAINT enrollments_lrn_fkey FOREIGN KEY (lrn) REFERENCES public.students(lrn),
   CONSTRAINT enrollments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
   CONSTRAINT enrollments_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
 );
+-- Partial unique index (not a constraint): one active enrollment per student per school year
+-- CREATE UNIQUE INDEX enrollments_one_active_per_student_sy ON public.enrollments (lrn, sy_id) WHERE deleted_at IS NULL;
 CREATE TABLE public.exam_assignments (
   id integer NOT NULL DEFAULT nextval('exam_assignments_id_seq'::regclass),
   exam_id integer,
   section_id integer,
   CONSTRAINT exam_assignments_pkey PRIMARY KEY (id),
-  CONSTRAINT exam_assignments_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
-  CONSTRAINT exam_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
+  CONSTRAINT exam_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
+  CONSTRAINT exam_assignments_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id)
 );
 CREATE TABLE public.exams (
   exam_id integer NOT NULL DEFAULT nextval('exams_exam_id_seq'::regclass),
@@ -57,18 +75,6 @@ CREATE TABLE public.exams (
   CONSTRAINT exams_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
   CONSTRAINT exams_creator_teacher_id_fkey FOREIGN KEY (creator_teacher_id) REFERENCES public.users(uid),
   CONSTRAINT exams_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id)
-);
-CREATE TABLE public.grade_level_coordinators (
-  glc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  grade_level_id integer NOT NULL,
-  sy_id integer NOT NULL,
-  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
-  deleted_at timestamp with time zone,
-  CONSTRAINT grade_level_coordinators_pkey PRIMARY KEY (glc_id),
-  CONSTRAINT grade_level_coordinators_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
-  CONSTRAINT grade_level_coordinators_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
-  CONSTRAINT grade_level_coordinators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
 );
 CREATE TABLE public.grade_levels (
   grade_level_id integer NOT NULL DEFAULT nextval('grade_levels_grade_level_id_seq'::regclass),
@@ -132,6 +138,7 @@ CREATE TABLE public.roles (
   name character varying NOT NULL DEFAULT '50'::character varying UNIQUE,
   is_faculty boolean NOT NULL DEFAULT false,
   is_self_registerable boolean NOT NULL DEFAULT false,
+  is_protected boolean NOT NULL DEFAULT false,
   CONSTRAINT roles_pkey PRIMARY KEY (role_id)
 );
 CREATE TABLE public.school_years (
@@ -263,12 +270,22 @@ CREATE TABLE public.user_roles (
   CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id),
   CONSTRAINT user_roles_uid_fkey FOREIGN KEY (uid) REFERENCES public.users(uid)
 );
+CREATE TABLE public.user_invitations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  uid uuid NOT NULL UNIQUE,
+  token_hash text NOT NULL UNIQUE,
+  encrypted_password text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_invitations_pkey PRIMARY KEY (id),
+  CONSTRAINT user_invitations_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id) ON DELETE CASCADE
+);
 CREATE TABLE public.users (
   uid uuid NOT NULL,
   last_name character varying NOT NULL,
   first_name character varying NOT NULL,
   middle_name character varying,
   active_status smallint NOT NULL DEFAULT 0 CHECK (active_status = ANY (ARRAY[0, 1])),
+  must_change_password boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,

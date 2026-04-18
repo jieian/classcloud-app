@@ -3,15 +3,19 @@
 import { Button, Container, Paper, Text, TextInput, ThemeIcon, Group } from "@mantine/core";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import classes from "@/components/loginPage/LoginPage.module.css";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconMailForward } from "@tabler/icons-react";
+import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
+  const [honeypot, setHoneypot] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileInstance>(null);
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState(false);
@@ -32,11 +36,13 @@ export default function ForgotPasswordPage() {
       const res = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), website: honeypot, turnstile_token: turnstileToken }),
       });
 
       if (!res.ok) {
         const { error: errMsg } = await res.json();
+        setTurnstileToken(null);
+        turnstileRef.current?.reset();
         setError(true);
         triggerShake();
         notify({
@@ -49,6 +55,8 @@ export default function ForgotPasswordPage() {
 
       setSent(true);
     } catch {
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
       setError(true);
       triggerShake();
       notify({
@@ -100,6 +108,16 @@ export default function ForgotPasswordPage() {
                 </>
               ) : (
                 <form onSubmit={handleSubmit}>
+                  <div style={{ position: "absolute", left: "-9999px", top: "-9999px" }} aria-hidden="true">
+                    <input
+                      type="text"
+                      name="website"
+                      value={honeypot}
+                      onChange={(e) => setHoneypot(e.currentTarget.value)}
+                      tabIndex={-1}
+                      autoComplete="off"
+                    />
+                  </div>
                   <TextInput
                     label="Email"
                     placeholder="you@email.com"
@@ -117,6 +135,15 @@ export default function ForgotPasswordPage() {
                         ? classes.redInputBorder
                         : classes.greenInputBorder,
                     }}
+                  />
+                  <Turnstile
+                    ref={turnstileRef}
+                    style={{ marginTop: "1rem" }}
+                    siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
+                    onSuccess={(token) => setTurnstileToken(token)}
+                    onError={() => setTurnstileToken(null)}
+                    onExpire={() => setTurnstileToken(null)}
+                    options={{ appearance: "interaction-only", theme: "light" }}
                   />
                   <div
                     style={{
@@ -136,7 +163,7 @@ export default function ForgotPasswordPage() {
                       radius="md"
                       color="#4EAE4A"
                       loading={loading}
-                      disabled={!isValidEmail}
+                      disabled={!isValidEmail || !turnstileToken}
                     >
                       Send Code
                     </Button>

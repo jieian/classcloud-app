@@ -10,12 +10,14 @@ export interface Role {
   role_id: number;
   name: string;
   is_faculty: boolean;
+  is_protected: boolean;
 }
 
 export interface RoleWithPermissions {
   role_id: number;
   name: string;
   is_faculty: boolean;
+  is_protected: boolean;
   permissions: Permission[];
 }
 
@@ -43,6 +45,8 @@ export interface PendingUser {
   last_name: string;
   email: string;
   requested_role_ids: number[];
+  source: "self_register" | "admin_invite";
+  invitation_id?: string;
 }
 
 export async function fetchPendingUserCount(): Promise<number> {
@@ -90,6 +94,8 @@ export async function fetchPendingUsers(): Promise<PendingUser[]> {
     ...user,
     middle_name: isValidName(user.middle_name) ? user.middle_name : undefined,
     requested_role_ids: user.requested_role_ids ?? [],
+    source: user.source ?? "self_register",
+    invitation_id: user.invitation_id ?? undefined,
   }));
 }
 
@@ -117,7 +123,7 @@ export async function checkEmailExists(
 }
 
 export interface EmailStatus {
-  status: "available" | "active" | "deleted";
+  status: "available" | "active" | "deleted" | "pending_invite";
   uid?: string;
   first_name?: string;
   last_name?: string;
@@ -196,6 +202,29 @@ export async function fetchActiveUsersWithRoles(): Promise<UserWithRoles[]> {
 }
 
 /**
+ * Returns true if at least one active user already holds the Principal role.
+ */
+export async function checkPrincipalExists(): Promise<boolean> {
+  const supabase = getSupabase();
+  const { count, error } = await supabase
+    .from("user_roles")
+    .select("uid, roles!inner(name), users!inner(active_status, deleted_at)", {
+      count: "exact",
+      head: true,
+    })
+    .eq("roles.name", "Principal")
+    .eq("users.active_status", 1)
+    .is("users.deleted_at", null);
+
+  if (error) {
+    console.error("Error checking Principal existence:", error);
+    return false;
+  }
+
+  return (count ?? 0) > 0;
+}
+
+/**
  * Fetches all available roles
  */
 export async function fetchAllRoles(): Promise<Role[]> {
@@ -203,7 +232,7 @@ export async function fetchAllRoles(): Promise<Role[]> {
   try {
     const { data, error } = await supabase
       .from("roles")
-      .select("role_id, name, is_faculty")
+      .select("role_id, name, is_faculty, is_protected")
       .order("name");
 
     if (error) {
@@ -232,7 +261,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("roles")
-    .select("role_id, name, is_faculty, role_permissions(permissions(permission_id, name, description))")
+    .select("role_id, name, is_faculty, is_protected, role_permissions(permissions(permission_id, name, description))")
     .order("name");
 
   if (error) {
@@ -244,6 +273,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
     role_id: role.role_id,
     name: role.name,
     is_faculty: role.is_faculty ?? false,
+    is_protected: role.is_protected ?? false,
     permissions: (role.role_permissions || []).map((rp: any) => rp.permissions),
   }));
 }

@@ -25,14 +25,9 @@ import { modals } from "@mantine/modals";
 import type { PendingUser } from "../_lib";
 import { activateUser, rejectPendingUser } from "../_lib";
 import type { Role } from "../_lib";
+import { sortRoles } from "@/lib/roleUtils";
 
 const ROLES_PER_PAGE = 3;
-const PROTECTED_ROLE_NAMES = [
-  "faculty",
-  "grade level coordinator",
-  "subject coordinator",
-  "principal",
-];
 
 interface PendingTableActionsProps {
   user: PendingUser;
@@ -62,14 +57,7 @@ export default function PendingTableActions({
   const [rolePage, setRolePage] = useState(1);
   const [approving, setApproving] = useState(false);
 
-  const sortedRoles = [
-    ...roles.filter((r) =>
-      PROTECTED_ROLE_NAMES.includes(r.name.trim().toLowerCase()),
-    ),
-    ...roles.filter(
-      (r) => !PROTECTED_ROLE_NAMES.includes(r.name.trim().toLowerCase()),
-    ),
-  ];
+  const sortedRoles = sortRoles(roles);
 
   // Reject modal state
   const [rejectReason, setRejectReason] = useState("");

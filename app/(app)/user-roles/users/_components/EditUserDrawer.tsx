@@ -21,8 +21,9 @@ import { useEffect, useState } from "react";
 import { IconCheck, IconX, IconInfoCircle } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
-import type { UserWithRoles } from "../_lib";
+import type { UserWithRoles, Role } from "../_lib";
 import { updateUser, fetchAllRoles, checkEmailExists } from "../_lib";
+import { sortRoles } from "@/lib/roleUtils";
 
 interface EditUserDrawerProps {
   opened: boolean;
@@ -105,9 +106,7 @@ export default function EditUserDrawer({
   user,
   onSuccess,
 }: EditUserDrawerProps) {
-  const [availableRoles, setAvailableRoles] = useState<
-    Array<{ role_id: number; name: string }>
-  >([]);
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
 
@@ -221,7 +220,7 @@ export default function EditUserDrawer({
     try {
       setLoadingRoles(true);
       const roles = await fetchAllRoles();
-      setAvailableRoles(roles);
+      setAvailableRoles(sortRoles(roles));
     } catch (error) {
       console.error("Failed to load roles:", error);
       const errorMessage =

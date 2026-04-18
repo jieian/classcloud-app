@@ -18,6 +18,7 @@ import type { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { useSupabaseSession } from "@/hooks/useSupabaseSession";
 import { usePermissions } from "@/hooks/usePermissions";
+import { usePermissionsSync } from "@/hooks/usePermissionsSync";
 
 interface Role {
   role_id: number;
@@ -100,21 +101,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     permissions,
     firstName,
     lastName,
-    loadForUser,
+    loadFromUser,
     clearAll,
     refreshUserName: refreshName,
   } = usePermissions();
 
   const { user, loading } = useSupabaseSession({
-    onUserResolved: loadForUser,
+    onUserResolved: loadFromUser,
     onSessionCleared: clearAll,
+    onRefreshName: refreshName,
   });
+
+  // Poll server-side permissions version; triggers JWT refresh when roles change.
+  usePermissionsSync(user);
+
+  // Self-heal: if the user is logged in but has no permissions, their app_metadata
+  // was never synced (they predate the JWT-claims system). Trigger a one-time sync
+  // then refresh the session so the new claims are picked up immediately.
+  useEffect(() => {
+    if (!user || loading || permissions.length > 0) return;
+
+    fetch("/api/auth/sync-permissions", { method: "POST" })
+      .then((res) => {
+        if (res.ok) return supabase.auth.refreshSession();
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, loading]);
 
   // Ensure authenticated app shell is never visible when signed out.
   // proxy.ts handles server-side redirects; this covers client-side session expiry.
+  // Preserve the intended URL in ?next= so the user lands on the right page
+  // after the session is re-established (e.g. new tab, token expiry).
   useEffect(() => {
     if (!loading && !user) {
-      router.replace("/login");
+      const next =
+        typeof window !== "undefined"
+          ? encodeURIComponent(window.location.pathname + window.location.search)
+          : "";
+      router.replace(next ? `/login?next=${next}` : "/login");
     }
   }, [loading, user, router]);
 
@@ -127,22 +152,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    clearAll();
-    clearSupabaseClientAuthArtifacts();
+    const currentUserId = user?.id;
 
     try {
-      const result = await withTimeout<{ error: { message: string } | null }>(
-        supabase.auth.signOut({ scope: "global" }),
-        4000,
-        "signOut",
-      );
-      const error = result.error;
-      if (error && !/session.*missing/i.test(error.message)) {
-        console.error("Logout error:", error.message);
+      if (currentUserId) {
+        // Server route: logs audit then revokes tokens via admin API.
+        // Must be called before clearSupabaseClientAuthArtifacts() so the
+        // session cookies are still intact when the server reads the user.
+        await withTimeout(
+          fetch("/api/auth/logout", { method: "POST" }),
+          4000,
+          "signOut",
+        );
+      } else {
+        const result = await withTimeout<{ error: { message: string } | null }>(
+          supabase.auth.signOut({ scope: "global" }),
+          4000,
+          "signOut",
+        );
+        const error = result.error;
+        if (error && !/session.*missing/i.test(error.message)) {
+          console.error("Logout error:", error.message);
+        }
       }
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
+      clearAll();
       clearSupabaseClientAuthArtifacts();
       if (typeof window !== "undefined") {
         window.location.replace("/login?logout=1");

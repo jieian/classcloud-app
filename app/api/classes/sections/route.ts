@@ -1,6 +1,6 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 import type { SectionCard } from "@/lib/services/classService";
 
@@ -13,7 +13,7 @@ const _GET = async function(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   const hasAccess =
     permissions.includes("classes.full_access") ||
     permissions.includes("students.limited_access") ||

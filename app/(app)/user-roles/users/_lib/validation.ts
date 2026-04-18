@@ -37,10 +37,13 @@ export const validateCreateUserForm = {
   },
 
   email: (value: string) => {
-    const trimmed = value.trim();
+    const trimmed = value.trim().toLowerCase();
     if (!trimmed) return "Email is required";
     if (trimmed.length > 255) return "Email must be 255 characters or less";
-    if (!/^\S+@\S+\.\S+$/.test(trimmed)) return "Invalid email format";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return "Invalid email format";
+    const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
+    if (!ALLOWED_DOMAINS.some((d) => trimmed.endsWith(`@${d}`)))
+      return "Email must be a @deped.gov.ph address";
     return null;
   },
 

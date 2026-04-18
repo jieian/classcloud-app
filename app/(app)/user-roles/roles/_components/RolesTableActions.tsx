@@ -38,12 +38,7 @@ export default function RolesTableActions({
   const [isAttached, setIsAttached] = useState(false);
 
   const isAdmin = role.role_id === 1;
-  const isProtectedRole = [
-    "faculty",
-    "grade level coordinator",
-    "subject coordinator",
-    "principal",
-  ].includes(role.name.trim().toLowerCase());
+  const isProtectedRole = role.is_protected;
 
   const handleTrashClick = async () => {
     if (isProtectedRole) return;

@@ -2,25 +2,64 @@ import { sendPasswordResetEmail } from "@/lib/email/templates";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
-
+import { insertAuditLog } from "@/lib/audit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { adminClient } from "@/lib/supabase/admin";
 // 5 password-reset requests per IP per 15 minutes
 const resetLimiter = createRateLimiter({ maxRequests: 5, windowMs: 15 * 60_000 });
 
 const _POST = async function(request: Request) {
   const ip = getClientIp(request);
-  const limit = resetLimiter.check(ip);
+  const limit = await resetLimiter.check(ip);
   if (!limit.allowed) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/forgot-password",
+      metadata: { endpoint: "/api/auth/forgot-password" },
+    });
     return Response.json(
       { error: "Too many password reset requests. Please wait a few minutes and try again." },
       { status: 429 },
     );
   }
 
-  const { email } = await request.json();
+  const { email, website, turnstile_token } = await request.json();
+
+  if (website) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "honeypot_triggered",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/forgot-password",
+      metadata: { endpoint: "/api/auth/forgot-password" },
+    });
+    return Response.json({ success: true });
+  }
 
   if (!email || typeof email !== "string") {
     return Response.json({ error: "Invalid email." }, { status: 400 });
+  }
+
+  if (!turnstile_token || !(await verifyTurnstileToken(turnstile_token, ip))) {
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "turnstile_failed",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "POST /api/auth/forgot-password",
+      metadata: { endpoint: "/api/auth/forgot-password" },
+    });
+    return Response.json(
+      { error: "Security verification failed. Please refresh and try again." },
+      { status: 400 },
+    );
   }
 
   const trimmedEmail = email.trim().toLowerCase();

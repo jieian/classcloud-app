@@ -7,6 +7,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getSupabasePublicEnv } from "./env";
+import type { User } from "@supabase/supabase-js";
 
 /**
  * Creates a Supabase client for Server Components
@@ -53,20 +54,13 @@ export async function getServerUser() {
 }
 
 /**
- * Gets user permissions from server-side
- * Uses RPC function to fetch permissions efficiently
+ * Reads the user's permissions directly from their verified JWT app_metadata.
+ * Zero DB round-trip — permissions are written there by syncUserPermissions
+ * whenever roles change, and supabase.auth.getUser() validates the JWT
+ * server-side, so app_metadata is trustworthy.
  */
-export async function getUserPermissions(userId: string): Promise<string[]> {
-  const supabase = await createServerSupabaseClient();
-
-  const { data, error } = await supabase.rpc("get_user_permissions", {
-    user_uuid: userId,
-  });
-
-  if (error) {
-    console.error("Error fetching permissions:", error);
-    return [];
-  }
-
-  return data?.map((p: any) => p.permission_name) || [];
+export function getPermissionsFromUser(user: User): string[] {
+  return Array.isArray(user.app_metadata?.permissions)
+    ? (user.app_metadata.permissions as string[])
+    : [];
 }

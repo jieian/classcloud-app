@@ -1,6 +1,6 @@
 import {
   createServerSupabaseClient,
-  getUserPermissions,
+  getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -16,7 +16,7 @@ const _GET = async function() {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ count: 0 });
 
-  const permissions = await getUserPermissions(user.id);
+  const permissions = getPermissionsFromUser(user);
   if (!permissions.includes("students.full_access")) return Response.json({ count: 0 });
 
   const { count, error } = await admin

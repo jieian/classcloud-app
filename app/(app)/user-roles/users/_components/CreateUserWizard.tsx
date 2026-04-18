@@ -11,17 +11,27 @@ import StepUserInfo from "./StepUserInfo";
 import StepAssignRole from "./StepAssignRole";
 import StepReview from "./StepReview";
 import { validateCreateUserForm } from "../_lib/validation";
-import { createUser, checkEmailStatus, fetchAllRoles } from "../_lib";
+import {
+  createUser,
+  checkEmailStatus,
+  fetchAllRoles,
+  checkPrincipalExists,
+} from "../_lib";
 import type { EmailStatus } from "../_lib/userRolesService";
 import { toTitleCase, generateSecurePassword } from "../_lib/utils";
 import type { CreateUserForm } from "../_lib/types";
 import type { Role } from "../_lib/userRolesService";
+
+const PRINCIPAL_ROLE_NAME = "Principal";
+const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function CreateUserWizard() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [principalWarning, setPrincipalWarning] = useState(false);
 
   const form = useForm<CreateUserForm>({
     validateInputOnChange: true,
@@ -155,8 +165,23 @@ export default function CreateUserWizard() {
             form.setFieldError("email", "This email is already in use");
             notifications.show({
               title: "Email Already In Use",
-              message: "This email is already registered. Please use a different email.",
+              message:
+                "This email is already registered. Please use a different email.",
               color: "red",
+            });
+            return;
+          }
+
+          if (emailStatus.status === "pending_invite") {
+            form.setFieldError(
+              "email",
+              "This email already has a pending invitation",
+            );
+            notifications.show({
+              title: "Pending Invitation",
+              message:
+                "This email already has a pending invitation. Check the Pending section.",
+              color: "orange",
             });
             return;
           }
@@ -192,6 +217,26 @@ export default function CreateUserWizard() {
         });
         return;
       }
+
+      // Principal check — soft warning only, does not block
+      const selectedRoleNames = form.values.role_ids
+        .map(
+          (id) =>
+            availableRoles.find((r) => r.role_id.toString() === id)?.name,
+        )
+        .filter(Boolean);
+
+      if (selectedRoleNames.includes(PRINCIPAL_ROLE_NAME)) {
+        try {
+          const principalExists = await checkPrincipalExists();
+          setPrincipalWarning(principalExists);
+        } catch {
+          // Non-fatal — proceed without warning
+          setPrincipalWarning(false);
+        }
+      } else {
+        setPrincipalWarning(false);
+      }
     }
 
     form.setFieldValue("activeStep", form.values.activeStep + 1);
@@ -201,6 +246,48 @@ export default function CreateUserWizard() {
     form.setFieldValue("activeStep", form.values.activeStep - 1);
     // Clear cached email verification so the check runs again if the user edits it
     verifiedEmailRef.current = null;
+  };
+
+  // Live email check on blur — mirrors the SignUp page behaviour.
+  // Only fires when the domain is valid; skips if already verified.
+  const handleEmailBlur = async () => {
+    const trimmedEmail = form.values.email.trim();
+    if (!trimmedEmail) return;
+
+    const domainValid = ALLOWED_DOMAINS.some((d) =>
+      trimmedEmail.toLowerCase().endsWith(`@${d}`),
+    );
+    if (!domainValid) return;
+    if (!EMAIL_REGEX.test(trimmedEmail)) return;
+    if (verifiedEmailRef.current === trimmedEmail) return;
+    if (busyRef.current) return;
+
+    busyRef.current = true;
+    setCheckingEmail(true);
+    try {
+      const emailStatus: EmailStatus = await checkEmailStatus(trimmedEmail);
+
+      if (emailStatus.status === "active") {
+        form.setFieldError("email", "This email is already in use");
+        return;
+      }
+      if (emailStatus.status === "pending_invite") {
+        form.setFieldError(
+          "email",
+          "This email already has a pending invitation",
+        );
+        return;
+      }
+
+      // Available — cache so Next skips the redundant call
+      verifiedEmailRef.current = trimmedEmail;
+      form.clearFieldError("email");
+    } catch {
+      // Non-fatal — Next will retry if needed
+    } finally {
+      busyRef.current = false;
+      setCheckingEmail(false);
+    }
   };
 
   const handleCancel = () => {
@@ -228,19 +315,18 @@ export default function CreateUserWizard() {
 
   const handleCreateUser = () => {
     modals.openConfirmModal({
-      title: "Create New User?",
+      title: "Send Invitation?",
       children: (
         <Text size="sm">
-          <>
-            This will create an account for{" "}
-            <strong>
-              {form.values.first_name} {form.values.last_name}
-            </strong>{" "}
-            with {form.values.role_ids.length} role(s).
-          </>
+          This will create an account for{" "}
+          <strong>
+            {form.values.first_name} {form.values.last_name}
+          </strong>{" "}
+          with {form.values.role_ids.length} role(s) and send them an invitation
+          email to activate their account.
         </Text>
       ),
-      labels: { confirm: "Create User", cancel: "Cancel" },
+      labels: { confirm: "Send Invitation", cancel: "Cancel" },
       confirmProps: { style: { backgroundColor: "#4EAE4A" } },
       onConfirm: async () => {
         await submitForm();
@@ -274,8 +360,8 @@ export default function CreateUserWizard() {
       await createUser(userData);
 
       notifications.show({
-        title: "Success",
-        message: `User ${userData.first_name} ${userData.last_name} created successfully.`,
+        title: "Invitation Sent",
+        message: `An invitation email has been sent to ${trimmedEmail}.`,
         color: "green",
       });
 
@@ -283,7 +369,7 @@ export default function CreateUserWizard() {
       router.replace("/user-roles/users");
       router.refresh();
     } catch (error) {
-      console.error("User creation error:", error);
+      console.error("User invitation error:", error);
       const isEmailFailure = (error as any).code === "EMAIL_DELIVERY_FAILED";
       const message =
         error instanceof Error
@@ -338,7 +424,7 @@ export default function CreateUserWizard() {
             orientation="vertical"
           >
             <Stepper.Step label="Step 1" description="Specify user information">
-              <StepUserInfo form={form} />
+              <StepUserInfo form={form} checkingEmail={checkingEmail} onEmailBlur={handleEmailBlur} />
             </Stepper.Step>
 
             <Stepper.Step label="Step 2" description="Assign Role">
@@ -350,7 +436,11 @@ export default function CreateUserWizard() {
             </Stepper.Step>
 
             <Stepper.Step label="Step 3" description="Review and Create User">
-              <StepReview form={form} availableRoles={availableRoles} />
+              <StepReview
+                form={form}
+                availableRoles={availableRoles}
+                principalWarning={principalWarning}
+              />
             </Stepper.Step>
           </Stepper>
 
@@ -383,7 +473,7 @@ export default function CreateUserWizard() {
                 loading={loading}
                 style={{ backgroundColor: "#4EAE4A" }}
               >
-                Create User
+                Send Invitation
               </Button>
             )}
           </Group>
@@ -412,7 +502,7 @@ export default function CreateUserWizard() {
 
           {/* Right side: Content */}
           <div style={{ flex: 1, width: "70%" }}>
-            {form.values.activeStep === 0 && <StepUserInfo form={form} />}
+            {form.values.activeStep === 0 && <StepUserInfo form={form} checkingEmail={checkingEmail} onEmailBlur={handleEmailBlur} />}
             {form.values.activeStep === 1 && (
               <StepAssignRole
                 form={form}
@@ -421,7 +511,11 @@ export default function CreateUserWizard() {
               />
             )}
             {form.values.activeStep === 2 && (
-              <StepReview form={form} availableRoles={availableRoles} />
+              <StepReview
+                form={form}
+                availableRoles={availableRoles}
+                principalWarning={principalWarning}
+              />
             )}
 
             {/* Navigation Buttons */}
@@ -453,7 +547,7 @@ export default function CreateUserWizard() {
                   loading={loading}
                   style={{ backgroundColor: "#4EAE4A" }}
                 >
-                  Create User
+                  Send Invitation
                 </Button>
               )}
             </Group>
@@ -463,4 +557,3 @@ export default function CreateUserWizard() {
     </Container>
   );
 }
-

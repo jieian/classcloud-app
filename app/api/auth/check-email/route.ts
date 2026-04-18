@@ -1,6 +1,7 @@
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
+import { insertAuditLog } from "@/lib/audit";
 
 const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 
@@ -11,13 +12,24 @@ const checkEmailLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60_000 
 
 const _GET = async function(request: Request) {
   const ip = getClientIp(request);
-  const limit = checkEmailLimiter.check(ip);
+  const { searchParams } = new URL(request.url);
+  const emailParam = searchParams.get("email")?.trim().toLowerCase() ?? null;
+
+  const limit = await checkEmailLimiter.check(ip);
   if (!limit.allowed) {
-    return Response.json({ error: "Too many requests." }, { status: 429 });
+    void insertAuditLog({
+      actor_id: null,
+      category: "SECURITY",
+      action: "rate_limit_exceeded",
+      entity_type: "ip_address",
+      entity_id: ip,
+      entity_label: "GET /api/auth/check-email",
+      metadata: { endpoint: "/api/auth/check-email", email: emailParam },
+    });
+    return Response.json({ error: "Too many email checks. Please wait a moment before trying again." }, { status: 429 });
   }
 
-  const { searchParams } = new URL(request.url);
-  const email = searchParams.get("email")?.trim().toLowerCase();
+  const email = emailParam;
 
   if (!email || !ALLOWED_DOMAINS.some((d) => email.endsWith(`@${d}`))) {
     return Response.json({ error: "Invalid email." }, { status: 400 });

@@ -2,16 +2,30 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ActionIcon, Button, Group, Tooltip } from "@mantine/core";
-import { IconRefresh } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Button,
+  Group,
+  Select,
+  Tooltip,
+} from "@mantine/core";
+import { IconRefresh, IconList } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import UsersTableWrapper, {
   type UsersTableWrapperRef,
+  type FacultyFilter,
 } from "./UsersTableWrapper";
+
+const FILTER_OPTIONS = [
+  { value: "all", label: "All Staff" },
+  { value: "faculty", label: "Faculty" },
+  { value: "non-faculty", label: "Non-Faculty" },
+];
 
 export function ActiveUsersSection() {
   const [userCount, setUserCount] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<FacultyFilter>("all");
   const tableRef = useRef<UsersTableWrapperRef>(null);
 
   return (
@@ -37,7 +51,7 @@ export function ActiveUsersSection() {
         A user is an identity within an account that has long-term credentials
         and is used to access ClassCloud.
       </p>
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+      <Group mb="xs" wrap="nowrap" align="flex-end" gap="sm">
         <SearchBar
           id="search-active-users"
           placeholder="Search active users..."
@@ -60,9 +74,21 @@ export function ActiveUsersSection() {
           </ActionIcon>
         </Tooltip>
       </Group>
+      <Group mb="md" gap="sm">
+        <Select
+          placeholder="All Staff"
+          data={FILTER_OPTIONS}
+          value={filter}
+          onChange={(val) => setFilter((val as FacultyFilter) ?? "all")}
+          leftSection={<IconList size={16} />}
+          w={160}
+          clearable={false}
+        />
+      </Group>
       <UsersTableWrapper
         ref={tableRef}
         search={search}
+        filter={filter}
         onCountChange={setUserCount}
       />
     </>

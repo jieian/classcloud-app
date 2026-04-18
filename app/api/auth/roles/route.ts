@@ -4,7 +4,7 @@ const _GET = async function() {
 
   const { data, error } = await adminClient
     .from("roles")
-    .select("role_id, name, is_faculty")
+    .select("role_id, name, is_faculty, is_protected")
     .eq("is_self_registerable", true)
     .order("name");
 

@@ -1,7 +1,8 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { syncAllUsersWithRole } from "@/lib/permissions-sync";
 const _PUT = async function(request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -14,11 +15,7 @@ const _PUT = async function(request: Request) {
   }
 
   // 2. PERMISSIONS: Verify caller has the right to manage roles
-  const { data: permsData, error: permsError } = await adminClient.rpc("get_user_permissions", {
-    user_uuid: caller.id,
-  });
-
-  if (permsError || !permsData?.some((p: any) => p.permission_name === "roles.full_access")) {
+  if (!getPermissionsFromUser(caller).includes("roles.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -51,6 +48,11 @@ const _PUT = async function(request: Request) {
       { status: 500 }
     );
   }
+
+  // Sync JWT claims for all users with this role (non-fatal)
+  syncAllUsersWithRole(role_id).catch((err) =>
+    console.error("syncAllUsersWithRole failed after update-role:", err),
+  );
 
   return Response.json({ success: true }, { status: 200 });
 }

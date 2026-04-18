@@ -13,6 +13,7 @@ import {
   fetchRolesWithPermissions,
   type RoleWithPermissions,
 } from "../../users/_lib";
+import { sortRoles } from "@/lib/roleUtils";
 
 export interface RolesTableWrapperRef {
   refresh: () => void;
@@ -48,9 +49,10 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
     }
 
     const filteredRoles = useMemo(() => {
-      if (!search.trim()) return roles;
+      const sorted = sortRoles(roles);
+      if (!search.trim()) return sorted;
       const query = search.toLowerCase().trim();
-      return roles.filter((role) =>
+      return sorted.filter((role) =>
         role.name.toLowerCase().includes(query),
       );
     }, [roles, search]);

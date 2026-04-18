@@ -1,5 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/classes/_lib/classesServerService";
 
 import { withErrorHandler } from "@/lib/api-error";
@@ -16,17 +16,7 @@ const _PUT = async function(request: Request) {
   }
 
   // 3. Permission check
-  const { data: permsData, error: permsError } = await adminClient.rpc(
-    "get_user_permissions",
-    { user_uuid: caller.id },
-  );
-
-  if (
-    permsError ||
-    !permsData?.some(
-      (p: any) => p.permission_name === "school_year.full_access",
-    )
-  ) {
+  if (!getPermissionsFromUser(caller).includes("school_year.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

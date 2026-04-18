@@ -1,8 +1,8 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { sendRejectionEmail } from "@/lib/email/templates";
-
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { insertAuditLog } from "@/lib/audit";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -37,6 +37,16 @@ const _POST = async function(request: Request) {
   const firstName = authUser.user_metadata?.first_name ?? "Applicant";
   const isBanned = authUser.banned_until && new Date(authUser.banned_until) > new Date();
 
+  // Fetch profile name before deletion for the audit label
+  const { data: profileData } = await adminClient
+    .from("users")
+    .select("first_name, last_name")
+    .eq("uid", uid)
+    .maybeSingle();
+  const entityLabel = profileData
+    ? `${profileData.first_name} ${profileData.last_name}`
+    : firstName;
+
   if (isBanned) {
     // Restored (previously soft-deleted) user — soft delete: stamp deleted_at + keep banned
     const { data: rpcResult, error: rpcError } = await adminClient.rpc(
@@ -69,6 +79,17 @@ const _POST = async function(request: Request) {
       console.error("Failed to send rejection email:", err),
     );
   }
+
+  // Audit log (non-fatal)
+  insertAuditLog({
+    actor_id: user.id,
+    category: "ADMIN",
+    action: "user_rejected",
+    entity_type: "user",
+    entity_id: uid,
+    entity_label: entityLabel,
+    metadata: { reason: reason.trim() },
+  }).catch(() => {});
 
   return Response.json({ success: true });
 }
