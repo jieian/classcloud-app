@@ -58,8 +58,8 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
 /**
  * Soft-deletes an active user: stamps deleted_at and bans their auth account.
  */
-export async function deleteUser(uid: string): Promise<void> {
-  await deleteAuthUser(uid, true);
+export async function deleteUser(uid: string, email: string, firstName: string): Promise<void> {
+  await deleteAuthUser(uid, true, email, firstName);
 }
 
 /**
@@ -115,11 +115,11 @@ export async function rejectPendingUser(uid: string, reason: string): Promise<vo
  * Pass soft=true for active users (stamps deleted_at + bans auth).
  * Pass soft=false (default) for pending user rejection (hard delete).
  */
-async function deleteAuthUser(uuid: string, soft = false): Promise<void> {
+async function deleteAuthUser(uuid: string, soft = false, email?: string, firstName?: string): Promise<void> {
   const response = await fetch("/api/users/delete-auth", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uuid, soft }),
+    body: JSON.stringify({ uuid, soft, email, first_name: firstName }),
   });
 
   if (!response.ok) {

@@ -12,6 +12,7 @@ import {
 } from "@mantine/core";
 import { IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import type { UserWithRoles } from "../_lib";
 import { deleteUser } from "../_lib";
 
@@ -45,11 +46,21 @@ export default function UserTableActions({
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      await deleteUser(user.uid);
+      await deleteUser(user.uid, user.email, user.first_name);
       handleCloseDelete();
       onUpdate();
+      notifications.show({
+        title: "User Deleted",
+        message: `${fullName} has been deleted.`,
+        color: "green",
+      });
     } catch (err) {
       console.error("Failed to delete user:", err);
+      notifications.show({
+        title: "Delete Failed",
+        message: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+        color: "red",
+      });
     } finally {
       setDeleting(false);
     }

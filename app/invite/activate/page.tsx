@@ -2,18 +2,16 @@
 
 import {
   Alert,
-  Box,
   Button,
   Container,
-  CopyButton,
   Group,
   Loader,
   Paper,
   Text,
   ThemeIcon,
-  Tooltip,
 } from "@mantine/core";
-import { IconAlertCircle, IconCheck, IconCopy } from "@tabler/icons-react";
+import { IconAlertCircle, IconCheck, IconInfoCircle } from "@tabler/icons-react";
+
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -153,177 +151,26 @@ export default function ActivateInvitePage() {
               {pageState === "success" && activationData && (
                 <>
                   <Group justify="center" mb="md">
-                    <ThemeIcon
-                      color="teal"
-                      size={64}
-                      radius="xl"
-                      variant="light"
-                    >
+                    <ThemeIcon color="#4EAE4A" size={64} radius="xl" variant="filled">
                       <IconCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
 
-                  <Text ta="center" fw={700} fz="lg" c="#45903B" mb={4}>
+                  <Text ta="center" fw={700} fz="xl" c="#45903B" mb={4}>
                     Welcome to ClassCloud, {activationData.first_name}!
                   </Text>
-                  <Text ta="center" size="sm" c="#808898" mb="lg">
+                  <Text ta="center" size="md" c="#808898" mb="lg">
                     Your account has been activated successfully.
                   </Text>
 
-                  {/* Information box */}
-                  <Box
-                    p="md"
-                    mb="sm"
-                    style={{
-                      border: "1px solid #d3e9d0",
-                      borderRadius: 8,
-                      backgroundColor: "#f0f7ee",
-                    }}
-                  >
-                    <Text size="xs" fw={700} c="#45903B" tt="uppercase" mb="xs">
-                      Account Information
-                    </Text>
-                    <Group justify="space-between" align="flex-start">
-                      <Box style={{ flex: 1 }}>
-                        <Text size="xs" c="#808898">
-                          Full Name
-                        </Text>
-                        <Text size="sm" fw={500}>
-                          {activationData.full_name}
-                        </Text>
-                      </Box>
-                      <Box style={{ flex: 1 }}>
-                        <Text size="xs" c="#808898" mb={4}>
-                          {activationData.role_names.length === 1
-                            ? "Role"
-                            : "Roles"}
-                        </Text>
-                        {activationData.role_names.length > 0 ? (
-                          activationData.role_names.map((name, index) => (
-                            <Group key={name} gap="xs" mb={4} align="center">
-                              <Box
-                                style={{
-                                  width: 24,
-                                  height: 24,
-                                  borderRadius: 4,
-                                  backgroundColor: "#e9ecef",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <Text size="xs" fw={600} c="dimmed">
-                                  {index + 1}
-                                </Text>
-                              </Box>
-                              <Text size="sm" fw={500}>
-                                {name}
-                              </Text>
-                            </Group>
-                          ))
-                        ) : (
-                          <Text size="sm" c="dimmed">
-                            —
-                          </Text>
-                        )}
-                      </Box>
-                    </Group>
-                  </Box>
-
-                  {/* Account Credentials box */}
-                  <Box
-                    p="md"
+                  <Alert
+                    icon={<IconInfoCircle size={16} />}
+                    color="yellow"
+                    radius="md"
                     mb="md"
-                    style={{
-                      border: "1px solid #e0e0e0",
-                      borderRadius: 8,
-                      backgroundColor: "#fafafa",
-                    }}
+                    styles={{ message: { fontSize: "var(--mantine-font-size-sm)" } }}
                   >
-                    <Text size="xs" fw={700} c="#45903B" tt="uppercase" mb="xs">
-                      Account Credentials
-                    </Text>
-
-                    <Group justify="space-between" align="center" mb={4}>
-                      <Box>
-                        <Text size="xs" c="#808898">
-                          Email
-                        </Text>
-                        <Text size="sm" fw={500}>
-                          {activationData.email}
-                        </Text>
-                      </Box>
-                      <CopyButton value={activationData.email} timeout={2000}>
-                        {({ copied, copy }) => (
-                          <Tooltip
-                            label={copied ? "Copied!" : "Copy email"}
-                            withArrow
-                          >
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              color={copied ? "teal" : "gray"}
-                              onClick={copy}
-                              leftSection={
-                                copied ? (
-                                  <IconCheck size={12} />
-                                ) : (
-                                  <IconCopy size={12} />
-                                )
-                              }
-                            >
-                              {copied ? "Copied" : "Copy"}
-                            </Button>
-                          </Tooltip>
-                        )}
-                      </CopyButton>
-                    </Group>
-
-                    <Group justify="space-between" align="center">
-                      <Box>
-                        <Text size="xs" c="#808898">
-                          Temporary Password
-                        </Text>
-                        <Text size="sm" fw={500} ff="monospace">
-                          {activationData.tempPassword}
-                        </Text>
-                      </Box>
-                      <CopyButton
-                        value={activationData.tempPassword}
-                        timeout={2000}
-                      >
-                        {({ copied, copy }) => (
-                          <Tooltip
-                            label={copied ? "Copied!" : "Copy password"}
-                            withArrow
-                          >
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              color={copied ? "teal" : "gray"}
-                              onClick={copy}
-                              leftSection={
-                                copied ? (
-                                  <IconCheck size={12} />
-                                ) : (
-                                  <IconCopy size={12} />
-                                )
-                              }
-                            >
-                              {copied ? "Copied" : "Copy"}
-                            </Button>
-                          </Tooltip>
-                        )}
-                      </CopyButton>
-                    </Group>
-                  </Box>
-
-                  <Alert color="yellow" radius="md" mb="md">
-                    <Text size="xs">
-                      You will be required to change your temporary password
-                      upon first login.
-                    </Text>
+                    You must change your password on first login.
                   </Alert>
 
                   <Button
@@ -342,12 +189,7 @@ export default function ActivateInvitePage() {
               {pageState === "already_used" && (
                 <>
                   <Group justify="center" mb="md">
-                    <ThemeIcon
-                      color="teal"
-                      size={64}
-                      radius="xl"
-                      variant="light"
-                    >
+                    <ThemeIcon color="#4EAE4A" size={64} radius="xl" variant="filled">
                       <IconCheck size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>

@@ -25,7 +25,7 @@ const _DELETE = async function(request: Request) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { uuid, soft } = await request.json();
+  const { uuid, soft, email, first_name } = await request.json();
 
   if (!uuid || typeof uuid !== "string") {
     return Response.json({ error: "Invalid user UUID" }, { status: 400 });
@@ -43,11 +43,11 @@ const _DELETE = async function(request: Request) {
     // Fetch profile for audit label before deletion
     const { data: profile } = await adminClient
       .from("users")
-      .select("first_name, last_name, email")
+      .select("last_name")
       .eq("uid", uuid)
       .single();
-    const entityLabel = profile
-      ? `${profile.first_name} ${profile.last_name}`
+    const entityLabel = first_name && profile?.last_name
+      ? `${first_name} ${profile.last_name}`
       : uuid;
 
     // Soft delete: atomically clean up assignments/roles and stamp deleted_at
@@ -91,11 +91,11 @@ const _DELETE = async function(request: Request) {
       entity_label: entityLabel,
     }).catch(() => {});
 
-    if (profile?.email && profile?.first_name) {
-      sendAccountDeactivationEmail({
-        to: profile.email,
-        firstName: profile.first_name,
-      }).catch(() => {});
+    if (email && first_name) {
+      await sendAccountDeactivationEmail({
+        to: email,
+        firstName: first_name,
+      }).catch((err) => console.error("Failed to send deactivation email:", err));
     }
 
     return Response.json({ success: true });
