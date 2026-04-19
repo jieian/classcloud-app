@@ -5,7 +5,9 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
-const _POST = async function(request: Request) {
+import { insertAuditLog } from "@/lib/audit";
+
+const _POST = async function (request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
   const {
@@ -24,37 +26,57 @@ const _POST = async function(request: Request) {
 
   // 3. PAYLOAD: Parse role data
   const body = await request.json();
-  const { name, is_faculty, permission_ids } = body;
+  const { name, is_faculty, is_self_registerable, permission_ids } = body;
 
-  if (!name || is_faculty === undefined || !permission_ids || !Array.isArray(permission_ids)) {
+  if (
+    !name ||
+    is_faculty === undefined ||
+    is_self_registerable === undefined ||
+    !permission_ids ||
+    !Array.isArray(permission_ids)
+  ) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 5. RPC: Create role + assign permissions in a single atomic transaction
+  // 4. RPC: Create role + assign permissions in a single atomic transaction
   const { data, error } = await adminClient.rpc(
     "create_role_with_permissions",
     {
       role_name: name.trim(),
       p_is_faculty: is_faculty,
+      p_is_self_registerable: is_self_registerable,
       p_ids: permission_ids,
-    }
+    },
   );
 
   if (error) {
     if (error.code === "23505") {
       return Response.json(
         { error: "A role with this name already exists." },
-        { status: 409 }
+        { status: 409 },
       );
     }
     console.error("Role Creation Failed:", error.message);
-    return Response.json(
-      { error: "Internal Server Error" },
-      { status: 500 }
-    );
+    return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 
-  return Response.json({ success: true, role_id: data }, { status: 201 });
-}
+  // 5. AUDIT
+  await insertAuditLog({
+    actor_id: caller.id,
+    category: "ADMIN",
+    action: "role_created",
+    entity_type: "role",
+    entity_id: String(data),
+    entity_label: name.trim(),
+    new_values: {
+      name: name.trim(),
+      is_faculty,
+      is_self_registerable,
+      permission_ids,
+    },
+  });
 
-export const POST = withErrorHandler(_POST)
+  return Response.json({ success: true, role_id: data }, { status: 201 });
+};
+
+export const POST = withErrorHandler(_POST);

@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ActionIcon,
+  Box,
   Button,
   Drawer,
   Grid,
@@ -9,11 +11,11 @@ import {
   Text,
   TextInput,
   Tooltip,
-  ActionIcon,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
-import { IconInfoCircle } from "@tabler/icons-react";
+import { IconInfoCircle, IconLock } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import type { RoleWithPermissions, Permission } from "../../users/_lib";
@@ -35,9 +37,28 @@ interface EditRoleDrawerProps {
 interface FormValues {
   name: string;
   is_faculty: boolean;
+  is_self_registerable: boolean;
   permission_ids: string[];
 }
 
+function SwitchLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <Group gap={4} wrap="nowrap" align="center">
+      <span>{label}</span>
+      <Tooltip
+        label={tooltip}
+        multiline
+        maw={260}
+        withArrow
+        events={{ hover: true, touch: true, focus: true }}
+      >
+        <ActionIcon variant="transparent" size="xs" color="#808898" tabIndex={0}>
+          <IconInfoCircle size={14} />
+        </ActionIcon>
+      </Tooltip>
+    </Group>
+  );
+}
 
 export default function EditRoleDrawer({
   opened,
@@ -50,20 +71,37 @@ export default function EditRoleDrawer({
   const [loading, setLoading] = useState(false);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
 
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: {
+            width: "100%",
+            maxWidth: "100%",
+            borderRadius: "12px 12px 0 0",
+          },
+        },
+      }
+    : {};
+
   const form = useForm<FormValues>({
     validateInputOnChange: true,
     initialValues: {
       name: role.name,
       is_faculty: role.is_faculty,
+      is_self_registerable: role.is_self_registerable,
       permission_ids: role.permissions.map((p) => p.permission_id.toString()),
     },
     validate: {
       name: (value) => {
         const trimmed = value.trim();
-        if (!trimmed) return "Role Name is required";
-        if (trimmed.length > 50) return "Name must be 50 characters or less";
-        if (!/^[a-zA-Z]+(?:\s[a-zA-Z]+)*$/.test(trimmed))
-          return "Role Name must contain only letters (no extra spaces or symbols)";
+        if (!trimmed) return "Role name is required";
+        if (trimmed.length > 50) return "Role name must be 50 characters or less";
+        if (!/[a-zA-Z]/.test(trimmed))
+          return "Role name must contain at least one letter";
+        if (!/^[a-zA-Z0-9]+(?:[\s\-][a-zA-Z0-9]+)*$/.test(trimmed))
+          return "Role name may only contain letters and numbers";
         return null;
       },
       permission_ids: (value) => {
@@ -80,13 +118,13 @@ export default function EditRoleDrawer({
       form.setValues({
         name: role.name,
         is_faculty: role.is_faculty,
+        is_self_registerable: role.is_self_registerable,
         permission_ids: role.permissions.map((p) => p.permission_id.toString()),
       });
       form.resetDirty();
     }
   }, [opened, role]);
 
-  // Warn user before leaving page with unsaved changes
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (form.isDirty() && opened) {
@@ -94,12 +132,8 @@ export default function EditRoleDrawer({
         e.returnValue = "";
       }
     };
-
     window.addEventListener("beforeunload", handleBeforeUnload);
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [form.isDirty(), opened]);
 
   async function loadPermissions() {
@@ -108,7 +142,6 @@ export default function EditRoleDrawer({
       const permissions = await fetchAllPermissions();
       setAllPermissions(permissions);
     } catch (error) {
-      console.error("Failed to load permissions:", error);
       const errorMessage =
         error instanceof Error
           ? error.message
@@ -140,6 +173,7 @@ export default function EditRoleDrawer({
           form.reset();
           onClose();
         },
+        ...confirmModalProps,
       });
     } else {
       onClose();
@@ -169,6 +203,7 @@ export default function EditRoleDrawer({
       onConfirm: async () => {
         await submitForm();
       },
+      ...confirmModalProps,
     });
   };
 
@@ -178,7 +213,6 @@ export default function EditRoleDrawer({
 
       const trimmedName = form.values.name.trim();
 
-      // Check name uniqueness before submitting
       const nameChanged = trimmedName.toLowerCase() !== role.name.toLowerCase();
       if (nameChanged) {
         const nameTaken = await checkRoleNameExists(trimmedName, role.role_id);
@@ -197,6 +231,7 @@ export default function EditRoleDrawer({
         role.role_id,
         trimmedName,
         form.values.is_faculty,
+        form.values.is_self_registerable,
         form.values.permission_ids.map((id) => parseInt(id)),
       );
 
@@ -235,54 +270,87 @@ export default function EditRoleDrawer({
     >
       <form>
         <Grid gutter="lg">
-          {/* Column I: Role Information */}
+          {/* Column I: Role Information + Configuration */}
           <Grid.Col span={6}>
             <Text size="sm" fw={600} mb="md">
               Role Information
             </Text>
-            <TextInput
-              label="Role Name"
-              placeholder="Enter role name"
-              required
-              maxLength={50}
-              withErrorStyles
-              disabled={isProtectedRole}
-              description={
-                isProtectedRole
-                  ? "Protected role names cannot be changed."
-                  : `${form.values.name.length}/50 characters`
-              }
-              {...form.getInputProps("name")}
-              rightSection={
-                form.errors.name ? (
-                  <Tooltip label={form.errors.name} position="top">
-                    <ActionIcon variant="transparent" color="red" size="sm">
-                      <IconInfoCircle size={16} />
-                    </ActionIcon>
-                  </Tooltip>
-                ) : null
-              }
-              mb="md"
-            />
-            <Switch
-              label="Faculty Role"
-              description="Assign role as teaching staff."
-              checked={form.values.is_faculty}
-              disabled={isProtectedRole}
-              onChange={(e) =>
-                form.setFieldValue("is_faculty", e.currentTarget.checked)
-              }
-            />
+            <Tooltip
+              label="This is a protected role. The name cannot be changed."
+              withArrow
+              disabled={!isProtectedRole}
+              events={{ hover: true, touch: true, focus: true }}
+            >
+              <TextInput
+                label="Role Name"
+                placeholder="Enter role name"
+                required
+                maxLength={50}
+                withErrorStyles
+                disabled={isProtectedRole}
+                description={
+                  isProtectedRole
+                    ? "Protected role names cannot be changed."
+                    : `${form.values.name.length}/50 characters`
+                }
+                {...form.getInputProps("name")}
+                rightSection={
+                  isProtectedRole ? (
+                    <IconLock size={16} style={{ color: "#808898" }} />
+                  ) : form.errors.name ? (
+                    <Tooltip label={form.errors.name} position="top">
+                      <ActionIcon variant="transparent" color="red" size="sm">
+                        <IconInfoCircle size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  ) : null
+                }
+                mb="lg"
+              />
+            </Tooltip>
+
+            <Text size="sm" fw={600} mb="md">
+              Role Configuration
+            </Text>
+            <Box style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <Switch
+                label={
+                  <SwitchLabel
+                    label="Faculty Role"
+                    tooltip="When enabled, users with this role can be assigned an advisory class, a teaching load, or a coordinator position."
+                  />
+                }
+                description="This user can be assigned teaching responsibilities and advisory duties."
+                checked={form.values.is_faculty}
+                disabled={isProtectedRole}
+                onChange={(e) =>
+                  form.setFieldValue("is_faculty", e.currentTarget.checked)
+                }
+              />
+              <Switch
+                label={
+                  <SwitchLabel
+                    label="Self-Registerable"
+                    tooltip="When enabled, this role will appear as an option during sign-up. For security, only expose roles that are safe for public self-registration."
+                  />
+                }
+                description="This role will be visible and selectable by users on the sign-up page."
+                checked={form.values.is_self_registerable}
+                disabled={isProtectedRole}
+                onChange={(e) =>
+                  form.setFieldValue(
+                    "is_self_registerable",
+                    e.currentTarget.checked,
+                  )
+                }
+              />
+            </Box>
           </Grid.Col>
 
           {/* Column II: Permissions */}
           <Grid.Col span={6}>
-            {form.errors.permission_ids && (
-              <Text size="sm" c="red" mb="xs">
-                {form.errors.permission_ids}
-              </Text>
-            )}
             <PermissionsPanel
+              compact
               selectedIds={form.values.permission_ids.map(Number)}
               onChange={(ids) =>
                 form.setFieldValue("permission_ids", ids.map(String))
@@ -290,6 +358,11 @@ export default function EditRoleDrawer({
               availablePermissions={allPermissions}
               loading={loadingPermissions}
             />
+            {form.errors.permission_ids && (
+              <Text size="sm" c="red" mt="xs">
+                {form.errors.permission_ids}
+              </Text>
+            )}
           </Grid.Col>
         </Grid>
 

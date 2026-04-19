@@ -6,6 +6,7 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { insertAuditLog } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -25,13 +26,13 @@ const _DELETE = async function(request: Request) {
 
   // 3. Parse payload
   const body = await request.json();
-  const { role_id } = body;
+  const { role_id, role_name } = body;
 
   if (!role_id || typeof role_id !== "number") {
     return Response.json({ error: "Missing or invalid role_id" }, { status: 400 });
   }
 
-  // 5. Capture affected UIDs before deletion so we can sync them afterward
+  // 4. Capture affected UIDs before deletion so we can sync them afterward
   const { data: affectedUsers } = await adminClient
     .from("user_roles")
     .select("uid")
@@ -57,6 +58,16 @@ const _DELETE = async function(request: Request) {
       console.error("syncUserPermissions failed after delete-role:", err),
     );
   }
+
+  // 8. Audit
+  await insertAuditLog({
+    actor_id: caller.id,
+    category: "ADMIN",
+    action: "role_deleted",
+    entity_type: "role",
+    entity_id: String(role_id),
+    entity_label: role_name ?? null,
+  });
 
   return Response.json({ success: true }, { status: 200 });
 }

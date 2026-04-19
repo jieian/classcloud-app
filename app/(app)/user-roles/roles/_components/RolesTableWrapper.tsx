@@ -3,6 +3,7 @@
 import {
   useState,
   useImperativeHandle,
+  useEffect,
   forwardRef,
   useMemo,
 } from "react";
@@ -15,6 +16,8 @@ import {
 } from "../../users/_lib";
 import { sortRoles } from "@/lib/roleUtils";
 
+export type RoleFacultyFilter = "all" | "faculty" | "non-faculty";
+
 export interface RolesTableWrapperRef {
   refresh: () => void;
 }
@@ -22,11 +25,15 @@ export interface RolesTableWrapperRef {
 interface RolesTableWrapperProps {
   initialRoles: RoleWithPermissions[];
   search?: string;
+  filter?: RoleFacultyFilter;
   onCountChange?: (count: number) => void;
 }
 
 export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
-  function RolesTableWrapper({ initialRoles, search = "", onCountChange }, ref) {
+  function RolesTableWrapper(
+    { initialRoles, search = "", filter = "all", onCountChange },
+    ref,
+  ) {
     const [roles, setRoles] = useState<RoleWithPermissions[]>(initialRoles);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -39,7 +46,6 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
         setError(null);
         const data = await fetchRolesWithPermissions();
         setRoles(data);
-        onCountChange?.(data.length);
       } catch (err) {
         setError("Failed to load roles. Please try again later.");
         console.error(err);
@@ -49,13 +55,25 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
     }
 
     const filteredRoles = useMemo(() => {
-      const sorted = sortRoles(roles);
-      if (!search.trim()) return sorted;
-      const query = search.toLowerCase().trim();
-      return sorted.filter((role) =>
-        role.name.toLowerCase().includes(query),
-      );
-    }, [roles, search]);
+      let result = sortRoles(roles);
+
+      if (filter === "faculty") {
+        result = result.filter((r) => r.is_faculty);
+      } else if (filter === "non-faculty") {
+        result = result.filter((r) => !r.is_faculty);
+      }
+
+      if (search.trim()) {
+        const query = search.toLowerCase().trim();
+        result = result.filter((r) => r.name.toLowerCase().includes(query));
+      }
+
+      return result;
+    }, [roles, search, filter]);
+
+    useEffect(() => {
+      onCountChange?.(filteredRoles.length);
+    }, [filteredRoles.length]);
 
     if (loading) {
       return <RolesTableSkeleton />;

@@ -27,6 +27,9 @@ export type AuditAction =
   | "forced_password_changed"
   | "user_edited"
   | "user_deleted"
+  | "role_created"
+  | "role_updated"
+  | "role_deleted"
   // ── Security events ──────────────────────────────────────────────────────
   | "rate_limit_exceeded"
   | "honeypot_triggered"

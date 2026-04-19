@@ -16,19 +16,18 @@ import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { RoleWithPermissions } from "../../users/_lib";
 import { deleteRole, isRoleAttachedToActiveUsers } from "../../users/_lib";
-import EditRoleDrawer from "./EditRoleDrawer";
 
 interface RolesTableActionsProps {
   role: RoleWithPermissions;
   onUpdate: () => void;
+  onEdit: () => void;
 }
 
 export default function RolesTableActions({
   role,
   onUpdate,
+  onEdit,
 }: RolesTableActionsProps) {
-  const [drawerOpened, { open: openDrawer, close: closeDrawer }] =
-    useDisclosure(false);
   const [deleteOpened, { open: openDelete, close: closeDelete }] =
     useDisclosure(false);
 
@@ -67,7 +66,7 @@ export default function RolesTableActions({
     if (isProtectedRole) return;
     try {
       setDeleting(true);
-      await deleteRole(role.role_id);
+      await deleteRole(role.role_id, role.name);
       handleCloseDelete();
       onUpdate();
       notifications.show({
@@ -92,12 +91,19 @@ export default function RolesTableActions({
   return (
     <>
       <Group gap={0} justify="flex-end">
-        <Tooltip label="Edit Role">
+        <Tooltip
+          label={
+            isAdmin
+              ? "The Administrator role cannot be edited"
+              : "Edit Role"
+          }
+          events={{ hover: true, touch: true, focus: true }}
+        >
           <ActionIcon
             variant="subtle"
             color="gray"
             aria-label={`Edit ${role.name}`}
-            onClick={openDrawer}
+            onClick={onEdit}
             disabled={isAdmin}
           >
             <IconPencil size={16} stroke={1.5} />
@@ -105,8 +111,11 @@ export default function RolesTableActions({
         </Tooltip>
         <Tooltip
           label={
-            isProtectedRole ? "This role cannot be deleted" : "Delete Role"
+            isProtectedRole
+              ? "This is a protected role and cannot be deleted"
+              : "Delete Role"
           }
+          events={{ hover: true, touch: true, focus: true }}
         >
           <ActionIcon
             variant="subtle"
@@ -120,14 +129,6 @@ export default function RolesTableActions({
           </ActionIcon>
         </Tooltip>
       </Group>
-
-      <EditRoleDrawer
-        opened={drawerOpened}
-        onClose={closeDrawer}
-        role={role}
-        onSuccess={onUpdate}
-        isProtectedRole={isProtectedRole}
-      />
 
       <Modal
         opened={deleteOpened}

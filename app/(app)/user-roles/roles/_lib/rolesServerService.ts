@@ -5,7 +5,7 @@ export async function fetchRolesWithPermissionsServer(): Promise<RoleWithPermiss
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("roles")
-    .select("role_id, name, is_faculty, is_protected, role_permissions(permissions(permission_id, name, description))")
+    .select("role_id, name, is_faculty, is_self_registerable, is_protected, role_permissions(permissions(permission_id, name, description))")
     .order("name");
 
   if (error) {
@@ -17,6 +17,7 @@ export async function fetchRolesWithPermissionsServer(): Promise<RoleWithPermiss
     role_id: role.role_id,
     name: role.name,
     is_faculty: role.is_faculty ?? false,
+    is_self_registerable: role.is_self_registerable ?? false,
     is_protected: role.is_protected ?? false,
     permissions: (role.role_permissions || []).map((rp: any) => rp.permissions),
   }));

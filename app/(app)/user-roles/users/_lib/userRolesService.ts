@@ -17,6 +17,7 @@ export interface RoleWithPermissions {
   role_id: number;
   name: string;
   is_faculty: boolean;
+  is_self_registerable: boolean;
   is_protected: boolean;
   permissions: Permission[];
 }
@@ -261,7 +262,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("roles")
-    .select("role_id, name, is_faculty, is_protected, role_permissions(permissions(permission_id, name, description))")
+    .select("role_id, name, is_faculty, is_self_registerable, is_protected, role_permissions(permissions(permission_id, name, description))")
     .order("name");
 
   if (error) {
@@ -273,6 +274,7 @@ export async function fetchRolesWithPermissions(): Promise<RoleWithPermissions[]
     role_id: role.role_id,
     name: role.name,
     is_faculty: role.is_faculty ?? false,
+    is_self_registerable: role.is_self_registerable ?? false,
     is_protected: role.is_protected ?? false,
     permissions: (role.role_permissions || []).map((rp: any) => rp.permissions),
   }));
@@ -331,12 +333,18 @@ export async function checkRoleNameExists(
 export async function createRole(
   name: string,
   isFaculty: boolean,
+  isSelfRegisterable: boolean,
   permissionIds: number[],
 ): Promise<void> {
   const response = await fetch("/api/roles/create-role", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, is_faculty: isFaculty, permission_ids: permissionIds }),
+    body: JSON.stringify({
+      name,
+      is_faculty: isFaculty,
+      is_self_registerable: isSelfRegisterable,
+      permission_ids: permissionIds,
+    }),
   });
 
   const result = await response.json();
@@ -350,11 +358,11 @@ export async function createRole(
  * Deletes a role and its permission assignments via the secure API route.
  * The API handles auth, permission checks, and uses the admin client.
  */
-export async function deleteRole(roleId: number): Promise<void> {
+export async function deleteRole(roleId: number, roleName: string): Promise<void> {
   const response = await fetch("/api/roles/delete-role", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId }),
+    body: JSON.stringify({ role_id: roleId, role_name: roleName }),
   });
 
   const result = await response.json();
@@ -390,12 +398,19 @@ export async function updateRole(
   roleId: number,
   name: string,
   isFaculty: boolean,
+  isSelfRegisterable: boolean,
   permissionIds: number[],
 ): Promise<void> {
   const response = await fetch("/api/roles/update-role", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role_id: roleId, name, is_faculty: isFaculty, permission_ids: permissionIds }),
+    body: JSON.stringify({
+      role_id: roleId,
+      name,
+      is_faculty: isFaculty,
+      is_self_registerable: isSelfRegisterable,
+      permission_ids: permissionIds,
+    }),
   });
 
   const result = await response.json();

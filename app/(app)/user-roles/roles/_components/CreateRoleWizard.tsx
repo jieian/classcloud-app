@@ -32,6 +32,7 @@ export default function CreateRoleWizard() {
     initialValues: {
       name: "",
       is_faculty: false,
+      is_self_registerable: false,
       permission_ids: [],
       activeStep: 0,
     },
@@ -106,6 +107,7 @@ export default function CreateRoleWizard() {
           form.reset();
           router.push(href);
         },
+        ...confirmModalProps,
       });
     };
 
@@ -202,6 +204,7 @@ export default function CreateRoleWizard() {
           router.replace("/user-roles/roles");
           router.refresh();
         },
+        ...confirmModalProps,
       });
     } else {
       router.replace("/user-roles/roles");
@@ -224,6 +227,7 @@ export default function CreateRoleWizard() {
       onConfirm: async () => {
         await submitForm();
       },
+      ...confirmModalProps,
     });
   };
 
@@ -231,7 +235,12 @@ export default function CreateRoleWizard() {
     try {
       setLoading(true);
 
-      await createRole(form.values.name.trim(), form.values.is_faculty, form.values.permission_ids);
+      await createRole(
+        form.values.name.trim(),
+        form.values.is_faculty,
+        form.values.is_self_registerable,
+        form.values.permission_ids,
+      );
 
       notifications.show({
         title: "Success",
@@ -272,6 +281,18 @@ export default function CreateRoleWizard() {
   })();
 
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: {
+            width: "100%",
+            maxWidth: "100%",
+            borderRadius: "12px 12px 0 0",
+          },
+        },
+      }
+    : {};
 
   return (
     <Container fluid py="xl" h="100%">
@@ -283,7 +304,10 @@ export default function CreateRoleWizard() {
             color="#4EAE4A"
             orientation="vertical"
           >
-            <Stepper.Step label="Step 1" description="Specify role information">
+            <Stepper.Step
+              label="Step 1"
+              description="Specify role information and configuration"
+            >
               <StepRoleInfo form={form} />
             </Stepper.Step>
 
@@ -349,7 +373,7 @@ export default function CreateRoleWizard() {
             >
               <Stepper.Step
                 label="Step 1"
-                description="Specify role information"
+                description="Specify role information and configuration"
               />
               <Stepper.Step label="Step 2" description="Assign permissions" />
               <Stepper.Step

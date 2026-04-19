@@ -20,7 +20,11 @@ import type { Permission } from "../../users/_lib/userRolesService";
 // ---------------------------------------------------------------------------
 
 type PermOption = { permName: string; display: string };
-type PermRow = { label: string; type: "radio" | "checkbox"; options: PermOption[] };
+type PermRow = {
+  label: string;
+  type: "radio" | "checkbox";
+  options: PermOption[];
+};
 type PermGroup = { label: string; rows: PermRow[] };
 
 const PERMISSION_GROUPS: PermGroup[] = [
@@ -45,7 +49,9 @@ const PERMISSION_GROUPS: PermGroup[] = [
       {
         label: "School Year",
         type: "radio",
-        options: [{ permName: "school_year.full_access", display: "Full Access" }],
+        options: [
+          { permName: "school_year.full_access", display: "Full Access" },
+        ],
       },
       {
         label: "Faculty",
@@ -127,8 +133,7 @@ export const PERM_DISPLAY_MAP: Record<string, string> = (() => {
   for (const group of PERMISSION_GROUPS) {
     for (const row of group.rows) {
       for (const opt of row.options) {
-        const prefix =
-          group.label === "Reports" ? group.label : row.label;
+        const prefix = group.label === "Reports" ? group.label : row.label;
         map[opt.permName] = `${prefix} — ${opt.display}`;
       }
     }
@@ -183,6 +188,7 @@ interface PermissionsPanelProps {
   onChange: (ids: number[]) => void;
   availablePermissions: Permission[];
   loading?: boolean;
+  compact?: boolean;
 }
 
 export function PermissionsPanel({
@@ -190,6 +196,7 @@ export function PermissionsPanel({
   onChange,
   availablePermissions,
   loading,
+  compact = false,
 }: PermissionsPanelProps) {
   const permByName = useMemo(
     () => new Map(availablePermissions.map((p) => [p.name, p])),
@@ -241,9 +248,23 @@ export function PermissionsPanel({
 
   return (
     <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: 8 }}>
-      <Text fw={600} mb="md" c="#808898" size="sm">
-        Permissions
-      </Text>
+      {compact ? (
+        <Text size="sm" fw={600} mb="md">
+          Permissions
+        </Text>
+      ) : (
+        <>
+          <Text size="md" fw={700} mb={4} c="#4EAE4A">
+            Permissions{" "}
+            <Text span c="red" fw={700}>
+              *
+            </Text>
+          </Text>
+          <Text size="sm" c="#808898" mb="md">
+            Select at least one permission to define what this role can access.
+          </Text>
+        </>
+      )}
 
       {PERMISSION_GROUPS.map((group, gIdx) => (
         <Box key={group.label}>
@@ -255,7 +276,11 @@ export function PermissionsPanel({
                   <Text size="sm" c="#555" style={{ minWidth: 130 }}>
                     {row.label}
                   </Text>
-                  <Divider orientation="vertical" mx="sm" style={{ height: 18 }} />
+                  <Divider
+                    orientation="vertical"
+                    mx="sm"
+                    style={{ height: 18 }}
+                  />
                   <Group gap="lg">
                     {row.options.map((opt) => {
                       const perm = permByName.get(opt.permName);

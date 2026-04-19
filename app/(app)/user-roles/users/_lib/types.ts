@@ -26,6 +26,7 @@ export interface CreateUserData {
 export interface CreateRoleForm {
   name: string;
   is_faculty: boolean;
+  is_self_registerable: boolean;
   permission_ids: number[];
   activeStep: number;
 }

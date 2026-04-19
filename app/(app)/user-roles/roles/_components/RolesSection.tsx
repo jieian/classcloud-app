@@ -2,11 +2,12 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ActionIcon, Group, Tooltip, Button } from "@mantine/core";
-import { IconRefresh } from "@tabler/icons-react";
+import { ActionIcon, Group, Select, Tooltip, Button } from "@mantine/core";
+import { IconRefresh, IconList } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import RolesTableWrapper, {
   type RolesTableWrapperRef,
+  type RoleFacultyFilter,
 } from "./RolesTableWrapper";
 import type { RoleWithPermissions } from "../../users/_lib";
 
@@ -14,9 +15,18 @@ interface RolesSectionProps {
   initialRoles: RoleWithPermissions[];
 }
 
+const FILTER_OPTIONS = [
+  { value: "all", label: "All Roles" },
+  { value: "faculty", label: "Faculty" },
+  { value: "non-faculty", label: "Non-Faculty" },
+];
+
 export function RolesSection({ initialRoles }: RolesSectionProps) {
-  const [roleCount, setRoleCount] = useState<number | null>(initialRoles.length);
+  const [roleCount, setRoleCount] = useState<number | null>(
+    initialRoles.length,
+  );
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<RoleFacultyFilter>("all");
   const tableRef = useRef<RolesTableWrapperRef>(null);
 
   return (
@@ -39,10 +49,10 @@ export function RolesSection({ initialRoles }: RolesSectionProps) {
         </Button>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
-        A role defines a set of permissions that determine what actions a user
-        can perform within ClassCloud.
+        Roles group permissions to control what each user can access and do
+        within ClassCloud.
       </p>
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+      <Group mb="xs" wrap="nowrap" align="flex-end" gap="sm">
         <SearchBar
           id="search-roles"
           placeholder="Search roles..."
@@ -65,9 +75,21 @@ export function RolesSection({ initialRoles }: RolesSectionProps) {
           </ActionIcon>
         </Tooltip>
       </Group>
+      <Group mb="md" gap="sm">
+        <Select
+          placeholder="All Roles"
+          data={FILTER_OPTIONS}
+          value={filter}
+          onChange={(val) => setFilter((val as RoleFacultyFilter) ?? "all")}
+          leftSection={<IconList size={16} />}
+          w={160}
+          clearable={false}
+        />
+      </Group>
       <RolesTableWrapper
         ref={tableRef}
         search={search}
+        filter={filter}
         onCountChange={setRoleCount}
         initialRoles={initialRoles}
       />

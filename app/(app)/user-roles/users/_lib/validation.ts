@@ -75,13 +75,12 @@ export const validateCreateUserForm = {
 export const validateCreateRoleForm = {
   name: (value: string) => {
     const trimmed = value.trim();
-    if (!trimmed) return "Role Name is required";
-    if (trimmed.length > 50) return "Name must be 50 characters or less";
-    
-    const nameRegex = /^[a-zA-Z0-9]+(?:\s[a-zA-Z0-9\-]+)*$/;
-    if (!nameRegex.test(trimmed))
-      return "Role Name contains invalid characters";
-      
+    if (!trimmed) return "Role name is required";
+    if (trimmed.length > 50) return "Role name must be 50 characters or less";
+    if (!/[a-zA-Z]/.test(trimmed))
+      return "Role name must contain at least one letter";
+    if (!/^[a-zA-Z0-9]+(?:[\s\-][a-zA-Z0-9]+)*$/.test(trimmed))
+      return "Role name may only contain letters and numbers";
     return null;
   },
 
