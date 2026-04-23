@@ -27,7 +27,16 @@ import {
   passwordRequirements,
 } from "@/app/(app)/user-roles/users/_lib/utils";
 
-type PageState = "loading" | "ready" | "invalid";
+type PageState = "loading" | "ready" | "invalid" | "wrong-account";
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const payload = token.split(".")[1];
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
 
 
 function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
@@ -50,6 +59,8 @@ export default function ResetPasswordPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmError, setConfirmError] = useState("");
+
+  const [loggedInEmail, setLoggedInEmail] = useState<string | null>(null);
 
   // Resend state (used on 'invalid' page state)
   const [emailFromToken, setEmailFromToken] = useState<string | null>(null);
@@ -116,14 +127,9 @@ export default function ResetPasswordPage() {
     }
 
     void (async () => {
-      // Check existing session first (page refresh case)
-      const { data } = await supabase.auth.getSession();
-      if (data.session) {
-        setPageState("ready");
-        return;
-      }
-
-      // Parse implicit flow token from URL hash
+      // Parse implicit flow token from URL hash first — must take priority over
+      // any existing session so that a logged-in User2 who opens User1's reset
+      // link doesn't accidentally reset User2's password instead.
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
       const accessToken = params.get("access_token");
@@ -131,6 +137,18 @@ export default function ResetPasswordPage() {
       const type = params.get("type");
 
       if (accessToken && refreshToken && type === "recovery") {
+        // Decode the token to find which user this link belongs to
+        const tokenPayload = decodeJwtPayload(accessToken);
+        const tokenUserId = tokenPayload?.sub as string | undefined;
+
+        // If a different user is already logged in, block the reset entirely
+        const { data: existing } = await supabase.auth.getSession();
+        if (existing.session && tokenUserId && existing.session.user.id !== tokenUserId) {
+          setLoggedInEmail(existing.session.user.email ?? null);
+          setPageState("wrong-account");
+          return;
+        }
+
         const { error } = await supabase.auth.setSession({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -141,9 +159,17 @@ export default function ResetPasswordPage() {
         } else {
           setPageState("invalid");
         }
-      } else {
-        setPageState("invalid");
+        return;
       }
+
+      // No recovery token in URL — fall back to existing session (page refresh case)
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        setPageState("ready");
+        return;
+      }
+
+      setPageState("invalid");
     })();
 
     return () => {
@@ -282,6 +308,27 @@ export default function ResetPasswordPage() {
                       </Text>
                     </Link>
                   )}
+                </>
+              )}
+
+              {pageState === "wrong-account" && (
+                <>
+                  <Alert
+                    color="red"
+                    radius="md"
+                    mb="md"
+                    icon={<IconAlertCircle size={16} />}
+                  >
+                    This reset link was sent to a different account.
+                    {loggedInEmail && (
+                      <> You&apos;re currently signed in as <strong>{loggedInEmail}</strong>.</>
+                    )}
+                  </Alert>
+                  <Link href="/" style={{ textDecoration: "none" }}>
+                    <Button fullWidth radius="md" color="#4EAE4A" variant="light">
+                      Go to Home
+                    </Button>
+                  </Link>
                 </>
               )}
 
