@@ -14,7 +14,7 @@ import PendingUsersTable from "./PendingUsersTable";
 import PendingUsersTableSkeleton from "./PendingUsersTableSkeleton";
 import { fetchPendingUsers, fetchAllRoles, type PendingUser, type Role } from "../_lib";
 
-export type PendingFilter = "self_register" | "admin_invite";
+export type PendingFilter = "all" | "self_register" | "admin_invite";
 
 export interface PendingUsersTableWrapperRef {
   refresh: () => void;
@@ -35,7 +35,7 @@ export default forwardRef<
 >(function PendingUsersTableWrapper(
   {
     search = "",
-    filter = "self_register",
+    filter = "all",
     onCountChange,
     onSelfRegCountChange,
     unreadMap = new Map(),
@@ -90,8 +90,15 @@ export default forwardRef<
   const filteredUsers = useMemo(() => {
     let result = users;
 
-    // Source filter — always applied (no "all" option)
-    result = result.filter((u) => u.source === filter);
+    // Source filter
+    if (filter !== "all") {
+      result = result.filter((u) => u.source === filter);
+    } else {
+      // self_register first, then admin_invite
+      const selfReg = result.filter((u) => u.source === "self_register");
+      const adminInvite = result.filter((u) => u.source === "admin_invite");
+      result = [...selfReg, ...adminInvite];
+    }
 
     // Search filter
     const query = search.toLowerCase().trim();

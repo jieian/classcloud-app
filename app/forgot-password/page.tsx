@@ -165,7 +165,7 @@ export default function ForgotPasswordPage() {
                       loading={loading}
                       disabled={!isValidEmail || !turnstileToken}
                     >
-                      Send Code
+                      Send Reset Link
                     </Button>
                   </div>
                 </form>

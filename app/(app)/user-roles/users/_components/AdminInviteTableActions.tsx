@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   ActionIcon,
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -124,6 +125,37 @@ export default function AdminInviteTableActions({
   };
 
   const handleResend = () => {
+    if (user.requested_role_ids.length === 0) {
+      modals.open({
+        title: "Cannot Resend Invitation",
+        centered: true,
+        children: (
+          <Stack gap="md">
+            <Alert color="yellow">
+              This user currently has no roles assigned — their original role
+              may have been deleted. You must assign at least one role before
+              resending.
+            </Alert>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => modals.closeAll()}>
+                Cancel
+              </Button>
+              <Button
+                style={{ backgroundColor: "#4EAE4A" }}
+                onClick={() => {
+                  modals.closeAll();
+                  openEdit();
+                }}
+              >
+                Edit Invitation
+              </Button>
+            </Group>
+          </Stack>
+        ),
+      });
+      return;
+    }
+
     modals.openConfirmModal({
       title: "Resend Invitation?",
       children: (
@@ -315,6 +347,12 @@ export default function AdminInviteTableActions({
                 *
               </Text>
             </Text>
+            {user.requested_role_ids.length === 0 && (
+              <Alert color="yellow" mb="xs" p="xs">
+                The role(s) originally assigned to this invitation were deleted.
+                Please assign new roles before saving.
+              </Alert>
+            )}
 
             <Box
               p="md"

@@ -96,11 +96,11 @@ export async function activateUser(
  * Rejects a pending user: sends rejection email then hard-deletes from auth.users.
  * ON DELETE CASCADE handles users + user_roles automatically.
  */
-export async function rejectPendingUser(uid: string, reason: string): Promise<void> {
+export async function rejectPendingUser(uid: string, reason: string, firstName?: string): Promise<void> {
   const response = await fetch("/api/users/reject", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ uid, reason }),
+    body: JSON.stringify({ uid, reason, firstName }),
   });
 
   const result = await response.json();

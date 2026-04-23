@@ -14,7 +14,7 @@ const _POST = async function(request: Request) {
   }
 
   const body = await request.json();
-  const { uid, reason } = body;
+  const { uid, reason, firstName: clientFirstName } = body;
 
   if (!uid || typeof uid !== "string") {
     return Response.json({ error: "Invalid user ID." }, { status: 400 });
@@ -36,16 +36,8 @@ const _POST = async function(request: Request) {
   const email = authUser.email;
   const isBanned = authUser.banned_until && new Date(authUser.banned_until) > new Date();
 
-  // Fetch profile name before deletion for the audit label
-  const { data: profileData } = await adminClient
-    .from("users")
-    .select("first_name, last_name")
-    .eq("uid", uid)
-    .maybeSingle();
-  const firstName = profileData?.first_name ?? "Applicant";
-  const entityLabel = profileData
-    ? `${profileData.first_name} ${profileData.last_name}`
-    : firstName;
+  const firstName = (typeof clientFirstName === "string" && clientFirstName.trim()) ? clientFirstName.trim() : "Applicant";
+  const entityLabel = firstName;
 
   if (isBanned) {
     // Restored (previously soft-deleted) user — soft delete: stamp deleted_at + keep banned

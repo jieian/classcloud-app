@@ -16,7 +16,7 @@ import UsersTable from "./UsersTable";
 import UsersTableSkeleton from "./UsersTableSkeleton";
 import { fetchActiveUsersWithRoles, type UserWithRoles } from "../_lib";
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export type FacultyFilter = "all" | "faculty" | "non-faculty";
 
@@ -31,7 +31,7 @@ export type FacultyFilter = "all" | "faculty" | "non-faculty";
  *   4   is_faculty=false & is_protected=true  (role name A–Z)
  *   5   is_faculty=false & is_protected=false (role name A–Z)
  *   6   Faculty + Coordinator
- *   7   Coordinator (no Faculty role) — Subject Coordinator first, then Grade Coordinator
+ *   7   Coordinator (no Faculty role) — Subject Coordinator first
  *   8   Faculty (no Coordinator role)
  *   9   is_faculty=true  & is_protected=true  (role name A–Z)
  *   10  is_faculty=true  & is_protected=false (role name A–Z)
@@ -39,7 +39,7 @@ export type FacultyFilter = "all" | "faculty" | "non-faculty";
  *
  * "Faculty" buckets:
  *   1   Faculty + Coordinator
- *   2   Coordinator (no Faculty role) — Subject Coordinator first, then Grade Coordinator
+ *   2   Coordinator (no Faculty role) — Subject Coordinator first
  *   3   Faculty (no Coordinator role)
  *   4   is_faculty=true & is_protected=true  (role name A–Z)
  *   5   is_faculty=true & is_protected=false (role name A–Z)
@@ -224,8 +224,8 @@ export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
             if (roleDiff !== 0) return roleDiff;
           }
           return (
-            a.u.last_name.localeCompare(b.u.last_name) ||
-            a.u.first_name.localeCompare(b.u.first_name)
+            a.u.first_name.localeCompare(b.u.first_name) ||
+            a.u.last_name.localeCompare(b.u.last_name)
           );
         })
         .map(({ u }) => u);

@@ -11,11 +11,11 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { IconAlertTriangle, IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconLock, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import type { RoleWithPermissions } from "../../users/_lib";
-import { deleteRole, isRoleAttachedToActiveUsers } from "../../users/_lib";
+import { deleteRole, countUsersAffectedByRoleDeletion } from "../../users/_lib";
 
 interface RolesTableActionsProps {
   role: RoleWithPermissions;
@@ -34,7 +34,7 @@ export default function RolesTableActions({
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [checking, setChecking] = useState(false);
-  const [isAttached, setIsAttached] = useState(false);
+  const [affectedCounts, setAffectedCounts] = useState<{ active: number; pending: number } | null>(null);
 
   const isAdmin = role.role_id === 1;
   const isProtectedRole = role.is_protected;
@@ -43,8 +43,8 @@ export default function RolesTableActions({
     if (isProtectedRole) return;
     try {
       setChecking(true);
-      const attached = await isRoleAttachedToActiveUsers(role.role_id);
-      setIsAttached(attached);
+      const counts = await countUsersAffectedByRoleDeletion(role.role_id);
+      setAffectedCounts(counts);
       openDelete();
     } catch {
       notifications.show({
@@ -91,43 +91,51 @@ export default function RolesTableActions({
   return (
     <>
       <Group gap={0} justify="flex-end">
-        <Tooltip
-          label={
-            isAdmin
-              ? "The Administrator role cannot be edited"
-              : "Edit Role"
-          }
-          events={{ hover: true, touch: true, focus: true }}
-        >
-          <ActionIcon
-            variant="subtle"
-            color="gray"
-            aria-label={`Edit ${role.name}`}
-            onClick={onEdit}
-            disabled={isAdmin}
+        {isAdmin ? (
+          <Tooltip
+            label="The Administrator role is locked and cannot be modified"
+            events={{ hover: true, touch: true, focus: true }}
           >
-            <IconPencil size={16} stroke={1.5} />
-          </ActionIcon>
-        </Tooltip>
-        <Tooltip
-          label={
-            isProtectedRole
-              ? "This is a protected role and cannot be deleted"
-              : "Delete Role"
-          }
-          events={{ hover: true, touch: true, focus: true }}
-        >
-          <ActionIcon
-            variant="subtle"
-            color="red"
-            aria-label={`Delete ${role.name}`}
-            onClick={handleTrashClick}
-            loading={checking}
-            disabled={isAdmin || isProtectedRole}
-          >
-            <IconTrash size={16} stroke={1.5} />
-          </ActionIcon>
-        </Tooltip>
+            <ActionIcon variant="subtle" color="gray" aria-label="Locked role">
+              <IconLock size={16} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        ) : (
+          <>
+            <Tooltip
+              label="Edit Role"
+              events={{ hover: true, touch: true, focus: true }}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                aria-label={`Edit ${role.name}`}
+                onClick={onEdit}
+              >
+                <IconPencil size={16} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip
+              label={
+                isProtectedRole
+                  ? "This is a protected role and cannot be deleted"
+                  : "Delete Role"
+              }
+              events={{ hover: true, touch: true, focus: true }}
+            >
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                aria-label={`Delete ${role.name}`}
+                onClick={handleTrashClick}
+                loading={checking}
+                disabled={isProtectedRole}
+              >
+                <IconTrash size={16} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+          </>
+        )}
       </Group>
 
       <Modal
@@ -139,10 +147,18 @@ export default function RolesTableActions({
         closeOnEscape={!deleting}
         withCloseButton={!deleting}
       >
-        {isAttached && (
-          <Alert icon={<IconAlertTriangle size={16} />} color="orange" mb="md">
-            This role is currently assigned to active users. Deleting it will
-            remove it from all of them.
+        {affectedCounts && affectedCounts.active > 0 && (
+          <Alert icon={<IconAlertTriangle size={16} />} color="orange" mb="sm">
+            This role is currently assigned to{" "}
+            <strong>{affectedCounts.active} active user{affectedCounts.active !== 1 ? "s" : ""}</strong>.
+            Deleting it will remove it from all of them.
+          </Alert>
+        )}
+        {affectedCounts && affectedCounts.pending > 0 && (
+          <Alert icon={<IconAlertTriangle size={16} />} color="red" mb="md">
+            This role is assigned to{" "}
+            <strong>{affectedCounts.pending} pending/invited user{affectedCounts.pending !== 1 ? "s" : ""}</strong>{" "}
+            awaiting activation. They will have no roles when they activate.
           </Alert>
         )}
         <Text size="sm" mb="md">

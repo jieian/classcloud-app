@@ -40,18 +40,29 @@ export default function PendingUsersTable({
     );
   }
 
-  const rows = users.map((user) => {
+  const hasBothSources =
+    users.some((u) => u.source === "self_register") &&
+    users.some((u) => u.source === "admin_invite");
+  const lastSelfRegIndex = hasBothSources
+    ? users.map((u) => u.source).lastIndexOf("self_register")
+    : -1;
+
+  const rows = users.map((user, index) => {
     const fullName = [user.first_name, user.middle_name, user.last_name]
       .filter(Boolean)
       .join(" ");
 
     const isUnread = user.source === "self_register" && unreadMap.has(user.uid);
+    const isSectionBoundary = index === lastSelfRegIndex;
 
     return (
       <TableTr
         key={user.uid}
         onClick={() => { if (isUnread) onMarkRead(user.uid); }}
-        style={isUnread ? { cursor: "pointer" } : undefined}
+        style={{
+          ...(isUnread ? { cursor: "pointer" } : {}),
+          ...(isSectionBoundary ? { borderBottom: "2px solid #b0b8c1" } : {}),
+        }}
       >
         <TableTd>
           <Group gap="sm">
@@ -63,6 +74,11 @@ export default function PendingUsersTable({
                 New
               </Badge>
             )}
+            {user.requested_role_ids.length === 0 && (
+              <Badge size="xs" color="yellow" variant="filled">
+                No roles
+              </Badge>
+            )}
           </Group>
         </TableTd>
         <TableTd>
@@ -72,7 +88,7 @@ export default function PendingUsersTable({
           {user.source === "admin_invite" ? (
             <AdminInviteTableActions user={user} roles={roles} onUpdate={onUpdate} />
           ) : (
-            <PendingTableActions user={user} roles={roles} onUpdate={onUpdate} />
+            <PendingTableActions user={user} roles={roles} onUpdate={onUpdate} onMarkRead={onMarkRead} />
           )}
         </TableTd>
       </TableTr>

@@ -20,6 +20,7 @@ import PendingUsersTableWrapper, {
 } from "./PendingUsersTableWrapper";
 
 const FILTER_OPTIONS = [
+  { value: "all", label: "All" },
   { value: "self_register", label: "Self-Registration" },
   { value: "admin_invite", label: "Admin-Invited" },
 ];
@@ -31,7 +32,7 @@ export function PendingSection() {
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [selfRegCount, setSelfRegCount] = useState(0);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<PendingFilter>("self_register");
+  const [filter, setFilter] = useState<PendingFilter>("all");
   const tableRef = useRef<PendingUsersTableWrapperRef>(null);
 
   // uid → notifId map for unread new_signup notifications
@@ -141,7 +142,7 @@ export function PendingSection() {
               data={FILTER_OPTIONS}
               value={filter}
               onChange={(val) =>
-                setFilter((val as PendingFilter) ?? "self_register")
+                setFilter((val as PendingFilter) ?? "all")
               }
               leftSection={<IconList size={16} />}
               w={180}

@@ -55,6 +55,25 @@ const _POST = async function (request: Request) {
 
   const trimmedEmail = email.trim().toLowerCase();
 
+  // ── Validate role_ids exist before any email or DB operations ─────────────
+  // Must run early — for new users the invitation email is sent before DB
+  // writes, so an FK violation inside create_user_atomic would leave the
+  // invitee with a broken activation link they already received.
+  const { data: existingRoles, error: rolesCheckError } = await adminClient
+    .from("roles")
+    .select("role_id")
+    .in("role_id", role_ids);
+
+  if (rolesCheckError) {
+    return Response.json({ error: "Failed to validate roles." }, { status: 500 });
+  }
+  if (!existingRoles || existingRoles.length !== role_ids.length) {
+    return Response.json(
+      { error: "One or more selected roles no longer exist. Please refresh and try again." },
+      { status: 400 },
+    );
+  }
+
   // ── Domain check ──────────────────────────────────────────────────────────
   if (!ALLOWED_DOMAINS.some((d) => trimmedEmail.endsWith(`@${d}`))) {
     return Response.json(

@@ -28,7 +28,7 @@ import {
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import type { UserWithRoles, Role } from "../_lib";
-import { updateUser, fetchAllRoles } from "../_lib";
+import { updateUser, fetchAllRoles, checkPrincipalExists } from "../_lib";
 import { sortRoles } from "@/lib/roleUtils";
 
 interface EditUserDrawerProps {
@@ -114,6 +114,7 @@ export default function EditUserDrawer({
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [principalWarning, setPrincipalWarning] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const confirmModalProps = isMobile
     ? {
@@ -224,6 +225,20 @@ export default function EditUserDrawer({
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, [form.isDirty(), opened]);
+
+  useEffect(() => {
+    const hasPrincipal = form.values.role_ids.some(
+      (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name === "Principal",
+    );
+    const alreadyHadPrincipal = user.roles.some((r) => r.name === "Principal");
+    if (!hasPrincipal || alreadyHadPrincipal) {
+      setPrincipalWarning(false);
+      return;
+    }
+    checkPrincipalExists()
+      .then(setPrincipalWarning)
+      .catch(() => setPrincipalWarning(false));
+  }, [form.values.role_ids, availableRoles]);
 
   async function loadRoles() {
     try {
@@ -541,7 +556,35 @@ export default function EditUserDrawer({
                   <Checkbox
                     key={role.role_id}
                     value={role.role_id.toString()}
-                    label={role.name}
+                    label={
+                      <Group gap={6} wrap="nowrap">
+                        <Text size="sm">{role.name}</Text>
+                        {role.name === "Principal" && principalWarning && (
+                          <Tooltip
+                            label="A Principal already exists. Assigning this role to another user may cause conflicts."
+                            withArrow
+                            multiline
+                            w={260}
+                          >
+                            <Box
+                              style={{
+                                width: 16,
+                                height: 16,
+                                borderRadius: "50%",
+                                backgroundColor: "#f59e0b",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                                cursor: "default",
+                              }}
+                            >
+                              <Text size="xs" fw={700} c="white" lh={1}>!</Text>
+                            </Box>
+                          </Tooltip>
+                        )}
+                      </Group>
+                    }
                     mb="sm"
                   />
                 ))}

@@ -3,8 +3,7 @@ const FIXED_ROLE_MAP = new Map<string, number>([
   ["Principal", 0],
   ["Administrator", 1],
   ["Subject Coordinator", 2],
-  ["Grade Level Coordinator", 3],
-  ["Faculty", 4],
+  ["Faculty", 3],
 ]);
 
 // Bucket values for roles outside the fixed 5:

@@ -11,6 +11,7 @@ export interface Role {
   name: string;
   is_faculty: boolean;
   is_protected: boolean;
+  is_self_registerable: boolean;
 }
 
 export interface RoleWithPermissions {
@@ -233,7 +234,7 @@ export async function fetchAllRoles(): Promise<Role[]> {
   try {
     const { data, error } = await supabase
       .from("roles")
-      .select("role_id, name, is_faculty, is_protected")
+      .select("role_id, name, is_faculty, is_protected, is_self_registerable")
       .order("name");
 
     if (error) {
@@ -388,6 +389,29 @@ export async function isRoleAttachedToActiveUsers(roleId: number): Promise<boole
   }
 
   return (count ?? 0) > 0;
+}
+
+/**
+ * Returns counts of active and pending users who hold a role.
+ * Used to warn admins before deleting a role.
+ */
+export async function countUsersAffectedByRoleDeletion(
+  roleId: number,
+): Promise<{ active: number; pending: number }> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("user_roles")
+    .select("uid, users!inner(active_status, deleted_at)")
+    .eq("role_id", roleId)
+    .is("users.deleted_at", null);
+
+  if (error) {
+    throw new Error("Failed to check role attachment status.");
+  }
+
+  const active = (data ?? []).filter((r: any) => r.users?.active_status === 1).length;
+  const pending = (data ?? []).filter((r: any) => r.users?.active_status === 0).length;
+  return { active, pending };
 }
 
 /**

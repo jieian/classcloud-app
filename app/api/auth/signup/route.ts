@@ -132,7 +132,10 @@ const _POST = async function (request: Request) {
     return Response.json({ error: "Failed to validate roles." }, { status: 500 });
   }
   if (!validRoles || validRoles.length !== role_ids.length) {
-    return Response.json({ error: "One or more selected roles are invalid." }, { status: 400 });
+    return Response.json(
+      { error: "One or more selected roles are no longer available. Please refresh the page and try again." },
+      { status: 400 },
+    );
   }
 
   // ── Check email status ────────────────────────────────────────────────────

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import {
   ActionIcon,
+  Alert,
   Box,
   Button,
   Checkbox,
@@ -33,12 +34,14 @@ interface PendingTableActionsProps {
   user: PendingUser;
   roles: Role[];
   onUpdate: () => void;
+  onMarkRead: (uid: string) => void;
 }
 
 export default function PendingTableActions({
   user,
   roles,
   onUpdate,
+  onMarkRead,
 }: PendingTableActionsProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
@@ -59,7 +62,10 @@ export default function PendingTableActions({
   const [principalWarning, setPrincipalWarning] = useState(false);
   const [approving, setApproving] = useState(false);
 
-  const sortedRoles = sortRoles(roles);
+  const sortedRoles = [
+    ...sortRoles(roles.filter((r) => r.is_self_registerable)),
+    ...sortRoles(roles.filter((r) => !r.is_self_registerable)),
+  ];
 
   // Reject modal state
   const [rejectReason, setRejectReason] = useState("");
@@ -125,6 +131,7 @@ export default function PendingTableActions({
         message: `${firstName.trim()} ${lastName.trim()} has been activated successfully.`,
         color: "green",
       });
+      onMarkRead(user.uid);
       closeApprove();
       onUpdate();
     } catch (err) {
@@ -172,12 +179,13 @@ export default function PendingTableActions({
   const handleReject = async () => {
     try {
       setRejecting(true);
-      await rejectPendingUser(user.uid, finalReason);
+      await rejectPendingUser(user.uid, finalReason, user.first_name);
       notifications.show({
         title: "User Rejected",
         message: `${fullName} has been removed from the system.`,
         color: "green",
       });
+      onMarkRead(user.uid);
       handleCloseReject();
       onUpdate();
     } catch (err) {
@@ -273,6 +281,12 @@ export default function PendingTableActions({
                 *
               </Text>
             </Text>
+            {user.requested_role_ids.length === 0 && (
+              <Alert color="yellow" mb="xs" p="xs">
+                This user's originally requested role(s) may have been deleted.
+                Please assign at least one role before approving.
+              </Alert>
+            )}
 <>
               <Box
                 p="md"

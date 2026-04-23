@@ -69,7 +69,7 @@ const _POST = async function (request: Request) {
         .eq("token_hash", incomingHash)
         .then(null, (e) => console.error("[confirm] Failed to clean up already-verified pending row:", e));
 
-      return Response.json({ status: "already_verified" });
+      return Response.json({ status: "success" });
     }
 
     // Auth user exists but profile missing (partial failure on prior attempt).
@@ -122,6 +122,29 @@ const _POST = async function (request: Request) {
     }
   }
 
+  // ── Filter out role_ids deleted since signup ──────────────────────────────
+  // A role deleted after the user submitted the form but before they clicked
+  // the verification link would cause a FK violation inside the RPC. We drop
+  // any missing role_ids silently and proceed — the admin assigns correct roles
+  // at approval time. The user still lands on the "awaiting approval" page.
+  const rawRoleIds: number[] = row.role_ids ?? [];
+  let safeRoleIds = rawRoleIds;
+  if (rawRoleIds.length > 0) {
+    const { data: existingRoles } = await adminClient
+      .from("roles")
+      .select("role_id")
+      .in("role_id", rawRoleIds);
+    const existingSet = new Set(
+      (existingRoles ?? []).map((r: { role_id: number }) => r.role_id),
+    );
+    safeRoleIds = rawRoleIds.filter((id) => existingSet.has(id));
+    if (safeRoleIds.length < rawRoleIds.length) {
+      console.warn(
+        `[confirm] ${rawRoleIds.length - safeRoleIds.length} role(s) were deleted since signup for uid=${uid}. Proceeding with ${safeRoleIds.length} remaining role(s).`,
+      );
+    }
+  }
+
   // ── Atomic public-schema operations via RPC ───────────────────────────────
   // confirm_pending_registration atomically:
   //   1. Inserts/restores public.users row (active_status = 0, pending)
@@ -136,7 +159,7 @@ const _POST = async function (request: Request) {
       p_first_name:  row.first_name,
       p_middle_name: row.middle_name ?? "",
       p_last_name:   row.last_name,
-      p_role_ids:    row.role_ids ?? [],
+      p_role_ids:    safeRoleIds,
     },
   );
 
