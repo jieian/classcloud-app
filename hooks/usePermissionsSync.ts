@@ -4,8 +4,8 @@ import { useEffect, useRef } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
-/** Poll every 3 minutes — low overhead, fast enough for role changes to propagate. */
-const POLL_INTERVAL_MS = 3 * 60_000;
+/** Fallback poll interval — safety net for missed Realtime events. */
+const POLL_INTERVAL_MS = 15 * 60_000;
 
 /**
  * sessionStorage key tracking the server permissions version at the time of
@@ -43,6 +43,8 @@ function setStoredRefreshVersion(version: number): void {
 export function usePermissionsSync(user: User | null): void {
   const supabase = getSupabase();
   const lastVersionRef = useRef<number | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const subscribedOnceRef = useRef(false);
 
   useEffect(() => {
     if (!user) {
@@ -82,12 +84,42 @@ export function usePermissionsSync(user: User | null): void {
       }
     };
 
+    // Tab focus: recover stale permissions when user returns to the tab.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible" && alive) poll();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Realtime: receive "invalidated" signals from the server after a role change.
+    // On event → debounce 400ms → poll() (version check then refreshSession if needed).
+    // On reconnect → poll() immediately to recover any events missed while disconnected.
+    const channel = supabase
+      .channel(`permissions:${user.id}`)
+      .on("broadcast", { event: "invalidated" }, () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+          if (alive) poll();
+        }, 400);
+      })
+      .subscribe((status: string) => {
+        if (status === "SUBSCRIBED") {
+          if (subscribedOnceRef.current && alive) poll(); // reconnected — recover missed events
+          subscribedOnceRef.current = true;
+        }
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && alive) {
+          poll(); // channel failed — fall back to version check
+        }
+      });
+
     poll(); // immediate check on mount / user change
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    const interval = setInterval(poll, POLL_INTERVAL_MS); // fallback safety net
 
     return () => {
       alive = false;
       clearInterval(interval);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);

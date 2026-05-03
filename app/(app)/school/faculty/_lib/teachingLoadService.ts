@@ -5,6 +5,23 @@ export interface AddFacultyForm {
   advisory_section_id: number | null;
   selected_sections: number[];
   subject_assignments: { section_id: number; subject_ids: number[] }[];
+  subject_group_id: number | null;
+}
+
+export interface SubjectCoordinatorGroupMember {
+  curriculum_subject_id: number;
+  code: string;
+  name: string;
+  subject_type: "BOTH" | "SSES";
+  grade_level_number: number | null;
+}
+
+export interface SubjectCoordinatorGroup {
+  subject_group_id: number;
+  name: string;
+  description: string | null;
+  coordinator: { uid: string; first_name: string; last_name: string } | null;
+  members: SubjectCoordinatorGroupMember[];
 }
 
 export interface GradeLevel {
@@ -48,6 +65,7 @@ export interface WizardData {
   all_assignments: TeacherAssignment[];
   current_advisory_section_id: number | null;
   current_teaching_assignments: { section_id: number; subject_id: number }[];
+  coordinator_groups: SubjectCoordinatorGroup[];
 }
 
 export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
@@ -199,6 +217,7 @@ export async function fetchWizardData(facultyUid: string): Promise<WizardData> {
           subject_id: (a.curriculum_subject as any).subject_id,
         }));
     })(),
+    coordinator_groups: [],
   };
 }
 
@@ -206,6 +225,7 @@ export async function assignAcademicLoad(payload: {
   faculty_id: string;
   advisory_section_id: number | null;
   subject_assignments: { section_id: number; curriculum_subject_id: number }[];
+  subject_group_id?: number | null;
 }): Promise<void> {
   const response = await fetch("/api/faculty/assign-load", {
     method: "POST",

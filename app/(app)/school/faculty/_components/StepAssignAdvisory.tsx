@@ -116,10 +116,10 @@ export default function StepAssignAdvisory({
   return (
     <Box>
       <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
-        Assign Advisory Class
+        Advisory Class
       </Text>
       <Text size="sm" c="dimmed" mb="lg">
-        Advisory class is optional. Select a section or choose &quot;No Advisory Class&quot; to skip.
+        Optional. Assigns this faculty as the homeroom adviser for a section.
       </Text>
 
       <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
@@ -154,8 +154,12 @@ export default function StepAssignAdvisory({
                       />
                       <Badge
                         size="xs"
-                        variant="light"
-                        color={section.section_type === "SSES" ? "blue" : "gray"}
+                        variant="filled"
+                        radius="xl"
+                        style={{
+                          backgroundColor: section.section_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                          color: "#fff",
+                        }}
                       >
                         {section.section_type === "SSES" ? "SSES" : "Regular"}
                       </Badge>

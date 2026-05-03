@@ -33,7 +33,7 @@ const _GET = async function (_request: Request) {
     if (version !== null) {
       return Response.json({ version });
     }
-    // Key missing (first login or Redis flushed) — fall through to Supabase
+    // Key missing (first login, Redis flush, or 30-day TTL expired) — fall through to Supabase
   } catch {
     // Redis unavailable — fall through to Supabase fallback
   }
@@ -53,6 +53,11 @@ const _GET = async function (_request: Request) {
   const version = authUser.updated_at
     ? new Date(authUser.updated_at).getTime()
     : 0;
+
+  // Warm the cache so the next poll skips this slow fallback.
+  try {
+    await redis.set(`permissions:version:${user.id}`, version, { ex: 30 * 24 * 3600 });
+  } catch { /* Redis unavailable — non-fatal */ }
 
   return Response.json({ version });
 };

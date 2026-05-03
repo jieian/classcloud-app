@@ -9,9 +9,9 @@ const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // 3 resends per email per 15 minutes
-const resendEmailLimiter = createRateLimiter({ maxRequests: 3, windowMs: 15 * 60_000 });
+const resendEmailLimiter = createRateLimiter({ maxRequests: 3, windowMs: 15 * 60_000, prefix: "rl:resend-email" });
 // 10 resend attempts per IP per minute (prevents enumeration)
-const resendIpLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000 });
+const resendIpLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000, prefix: "rl:resend-ip" });
 
 const _POST = async function (request: Request) {
   // ── Rate limit by IP ──────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ActionIcon,
   Alert,
@@ -19,6 +20,7 @@ import EditSchoolYearDrawer from "./EditSchoolYearDrawer";
 import CreateSchoolYearModal from "./CreateSchoolYearModal";
 
 export default function SchoolYearSection() {
+  const router = useRouter();
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +143,7 @@ export default function SchoolYearSection() {
           onSuccess={() => {
             setDrawerOpened(false);
             loadSchoolYears();
+            router.refresh();
           }}
           schoolYear={selectedYear}
           isOnlyActiveYear={

@@ -32,17 +32,35 @@ export async function syncUserPermissions(uid: string): Promise<void> {
     .filter(Boolean);
 
   // Critical: update JWT claims (source of truth)
-  await adminClient.auth.admin.updateUserById(uid, {
-    app_metadata: { permissions, roles },
-  });
+  // Retries handle transient rate limits or network blips on the admin API.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await adminClient.auth.admin.updateUserById(uid, {
+      app_metadata: { permissions, roles },
+    });
+    if (!error) { lastError = undefined; break; }
+    lastError = error;
+    await new Promise((r) => setTimeout(r, 300 * 2 ** attempt));
+  }
+  if (lastError) throw lastError;
 
   // Best-effort: cache a timestamp version in Redis for fast client polling.
   // Using Date.now() (ms epoch) keeps the version space compatible with the
   // Supabase updated_at fallback used by /api/auth/permissions-version.
   try {
-    await redis.set(`permissions:version:${uid}`, Date.now());
+    await redis.set(`permissions:version:${uid}`, Date.now(), { ex: 30 * 24 * 3600 });
   } catch (err) {
     console.warn("Redis unavailable — permissions version not cached:", err);
+  }
+
+  // Best-effort: signal the connected client to refresh their session immediately.
+  // Fallback polling will recover any missed signals (e.g. client offline, WS drop).
+  try {
+    await adminClient
+      .channel(`permissions:${uid}`)
+      .httpSend("invalidated", {});
+  } catch (err) {
+    console.warn(`Realtime broadcast failed for uid ${uid}:`, err);
   }
 }
 
@@ -60,5 +78,27 @@ export async function syncAllUsersWithRole(roleId: number): Promise<void> {
 
   if (!data || data.length === 0) return;
 
-  await Promise.all(data.map((row: { uid: string }) => syncUserPermissions(row.uid)));
+  const uids = data.map((row: { uid: string }) => row.uid);
+  const failed: string[] = [];
+
+  // Process in batches to avoid hitting admin API rate limits
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < uids.length; i += BATCH_SIZE) {
+    const batch = uids.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(batch.map((uid) => syncUserPermissions(uid)));
+
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const uid = batch[index];
+        console.error(`syncUserPermissions failed for uid ${uid}:`, result.reason);
+        failed.push(uid);
+      }
+    });
+  }
+
+  if (failed.length > 0) {
+    console.error(
+      `syncAllUsersWithRole(${roleId}): ${failed.length}/${uids.length} users failed — UIDs: ${failed.join(", ")}`,
+    );
+  }
 }

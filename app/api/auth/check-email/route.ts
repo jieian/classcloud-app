@@ -8,7 +8,7 @@ const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 type EmailCheckStatus = "available" | "active" | "deleted" | "pending_verification";
 
 // 20 checks per IP per minute — enough for a fast typist, blocks bulk enumeration.
-const checkEmailLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60_000 });
+const checkEmailLimiter = createRateLimiter({ maxRequests: 20, windowMs: 60_000, prefix: "rl:check-email" });
 
 const _GET = async function(request: Request) {
   const ip = getClientIp(request);

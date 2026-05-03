@@ -30,6 +30,14 @@ export type AuditAction =
   | "role_created"
   | "role_updated"
   | "role_deleted"
+  // ── Academic events ───────────────────────────────────────────────────────
+  | "faculty_academic_load_assigned"
+  | "advisory_class_assigned"
+  | "advisory_class_removed"
+  | "subject_coordinator_assigned"
+  | "subject_coordinator_removed"
+  | "masterlist_saved"
+  | "faculty_load_removed"
   // ── Security events ──────────────────────────────────────────────────────
   | "rate_limit_exceeded"
   | "honeypot_triggered"

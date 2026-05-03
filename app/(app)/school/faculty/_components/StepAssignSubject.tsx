@@ -150,7 +150,7 @@ export default function StepAssignSubject({
         Assign Subjects
       </Text>
       <Text size="sm" c="dimmed" mb="lg">
-        Select at least one subject for each section.
+        Assign subjects per section. At least one subject per section is required.
       </Text>
 
       <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>

@@ -18,7 +18,7 @@ import {
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconBookOff,
   IconCalendarOff,
@@ -28,6 +28,7 @@ import {
 import StepAssignAdvisory from "./StepAssignAdvisory";
 import StepAssignGradeSection from "./StepAssignGradeSection";
 import StepAssignSubject from "./StepAssignSubject";
+import StepAssignCoordinator from "./StepAssignCoordinator";
 import StepReview from "./StepReview";
 import {
   assignAcademicLoad,
@@ -37,6 +38,7 @@ import type { AddFacultyForm, WizardData } from "../_lib/teachingLoadService";
 interface AddFacultyWizardProps {
   facultyUid: string;
   initialData: WizardData;
+  isAddMode: boolean;
 }
 
 // ─── Blocker ──────────────────────────────────────────────────────────────────
@@ -80,11 +82,23 @@ function WizardBlocker({
   );
 }
 
-const TOTAL_STEPS = 4;
-
-export default function AddFacultyWizard({ facultyUid, initialData }: AddFacultyWizardProps) {
+export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }: AddFacultyWizardProps) {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: {
+            width: "100%",
+            maxWidth: "100%",
+            borderRadius: "12px 12px 0 0",
+          },
+        },
+      }
+    : {};
+
+  const TOTAL_STEPS = isAddMode ? 5 : 4;
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -106,6 +120,7 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
       advisory_section_id: advisoryId,
       selected_sections: currentSections,
       subject_assignments: currentSubjectAssignments,
+      subject_group_id: null,
     },
   });
 
@@ -125,10 +140,10 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
     if (step === 1) {
       // Require at least one section
       if (form.values.selected_sections.length === 0) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please select at least one section.",
-          color: "red",
         });
         return;
       }
@@ -142,10 +157,10 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
         (a) => a.subject_ids.length === 0,
       );
       if (missingSubjects) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please select at least one subject for each section.",
-          color: "red",
         });
         return;
       }
@@ -173,6 +188,7 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
           router.replace("/school/faculty");
           router.refresh();
         },
+        ...confirmModalProps,
       });
     } else {
       router.replace("/school/faculty");
@@ -180,35 +196,52 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
     }
   };
 
+  const facultyName = initialData.faculty
+    ? `${initialData.faculty.first_name} ${initialData.faculty.last_name}`
+    : "this faculty";
+
   const handleAssign = () => {
     if (!initialData?.active_sy_id) return;
-
-    const facultyName = initialData.faculty
-      ? `${initialData.faculty.first_name} ${initialData.faculty.last_name}`
-      : "this faculty";
 
     const totalSubjects = form.values.subject_assignments.reduce(
       (sum, a) => sum + a.subject_ids.length,
       0,
     );
 
+    const coordinatorGroup = isAddMode && form.values.subject_group_id !== null
+      ? initialData.coordinator_groups.find(
+          (g) => g.subject_group_id === form.values.subject_group_id,
+        )
+      : null;
+
     modals.openConfirmModal({
-      title: "Assign Academic Load?",
+      title: isAddMode ? "Add Faculty?" : "Save Changes?",
       children: (
         <Text size="sm">
-          This will assign{" "}
-          <strong>
-            {form.values.selected_sections.length} section(s)
-          </strong>{" "}
-          and <strong>{totalSubjects} subject(s)</strong> to{" "}
-          <strong>{facultyName}</strong>
-          {form.values.advisory_section_id ? " with an advisory class" : ""}.
-          Existing assignments will be replaced.
+          {isAddMode ? (
+            <>
+              This will add <strong>{facultyName}</strong> as faculty with{" "}
+              <strong>{form.values.selected_sections.length} section(s)</strong> and{" "}
+              <strong>{totalSubjects} subject(s)</strong>
+              {form.values.advisory_section_id ? ", an advisory class" : ""}
+              {coordinatorGroup ? `, and the Subject Coordinator role for ${coordinatorGroup.name}` : ""}
+              .
+            </>
+          ) : (
+            <>
+              This will update the teaching load for <strong>{facultyName}</strong> to{" "}
+              <strong>{form.values.selected_sections.length} section(s)</strong> and{" "}
+              <strong>{totalSubjects} subject(s)</strong>
+              {form.values.advisory_section_id ? " with an advisory class" : ""}
+              . Existing assignments will be replaced.
+            </>
+          )}
         </Text>
       ),
-      labels: { confirm: "Assign Academic Load", cancel: "Cancel" },
+      labels: { confirm: isAddMode ? "Add Faculty" : "Save Changes", cancel: "Cancel" },
       confirmProps: { style: { backgroundColor: "#4EAE4A" } },
       onConfirm: submitForm,
+      ...confirmModalProps,
     });
   };
 
@@ -241,12 +274,16 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
         faculty_id: facultyUid,
         advisory_section_id: form.values.advisory_section_id,
         subject_assignments: flatSubjectAssignments,
+        // Only pass subject_group_id in add mode (undefined omits it in edit mode)
+        ...(isAddMode ? { subject_group_id: form.values.subject_group_id } : {}),
       });
 
-      notifications.show({
-        title: "Success",
-        message: "Academic load assigned successfully.",
-        color: "green",
+      notify({
+        type: "success",
+        title: isAddMode ? "Faculty Added" : "Changes Saved",
+        message: isAddMode
+          ? `${facultyName} has been added as faculty.`
+          : `Teaching load for ${facultyName} has been updated.`,
       });
 
       router.replace("/school/faculty");
@@ -255,11 +292,13 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
       const message =
         error instanceof Error
           ? error.message
-          : "Failed to assign academic load. Please try again.";
-      notifications.show({
-        title: "Error",
+          : isAddMode
+            ? "Failed to add faculty. Please try again."
+            : "Failed to save changes. Please try again.";
+      notify({
+        type: "error",
+        title: isAddMode ? "Failed to Add Faculty" : "Failed to Save Changes",
         message,
-        color: "red",
         autoClose: false,
       });
     } finally {
@@ -289,7 +328,7 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
       <WizardBlocker
         icon={<IconCalendarOff size={30} />}
         title="No Active School Year"
-        description="Academic load cannot be assigned without an active school year."
+        description="Teaching load cannot be assigned without an active school year."
         hint="Go to School → Year and set a school year as active."
         onBack={goBack}
       />
@@ -301,7 +340,7 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
       <WizardBlocker
         icon={<IconLayoutOff size={30} />}
         title="No Classes in Active School Year"
-        description="The active school year has no classes yet. Classes must exist before you can assign an academic load."
+        description="The active school year has no classes yet. Classes must exist before you can assign a teaching load."
         hint="Go to School → Classes and create at least one class for the active school year."
         onBack={goBack}
       />
@@ -313,16 +352,21 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
       <WizardBlocker
         icon={<IconBookOff size={30} />}
         title="No Subjects Configured"
-        description="There are no subjects assigned to any grade level. Subjects must exist before you can assign an academic load."
+        description="There are no subjects assigned to any grade level. Subjects must exist before you can assign a teaching load."
         hint="Go to School → Subjects and add subjects to the relevant grade levels."
         onBack={goBack}
       />
     );
   }
 
-  const facultyName = initialData.faculty
-    ? `${initialData.faculty.first_name} ${initialData.faculty.last_name}`
-    : "";
+  // Shared props for StepReview used in both mobile and desktop
+  const reviewProps = {
+    form,
+    facultyName,
+    gradeLevels: initialData.grade_levels,
+    sections: initialData.sections,
+    subjectsByGradeLevel: initialData.subjects_by_grade_level,
+  };
 
   const stepContent = (() => {
     switch (form.values.activeStep) {
@@ -358,13 +402,25 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
           />
         );
       case 3:
+        return isAddMode ? (
+          <StepAssignCoordinator
+            form={form}
+            coordinatorGroups={initialData.coordinator_groups}
+            facultyUid={facultyUid}
+          />
+        ) : (
+          <StepReview
+            {...reviewProps}
+            isAddMode={false}
+            coordinatorGroups={[]}
+          />
+        );
+      case 4:
         return (
           <StepReview
-            form={form}
-            facultyName={facultyName}
-            gradeLevels={initialData.grade_levels}
-            sections={initialData.sections}
-            subjectsByGradeLevel={initialData.subjects_by_grade_level}
+            {...reviewProps}
+            isAddMode={true}
+            coordinatorGroups={initialData.coordinator_groups}
           />
         );
       default:
@@ -399,7 +455,7 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
           disabled={!initialData.active_sy_id}
           style={initialData.active_sy_id ? { backgroundColor: "#4EAE4A" } : undefined}
         >
-          Assign Academic Load
+          {isAddMode ? "Add Faculty" : "Save Changes"}
         </Button>
       )}
     </Group>
@@ -442,13 +498,23 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
                 facultyUid={facultyUid}
               />
             </Stepper.Step>
-            <Stepper.Step label="Step 4" description="Review & Assign">
+            {isAddMode && (
+              <Stepper.Step label="Step 4" description="Subject Coordinator Role">
+                <StepAssignCoordinator
+                  form={form}
+                  coordinatorGroups={initialData.coordinator_groups}
+                  facultyUid={facultyUid}
+                />
+              </Stepper.Step>
+            )}
+            <Stepper.Step
+              label={isAddMode ? "Step 5" : "Step 4"}
+              description={isAddMode ? "Review & Confirm" : "Review & Save"}
+            >
               <StepReview
-                form={form}
-                facultyName={facultyName}
-                gradeLevels={initialData.grade_levels}
-                sections={initialData.sections}
-                subjectsByGradeLevel={initialData.subjects_by_grade_level}
+                {...reviewProps}
+                isAddMode={isAddMode}
+                coordinatorGroups={initialData.coordinator_groups}
               />
             </Stepper.Step>
           </Stepper>
@@ -466,7 +532,13 @@ export default function AddFacultyWizard({ facultyUid, initialData }: AddFaculty
               <Stepper.Step label="Step 1" description="Advisory Class" />
               <Stepper.Step label="Step 2" description="Grade & Section" />
               <Stepper.Step label="Step 3" description="Assign Subjects" />
-              <Stepper.Step label="Step 4" description="Review & Assign" />
+              {isAddMode && (
+                <Stepper.Step label="Step 4" description="Subject Coordinator Role" />
+              )}
+              <Stepper.Step
+                label={isAddMode ? "Step 5" : "Step 4"}
+                description={isAddMode ? "Review & Confirm" : "Review & Save"}
+              />
             </Stepper>
           </div>
 

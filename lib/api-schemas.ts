@@ -85,6 +85,43 @@ export const AssignSubjectTeachersSchema = z.object({
   ),
 });
 
+// ── Faculty ───────────────────────────────────────────────────────────────────
+export const AssignAcademicLoadSchema = z.object({
+  faculty_id: z.uuid("Invalid faculty ID."),
+  advisory_section_id: z.number().int().positive().nullable().default(null),
+  subject_assignments: z.array(
+    z.object({
+      section_id: z.number().int().positive("Invalid section ID."),
+      curriculum_subject_id: z.number().int().positive("Invalid subject ID."),
+    }),
+  ),
+  // undefined = edit mode (don't manage coordinator); null = add mode, no role; number = assign role
+  subject_group_id: z.number().int().positive().nullable().optional(),
+});
+
+export const AssignSubjectCoordinatorSchema = z.object({
+  subject_group_id: z.number().int().positive("Invalid subject group ID."),
+  user_id: z.string().uuid("Invalid user ID."),
+});
+
+export const SaveMasterlistSchema = z.object({
+  // sy_id the client loaded — used server-side to detect a SY change between load and save
+  sy_id: z.number().int().positive(),
+  adviser_changes: z.array(
+    z.object({
+      section_id: z.number().int().positive(),
+      adviser_id: z.string().uuid().nullable(),
+    }),
+  ),
+  assignment_changes: z.array(
+    z.object({
+      section_id: z.number().int().positive(),
+      curriculum_subject_id: z.number().int().positive(),
+      teacher_id: z.string().uuid().nullable(),
+    }),
+  ),
+});
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 export const UpdateProfileSchema = z.object({
   first_name: z.string().trim().optional(),

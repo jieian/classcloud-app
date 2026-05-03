@@ -8,7 +8,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { generateRawToken, hashToken, encryptPassword } from "@/lib/crypto";
 
 // 5 signup attempts per IP per 10 minutes
-const signupLimiter = createRateLimiter({ maxRequests: 5, windowMs: 10 * 60_000 });
+const signupLimiter = createRateLimiter({ maxRequests: 5, windowMs: 10 * 60_000, prefix: "rl:signup" });
 
 const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

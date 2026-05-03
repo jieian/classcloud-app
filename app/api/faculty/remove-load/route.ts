@@ -1,8 +1,9 @@
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
-
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { insertAuditLog } from "@/lib/audit";
+import { after } from "next/server";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -37,6 +38,28 @@ const _POST = async function(request: Request) {
       { status: 500 },
     );
   }
+
+  // Audit log — non-blocking
+  after(async () => {
+    const { data: facultyUser } = await adminClient
+      .from("users")
+      .select("first_name, last_name")
+      .eq("uid", faculty_id)
+      .maybeSingle();
+
+    const label = facultyUser
+      ? `${facultyUser.first_name} ${facultyUser.last_name}`.trim()
+      : null;
+
+    await insertAuditLog({
+      actor_id: caller.id,
+      category: "ACADEMIC",
+      action: "faculty_load_removed",
+      entity_type: "faculty",
+      entity_id: faculty_id,
+      entity_label: label,
+    });
+  });
 
   // Sync JWT claims — remove_faculty_academic_load strips the Faculty role
   syncUserPermissions(faculty_id).catch((err) =>

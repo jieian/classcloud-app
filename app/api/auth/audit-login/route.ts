@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { getServerUser } from "@/lib/supabase/server";
 import { insertAuditLog } from "@/lib/audit";
@@ -8,12 +9,16 @@ const _POST = async function () {
   // Silent no-op if session isn't readable — this is fire-and-forget from the client.
   if (!user) return Response.json({ ok: true });
 
-  await insertAuditLog({
-    actor_id: user.id,
-    category: "ACCESS",
-    action: "login",
-    entity_type: "user",
-    entity_id: user.id,
+  // Defer the DB write until after the response is sent so the client isn't
+  // blocked waiting for the audit insert to complete.
+  after(async () => {
+    await insertAuditLog({
+      actor_id: user.id,
+      category: "ACCESS",
+      action: "login",
+      entity_type: "user",
+      entity_id: user.id,
+    });
   });
 
   return Response.json({ ok: true });

@@ -25,11 +25,11 @@ export default function FacultyTableActions({
     const facultyName = `${faculty.first_name} ${faculty.last_name}`;
 
     modals.openConfirmModal({
-      title: "Remove Academic Load?",
+      title: "Remove Teaching Load?",
       children: (
         <Text size="sm">
-          This will remove all advisory and academic load for{" "}
-          <strong>{facultyName}</strong>, and revoke their faculty roles. This
+          This will remove all advisory and teaching load for{" "}
+          <strong>{facultyName}</strong>, and revoke their faculty role. This
           action cannot be undone.
         </Text>
       ),
@@ -41,7 +41,7 @@ export default function FacultyTableActions({
           await removeAcademicLoad(faculty.uid);
           notifications.show({
             title: "Removed",
-            message: `Academic load for ${facultyName} has been removed.`,
+            message: `Teaching load for ${facultyName} has been removed.`,
             color: "green",
           });
           onUpdate();
@@ -50,7 +50,7 @@ export default function FacultyTableActions({
           const message =
             error instanceof Error
               ? error.message
-              : "Failed to remove academic load.";
+              : "Failed to remove teaching load.";
           notifications.show({
             title: "Error",
             message,
@@ -78,11 +78,11 @@ export default function FacultyTableActions({
           <IconSettings size={16} stroke={1.5} color="gray" />
         </ActionIcon>
       </Tooltip>
-      <Tooltip label="Remove Academic Load">
+      <Tooltip label="Remove Teaching Load">
         <ActionIcon
           variant="subtle"
           color="red"
-          aria-label="Remove Academic Load"
+          aria-label="Remove Teaching Load"
           loading={removing}
           onClick={handleRemove}
         >

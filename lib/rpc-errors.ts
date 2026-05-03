@@ -3,12 +3,17 @@
 // If a new RPC error code is added in Postgres, add it here first.
 
 export const RpcError = {
-  ALREADY_PENDING:          "ALREADY_PENDING",
-  NOT_ENROLLED:             "NOT_ENROLLED",
-  NOT_FOUND_OR_NOT_PENDING: "NOT_FOUND_OR_NOT_PENDING",
-  REQUEST_NOT_PENDING:      "REQUEST_NOT_PENDING",
-  ENROLLMENT_NOT_FOUND:     "ENROLLMENT_NOT_FOUND",
-  USER_NOT_FOUND:           "USER_NOT_FOUND",
+  ALREADY_PENDING:            "ALREADY_PENDING",
+  NOT_ENROLLED:               "NOT_ENROLLED",
+  NOT_FOUND_OR_NOT_PENDING:   "NOT_FOUND_OR_NOT_PENDING",
+  REQUEST_NOT_PENDING:        "REQUEST_NOT_PENDING",
+  ENROLLMENT_NOT_FOUND:       "ENROLLMENT_NOT_FOUND",
+  USER_NOT_FOUND:             "USER_NOT_FOUND",
+  COORDINATOR_GROUP_TAKEN:    "Subject group already has a coordinator.",
+  USER_NOT_FACULTY:           "USER_NOT_FACULTY",
+  USER_ALREADY_COORDINATOR:   "USER_ALREADY_COORDINATOR",
+  SUBJECT_GROUP_NOT_FOUND:    "SUBJECT_GROUP_NOT_FOUND",
+  NO_ACTIVE_SCHOOL_YEAR:      "NO_ACTIVE_SCHOOL_YEAR",
 } as const;
 
 export type RpcErrorCode = (typeof RpcError)[keyof typeof RpcError];

@@ -145,10 +145,10 @@ export default function StepAssignGradeSection({
   return (
     <Box>
       <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
-        Assign Grade &amp; Section
+        Grade &amp; Section
       </Text>
       <Text size="sm" c="dimmed" mb="lg">
-        Select the sections where this faculty will teach. Must choose at least one.
+        Select the sections this faculty will teach. At least one section is required.
       </Text>
 
       <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
@@ -174,8 +174,12 @@ export default function StepAssignGradeSection({
                     />
                     <Badge
                       size="xs"
-                      variant="light"
-                      color={section.section_type === "SSES" ? "blue" : "gray"}
+                      variant="filled"
+                      radius="xl"
+                      style={{
+                        backgroundColor: section.section_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                        color: "#fff",
+                      }}
                     >
                       {section.section_type === "SSES" ? "SSES" : "Regular"}
                     </Badge>

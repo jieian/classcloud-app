@@ -1,0 +1,442 @@
+[
+  {
+    "tablename": "audit_logs",
+    "indexname": "idx_audit_category_time",
+    "indexdef": "CREATE INDEX idx_audit_category_time ON public.audit_logs USING btree (category, created_at DESC)"
+  },
+  {
+    "tablename": "audit_logs",
+    "indexname": "idx_audit_entity_time",
+    "indexdef": "CREATE INDEX idx_audit_entity_time ON public.audit_logs USING btree (entity_type, entity_id, created_at DESC)"
+  },
+  {
+    "tablename": "audit_logs",
+    "indexname": "idx_audit_action_time",
+    "indexdef": "CREATE INDEX idx_audit_action_time ON public.audit_logs USING btree (action, created_at DESC)"
+  },
+  {
+    "tablename": "audit_logs",
+    "indexname": "audit_logs_pkey",
+    "indexdef": "CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (audit_id)"
+  },
+  {
+    "tablename": "audit_logs",
+    "indexname": "idx_audit_time_brin",
+    "indexdef": "CREATE INDEX idx_audit_time_brin ON public.audit_logs USING brin (created_at)"
+  },
+  {
+    "tablename": "audit_logs",
+    "indexname": "idx_audit_actor_time",
+    "indexdef": "CREATE INDEX idx_audit_actor_time ON public.audit_logs USING btree (actor_id, created_at DESC)"
+  },
+  {
+    "tablename": "curriculum_subjects",
+    "indexname": "idx_curriculum_subjects_grade_level_id",
+    "indexdef": "CREATE INDEX idx_curriculum_subjects_grade_level_id ON public.curriculum_subjects USING btree (grade_level_id)"
+  },
+  {
+    "tablename": "curriculum_subjects",
+    "indexname": "curriculum_subjects_pkey",
+    "indexdef": "CREATE UNIQUE INDEX curriculum_subjects_pkey ON public.curriculum_subjects USING btree (curriculum_subject_id)"
+  },
+  {
+    "tablename": "curriculum_subjects",
+    "indexname": "curriculum_subjects_unique",
+    "indexdef": "CREATE UNIQUE INDEX curriculum_subjects_unique ON public.curriculum_subjects USING btree (curriculum_id, grade_level_id, subject_id)"
+  },
+  {
+    "tablename": "curriculum_subjects",
+    "indexname": "idx_curriculum_subjects_subject_id",
+    "indexdef": "CREATE INDEX idx_curriculum_subjects_subject_id ON public.curriculum_subjects USING btree (subject_id)"
+  },
+  {
+    "tablename": "curriculums",
+    "indexname": "curriculums_pkey",
+    "indexdef": "CREATE UNIQUE INDEX curriculums_pkey ON public.curriculums USING btree (curriculum_id)"
+  },
+  {
+    "tablename": "enrollments",
+    "indexname": "idx_enrollments_section_sy",
+    "indexdef": "CREATE INDEX idx_enrollments_section_sy ON public.enrollments USING btree (section_id, sy_id)"
+  },
+  {
+    "tablename": "enrollments",
+    "indexname": "idx_enrollments_sy_id",
+    "indexdef": "CREATE INDEX idx_enrollments_sy_id ON public.enrollments USING btree (sy_id)"
+  },
+  {
+    "tablename": "enrollments",
+    "indexname": "uq_enrollments_lrn_sy_active",
+    "indexdef": "CREATE UNIQUE INDEX uq_enrollments_lrn_sy_active ON public.enrollments USING btree (lrn, sy_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "enrollments",
+    "indexname": "idx_enrollments_section_sy_active",
+    "indexdef": "CREATE INDEX idx_enrollments_section_sy_active ON public.enrollments USING btree (section_id, sy_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "enrollments",
+    "indexname": "enrollments_pkey",
+    "indexdef": "CREATE UNIQUE INDEX enrollments_pkey ON public.enrollments USING btree (enrollment_id)"
+  },
+  {
+    "tablename": "exam_assignments",
+    "indexname": "exam_assignments_pkey",
+    "indexdef": "CREATE UNIQUE INDEX exam_assignments_pkey ON public.exam_assignments USING btree (id)"
+  },
+  {
+    "tablename": "exam_assignments",
+    "indexname": "uq_exam_assignments_exam_section",
+    "indexdef": "CREATE UNIQUE INDEX uq_exam_assignments_exam_section ON public.exam_assignments USING btree (exam_id, section_id)"
+  },
+  {
+    "tablename": "exam_assignments",
+    "indexname": "idx_exam_assignments_section_id",
+    "indexdef": "CREATE INDEX idx_exam_assignments_section_id ON public.exam_assignments USING btree (section_id)"
+  },
+  {
+    "tablename": "exams",
+    "indexname": "idx_exams_quarter_id",
+    "indexdef": "CREATE INDEX idx_exams_quarter_id ON public.exams USING btree (quarter_id)"
+  },
+  {
+    "tablename": "exams",
+    "indexname": "idx_exams_curriculum_subject_active",
+    "indexdef": "CREATE INDEX idx_exams_curriculum_subject_active ON public.exams USING btree (curriculum_subject_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "exams",
+    "indexname": "exams_pkey",
+    "indexdef": "CREATE UNIQUE INDEX exams_pkey ON public.exams USING btree (exam_id)"
+  },
+  {
+    "tablename": "exams",
+    "indexname": "idx_exams_creator_created_active",
+    "indexdef": "CREATE INDEX idx_exams_creator_created_active ON public.exams USING btree (creator_teacher_id, created_at DESC) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "grade_levels",
+    "indexname": "grade_levels_level_number_key",
+    "indexdef": "CREATE UNIQUE INDEX grade_levels_level_number_key ON public.grade_levels USING btree (level_number)"
+  },
+  {
+    "tablename": "grade_levels",
+    "indexname": "grade_levels_pkey",
+    "indexdef": "CREATE UNIQUE INDEX grade_levels_pkey ON public.grade_levels USING btree (grade_level_id)"
+  },
+  {
+    "tablename": "notifications",
+    "indexname": "notifications_pkey",
+    "indexdef": "CREATE UNIQUE INDEX notifications_pkey ON public.notifications USING btree (notification_id)"
+  },
+  {
+    "tablename": "notifications",
+    "indexname": "notifications_user_id_read_at_idx",
+    "indexdef": "CREATE INDEX notifications_user_id_read_at_idx ON public.notifications USING btree (user_id, read_at) WHERE (read_at IS NULL)"
+  },
+  {
+    "tablename": "notifications",
+    "indexname": "notifications_user_id_created_at_idx",
+    "indexdef": "CREATE INDEX notifications_user_id_created_at_idx ON public.notifications USING btree (user_id, created_at DESC)"
+  },
+  {
+    "tablename": "pending_registrations",
+    "indexname": "pending_registrations_email_key",
+    "indexdef": "CREATE UNIQUE INDEX pending_registrations_email_key ON public.pending_registrations USING btree (email)"
+  },
+  {
+    "tablename": "pending_registrations",
+    "indexname": "pending_registrations_expires_at_idx",
+    "indexdef": "CREATE INDEX pending_registrations_expires_at_idx ON public.pending_registrations USING btree (expires_at)"
+  },
+  {
+    "tablename": "pending_registrations",
+    "indexname": "pending_registrations_token_hash_idx",
+    "indexdef": "CREATE INDEX pending_registrations_token_hash_idx ON public.pending_registrations USING btree (token_hash)"
+  },
+  {
+    "tablename": "pending_registrations",
+    "indexname": "pending_registrations_pkey",
+    "indexdef": "CREATE UNIQUE INDEX pending_registrations_pkey ON public.pending_registrations USING btree (id)"
+  },
+  {
+    "tablename": "permissions",
+    "indexname": "permissions_name_key",
+    "indexdef": "CREATE UNIQUE INDEX permissions_name_key ON public.permissions USING btree (name)"
+  },
+  {
+    "tablename": "permissions",
+    "indexname": "permissions_pkey",
+    "indexdef": "CREATE UNIQUE INDEX permissions_pkey ON public.permissions USING btree (permission_id)"
+  },
+  {
+    "tablename": "quarters",
+    "indexname": "idx_quarters_sy_id",
+    "indexdef": "CREATE INDEX idx_quarters_sy_id ON public.quarters USING btree (sy_id)"
+  },
+  {
+    "tablename": "quarters",
+    "indexname": "quarters_name_sy_id_key",
+    "indexdef": "CREATE UNIQUE INDEX quarters_name_sy_id_key ON public.quarters USING btree (name, sy_id)"
+  },
+  {
+    "tablename": "quarters",
+    "indexname": "quarters_pkey",
+    "indexdef": "CREATE UNIQUE INDEX quarters_pkey ON public.quarters USING btree (quarter_id)"
+  },
+  {
+    "tablename": "role_permissions",
+    "indexname": "role_permissions_pkey",
+    "indexdef": "CREATE UNIQUE INDEX role_permissions_pkey ON public.role_permissions USING btree (role_id, permission_id)"
+  },
+  {
+    "tablename": "role_permissions",
+    "indexname": "idx_role_permissions_permission_id",
+    "indexdef": "CREATE INDEX idx_role_permissions_permission_id ON public.role_permissions USING btree (permission_id)"
+  },
+  {
+    "tablename": "roles",
+    "indexname": "roles_pkey",
+    "indexdef": "CREATE UNIQUE INDEX roles_pkey ON public.roles USING btree (role_id)"
+  },
+  {
+    "tablename": "roles",
+    "indexname": "roles_name_key",
+    "indexdef": "CREATE UNIQUE INDEX roles_name_key ON public.roles USING btree (name)"
+  },
+  {
+    "tablename": "roles",
+    "indexname": "idx_roles_lower_name",
+    "indexdef": "CREATE INDEX idx_roles_lower_name ON public.roles USING btree (lower((name)::text))"
+  },
+  {
+    "tablename": "school_years",
+    "indexname": "idx_only_one_active_sy",
+    "indexdef": "CREATE UNIQUE INDEX idx_only_one_active_sy ON public.school_years USING btree (is_active) WHERE ((is_active = true) AND (deleted_at IS NULL))"
+  },
+  {
+    "tablename": "school_years",
+    "indexname": "unique_school_year",
+    "indexdef": "CREATE UNIQUE INDEX unique_school_year ON public.school_years USING btree (start_year, end_year) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "school_years",
+    "indexname": "idx_school_years_curriculum_id",
+    "indexdef": "CREATE INDEX idx_school_years_curriculum_id ON public.school_years USING btree (curriculum_id)"
+  },
+  {
+    "tablename": "school_years",
+    "indexname": "school_years_pkey",
+    "indexdef": "CREATE UNIQUE INDEX school_years_pkey ON public.school_years USING btree (sy_id)"
+  },
+  {
+    "tablename": "scores",
+    "indexname": "scores_enrollment_id_exam_assignment_id_key",
+    "indexdef": "CREATE UNIQUE INDEX scores_enrollment_id_exam_assignment_id_key ON public.scores USING btree (enrollment_id, exam_assignment_id)"
+  },
+  {
+    "tablename": "scores",
+    "indexname": "scores_pkey",
+    "indexdef": "CREATE UNIQUE INDEX scores_pkey ON public.scores USING btree (score_id)"
+  },
+  {
+    "tablename": "scores",
+    "indexname": "idx_scores_exam_assignment_id",
+    "indexdef": "CREATE INDEX idx_scores_exam_assignment_id ON public.scores USING btree (exam_assignment_id)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_reviewed_by",
+    "indexdef": "CREATE INDEX idx_str_reviewed_by ON public.section_transfer_requests USING btree (reviewed_by)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_pending_from_requested_at",
+    "indexdef": "CREATE INDEX idx_str_pending_from_requested_at ON public.section_transfer_requests USING btree (from_section_id, requested_at) WHERE (status = 'PENDING'::transfer_request_status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_to_section",
+    "indexdef": "CREATE INDEX idx_str_to_section ON public.section_transfer_requests USING btree (to_section_id, status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_requested_by",
+    "indexdef": "CREATE INDEX idx_str_requested_by ON public.section_transfer_requests USING btree (requested_by, status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_lrn_status",
+    "indexdef": "CREATE INDEX idx_str_lrn_status ON public.section_transfer_requests USING btree (lrn, status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_from_section",
+    "indexdef": "CREATE INDEX idx_str_from_section ON public.section_transfer_requests USING btree (from_section_id, status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_expires",
+    "indexdef": "CREATE INDEX idx_str_expires ON public.section_transfer_requests USING btree (expires_at, status) WHERE (status = 'PENDING'::transfer_request_status)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "section_transfer_requests_pkey",
+    "indexdef": "CREATE UNIQUE INDEX section_transfer_requests_pkey ON public.section_transfer_requests USING btree (request_id)"
+  },
+  {
+    "tablename": "section_transfer_requests",
+    "indexname": "idx_str_originally_intended_reviewer",
+    "indexdef": "CREATE INDEX idx_str_originally_intended_reviewer ON public.section_transfer_requests USING btree (originally_intended_reviewer)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "idx_sections_grade_level_id",
+    "indexdef": "CREATE INDEX idx_sections_grade_level_id ON public.sections USING btree (grade_level_id)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "sections_name_grade_level_id_sy_id_key",
+    "indexdef": "CREATE UNIQUE INDEX sections_name_grade_level_id_sy_id_key ON public.sections USING btree (name, grade_level_id, sy_id)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "sections_pkey",
+    "indexdef": "CREATE UNIQUE INDEX sections_pkey ON public.sections USING btree (section_id)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "idx_sections_adviser_active",
+    "indexdef": "CREATE INDEX idx_sections_adviser_active ON public.sections USING btree (adviser_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "idx_sections_sy_id",
+    "indexdef": "CREATE INDEX idx_sections_sy_id ON public.sections USING btree (sy_id)"
+  },
+  {
+    "tablename": "sections",
+    "indexname": "idx_sections_adviser_sy",
+    "indexdef": "CREATE INDEX idx_sections_adviser_sy ON public.sections USING btree (adviser_id, sy_id)"
+  },
+  {
+    "tablename": "students",
+    "indexname": "students_pkey",
+    "indexdef": "CREATE UNIQUE INDEX students_pkey ON public.students USING btree (lrn)"
+  },
+  {
+    "tablename": "subject_coordinators",
+    "indexname": "idx_sc_sy_active",
+    "indexdef": "CREATE INDEX idx_sc_sy_active ON public.subject_coordinators USING btree (sy_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "subject_coordinators",
+    "indexname": "subject_coordinators_subject_group_sy_unique",
+    "indexdef": "CREATE UNIQUE INDEX subject_coordinators_subject_group_sy_unique ON public.subject_coordinators USING btree (subject_group_id, sy_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "subject_coordinators",
+    "indexname": "subject_coordinators_pkey",
+    "indexdef": "CREATE UNIQUE INDEX subject_coordinators_pkey ON public.subject_coordinators USING btree (sc_id)"
+  },
+  {
+    "tablename": "subject_coordinators",
+    "indexname": "idx_sc_user_active",
+    "indexdef": "CREATE INDEX idx_sc_user_active ON public.subject_coordinators USING btree (user_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "subject_group_members",
+    "indexname": "subject_group_members_pkey",
+    "indexdef": "CREATE UNIQUE INDEX subject_group_members_pkey ON public.subject_group_members USING btree (subject_group_id, curriculum_subject_id)"
+  },
+  {
+    "tablename": "subject_group_members",
+    "indexname": "idx_sgm_curriculum_subject_id",
+    "indexdef": "CREATE INDEX idx_sgm_curriculum_subject_id ON public.subject_group_members USING btree (curriculum_subject_id)"
+  },
+  {
+    "tablename": "subject_groups",
+    "indexname": "subject_groups_unique",
+    "indexdef": "CREATE UNIQUE INDEX subject_groups_unique ON public.subject_groups USING btree (curriculum_id, name)"
+  },
+  {
+    "tablename": "subject_groups",
+    "indexname": "subject_groups_pkey",
+    "indexdef": "CREATE UNIQUE INDEX subject_groups_pkey ON public.subject_groups USING btree (subject_group_id)"
+  },
+  {
+    "tablename": "subjects",
+    "indexname": "subjects_code_unique",
+    "indexdef": "CREATE UNIQUE INDEX subjects_code_unique ON public.subjects USING btree (lower((code)::text)) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "subjects",
+    "indexname": "subjects_code_key",
+    "indexdef": "CREATE UNIQUE INDEX subjects_code_key ON public.subjects USING btree (code)"
+  },
+  {
+    "tablename": "subjects",
+    "indexname": "subjects_pkey",
+    "indexdef": "CREATE UNIQUE INDEX subjects_pkey ON public.subjects USING btree (subject_id)"
+  },
+  {
+    "tablename": "teacher_class_assignments",
+    "indexname": "idx_tca_teacher_active",
+    "indexdef": "CREATE INDEX idx_tca_teacher_active ON public.teacher_class_assignments USING btree (teacher_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "teacher_class_assignments",
+    "indexname": "teacher_class_assignments_pkey",
+    "indexdef": "CREATE UNIQUE INDEX teacher_class_assignments_pkey ON public.teacher_class_assignments USING btree (id)"
+  },
+  {
+    "tablename": "teacher_class_assignments",
+    "indexname": "idx_tca_section_id",
+    "indexdef": "CREATE INDEX idx_tca_section_id ON public.teacher_class_assignments USING btree (section_id)"
+  },
+  {
+    "tablename": "teacher_class_assignments",
+    "indexname": "idx_tca_curriculum_subject_id",
+    "indexdef": "CREATE INDEX idx_tca_curriculum_subject_id ON public.teacher_class_assignments USING btree (curriculum_subject_id)"
+  },
+  {
+    "tablename": "user_invitations",
+    "indexname": "user_invitations_token_hash_key",
+    "indexdef": "CREATE UNIQUE INDEX user_invitations_token_hash_key ON public.user_invitations USING btree (token_hash)"
+  },
+  {
+    "tablename": "user_invitations",
+    "indexname": "user_invitations_uid_key",
+    "indexdef": "CREATE UNIQUE INDEX user_invitations_uid_key ON public.user_invitations USING btree (uid)"
+  },
+  {
+    "tablename": "user_invitations",
+    "indexname": "user_invitations_pkey",
+    "indexdef": "CREATE UNIQUE INDEX user_invitations_pkey ON public.user_invitations USING btree (id)"
+  },
+  {
+    "tablename": "user_roles",
+    "indexname": "idx_user_roles_role_id",
+    "indexdef": "CREATE INDEX idx_user_roles_role_id ON public.user_roles USING btree (role_id)"
+  },
+  {
+    "tablename": "user_roles",
+    "indexname": "user_roles_pkey",
+    "indexdef": "CREATE UNIQUE INDEX user_roles_pkey ON public.user_roles USING btree (uid, role_id)"
+  },
+  {
+    "tablename": "users",
+    "indexname": "users_pkey",
+    "indexdef": "CREATE UNIQUE INDEX users_pkey ON public.users USING btree (uid)"
+  },
+  {
+    "tablename": "users",
+    "indexname": "idx_users_active_non_deleted",
+    "indexdef": "CREATE INDEX idx_users_active_non_deleted ON public.users USING btree (active_status) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "tablename": "users",
+    "indexname": "idx_users_status_name_active",
+    "indexdef": "CREATE INDEX idx_users_status_name_active ON public.users USING btree (active_status, last_name, first_name) WHERE (deleted_at IS NULL)"
+  }
+]

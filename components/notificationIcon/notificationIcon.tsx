@@ -30,7 +30,7 @@ type NotifyOptions = {
   type?: NotifyType;
   color?: string;
   icon?: ReactNode;
-  autoClose?: number;
+  autoClose?: number | false;
 };
 
 export function notify({

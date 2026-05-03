@@ -23,6 +23,8 @@ interface RateLimiterOptions {
   maxRequests: number;
   /** Sliding window size in milliseconds. */
   windowMs: number;
+  /** Unique key prefix to isolate this limiter's counters in Redis. */
+  prefix: string;
 }
 
 interface RateLimitResult {
@@ -38,13 +40,14 @@ interface WindowEntry {
 }
 
 export function createRateLimiter(options: RateLimiterOptions) {
-  const { maxRequests, windowMs } = options;
+  const { maxRequests, windowMs, prefix } = options;
   const windowSeconds = Math.ceil(windowMs / 1000);
 
   // ── Primary: Redis-backed (shared across instances) ────────────────────────
   const upstashLimiter = new Ratelimit({
     redis,
     limiter: Ratelimit.slidingWindow(maxRequests, `${windowSeconds} s`),
+    prefix,
   });
 
   // ── Fallback: In-process sliding window ────────────────────────────────────

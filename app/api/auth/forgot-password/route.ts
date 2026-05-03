@@ -6,7 +6,7 @@ import { insertAuditLog } from "@/lib/audit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { adminClient } from "@/lib/supabase/admin";
 // 5 password-reset requests per IP per 15 minutes
-const resetLimiter = createRateLimiter({ maxRequests: 5, windowMs: 15 * 60_000 });
+const resetLimiter = createRateLimiter({ maxRequests: 5, windowMs: 15 * 60_000, prefix: "rl:forgot-password" });
 
 const _POST = async function(request: Request) {
   const ip = getClientIp(request);

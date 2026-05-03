@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import NavBar from "@/components/navBar/NavBar";
 import { AuthProvider } from "@/context/AuthContext";
+import AppShellScrollLock from "./_components/AppShellScrollLock";
 import styles from "./layout.module.css";
 
 // Full-screen spinner shown during SSR streaming of the authenticated shell.
@@ -31,7 +32,8 @@ export default function AuthenticatedLayout({
   return (
     <Suspense fallback={<AppShellFallback />}>
       <AuthProvider>
-        <div style={{ display: "flex", height: "100vh" }}>
+        <AppShellScrollLock />
+        <div className={styles.shell}>
           <NavBar />
           <main className={styles.main}>
             <div style={{ marginTop: "var(--mantine-spacing-md)" }}>

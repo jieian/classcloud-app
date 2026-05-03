@@ -97,7 +97,7 @@ export default function AddFacultyDrawer({
 
   const handleAddFaculty = (uid: string) => {
     onClose();
-    router.push(`/school/faculty/create?uid=${encodeURIComponent(uid)}`);
+    router.push(`/school/faculty/create?uid=${encodeURIComponent(uid)}&mode=add`);
   };
 
   return (

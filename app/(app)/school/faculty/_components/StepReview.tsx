@@ -7,6 +7,7 @@ import type {
   AddFacultyForm,
   GradeLevel,
   SectionWithAdviser,
+  SubjectCoordinatorGroup,
   SubjectForGradeLevel,
 } from "../_lib/teachingLoadService";
 
@@ -16,6 +17,8 @@ interface StepReviewProps {
   gradeLevels: GradeLevel[];
   sections: SectionWithAdviser[];
   subjectsByGradeLevel: SubjectForGradeLevel[];
+  isAddMode: boolean;
+  coordinatorGroups: SubjectCoordinatorGroup[];
 }
 
 const PAGE_SIZE = 3;
@@ -35,6 +38,8 @@ export default function StepReview({
   gradeLevels,
   sections,
   subjectsByGradeLevel,
+  isAddMode,
+  coordinatorGroups,
 }: StepReviewProps) {
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [form.values.subject_assignments]);
@@ -93,10 +98,13 @@ export default function StepReview({
   return (
     <Box>
       <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
-        Review &amp; Assign
+        {isAddMode ? "Review & Confirm" : "Review & Save"}
       </Text>
       <Text size="sm" c="dimmed" mb="lg">
-        Review the academic load for <strong>{facultyName}</strong> before confirming.
+        {isAddMode
+          ? <>Review the academic load and coordinator role for <strong>{facultyName}</strong> before adding them as faculty.</>
+          : <>Review the updated academic load for <strong>{facultyName}</strong> before saving.</>
+        }
       </Text>
 
       <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
@@ -128,7 +136,7 @@ export default function StepReview({
         </Box>
 
         {/* Academic Load */}
-        <Box>
+        <Box mb={isAddMode ? "lg" : undefined}>
           <Text size="sm" fw={600} mb="xs">
             Academic Load
           </Text>
@@ -164,6 +172,44 @@ export default function StepReview({
             </>
           )}
         </Box>
+
+        {/* Subject Coordinator Role — add mode only */}
+        {isAddMode && (
+          <Box mt="lg">
+            <Text size="sm" fw={600} mb="xs">
+              Subject Coordinator Role
+            </Text>
+            {(() => {
+              if (form.values.subject_group_id === null) {
+                return (
+                  <Text size="sm" c="dimmed">
+                    No subject coordinator role selected.
+                  </Text>
+                );
+              }
+              const group = coordinatorGroups.find(
+                (g) => g.subject_group_id === form.values.subject_group_id,
+              );
+              if (!group) return null;
+              return (
+                <Table withTableBorder withColumnBorders>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Subject Group</Table.Th>
+                      <Table.Th>Description</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    <Table.Tr>
+                      <Table.Td>{group.name}</Table.Td>
+                      <Table.Td>{group.description ?? "—"}</Table.Td>
+                    </Table.Tr>
+                  </Table.Tbody>
+                </Table>
+              );
+            })()}
+          </Box>
+        )}
       </Box>
     </Box>
   );

@@ -4,26 +4,27 @@ import AddFacultyWizard from "../_components/AddFacultyWizard";
 import { fetchWizardDataServer } from "../_lib/teachingLoadServerService";
 
 interface FacultyCreatePageProps {
-  searchParams: Promise<{ uid?: string }>;
+  searchParams: Promise<{ uid?: string; mode?: string }>;
 }
 
 export default async function FacultyCreatePage({
   searchParams,
 }: FacultyCreatePageProps) {
-  const { uid } = await searchParams;
+  const { uid, mode } = await searchParams;
 
   if (!uid) {
     redirect("/school/faculty");
   }
 
-  const initialData = await fetchWizardDataServer(uid);
+  const isAddMode = mode === "add";
+  const initialData = await fetchWizardDataServer(uid, isAddMode);
 
   return (
     <ProtectedRoute requiredPermissions={["faculty.full_access"]}>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
         Faculty Management
       </h1>
-      <AddFacultyWizard key={uid} facultyUid={uid} initialData={initialData} />
+      <AddFacultyWizard key={uid} facultyUid={uid} initialData={initialData} isAddMode={isAddMode} />
     </ProtectedRoute>
   );
 }

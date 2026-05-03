@@ -4,7 +4,7 @@ import { createRateLimiter, getClientIp } from "@/lib/rate-limit";
 import { insertAuditLog } from "@/lib/audit";
 
 // 10 checks per IP per minute — matches realistic login-page usage.
-const checkPendingLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000 });
+const checkPendingLimiter = createRateLimiter({ maxRequests: 10, windowMs: 60_000, prefix: "rl:check-pending" });
 
 const _POST = async function(request: Request) {
   const ip = getClientIp(request);

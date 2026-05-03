@@ -42,13 +42,10 @@ CREATE TABLE public.enrollments (
   lrn text,
   deleted_at timestamp with time zone,
   CONSTRAINT enrollments_pkey PRIMARY KEY (enrollment_id),
-
   CONSTRAINT enrollments_lrn_fkey FOREIGN KEY (lrn) REFERENCES public.students(lrn),
   CONSTRAINT enrollments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id),
   CONSTRAINT enrollments_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
 );
--- Partial unique index (not a constraint): one active enrollment per student per school year
--- CREATE UNIQUE INDEX enrollments_one_active_per_student_sy ON public.enrollments (lrn, sy_id) WHERE deleted_at IS NULL;
 CREATE TABLE public.exam_assignments (
   id integer NOT NULL DEFAULT nextval('exam_assignments_id_seq'::regclass),
   exam_id integer,
@@ -263,13 +260,6 @@ CREATE TABLE public.teacher_class_assignments (
   CONSTRAINT teacher_class_assignments_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),
   CONSTRAINT teacher_class_assignments_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id)
 );
-CREATE TABLE public.user_roles (
-  uid uuid NOT NULL,
-  role_id integer NOT NULL,
-  CONSTRAINT user_roles_pkey PRIMARY KEY (uid, role_id),
-  CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id),
-  CONSTRAINT user_roles_uid_fkey FOREIGN KEY (uid) REFERENCES public.users(uid)
-);
 CREATE TABLE public.user_invitations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   uid uuid NOT NULL UNIQUE,
@@ -277,7 +267,14 @@ CREATE TABLE public.user_invitations (
   encrypted_password text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT user_invitations_pkey PRIMARY KEY (id),
-  CONSTRAINT user_invitations_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id) ON DELETE CASCADE
+  CONSTRAINT user_invitations_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_roles (
+  uid uuid NOT NULL,
+  role_id integer NOT NULL,
+  CONSTRAINT user_roles_pkey PRIMARY KEY (uid, role_id),
+  CONSTRAINT user_roles_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id),
+  CONSTRAINT user_roles_uid_fkey FOREIGN KEY (uid) REFERENCES public.users(uid)
 );
 CREATE TABLE public.users (
   uid uuid NOT NULL,
@@ -285,10 +282,10 @@ CREATE TABLE public.users (
   first_name character varying NOT NULL,
   middle_name character varying,
   active_status smallint NOT NULL DEFAULT 0 CHECK (active_status = ANY (ARRAY[0, 1])),
-  must_change_password boolean NOT NULL DEFAULT false,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,
+  must_change_password boolean NOT NULL DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (uid),
   CONSTRAINT users_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
 );

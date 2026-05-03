@@ -1,12 +1,17 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { adminClient } from "@/lib/supabase/admin";
 import type {
   WizardData,
   SectionWithAdviser,
+  SubjectCoordinatorGroup,
   TeacherAssignment,
   SubjectForGradeLevel,
 } from "./teachingLoadService";
 
-export async function fetchWizardDataServer(facultyUid: string): Promise<WizardData> {
+export async function fetchWizardDataServer(
+  facultyUid: string,
+  isAddMode: boolean,
+): Promise<WizardData> {
   const supabase = await createServerSupabaseClient();
 
   // Round 1: 4 parallel — sections filtered via school_years!inner so sy_id is not needed upfront
@@ -70,8 +75,8 @@ export async function fetchWizardDataServer(facultyUid: string): Promise<WizardD
 
   const sectionIds = sections.map((s) => s.section_id);
 
-  // Round 2: 2 parallel — assignments use IN filter (no JOIN), curriculum_subjects direct
-  const [{ data: allAssignmentsRaw }, { data: csRaw }] = await Promise.all([
+  // Round 2: 3 parallel — assignments, curriculum_subjects, and (when add mode) coordinator groups
+  const [{ data: allAssignmentsRaw }, { data: csRaw }, { data: coordinatorGroupsRaw }] = await Promise.all([
     sectionIds.length > 0
       ? supabase
           .from("teacher_class_assignments")
@@ -87,6 +92,9 @@ export async function fetchWizardDataServer(facultyUid: string): Promise<WizardD
           .select("curriculum_subject_id, grade_level_id, subjects!inner(subject_id, name, code, subject_type, deleted_at)")
           .eq("curriculum_id", curriculumId)
           .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+    isAddMode
+      ? adminClient.rpc("get_subject_coordinator_groups")
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -134,6 +142,7 @@ export async function fetchWizardDataServer(facultyUid: string): Promise<WizardD
     sections,
     subjects_by_grade_level: subjectsByGradeLevel,
     all_assignments: allAssignments,
+    coordinator_groups: ((coordinatorGroupsRaw ?? []) as any[]) as SubjectCoordinatorGroup[],
     current_advisory_section_id:
       sections.find((s) => s.adviser_id === facultyUid)?.section_id ?? null,
     current_teaching_assignments: (() => {

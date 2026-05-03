@@ -20,28 +20,42 @@ export default function FacultyTableSkeleton() {
           <Skeleton height={20} width={150} radius="sm" />
         </TableTd>
         <TableTd>
-          <Skeleton height={20} width={180} radius="sm" />
+          <Skeleton height={20} width={160} radius="sm" />
         </TableTd>
         <TableTd>
-          <Skeleton height={16} width={180} radius="sm" />
+          <Group gap={6} wrap="nowrap">
+            <Skeleton height={22} width={52} radius="xl" />
+            <Skeleton height={22} width={52} radius="xl" />
+            <Skeleton height={22} width={52} radius="xl" />
+          </Group>
         </TableTd>
         <TableTd w={72}>
           <Group gap={0} justify="flex-end">
-            <Skeleton height={28} width={28} radius="sm" mr={4} />
-            <Skeleton height={28} width={28} radius="sm" />
+            <Skeleton height={18} width={18} radius="xl" mr={10} />
+            <Skeleton height={18} width={18} radius="xl" />
           </Group>
         </TableTd>
       </TableTr>
     ));
 
   return (
-    <TableScrollContainer minWidth={680}>
-      <Table verticalSpacing="sm">
+    <TableScrollContainer minWidth={1080} type="native">
+      <Table
+        verticalSpacing="sm"
+        horizontalSpacing="md"
+        style={{ tableLayout: "fixed" }}
+      >
+        <colgroup>
+          <col style={{ width: "26%" }} />
+          <col style={{ width: "24%" }} />
+          <col style={{ width: "42%" }} />
+          <col style={{ width: "72px" }} />
+        </colgroup>
         <TableThead>
           <TableTr>
-            <TableTh w="24%">Employee</TableTh>
+            <TableTh w="26%">Employee</TableTh>
             <TableTh w="24%">Advisory Class</TableTh>
-            <TableTh w="42%">Email</TableTh>
+            <TableTh>Teaching Load</TableTh>
             <TableTh w={72} ta="right">
               <VisuallyHidden>Actions</VisuallyHidden>
             </TableTh>
