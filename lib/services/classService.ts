@@ -54,6 +54,47 @@ interface RawEnrollment {
   section_id: number;
 }
 
+type ApiJson = Record<string, unknown>;
+type ParsedResponsePayload = {
+  json: unknown;
+  rawText: string | null;
+};
+
+async function readResponsePayload(
+  response: Response,
+): Promise<ParsedResponsePayload> {
+  const rawText = await response.text();
+  if (!rawText) return { json: null, rawText: null };
+
+  try {
+    return { json: JSON.parse(rawText), rawText };
+  } catch {
+    return { json: null, rawText };
+  }
+}
+
+function asApiJson(payload: unknown): ApiJson {
+  return payload && typeof payload === "object" ? (payload as ApiJson) : {};
+}
+
+function getErrorMessageFromPayload(
+  parsed: ParsedResponsePayload,
+  fallback: string,
+): string {
+  const payload = asApiJson(parsed.json);
+  const error = payload.error;
+  if (typeof error === "string" && error.trim()) return error;
+
+  const message = payload.message;
+  if (typeof message === "string" && message.trim()) return message;
+
+  if (parsed.rawText && parsed.rawText.trim()) {
+    return parsed.rawText.slice(0, 200);
+  }
+
+  return fallback;
+}
+
 /** Active SY → otherwise the first item (ordered desc by start_year = latest). */
 export function resolveDefaultSyId(
   years: SchoolYearOption[],
@@ -167,9 +208,11 @@ export async function updateStudent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to update student.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to update student."),
+    );
   }
 }
 
@@ -180,9 +223,14 @@ export async function checkStudentLrn(
   const res = await fetch(
     `/api/classes/${sectionId}/students/check-lrn?lrn=${encodeURIComponent(lrn)}`,
   );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to check LRN.");
-  return data as LrnCheckResult;
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(getErrorMessageFromPayload(parsed, "Failed to check LRN."));
+  }
+  if (!parsed.json || typeof parsed.json !== "object") {
+    throw new Error("Invalid response while checking LRN.");
+  }
+  return parsed.json as LrnCheckResult;
 }
 
 export async function addStudentToRoster(
@@ -194,8 +242,12 @@ export async function addStudentToRoster(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to add student.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to add student."),
+    );
+  }
 }
 
 // ─── Transfer Requests ────────────────────────────────────────────────────────
@@ -210,8 +262,12 @@ export async function createTransferRequest(payload: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to submit transfer request.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to submit transfer request."),
+    );
+  }
 }
 
 export async function fetchPendingTransferCount(): Promise<number> {
@@ -219,8 +275,9 @@ export async function fetchPendingTransferCount(): Promise<number> {
     cache: "no-store",
   });
   if (!res.ok) return 0;
-  const data = await res.json();
-  return (data.count as number) ?? 0;
+  const parsed = await readResponsePayload(res);
+  const data = asApiJson(parsed.json);
+  return typeof data.count === "number" ? data.count : 0;
 }
 
 export async function approveTransferRequest(requestId: string): Promise<void> {
@@ -228,8 +285,12 @@ export async function approveTransferRequest(requestId: string): Promise<void> {
     `/api/classes/transfer-requests/${encodeURIComponent(requestId)}/approve`,
     { method: "POST" },
   );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to approve transfer request.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to approve transfer request."),
+    );
+  }
 }
 
 export async function rejectTransferRequest(
@@ -244,16 +305,25 @@ export async function rejectTransferRequest(
       body: JSON.stringify({ notes: notes ?? "" }),
     },
   );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to reject transfer request.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to reject transfer request."),
+    );
+  }
 }
 
 export async function fetchIncomingTransferRequests(): Promise<TransferRequestItem[]> {
   const res = await fetch("/api/classes/transfer-requests?type=incoming", {
     cache: "no-store",
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load incoming requests.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load incoming requests."),
+    );
+  }
+  const data = asApiJson(parsed.json);
   return (data.requests ?? []) as TransferRequestItem[];
 }
 
@@ -261,8 +331,13 @@ export async function fetchOutgoingTransferRequests(): Promise<TransferRequestIt
   const res = await fetch("/api/classes/transfer-requests?type=outgoing", {
     cache: "no-store",
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to load outgoing requests.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load outgoing requests."),
+    );
+  }
+  const data = asApiJson(parsed.json);
   return (data.requests ?? []) as TransferRequestItem[];
 }
 
@@ -271,8 +346,12 @@ export async function cancelTransferRequest(requestId: string): Promise<void> {
     `/api/classes/transfer-requests/${encodeURIComponent(requestId)}/cancel`,
     { method: "POST" },
   );
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error ?? "Failed to cancel transfer request.");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to cancel transfer request."),
+    );
+  }
 }
 
 export async function deleteStudentFromRoster(
@@ -284,9 +363,11 @@ export async function deleteStudentFromRoster(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ section_id: sectionId, lrn }),
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to delete student.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to delete student."),
+    );
   }
 }
 
@@ -297,11 +378,19 @@ export async function fetchStudentRoster(sectionId: number): Promise<{
   const response = await fetch(`/api/classes/${sectionId}/students`, {
     cache: "no-store",
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to load student roster.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load student roster."),
+    );
   }
-  return result as { section: StudentRosterSection; students: StudentRosterEntry[] };
+  if (!parsed.json || typeof parsed.json !== "object") {
+    throw new Error("Invalid response while loading student roster.");
+  }
+  return parsed.json as {
+    section: StudentRosterSection;
+    students: StudentRosterEntry[];
+  };
 }
 
 export async function fetchSectionDetail(sectionId: number): Promise<{
@@ -311,11 +400,16 @@ export async function fetchSectionDetail(sectionId: number): Promise<{
   const response = await fetch(`/api/classes/${sectionId}`, {
     cache: "no-store",
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to load class details.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load class details."),
+    );
   }
-  return result as { section: SectionDetail; subjects: SectionSubjectRow[] };
+  if (!parsed.json || typeof parsed.json !== "object") {
+    throw new Error("Invalid response while loading class details.");
+  }
+  return parsed.json as { section: SectionDetail; subjects: SectionSubjectRow[] };
 }
 
 /**
@@ -374,10 +468,14 @@ export async function fetchAvailableAdviserCandidates(
     },
   );
 
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
+  const result = asApiJson(parsed.json);
   if (!response.ok) {
     throw new Error(
-      result?.error || "Failed to load eligible adviser candidates.",
+      getErrorMessageFromPayload(
+        parsed,
+        "Failed to load eligible adviser candidates.",
+      ),
     );
   }
 
@@ -394,9 +492,11 @@ export async function setSectionAdviser(payload: {
     body: JSON.stringify(payload),
   });
 
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to update class adviser.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to update class adviser."),
+    );
   }
 }
 
@@ -422,9 +522,11 @@ export async function archiveSection(sectionId: number): Promise<void> {
     method: "DELETE",
   });
 
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to archive section.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to archive section."),
+    );
   }
 }
 
@@ -438,9 +540,14 @@ export async function assignSubjectTeachers(
     body: JSON.stringify({ assignments }),
   });
 
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to save subject teacher assignments.");
+    throw new Error(
+      getErrorMessageFromPayload(
+        parsed,
+        "Failed to save subject teacher assignments.",
+      ),
+    );
   }
 }
 
@@ -454,9 +561,10 @@ export async function checkSectionAvailability(data: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
+  const result = asApiJson(parsed.json);
   if (!response.ok) {
-    throw new Error(result.error || "Failed to validate class.");
+    throw new Error(getErrorMessageFromPayload(parsed, "Failed to validate class."));
   }
   return result as SectionCheckResult;
 }
@@ -471,9 +579,10 @@ export async function createSection(data: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
+  const result = asApiJson(parsed.json);
   if (!response.ok) {
-    throw new Error(result.error || "Failed to create class.");
+    throw new Error(getErrorMessageFromPayload(parsed, "Failed to create class."));
   }
   return result as { section_id: number };
 }
@@ -483,14 +592,16 @@ export async function createSection(data: {
 export async function fetchNotifications(): Promise<NotificationItem[]> {
   const res = await fetch("/api/notifications", { cache: "no-store" });
   if (!res.ok) return [];
-  const data = await res.json();
+  const parsed = await readResponsePayload(res);
+  const data = asApiJson(parsed.json);
   return data.notifications ?? [];
 }
 
 export async function fetchUnreadNotificationCount(): Promise<number> {
   const res = await fetch("/api/notifications/count", { cache: "no-store" });
   if (!res.ok) return 0;
-  const data = await res.json();
+  const parsed = await readResponsePayload(res);
+  const data = asApiJson(parsed.json);
   return typeof data.count === "number" ? data.count : 0;
 }
 
@@ -522,8 +633,10 @@ export async function renameSectionName(
     body: JSON.stringify({ name }),
   });
 
-  const result = await response.json();
+  const parsed = await readResponsePayload(response);
   if (!response.ok) {
-    throw new Error(result?.error || "Failed to rename section.");
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to rename section."),
+    );
   }
 }

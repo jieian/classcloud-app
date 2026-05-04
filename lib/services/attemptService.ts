@@ -26,6 +26,47 @@ type ScoreAssignmentRow = { exam_assignment_id: number };
 
 const LEGACY_ATTEMPT_TABLE = "exam_attempts";
 
+type ApiJson = Record<string, unknown>;
+type ParsedResponsePayload = {
+  json: unknown;
+  rawText: string | null;
+};
+
+async function readResponsePayload(
+  response: Response,
+): Promise<ParsedResponsePayload> {
+  const rawText = await response.text();
+  if (!rawText) return { json: null, rawText: null };
+
+  try {
+    return { json: JSON.parse(rawText), rawText };
+  } catch {
+    return { json: null, rawText };
+  }
+}
+
+function asApiJson(payload: unknown): ApiJson {
+  return payload && typeof payload === "object" ? (payload as ApiJson) : {};
+}
+
+function getErrorMessageFromPayload(
+  parsed: ParsedResponsePayload,
+  fallback: string,
+): string {
+  const payload = asApiJson(parsed.json);
+  const error = payload.error;
+  if (typeof error === "string" && error.trim()) return error;
+
+  const message = payload.message;
+  if (typeof message === "string" && message.trim()) return message;
+
+  if (parsed.rawText && parsed.rawText.trim()) {
+    return parsed.rawText.slice(0, 200);
+  }
+
+  return fallback;
+}
+
 function isMissingResourceError(message: string): boolean {
   const m = message.toLowerCase();
   return (
@@ -104,23 +145,23 @@ async function createScoreViaApi(payload: ScoreCreatePayload): Promise<ExamScore
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-
-    const body = (await response.json()) as {
-      error?: string;
-      score?: Record<string, unknown>;
-    };
+    const parsed = await readResponsePayload(response);
+    const body = asApiJson(parsed.json);
 
     if (!response.ok) {
-      console.error("[attemptService] create score API error:", body.error ?? "Unknown error");
+      console.error(
+        "[attemptService] create score API error:",
+        getErrorMessageFromPayload(parsed, "Unknown error"),
+      );
       return null;
     }
 
-    if (!body.score) {
+    if (!body.score || typeof body.score !== "object") {
       console.error("[attemptService] create score API returned no score row.");
       return null;
     }
 
-    return normalizeScoreRow(body.score);
+    return normalizeScoreRow(body.score as Record<string, unknown>);
   } catch (error) {
     console.error("[attemptService] create score API request failed:", error);
     return null;

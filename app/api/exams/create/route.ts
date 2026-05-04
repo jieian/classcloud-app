@@ -21,6 +21,27 @@ const _POST = async function(request: Request) {
 
   const { payload, sectionIds } = await request.json();
 
+  // Guard: require at least one quarter in the active school year
+  const { data: activeSy } = await adminClient
+    .from('school_years')
+    .select('sy_id')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (activeSy?.sy_id) {
+    const { count } = await adminClient
+      .from('quarters')
+      .select('quarter_id', { count: 'exact', head: true })
+      .eq('sy_id', activeSy.sy_id);
+
+    if ((count ?? 0) === 0) {
+      return Response.json(
+        { error: 'No active term is configured for the current school year. Please set up a term before creating an exam.' },
+        { status: 400 },
+      );
+    }
+  }
+
   // Use service role to bypass RLS
 
   const selectedSectionIds = Array.isArray(sectionIds)

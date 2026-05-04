@@ -7,8 +7,6 @@ import {
   Alert,
   Container,
   Stepper,
-  Button,
-  Group,
   Stack,
   Text,
   ThemeIcon,
@@ -30,6 +28,7 @@ import StepAssignGradeSection from "./StepAssignGradeSection";
 import StepAssignSubject from "./StepAssignSubject";
 import StepAssignCoordinator from "./StepAssignCoordinator";
 import StepReview from "./StepReview";
+import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import {
   assignAcademicLoad,
 } from "../_lib/teachingLoadService";
@@ -428,37 +427,17 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     }
   })();
 
+  const isFinalStep = form.values.activeStep === TOTAL_STEPS - 1;
   const navButtons = (
-    <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={handleCancel}>
-        Cancel
-      </Button>
-
-      {form.values.activeStep > 0 && (
-        <Button variant="outline" onClick={prevStep}>
-          Previous
-        </Button>
-      )}
-
-      {form.values.activeStep < TOTAL_STEPS - 1 ? (
-        <Button
-          onClick={nextStep}
-          disabled={isNextDisabled}
-          style={isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }}
-        >
-          Next
-        </Button>
-      ) : (
-        <Button
-          onClick={handleAssign}
-          loading={submitting}
-          disabled={!initialData.active_sy_id}
-          style={initialData.active_sy_id ? { backgroundColor: "#4EAE4A" } : undefined}
-        >
-          {isAddMode ? "Add Faculty" : "Save Changes"}
-        </Button>
-      )}
-    </Group>
+    <WizardNavigationButtons
+      onCancel={handleCancel}
+      showPrevious={form.values.activeStep > 0}
+      onPrevious={prevStep}
+      onPrimary={isFinalStep ? handleAssign : nextStep}
+      primaryLabel={isFinalStep ? "Assign Academic Load" : "Next"}
+      primaryDisabled={isFinalStep ? !initialData.active_sy_id : isNextDisabled}
+      primaryLoading={isFinalStep ? submitting : false}
+    />
   );
 
   return (

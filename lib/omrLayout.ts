@@ -7,7 +7,7 @@
  *  2. omrService.ts      — to FIND elements when detecting answers in a scan
  *
  * All units are PDF points (pt), where 72pt = 1 inch.
- * Letter page = 612 × 792 pt.
+ * A4 page = 595 × 842 pt (rounded points for stable pixel mapping).
  *
  * After perspective correction, the scanned image is mapped to exactly
  * PAGE_W × PAGE_H pixels, so 1px == 1pt. This makes sampling trivial.
@@ -15,8 +15,8 @@
 
 export const OMR = {
   // ─── Page ─────────────────────────────────────────────────────────────────
-  PAGE_W: 612,
-  PAGE_H: 792,
+  PAGE_W: 595,
+  PAGE_H: 842,
 
   // ─── Corner Markers ────────────────────────────────────────────────────────
   // Solid black squares used for perspective detection.
@@ -25,9 +25,9 @@ export const OMR = {
   // Inset markers from paper edges so phone/webcam wide shots can include all corners more easily.
   CM_SIZE: 24,   // square side length in pt
   CM_TL: { x: 40,  y: 40  },   // top-left marker
-  CM_TR: { x: 548, y: 40  },   // top-right marker  (612 - 40 - 24)
-  CM_BL: { x: 40,  y: 753 },   // bottom-left marker (792 - 15 - 24 = 753; 15pt bottom margin keeps clearance from last bubble row)
-  CM_BR: { x: 548, y: 753 },   // bottom-right marker
+  CM_TR: { x: 531, y: 40  },   // top-right marker  (595 - 40 - 24)
+  CM_BL: { x: 40,  y: 803 },   // bottom-left marker (842 - 15 - 24 = 803; 15pt bottom margin keeps clearance from last bubble row)
+  CM_BR: { x: 531, y: 803 },   // bottom-right marker
 
   // Computed: center of each corner marker
   get CM_TL_C() { return { x: this.CM_TL.x + this.CM_SIZE / 2, y: this.CM_TL.y + this.CM_SIZE / 2 }; },
@@ -49,7 +49,7 @@ export const OMR = {
   FILL_DELTA:     0.02, // second-best gap required to avoid ambiguous multi-fill
   ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
   CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
-  GRID_START_Y:   195,  // y-center of the first row of bubbles
+  GRID_START_Y:   203,  // y-center of the first row of bubbles
   ITEMS_PER_COL:  20,   // maximum items per column
 
   // Column 1 — items 1–20

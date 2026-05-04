@@ -20,6 +20,7 @@ import { resolveExamParams } from '@/lib/exam-supabase';
 export interface AnswerSheetOptions {
   exam: ExamWithRelations;
   sectionName?: string;
+  generatedBy?: string;
 }
 
 // ─── QR Code Helper ───────────────────────────────────────────────────────────
@@ -34,11 +35,113 @@ async function generateQrDataUrl(text: string, sizePx: number): Promise<string> 
   });
 }
 
+function drawSectionBanner(pdf: jsPDF, x: number, y: number, w: number, h: number, label: string): void {
+  // Outer bordered box
+  pdf.setDrawColor(60, 60, 60);
+  pdf.setLineWidth(0.6);
+  pdf.setFillColor(255, 255, 255);
+  pdf.roundedRect(x, y, w, h, 2, 2, 'S');
+
+  // Black banner label sitting on the top border
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(7);
+  const textW = pdf.getTextWidth(label);
+  const padX = 5;
+  const bannerW = textW + padX * 2;
+  const bannerH = 9;
+  const bannerX = x + 8;
+  const bannerY = y - bannerH / 2;
+
+  pdf.setFillColor(0, 0, 0);
+  pdf.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.text(label, bannerX + padX, bannerY + bannerH - 2.5);
+}
+
+function drawInstructionsBox(pdf: jsPDF, x: number, y: number, w: number, h: number): void {
+  drawSectionBanner(pdf, x, y, w, h, 'INSTRUCTIONS');
+
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(7);
+  pdf.setTextColor(45, 45, 45);
+
+  const colSplitX = x + w / 2 + 2;
+  const lineY1 = y + 13;
+  const lineY2 = y + 22;
+
+  pdf.text('Use a dark pen or pencil.', x + 8, lineY1);
+  pdf.text('Choose only one answer.', x + 8, lineY2);
+  pdf.text('Fill the circle completely.', colSplitX, lineY1);
+}
+
+function drawShadingGuideBox(pdf: jsPDF, x: number, y: number, w: number, h: number): void {
+  drawSectionBanner(pdf, x, y, w, h, 'SHADING GUIDE');
+
+  const iconY = y + h / 2 + 1;
+  const r = 3.1;
+
+  // 6 icons: 1 OK + 5 Wrong, distributed across the inner width
+  const innerLeft = x + 8;
+  const innerRight = x + w - 6;
+  const span = innerRight - innerLeft;
+  const slotW = span / 6;
+  const iconXs: number[] = [];
+  for (let i = 0; i < 6; i++) iconXs.push(innerLeft + slotW * i + 4);
+
+  pdf.setLineWidth(0.5);
+
+  // 1) OK — fully shaded bubble
+  pdf.setDrawColor(70, 70, 70);
+  pdf.setFillColor(0, 0, 0);
+  pdf.circle(iconXs[0], iconY, r, 'F');
+
+  // 2) Wrong — empty circle with check mark
+  pdf.setFillColor(255, 255, 255);
+  pdf.circle(iconXs[1], iconY, r, 'FD');
+  pdf.setDrawColor(60, 60, 60);
+  pdf.line(iconXs[1] - 1.5, iconY + 0.2, iconXs[1] - 0.4, iconY + 1.5);
+  pdf.line(iconXs[1] - 0.4, iconY + 1.5, iconXs[1] + 1.8, iconY - 1.6);
+
+  // 3) Wrong — empty circle with X
+  pdf.setFillColor(255, 255, 255);
+  pdf.circle(iconXs[2], iconY, r, 'S');
+  pdf.line(iconXs[2] - 1.6, iconY - 1.6, iconXs[2] + 1.6, iconY + 1.6);
+  pdf.line(iconXs[2] - 1.6, iconY + 1.6, iconXs[2] + 1.6, iconY - 1.6);
+
+  // 4) Wrong — empty circle with single slash
+  pdf.setFillColor(255, 255, 255);
+  pdf.circle(iconXs[3], iconY, r, 'S');
+  pdf.line(iconXs[3] + 1.7, iconY - 1.7, iconXs[3] - 1.7, iconY + 1.7);
+
+  // 5) Wrong — partial / off-center small fill
+  pdf.setFillColor(255, 255, 255);
+  pdf.circle(iconXs[4], iconY, r, 'FD');
+  pdf.setFillColor(0, 0, 0);
+  pdf.circle(iconXs[4], iconY, r * 0.45, 'F');
+
+  // 6) Wrong — empty circle
+  pdf.setFillColor(255, 255, 255);
+  pdf.circle(iconXs[5], iconY, r, 'FD');
+
+  // Labels next to each icon
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(5.6);
+  pdf.setTextColor(60, 60, 60);
+  const labels = ['OK', 'Wrong', 'Wrong', 'Wrong', 'Wrong', 'Wrong'];
+  for (let i = 0; i < 6; i++) {
+    pdf.text(labels[i], iconXs[i] + r + 1.5, iconY + 1.8);
+  }
+}
+
 // ─── Main Generator ───────────────────────────────────────────────────────────
 
 export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<jsPDF> {
-  const { exam, sectionName } = opts;
-  const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
+  const { exam, sectionName, generatedBy } = opts;
+  const pdf = new jsPDF({
+    unit: 'pt',
+    format: [OMR.PAGE_W, OMR.PAGE_H],
+    orientation: 'portrait',
+  });
 
   const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
@@ -84,7 +187,6 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   // Student info lines — pushed below QR bottom edge (QR ends at y≈110)
   const lineY1 = 118;
   const lineY2 = 138;
-  const lineY3 = 158;
 
   pdf.setFont('helvetica', 'bold');
   pdf.setFontSize(9);
@@ -111,18 +213,22 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.setFont('helvetica', 'normal');
   pdf.line(398, lineY2, 540, lineY2);
 
-  // Instructions
-  pdf.setFont('helvetica', 'italic');
-  pdf.setFontSize(7.5);
-  pdf.text(
-    'INSTRUCTIONS: Use a dark pen or pencil. Shade the circle that corresponds to your answer completely. Do not make any stray marks.',
-    OMR.PAGE_W / 2, lineY3, { align: 'center' }
-  );
+  // Side-by-side INSTRUCTIONS and SHADING GUIDE boxes — must clear separator at y=176
+  // boxY=147 → box bottom at 173, leaving a 3pt gap before the separator
+  const boxY = 147;
+  const boxH = 26;
+  const leftBoxX = 50;
+  const leftBoxW = 240;
+  const rightBoxX = 300;
+  const rightBoxW = 245;
 
-  // Separator line
+  drawInstructionsBox(pdf, leftBoxX, boxY, leftBoxW, boxH);
+  drawShadingGuideBox(pdf, rightBoxX, boxY, rightBoxW, boxH);
+
+  // Separator line — sits below both boxes (box bottom = 173, separator at 176)
   pdf.setLineWidth(0.8);
   pdf.setDrawColor(0, 0, 0);
-  pdf.line(50, lineY3 + 8, OMR.PAGE_W - 50, lineY3 + 8);
+  pdf.line(50, 176, OMR.PAGE_W - 50, 176);
   pdf.setLineWidth(0.3);
 
   // Split items evenly across 2 columns (half each)
@@ -193,6 +299,10 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.setFontSize(7);
   pdf.setTextColor(150, 150, 150);
   pdf.text(`Exam ID: ${exam.exam_id}  |  Total Items: ${totalItems}  |  Generated: ${new Date().toLocaleDateString()}`, OMR.PAGE_W / 2, OMR.PAGE_H - 20, { align: 'center' });
+  if (generatedBy?.trim()) {
+    const preparedBy = generatedBy.trim().replace(/\s+/g, ' ').slice(0, 80);
+    pdf.text(`Prepared by: ${preparedBy}`, OMR.PAGE_W / 2, OMR.PAGE_H - 11, { align: 'center' });
+  }
 
   // Bottom border line
   pdf.setDrawColor(0, 0, 0);

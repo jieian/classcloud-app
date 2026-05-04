@@ -4,6 +4,47 @@
  */
 import { supabase, ExamWithRelations, AnswerKeyJsonb, LearningObjective } from '@/lib/exam-supabase';
 
+type ApiJson = Record<string, unknown>;
+type ParsedResponsePayload = {
+  json: unknown;
+  rawText: string | null;
+};
+
+async function readResponsePayload(
+  response: Response,
+): Promise<ParsedResponsePayload> {
+  const rawText = await response.text();
+  if (!rawText) return { json: null, rawText: null };
+
+  try {
+    return { json: JSON.parse(rawText), rawText };
+  } catch {
+    return { json: null, rawText };
+  }
+}
+
+function asApiJson(payload: unknown): ApiJson {
+  return payload && typeof payload === "object" ? (payload as ApiJson) : {};
+}
+
+function getErrorMessageFromPayload(
+  parsed: ParsedResponsePayload,
+  fallback: string,
+): string {
+  const payload = asApiJson(parsed.json);
+  const error = payload.error;
+  if (typeof error === "string" && error.trim()) return error;
+
+  const message = payload.message;
+  if (typeof message === "string" && message.trim()) return message;
+
+  if (parsed.rawText && parsed.rawText.trim()) {
+    return parsed.rawText.slice(0, 200);
+  }
+
+  return fallback;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type CreateExamPayload = {
@@ -17,9 +58,31 @@ export type CreateExamPayload = {
   is_locked?: boolean;
 };
 
+async function fetchActiveSchoolYearId(): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('school_years')
+    .select('sy_id')
+    .eq('is_active', true)
+    .is('deleted_at', null)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[examService] active school year lookup error:', error.message);
+    return null;
+  }
+
+  const syId = (data as { sy_id?: number } | null)?.sy_id;
+  return typeof syId === 'number' ? syId : null;
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamWithRelations[]> {
+  // Fetch the active SY for optional filtering, but never block exam visibility when it's absent.
+  // Exams belong to sections permanently — toggling a school year's active status must not
+  // cause previously created exams to disappear.
+  const activeSyId = await fetchActiveSchoolYearId();
+
   let query = supabase
     .from('exams')
     .select(`
@@ -33,6 +96,7 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
         sections (
           section_id,
           name,
+          sy_id,
           grade_levels ( display_name, level_number )
         )
       )
@@ -50,7 +114,23 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
     console.error('[examService] fetchExamsWithRelations error:', error.message);
     return [];
   }
-  return (data as ExamWithRelations[]) ?? [];
+
+  const exams = (data as ExamWithRelations[]) ?? [];
+
+  // When an active school year is known, show only that year's exams.
+  // When none is active (SY closed), show all exams so teachers don't lose access to their work.
+  if (!activeSyId) {
+    return exams.filter((exam) => (exam.exam_assignments ?? []).length > 0);
+  }
+
+  return exams
+    .map((exam) => ({
+      ...exam,
+      exam_assignments: (exam.exam_assignments ?? []).filter(
+        (assignment) => assignment.sections?.sy_id === activeSyId,
+      ),
+    }))
+    .filter((exam) => exam.exam_assignments.length > 0);
 }
 
 export async function fetchExamById(examId: number): Promise<ExamWithRelations | null> {
@@ -91,15 +171,20 @@ export async function createExamWithAssignments(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ payload, sectionIds }),
   });
+  const parsed = await readResponsePayload(res);
+  const body = asApiJson(parsed.json);
 
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('[examService] createExamWithAssignments error:', payload?.error);
-    throw new Error(payload?.error ?? 'Failed to create exam');
+    const errorMessage = getErrorMessageFromPayload(parsed, 'Failed to create exam');
+    console.error('[examService] createExamWithAssignments error:', errorMessage);
+    throw new Error(errorMessage);
   }
 
-  const data = await res.json();
-  return data ?? null;
+  if (typeof body.exam_id !== "number") {
+    throw new Error("Invalid response while creating exam.");
+  }
+
+  return body as { exam_id: number };
 }
 
 
@@ -111,10 +196,13 @@ export async function saveAnswerKey(examId: number, answerKey: AnswerKeyJsonb): 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ examId, answerKey }),
   });
+  const parsed = await readResponsePayload(res);
 
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('[examService] saveAnswerKey error:', payload?.error ?? 'Unknown error');
+    console.error(
+      '[examService] saveAnswerKey error:',
+      getErrorMessageFromPayload(parsed, 'Unknown error'),
+    );
     return false;
   }
 
@@ -127,10 +215,13 @@ export async function saveObjectives(examId: number, objectives: LearningObjecti
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ examId, objectives }),
   });
+  const parsed = await readResponsePayload(res);
 
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('[examService] saveObjectives error:', payload?.error ?? 'Unknown error');
+    console.error(
+      '[examService] saveObjectives error:',
+      getErrorMessageFromPayload(parsed, 'Unknown error'),
+    );
     return false;
   }
 
@@ -180,10 +271,13 @@ export async function deleteExamWithAssignments(examId: number): Promise<boolean
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ exam_id: examId }),
   });
+  const parsed = await readResponsePayload(res);
 
   if (!res.ok) {
-    const payload = await res.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('[examService] deleteExam error:', payload?.error ?? 'Unknown error');
+    console.error(
+      '[examService] deleteExam error:',
+      getErrorMessageFromPayload(parsed, 'Unknown error'),
+    );
     return false;
   }
 

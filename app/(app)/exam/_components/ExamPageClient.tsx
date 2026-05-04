@@ -54,13 +54,14 @@ import {
 import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
-import { fetchTeacherClassAssignments } from "@/lib/services/classService";
+import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 
 export default function ExamPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, permissions, loading: authLoading } = useAuth();
+  const { user, permissions, loading: authLoading, firstName, lastName } =
+    useAuth();
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -96,10 +97,10 @@ export default function ExamPageClient() {
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
 
-  // Handle ?newExamId= highlight — persists for 5 minutes via localStorage
+  // Handle ?newExamId= short-lived highlight persisted in localStorage
   useEffect(() => {
-    const HIGHLIGHT_MS = 5 * 60 * 1000; // 5 minutes
-    const FADE_BEFORE_MS = 10 * 1000; // start fading 10 s before expiry
+    const HIGHLIGHT_MS = 20 * 1000; // visible for 20 seconds
+    const FADE_BEFORE_MS = 8 * 1000; // start fading during the last 8 seconds
     const STORAGE_KEY = "examHighlight";
 
     // If a new exam was just created, record it with an expiry timestamp
@@ -173,6 +174,8 @@ export default function ExamPageClient() {
     new Set(),
   );
 
+  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(true);
+
   const fetchExams = async () => {
     setLoading(true);
     setDbError(null);
@@ -201,6 +204,10 @@ export default function ExamPageClient() {
   useEffect(() => {
     if (authLoading) return;
     fetchExams();
+    fetchSchoolYears().then((years) => {
+      setHasActiveSchoolYear(years.some((y) => y.is_active));
+    });
+
     if (user?.id) {
       fetchTeacherClassAssignments(user.id).then((assignments) => {
         setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
@@ -414,9 +421,14 @@ export default function ExamPageClient() {
       .map((a) => a.sections?.name)
       .filter(Boolean)
       .join(", ");
+    const generatedBy =
+      `${firstName ?? ""} ${lastName ?? ""}`.trim() ||
+      user?.email ||
+      "Unknown User";
     const pdf = await generateAnswerSheetPdf({
       exam,
       sectionName: sectionNames,
+      generatedBy,
     });
     pdf.save(`${exam.title}_AnswerSheet.pdf`);
     notifications.show({
@@ -490,11 +502,14 @@ export default function ExamPageClient() {
             </Stack>
           ) : (
             <Tooltip
-              label="You need to be assigned to at least one class before you can create exams."
+              label={
+                !hasActiveSchoolYear
+                  ? "No active school year. Please activate a school year before creating exams."
+                  : "You need to be assigned to at least one class before you can create exams."
+              }
               disabled={
-                hasFullAccess ||
-                !allowedSectionIds ||
-                allowedSectionIds.size > 0
+                hasActiveSchoolYear &&
+                (hasFullAccess || !allowedSectionIds || allowedSectionIds.size > 0)
               }
               withArrow
               multiline
@@ -506,9 +521,8 @@ export default function ExamPageClient() {
                   radius="md"
                   onClick={() => router.push("/exam/create")}
                   disabled={
-                    !hasFullAccess &&
-                    !!allowedSectionIds &&
-                    allowedSectionIds.size === 0
+                    !hasActiveSchoolYear ||
+                    (!hasFullAccess && !!allowedSectionIds && allowedSectionIds.size === 0)
                   }
                 >
                   Create Exam
@@ -667,7 +681,7 @@ export default function ExamPageClient() {
                           onClick={() => setOpenMenuExamId(exam.exam_id)}
                           style={{
                             transition:
-                              "box-shadow 8s ease, border-color 8s ease",
+                              "box-shadow 1.2s ease, border-color 1.2s ease",
                             boxShadow:
                               isNew && !highlightExpiring
                                 ? "0 0 0 3px #4EAE4A, 0 8px 24px rgba(70,109,29,0.25)"

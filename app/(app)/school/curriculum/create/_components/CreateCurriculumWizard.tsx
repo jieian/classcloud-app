@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Container, Group, rem, Stepper, Text } from "@mantine/core";
+import { Container, rem, Stepper, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
 import { getSupabase } from "@/lib/supabase/client";
+import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import StepCurriculumNameDesc from "./StepCurriculumNameDesc";
 import StepCurriculumSubjects from "./StepCurriculumSubjects";
 import StepCurriculumSubjectGroups from "./StepCurriculumSubjectGroups";
@@ -368,35 +369,17 @@ export default function CreateCurriculumWizard() {
     </>
   );
 
+  const isFinalStep = form.values.activeStep === 3;
   const navButtons = (
-    <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={handleCancel}>
-        Cancel
-      </Button>
-      {form.values.activeStep > 0 && (
-        <Button variant="outline" onClick={prevStep}>
-          Previous
-        </Button>
-      )}
-      {form.values.activeStep < 3 ? (
-        <Button
-          onClick={nextStep}
-          disabled={isNextDisabled}
-          loading={checkingName}
-          style={isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }}
-        >
-          Next
-        </Button>
-      ) : (
-        <Button
-          onClick={handleCreate}
-          loading={loading}
-          style={{ backgroundColor: "#4EAE4A" }}
-        >
-          Create Curriculum
-        </Button>
-      )}
-    </Group>
+    <WizardNavigationButtons
+      onCancel={handleCancel}
+      showPrevious={form.values.activeStep > 0}
+      onPrevious={prevStep}
+      onPrimary={isFinalStep ? handleCreate : nextStep}
+      primaryLabel={isFinalStep ? "Create Curriculum" : "Next"}
+      primaryDisabled={isFinalStep ? false : isNextDisabled}
+      primaryLoading={isFinalStep ? loading : checkingName}
+    />
   );
 
   return (

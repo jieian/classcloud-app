@@ -13,6 +13,7 @@ import {
   IconAlertTriangle, IconCheck, IconLink, IconMinus,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
@@ -21,6 +22,7 @@ import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
+import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // Always 2 columns matching the PDF answer sheet layout
@@ -347,6 +349,12 @@ export default function CreateExamPage() {
           <Group justify="center" py="xl"><Loader /></Group>
         ) : (
           <Stack gap="md">
+            {quarters.length === 0 && (
+              <Alert color="orange" icon={<IconAlertTriangle size={16} />} title="No Active Term Configured">
+                There are no terms set up for the current school year. An administrator must configure
+                at least one term before exams can be created.
+              </Alert>
+            )}
             <Alert color="blue" icon={<IconAlertCircle size={16} />}>
               New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
             </Alert>
@@ -371,13 +379,13 @@ export default function CreateExamPage() {
               />
               <MultiSelect
                 label="Section"
-                placeholder="Select section(s)"
+                placeholder={selectedGradeLevelId ? "Select section(s)" : "Select grade level first"}
                 required
-                data={filteredSections.map(s => ({ value: String(s.section_id), label: `Section ${s.name}` }))}
+                data={filteredSections.map(s => ({ value: String(s.section_id), label: s.name }))}
                 value={selectedSectionIds.map(String)}
                 onChange={(values) => setSelectedSectionIds(values.map(Number))}
                 nothingFoundMessage={selectedGradeLevelId ? 'No sections available' : 'Select a grade level first'}
-                disabled={filteredSections.length === 0}
+                disabled={!selectedGradeLevelId || filteredSections.length === 0}
               />
               <Select
                 label="Subject"
@@ -442,7 +450,7 @@ export default function CreateExamPage() {
                 <IconPlus className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-2">Auto default by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
+            <p className="text-xs text-gray-400 text-center mt-2">Recommended by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
           </div>
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
             <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Choices per Item</p>
@@ -720,7 +728,7 @@ export default function CreateExamPage() {
   };
 
   const isNextDisabled = (() => {
-    if (activeStep === 0) return !canGoStep1 || dataLoading;
+    if (activeStep === 0) return !canGoStep1 || dataLoading || quarters.length === 0;
     if (activeStep === 2) return uniqueCovered < totalItems;
     return false;
   })();
@@ -741,6 +749,64 @@ export default function CreateExamPage() {
     }
   };
 
+  const resetAndExit = () => {
+    setExamName('');
+    setSelectedGradeLevelId(null);
+    setSelectedSubjectId(null);
+    setSelectedSectionIds([]);
+    setTotalItems(30);
+    setNumChoices(4);
+    setObjectiveRows([makeRow()]);
+    setAnswers({});
+    setActiveStep(0);
+    setTriedToSave(false);
+    setTriedToSaveObjectives(false);
+    gradeLevelMountedRef.current = false;
+    totalItemsMountedRef.current = false;
+    prevGradeLevelForItemsRef.current = null;
+    draftRef.current = null;
+    clearDraft();
+    router.push('/exam');
+  };
+
+  const handleCancel = () => {
+    const defaultObjectiveRow = objectiveRows[0];
+    const hasObjectiveProgress = objectiveRows.length > 1 || Boolean(
+      defaultObjectiveRow &&
+      (
+        defaultObjectiveRow.objective.trim().length > 0 ||
+        defaultObjectiveRow.start_item !== '' ||
+        defaultObjectiveRow.end_item !== ''
+      ),
+    );
+
+    const hasInProgressChanges =
+      activeStep > 0 ||
+      examName.trim().length > 0 ||
+      Boolean(selectedGradeLevelId) ||
+      Boolean(selectedSubjectId) ||
+      selectedSectionIds.length > 0 ||
+      totalItems !== 30 ||
+      numChoices !== 4 ||
+      hasObjectiveProgress ||
+      Object.keys(answers).length > 0;
+
+    if (!hasInProgressChanges) {
+      resetAndExit();
+      return;
+    }
+
+    modals.openConfirmModal({
+      centered: true,
+      title: 'Discard exam creation progress?',
+      children:
+        'Your current progress will not be saved. If you open Create Examination again, it will start from step 1.',
+      labels: { confirm: 'Discard Progress', cancel: 'Keep Editing' },
+      confirmProps: { color: 'red' },
+      onConfirm: resetAndExit,
+    });
+  };
+
   const stepDescriptions = [
     { label: 'Step 1', description: 'Specify exam information' },
     { label: 'Step 2', description: 'Set items and answer choices' },
@@ -751,47 +817,23 @@ export default function CreateExamPage() {
 
   const stepContent = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4];
 
+  const isFinalStep = activeStep === 4;
   const navigationButtons = (
-    <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={() => {
-        if (activeStep === 0) {
-          setExamName('');
-          setSelectedGradeLevelId(null);
-          setSelectedSubjectId(null);
-          setSelectedSectionIds([]);
-          setTotalItems(30);
-          setNumChoices(4);
-          setObjectiveRows([makeRow()]);
-          setAnswers({});
-          setActiveStep(0);
-          setTriedToSave(false);
-          setTriedToSaveObjectives(false);
-          gradeLevelMountedRef.current = false;
-          totalItemsMountedRef.current = false;
-          prevGradeLevelForItemsRef.current = null;
-          draftRef.current = null;
-          clearDraft();
-          router.push('/exam');
-        } else prevStep();
-      }}>
-        {activeStep === 0 ? 'Cancel' : 'Previous'}
-      </Button>
-      {activeStep < 4 ? (
-        <Button
-          onClick={handleNext}
-          disabled={isNextDisabled}
-          style={isNextDisabled ? undefined : { backgroundColor: '#4EAE4A' }}
-        >
-          {activeStep === 3 && !isAnswerKeyComplete
+    <WizardNavigationButtons
+      onCancel={handleCancel}
+      showPrevious={activeStep > 0}
+      onPrevious={prevStep}
+      onPrimary={isFinalStep ? handleFinalSave : handleNext}
+      primaryLabel={
+        isFinalStep
+          ? 'Create Examination'
+          : activeStep === 3 && !isAnswerKeyComplete
             ? `${unansweredQuestions.length} item${unansweredQuestions.length > 1 ? 's' : ''} missing`
-            : 'Next'}
-        </Button>
-      ) : (
-        <Button onClick={handleFinalSave} loading={saving} style={{ backgroundColor: '#4EAE4A' }}>
-          Create Examination
-        </Button>
-      )}
-    </Group>
+            : 'Next'
+      }
+      primaryDisabled={isFinalStep ? false : isNextDisabled}
+      primaryLoading={isFinalStep ? saving : false}
+    />
   );
 
   return (

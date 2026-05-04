@@ -321,6 +321,25 @@ export default function ScanPapersPage() {
         undefined,
         setProcessingStatus,
       );
+
+      // QR mismatch — scanned sheet belongs to a different exam
+      if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
+        // Try to fetch the scanned sheet's exam title for a friendlier message
+        let scannedExamTitle = 'a different exam';
+        try {
+          const scannedExam = await fetchExamById(result.detectedExamId);
+          if (scannedExam?.title) scannedExamTitle = `"${scannedExam.title}"`;
+        } catch { /* ignore — title is optional, fallback is fine */ }
+
+        const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
+        setProcessingError(
+          `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
+          `Please use the correct answer sheet and try again.`
+        );
+        setStep('capture');
+        return;
+      }
+
       setDetectedAnswers(result.answers);
       setCornersOk(result.cornersAutoDetected);
       setDebugImageUrl(result.debugDataUrl);
@@ -765,7 +784,9 @@ export default function ScanPapersPage() {
               <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
                 <IconAlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-red-700">Processing failed</p>
+                  <p className="font-semibold text-red-700">
+                    {processingError.startsWith('Wrong answer sheet') ? 'Wrong Answer Sheet' : 'Processing Failed'}
+                  </p>
                   <p className="text-red-600 text-sm mt-1">{processingError}</p>
                 </div>
               </div>

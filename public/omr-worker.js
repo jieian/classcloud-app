@@ -20,21 +20,24 @@
 // ─── OMR Layout Constants ─────────────────────────────────────────────────────
 
 const OMR = {
-  PAGE_W: 612,
-  PAGE_H: 792,
+  PAGE_W: 595,
+  PAGE_H: 842,
   CM_SIZE: 24,
   CM_TL: { x: 40,  y: 40  },
-  CM_TR: { x: 548, y: 40  },
-  CM_BL: { x: 40,  y: 753 },
-  CM_BR: { x: 548, y: 753 },
+  CM_TR: { x: 531, y: 40  },
+  CM_BL: { x: 40,  y: 803 },
+  CM_BR: { x: 531, y: 803 },
   get CM_TL_C() { return { x: this.CM_TL.x + this.CM_SIZE / 2, y: this.CM_TL.y + this.CM_SIZE / 2 }; },
   get CM_TR_C() { return { x: this.CM_TR.x + this.CM_SIZE / 2, y: this.CM_TR.y + this.CM_SIZE / 2 }; },
   get CM_BL_C() { return { x: this.CM_BL.x + this.CM_SIZE / 2, y: this.CM_BL.y + this.CM_SIZE / 2 }; },
   get CM_BR_C() { return { x: this.CM_BR.x + this.CM_SIZE / 2, y: this.CM_BR.y + this.CM_SIZE / 2 }; },
+  // QR code region (top-right of correctly oriented sheet)
+  QR_X: 453, QR_Y: 38, QR_SIZE: 72,
+  HEADER_END_Y: 175,
   BUBBLE_R:       6,
   ROW_H:          22,
   CHOICE_SPACING: 25,
-  GRID_START_Y:   195,
+  GRID_START_Y:   203,
   COL1_FIRST_BUBBLE_X: 82,
   COL2_FIRST_BUBBLE_X: 345,
   bubbleCenter(itemNumber, choiceIndex, totalItems) {
@@ -452,6 +455,126 @@ function detectBubbles(buffer, width, height, totalItems, numChoices) {
   }
 }
 
+// ─── QR region orientation check ──────────────────────────────────────────────
+// The QR code sits at the top-right of a correctly oriented sheet.
+// It has high pixel-value variance (many black/white transitions).
+// A wrong orientation puts blank paper there (low variance).
+// Returns the standard deviation of grayscale values in the QR region.
+
+function qrRegionStdDev(buffer, width, height) {
+  const S   = WARP_SCALE;
+  const src = bufferToMat(buffer, width, height);
+  const gray = new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+  const rx = Math.round(OMR.QR_X * S);
+  const ry = Math.round(OMR.QR_Y * S);
+  const rw = Math.min(Math.round(OMR.QR_SIZE * S), width  - rx);
+  const rh = Math.min(Math.round(OMR.QR_SIZE * S), height - ry);
+
+  let std = 0;
+  if (rw > 4 && rh > 4) {
+    const roi    = gray.roi(new cv.Rect(rx, ry, rw, rh));
+    const mean   = new cv.Mat();
+    const stddev = new cv.Mat();
+    cv.meanStdDev(roi, mean, stddev);
+    std = stddev.data64F[0];
+    roi.delete(); mean.delete(); stddev.delete();
+  }
+
+  src.delete(); gray.delete();
+  return std;
+}
+
+function regionEdgeDensity(edges, x, y, w, h) {
+  const rx = Math.max(0, Math.min(edges.cols - 1, Math.floor(x)));
+  const ry = Math.max(0, Math.min(edges.rows - 1, Math.floor(y)));
+  const rw = Math.max(0, Math.min(edges.cols - rx, Math.floor(w)));
+  const rh = Math.max(0, Math.min(edges.rows - ry, Math.floor(h)));
+  if (rw < 2 || rh < 2) return 0;
+
+  const roi = edges.roi(new cv.Rect(rx, ry, rw, rh));
+  const edgeCount = cv.countNonZero(roi);
+  roi.delete();
+  return edgeCount / (rw * rh);
+}
+
+// Extra orientation signal from known page layout:
+// - top header area is denser than footer area
+// - QR corner (top-right) is denser than the opposite corner (bottom-left)
+function layoutOrientationScore(buffer, width, height) {
+  const src     = bufferToMat(buffer, width, height);
+  const gray    = new cv.Mat();
+  const blurred = new cv.Mat();
+  const edges   = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.GaussianBlur(gray, blurred, new cv.Size(3, 3), 0);
+    cv.Canny(blurred, edges, 60, 160);
+
+    const S = WARP_SCALE;
+    const topInset = Math.round((OMR.CM_TL_C.y + 4) * S);
+    const bandH = Math.max(20, Math.round((OMR.HEADER_END_Y - OMR.CM_TL_C.y) * S));
+    const bottomY = Math.max(0, height - topInset - bandH);
+
+    const topDensity = regionEdgeDensity(edges, 0, topInset, width, bandH);
+    const bottomDensity = regionEdgeDensity(edges, 0, bottomY, width, bandH);
+
+    const qrPad = Math.round(8 * S);
+    const qrX = Math.round(OMR.QR_X * S) - qrPad;
+    const qrY = Math.round(OMR.QR_Y * S) - qrPad;
+    const qrW = Math.round(OMR.QR_SIZE * S) + qrPad * 2;
+    const qrH = Math.round(OMR.QR_SIZE * S) + qrPad * 2;
+    const qrDensity = regionEdgeDensity(edges, qrX, qrY, qrW, qrH);
+
+    const oppositeQrX = Math.round((OMR.PAGE_W - OMR.QR_X - OMR.QR_SIZE) * S) - qrPad;
+    const oppositeQrY = Math.round((OMR.PAGE_H - OMR.QR_Y - OMR.QR_SIZE) * S) - qrPad;
+    const oppositeQrDensity = regionEdgeDensity(edges, oppositeQrX, oppositeQrY, qrW, qrH);
+
+    const score =
+      (topDensity - bottomDensity) * 90 +
+      (qrDensity - oppositeQrDensity) * 140;
+
+    return {
+      score,
+      topDensity,
+      bottomDensity,
+      qrDensity,
+      oppositeQrDensity,
+    };
+  } finally {
+    src.delete();
+    gray.delete();
+    blurred.delete();
+    edges.delete();
+  }
+}
+
+function buildOrientationCandidates(corners) {
+  const [c0, c1, c2, c3] = corners;
+  const transforms = [
+    [c0, c1, c2, c3], // 0 deg
+    [c2, c0, c3, c1], // 90 deg
+    [c3, c2, c1, c0], // 180 deg
+    [c1, c3, c0, c2], // 270 deg
+    [c1, c0, c3, c2], // mirror left-right
+    [c2, c3, c0, c1], // mirror top-bottom
+    [c0, c2, c1, c3], // transpose
+    [c3, c1, c2, c0], // anti-transpose
+  ];
+
+  const seen = new Set();
+  const unique = [];
+  for (const cand of transforms) {
+    const key = cand.map((p) => `${Math.round(p.x)},${Math.round(p.y)}`).join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(cand);
+  }
+  return unique;
+}
+
 // ─── Quality score ────────────────────────────────────────────────────────────
 
 function detectionQuality(answers, confidence) {
@@ -503,31 +626,52 @@ self.onmessage = async (e) => {
     }
 
     self.postMessage({ type: 'status', message: 'Correcting perspective\u2026' });
-    const [c0, c1, c2, c3] = corners;
-    // Try all 4 flip combinations so a wrong TL/TR/BL/BR assignment
-    // (which happens when the paper is rotated in the photo) is corrected
-    // by the quality score rather than silently producing a bad warp.
-    const candidates = [
-      [c0, c1, c2, c3],   // normal
-      [c1, c0, c3, c2],   // L/R flipped
-      [c2, c3, c0, c1],   // T/B flipped
-      [c3, c2, c1, c0],   // both flipped
-    ];
+    // Try all 8 rectangle orientations (rotations + mirrors), then select
+    // the best candidate using bubble confidence plus layout orientation cues.
+    const candidates = buildOrientationCandidates(corners);
 
     let best = null;
 
-    for (const cand of candidates) {
+    for (let ci = 0; ci < candidates.length; ci++) {
+      const cand = candidates[ci];
       try {
         const warped = warpToPage(buffer, width, height, cand, !usedPaperEdge);
         self.postMessage({ type: 'status', message: 'Reading bubbles\u2026' });
         const { answers, confidence } = detectBubbles(
           warped.buffer, warped.width, warped.height, totalItems, numChoices
         );
-        const quality = detectionQuality(answers, confidence);
+        const bubbleQuality = detectionQuality(answers, confidence);
+        let quality = bubbleQuality;
+
+        // QR-code orientation bonus: the QR code region has high pixel variance
+        // (many B/W transitions) only in the correct orientation.
+        // A wrong orientation puts blank paper there (stddev ~ 5-15).
+        // Correct orientation with QR present gives stddev ~ 40-80+.
+        // Use this as a light bonus, then rely more on structural layout score.
+        const qrStd = qrRegionStdDev(warped.buffer, warped.width, warped.height);
+        const qrBonus = qrStd > 35 ? 0.8 : qrStd > 25 ? 0.3 : 0;
+        quality += qrBonus;
+
+        const layout = layoutOrientationScore(warped.buffer, warped.width, warped.height);
+        quality += layout.score;
+
+        console.log(
+          `[OMR] orientation ${ci}:` +
+          ` bubbleQuality=${bubbleQuality.toFixed(3)}` +
+          ` qrStd=${qrStd.toFixed(1)}` +
+          ` qrBonus=${qrBonus.toFixed(2)}` +
+          ` layout=${layout.score.toFixed(3)}` +
+          ` top=${layout.topDensity.toFixed(4)}` +
+          ` bottom=${layout.bottomDensity.toFixed(4)}` +
+          ` qr=${layout.qrDensity.toFixed(4)}` +
+          ` opp=${layout.oppositeQrDensity.toFixed(4)}` +
+          ` total=${quality.toFixed(3)}`
+        );
+
         if (!best || quality > best.quality) {
           best = { quality, corners: cand, answers, confidence, warped };
         }
-      } catch (_) { /* skip degenerate orientation */ }
+      } catch { /* skip degenerate orientation */ }
     }
 
     if (!best) {

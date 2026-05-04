@@ -29,6 +29,7 @@ export interface DetectionResult {
   cornersAutoDetected: boolean;
   corners:             [Point, Point, Point, Point];
   debugDataUrl:        string;
+  detectedExamId:      number | null;
 }
 
 export type CornerSet = [Point, Point, Point, Point];
@@ -83,18 +84,38 @@ function scaleCanvas(src: HTMLCanvasElement, maxPx: number): HTMLCanvasElement {
 
 // ─── 3. QR reader ────────────────────────────────────────────────────────────
 
+function parseExamQr(raw: string): number | null {
+  const match = raw.match(/^EXAM:(\d+)$/);
+  return match ? parseInt(match[1]) : null;
+}
+
 export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<number | null> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const BD = (window as any).BarcodeDetector;
-  if (!BD) return null;
+  // Primary: jsqr — pure JS, works in all browsers
   try {
-    const detector = new BD({ formats: ['qr_code'] });
-    const barcodes = await detector.detect(canvas);
-    for (const b of barcodes) {
-      const match = (b.rawValue as string).match(/^EXAM:(\d+)$/);
-      if (match) return parseInt(match[1]);
+    const jsQR = (await import('jsqr')).default;
+    const ctx = canvas.getContext('2d')!;
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const result = jsQR(imageData.data, canvas.width, canvas.height);
+    if (result) {
+      const id = parseExamQr(result.data);
+      if (id !== null) return id;
+    }
+  } catch { /* jsqr unavailable */ }
+
+  // Fallback: native BarcodeDetector (Chrome/Edge)
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const BD = (window as any).BarcodeDetector;
+    if (BD) {
+      const detector = new BD({ formats: ['qr_code'] });
+      const barcodes = await detector.detect(canvas);
+      for (const b of barcodes) {
+        const id = parseExamQr(b.rawValue as string);
+        if (id !== null) return id;
+      }
     }
   } catch { /* not supported */ }
+
   return null;
 }
 
@@ -167,6 +188,9 @@ export async function processAnswerSheet(
   // .slice(0) copies the buffer so we can transfer it (original stays valid for QR if needed)
   const buffer = imageData.data.buffer.slice(0);
 
+  // Read QR code from full-resolution canvas before scaling (better QR detection quality)
+  const detectedExamId = await readExamIdFromQr(rawCanvas);
+
   // Scale manual corners to match the down-sampled canvas
   const scaledCorners = manualCorners
     ? (manualCorners.map(c => ({ x: c.x * scaleRatio, y: c.y * scaleRatio })) as CornerSet)
@@ -200,6 +224,7 @@ export async function processAnswerSheet(
           corners,
           cornersAutoDetected,
           debugDataUrl,
+          detectedExamId,
         });
 
       } else if (type === 'error') {
