@@ -566,7 +566,7 @@ export async function checkSectionAvailability(data: {
   if (!response.ok) {
     throw new Error(getErrorMessageFromPayload(parsed, "Failed to validate class."));
   }
-  return result as SectionCheckResult;
+  return result as unknown as SectionCheckResult;
 }
 
 export async function createSection(data: {
@@ -594,7 +594,7 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
   if (!res.ok) return [];
   const parsed = await readResponsePayload(res);
   const data = asApiJson(parsed.json);
-  return data.notifications ?? [];
+  return (data.notifications as NotificationItem[]) ?? [];
 }
 
 export async function fetchUnreadNotificationCount(): Promise<number> {
