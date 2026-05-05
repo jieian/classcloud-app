@@ -2,7 +2,28 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Button, Group, Paper, Skeleton, Stepper, Table, TableScrollContainer, TableTbody, TableTd, TableTh, TableThead, TableTr, Text } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Paper,
+  Select,
+  Skeleton,
+  Table,
+  TableScrollContainer,
+  TableTbody,
+  TableTd,
+  TableTh,
+  TableThead,
+  TableTr,
+  Text,
+  Title,
+  Tooltip,
+  Stack,
+} from '@mantine/core';
+import { modals } from '@mantine/modals';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
   IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
@@ -15,7 +36,9 @@ import { fetchStudentRoster } from '@/lib/services/classService';
 import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
 import BackButton from '@/components/BackButton';
+import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 import { SearchBar } from '@/components/searchBar/SearchBar';
+import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/VerticalWizardLayout';
 import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
 import { resolveExamParams } from '@/lib/exam-supabase';
 
@@ -66,7 +89,7 @@ const STEP_LABELS: Record<string, string> = {
   review: 'Review',
   submit: 'Save',
 };
-const STEP_ORDER = ['students', 'capture', 'review', 'submit'] as const;
+const STEP_ORDER = ['capture', 'review', 'submit'] as const;
 
 // â"€â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -183,41 +206,50 @@ export default function ScanPapersPage() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  // â"€â"€ Fetch roster + existing attempts once exam is loaded â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-  useEffect(() => {
+  const loadRosterAndAttempts = useCallback(async () => {
     if (!exam) return;
-
-    fetchAttemptsForExam(exam.exam_id)
-      .then(setExistingAttempts)
-      .catch(err => console.error('[ScanPage] Failed to load attempts:', err));
 
     const sectionIds = (exam.exam_assignments ?? [])
       .map(a => a.sections?.section_id)
       .filter((id): id is number => id != null);
 
-    if (sectionIds.length === 0) return;
-
     setRosterLoading(true);
-    Promise.all(sectionIds.map(id => fetchStudentRoster(id)))
-      .then(results => {
-        const all: RosterStudent[] = results.flatMap(r =>
-          r.students.map(s => ({
-            enrollment_id: s.enrollment_id,
-            lrn: s.lrn,
-            full_name: s.full_name,
-            sex: s.sex,
-            section_id: r.section.section_id,
-            section_name: r.section.name,
-            grade_level_display: r.section.grade_level_display,
-          }))
-        );
-        all.sort((a, b) => a.full_name.localeCompare(b.full_name));
-        setRosterStudents(all);
-        if (all.length > 0) setSectionFilter(all[0].section_id);
-      })
-      .catch(err => console.error('[ScanPage] Failed to load roster:', err))
-      .finally(() => setRosterLoading(false));
+    try {
+      const [attempts, rosterResults] = await Promise.all([
+        fetchAttemptsForExam(exam.exam_id),
+        Promise.all(sectionIds.map(id => fetchStudentRoster(id))),
+      ]);
+
+      const all: RosterStudent[] = rosterResults.flatMap(r =>
+        r.students.map(s => ({
+          enrollment_id: s.enrollment_id,
+          lrn: s.lrn,
+          full_name: s.full_name,
+          sex: s.sex,
+          section_id: r.section.section_id,
+          section_name: r.section.name,
+          grade_level_display: r.section.grade_level_display,
+        }))
+      );
+      all.sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+      setExistingAttempts(attempts);
+      setRosterStudents(all);
+      setSectionFilter(current => {
+        if (current != null && all.some(student => student.section_id === current)) return current;
+        return all[0]?.section_id ?? null;
+      });
+    } catch (err) {
+      console.error('[ScanPage] Failed to load scan roster data:', err);
+    } finally {
+      setRosterLoading(false);
+    }
   }, [exam]);
+
+  // â"€â"€ Fetch roster + existing attempts once exam is loaded â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  useEffect(() => {
+    void loadRosterAndAttempts();
+  }, [loadRosterAndAttempts]);
 
   // â"€â"€ Attempt lookup map â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const attemptByEnrollment = new Map<number, ExamScore>();
@@ -229,6 +261,10 @@ export default function ScanPapersPage() {
   const sections = Array.from(
     new Map(rosterStudents.map(s => [s.section_id, { section_id: s.section_id, section_name: s.section_name, grade_level_display: s.grade_level_display }])).values()
   );
+  const sectionOptions = sections.map(section => ({
+    value: String(section.section_id),
+    label: `${section.grade_level_display} - ${section.section_name}`,
+  }));
 
   const filteredStudents = rosterStudents.filter(s => {
     const q = studentSearch.toLowerCase();
@@ -369,10 +405,62 @@ export default function ScanPapersPage() {
   });
 
   const scoreMpl = getMpl(score, totalItems);
+  const isStudentStep = step === 'students';
+  const wizardSteps: VerticalWizardStep[] = STEP_ORDER.map((s, i) => ({
+    label: `Step ${i + 1}`,
+    description: STEP_LABELS[s],
+  }));
   const canAccessExams =
     permissions.includes("exams.full_access") ||
     permissions.includes("exams.limited_access") ||
     permissions.includes("access_examinations");
+
+  const hasScanProgress = Boolean(
+    selectedStudent && (
+      capturedFile ||
+      previewUrl ||
+      Object.keys(detectedAnswers).length > 0 ||
+      cameraActive ||
+      step === 'review' ||
+      step === 'submit' ||
+      processingStatus ||
+      debugImageUrl ||
+      warpedImageUrl
+    )
+  );
+
+  const resetScanState = () => {
+    stopCamera();
+    setSelectedStudent(null);
+    setCapturedFile(null);
+    setPreviewUrl(null);
+    setDetectedAnswers({});
+    setDebugImageUrl(null);
+    setWarpedImageUrl(null);
+    setProcessingError(null);
+    setProcessingStatus('');
+    setSubmitting(false);
+    setStep('students');
+  };
+
+  const handleCancel = () => {
+    if (!hasScanProgress) {
+      resetScanState();
+      return;
+    }
+
+    modals.openConfirmModal({
+      title: 'Discard changes?',
+      children: (
+        <Text size="sm">
+          You have unsaved scan progress. Are you sure you want to return to the student list?
+        </Text>
+      ),
+      labels: { confirm: 'Discard', cancel: 'Stay' },
+      confirmProps: { color: 'red' },
+      onConfirm: resetScanState,
+    });
+  };
 
   // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
@@ -448,7 +536,7 @@ export default function ScanPapersPage() {
       const contentDisposition = response.headers.get('content-disposition') ?? '';
       const filenameMatch = contentDisposition.match(/filename="([^"]+)"/i);
       link.href = url;
-      link.download = filenameMatch?.[1] ?? `exam_${exam.exam_id}_results.csv`;
+      link.download = filenameMatch?.[1] ?? `exam_${exam.exam_id}_Results.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -511,107 +599,96 @@ export default function ScanPapersPage() {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-3">
-        <div>
-          <h1 className="text-3xl font-bold text-[#597D37]">Scan Papers</h1>
-          <p className="mt-1 text-sm text-[#597D37]">{exam.title}</p>
-        </div>
-        <BackButton size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
-      </div>
+    <>
+    <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Scan Papers</h1>
+    <Stack gap="md" maw={1000}>
+      <Box>
+        {isStudentStep ? (
+          <BackButton size="sm" href="/exam">
+            Back to Examinations
+          </BackButton>
+        ) : (
+          <BackButton size="sm" onClick={handleCancel}>
+            Back to Students
+          </BackButton>
+        )}
+      </Box>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+        <Box>
+          <Title order={3} fw={700}>
+            {exam.title}
+          </Title>
+          <Text size="sm" c="dimmed">
+            Scan Papers · {exam.curriculum_subjects?.subjects?.name ?? 'No subject'} · {totalItems} items
+          </Text>
+        </Box>
 
-        {/* Step indicator */}
-        <div className="hidden md:block mb-5">
-          <Stepper
-            active={stepIndex}
-            color="#4EAE4A"
-            allowNextStepsSelect={false}
-            size="sm"
-          >
-            {STEP_ORDER.map((s, i) => (
-              <Stepper.Step
-                key={s}
-                label={`Step ${i + 1}`}
-                description={STEP_LABELS[s]}
-              />
-            ))}
-          </Stepper>
-        </div>
+        {isStudentStep && (
+          <Group gap="xs" wrap="wrap">
+            <Badge color="green" variant="light" size="lg">
+              Scanned: {scannedStudentsCount} / {rosterStudents.length}
+            </Badge>
+            <Button
+              variant="outline"
+              color="gray"
+              leftSection={<IconDownload size={16} />}
+              size="sm"
+              loading={exportingCsv}
+              disabled={exportingCsv || scannedStudentsCount === 0}
+              onClick={handleExportCsv}
+            >
+              Download Results
+            </Button>
+          </Group>
+        )}
+      </Group>
+
+      {isStudentStep && (
+        <Group gap="sm" align="flex-end">
+          <SearchBar
+            id="search-scan-students"
+            placeholder="Search student name or LRN..."
+            ariaLabel="Search students"
+            style={{ flex: 1, minWidth: 0 }}
+            value={studentSearch}
+            onChange={e => setStudentSearch(e.target.value)}
+          />
+          <Select
+            placeholder="Section"
+            data={sectionOptions}
+            value={sectionFilter == null ? null : String(sectionFilter)}
+            onChange={(value) => {
+              setSectionFilter(value ? Number(value) : null);
+              setStudentSearch('');
+            }}
+            w={220}
+            clearable={sections.length > 1}
+            disabled={sections.length === 0}
+          />
+          <Tooltip label="Refresh" position="bottom" withArrow>
+            <ActionIcon
+              variant="outline"
+              color="#808898"
+              size="lg"
+              radius="xl"
+              onClick={loadRosterAndAttempts}
+              loading={rosterLoading}
+              aria-label="Refresh scan roster"
+            >
+              <IconRefresh size={18} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+      )}
+
+      <Paper withBorder radius="md" p={isStudentStep ? 0 : "lg"} style={isStudentStep ? { overflow: "hidden" } : undefined}>
 
         {/* â"€â"€ STEP: STUDENTS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'students' && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-x-6 text-sm">
-              <div>
-                <span className="font-semibold text-gray-600">Examination Name</span>
-                <p className="text-gray-800 mt-0.5">{exam.title}</p>
-              </div>
-              <div>
-                <span className="font-semibold text-gray-600">Subject</span>
-                <p className="text-gray-800 mt-0.5">{exam.curriculum_subjects?.subjects?.name ?? '—'}</p>
-              </div>
-            </div>
-
-            <hr />
-
-            {sections.length > 1 && (
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Select Section</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {sections.map(sec => {
-                    const secStudents = rosterStudents.filter(s => s.section_id === sec.section_id);
-                    const scannedCount = secStudents.filter(s => getStudentAttempt(s) != null).length;
-                    const isActive = sectionFilter === sec.section_id;
-                    return (
-                      <button
-                        key={sec.section_id}
-                        onClick={() => { setSectionFilter(sec.section_id); setStudentSearch(''); }}
-                        className={`text-left p-3 rounded-xl border-2 transition-all ${
-                          isActive ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                      >
-                        <p className={`text-sm font-bold leading-tight ${isActive ? 'text-green-700' : 'text-gray-800'}`}>{sec.section_name}</p>
-                        <p className={`text-xs mt-0.5 ${isActive ? 'text-primary/70' : 'text-gray-400'}`}>{sec.grade_level_display}</p>
-                        <p className="text-xs text-gray-400 mt-1">{scannedCount} / {secStudents.length} scanned</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-gray-700">Students</p>
-              <span className="inline-flex items-center rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 border border-green-200">
-                Scanned: {scannedStudentsCount} / {rosterStudents.length}
-              </span>
-            </div>
-
-            <Group gap="sm">
-              <SearchBar
-                placeholder="Search student name or LRN..."
-                ariaLabel="Search students"
-                style={{ flex: 1 }}
-                value={studentSearch}
-                onChange={e => setStudentSearch(e.target.value)}
-              />
-              <Button
-                variant="outline"
-                color="gray"
-                leftSection={<IconDownload size={16} />}
-                size="sm"
-                loading={exportingCsv}
-                disabled={exportingCsv || scannedStudentsCount === 0}
-                onClick={handleExportCsv}
-              >
-                Download Results (CSV)
-              </Button>
-            </Group>
-
+          <>
             {rosterLoading ? (
-              <Paper withBorder radius="md" p="md">
+              <div className="p-4">
                 <div className="space-y-3">
                   <Skeleton height={18} width={180} radius="md" />
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -623,14 +700,13 @@ export default function ScanPapersPage() {
                     </Group>
                   ))}
                 </div>
-              </Paper>
+              </div>
             ) : rosterStudents.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-xl border border-gray-200">
+              <div className="text-center py-12">
                 <p className="text-sm font-semibold text-gray-600">No students found</p>
                 <p className="text-xs text-gray-400 mt-1">No roster is linked to the sections assigned to this exam.</p>
               </div>
             ) : (
-              <Paper withBorder radius="md" p={0} style={{ overflow: "hidden" }}>
                 <TableScrollContainer minWidth={640}>
                   <Table verticalSpacing="sm" striped={false} highlightOnHover>
                     <TableThead>
@@ -690,14 +766,14 @@ export default function ScanPapersPage() {
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
                                 <TableTd ta="center">
-                                  <button
+                                  <Button
+                                    size="xs"
+                                    radius="md"
+                                    color={hasScanned ? "yellow" : "#4EAE4A"}
                                     onClick={() => handleScanStudent(student)}
-                                    className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                                      hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
-                                    }`}
                                   >
                                     {hasScanned ? 'Rescan' : 'Scan'}
-                                  </button>
+                                  </Button>
                                 </TableTd>
                               </TableTr>
                             );
@@ -743,14 +819,14 @@ export default function ScanPapersPage() {
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
                                 <TableTd ta="center">
-                                  <button
+                                  <Button
+                                    size="xs"
+                                    radius="md"
+                                    color={hasScanned ? "yellow" : "#4EAE4A"}
                                     onClick={() => handleScanStudent(student)}
-                                    className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                                      hasScanned ? 'bg-amber-400 hover:bg-amber-500 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
-                                    }`}
                                   >
                                     {hasScanned ? 'Rescan' : 'Scan'}
-                                  </button>
+                                  </Button>
                                 </TableTd>
                               </TableTr>
                             );
@@ -760,10 +836,12 @@ export default function ScanPapersPage() {
                     </TableTbody>
                   </Table>
                 </TableScrollContainer>
-              </Paper>
             )}
-          </div>
+          </>
         )}
+
+        {!isStudentStep && (
+          <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
 
         {/* â"€â"€ STEP: CAPTURE â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'capture' && (
@@ -819,14 +897,6 @@ export default function ScanPapersPage() {
               <div className="space-y-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
-                <Group>
-                  <Button variant="default" onClick={() => { setPreviewUrl(null); setCapturedFile(null); }} leftSection={<IconRefresh className="w-4 h-4" />}>
-                    Retake
-                  </Button>
-                  <Button color="#4EAE4A" onClick={runProcessing} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
-                    Process Sheet
-                  </Button>
-                </Group>
               </div>
             )}
 
@@ -868,11 +938,25 @@ export default function ScanPapersPage() {
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
 
-            <div className="pt-2 border-t">
-              <Button variant="default" onClick={() => setStep('students')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
-                Back to Students
-              </Button>
-            </div>
+            <WizardNavigationButtons
+              onCancel={handleCancel}
+              onPrimary={runProcessing}
+              primaryLabel="Process Sheet"
+              primaryDisabled={!previewUrl}
+              cancelLabel="Cancel"
+              leftExtra={previewUrl && !cameraActive ? (
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setPreviewUrl(null);
+                    setCapturedFile(null);
+                  }}
+                  leftSection={<IconRefresh className="w-4 h-4" />}
+                >
+                  Retake
+                </Button>
+              ) : undefined}
+            />
           </div>
         )}
 
@@ -991,14 +1075,14 @@ export default function ScanPapersPage() {
               })}
             </div>
 
-            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
-              <Button variant="default" onClick={() => setStep('capture')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
-                Rescan
-              </Button>
-              <Button color="#4EAE4A" onClick={() => setStep('submit')} rightSection={<IconChevronRight className="w-4 h-4" />} style={{ flex: 1 }}>
-                Continue
-              </Button>
-            </Group>
+            <WizardNavigationButtons
+              onCancel={handleCancel}
+              onPrevious={() => setStep('capture')}
+              showPrevious
+              onPrimary={() => setStep('submit')}
+              primaryLabel="Next"
+              cancelLabel="Cancel"
+            />
           </div>
         )}
 
@@ -1059,26 +1143,22 @@ export default function ScanPapersPage() {
               </div>
             </div>
 
-            <Group pt="md" style={{ borderTop: '1px solid #e5e7eb' }}>
-              <Button variant="default" onClick={() => setStep('review')} leftSection={<IconChevronLeft className="w-4 h-4" />}>
-                Back
-              </Button>
-              <Button
-                color="#4EAE4A"
-                onClick={handleSubmit}
-                disabled={submitting}
-                leftSection={<IconDeviceFloppy className="w-4 h-4" />}
-                style={{ flex: 1 }}
-              >
-                {submitting ? 'Saving...' : 'Save Result'}
-              </Button>
-            </Group>
+            <WizardNavigationButtons
+              onCancel={handleCancel}
+              onPrevious={() => setStep('review')}
+              showPrevious
+              onPrimary={handleSubmit}
+              primaryLabel={submitting ? 'Saving...' : 'Save Result'}
+              primaryLoading={submitting}
+              primaryDisabled={submitting}
+              cancelLabel="Cancel"
+            />
           </div>
         )}
-
-      </div>
-    </div>
+          </VerticalWizardLayout>
+        )}
+      </Paper>
+    </Stack>
+    </>
   );
 }
-
-

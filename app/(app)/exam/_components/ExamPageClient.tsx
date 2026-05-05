@@ -56,6 +56,7 @@ import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
 import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
+import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 
 export default function ExamPageClient() {
   const router = useRouter();
@@ -489,7 +490,7 @@ export default function ExamPageClient() {
         <Group justify="space-between">
           <h1 className="mb-3 text-2xl font-bold">
             Examinations{" "}
-            {!loading && (
+            {!loading && hasActiveSchoolYear && (
               <span className="text-[#808898]">({filteredExams.length})</span>
             )}
           </h1>
@@ -500,16 +501,13 @@ export default function ExamPageClient() {
               </Text>
               <Skeleton height={40} width={140} radius="md" />
             </Stack>
-          ) : (
+          ) : hasActiveSchoolYear ? (
             <Tooltip
               label={
-                !hasActiveSchoolYear
-                  ? "No active school year. Please activate a school year before creating exams."
-                  : "You need to be assigned to at least one class before you can create exams."
+                "You need to be assigned to at least one class before you can create exams."
               }
               disabled={
-                hasActiveSchoolYear &&
-                (hasFullAccess || !allowedSectionIds || allowedSectionIds.size > 0)
+                hasFullAccess || !allowedSectionIds || allowedSectionIds.size > 0
               }
               withArrow
               multiline
@@ -521,7 +519,6 @@ export default function ExamPageClient() {
                   radius="md"
                   onClick={() => router.push("/exam/create")}
                   disabled={
-                    !hasActiveSchoolYear ||
                     (!hasFullAccess && !!allowedSectionIds && allowedSectionIds.size === 0)
                   }
                 >
@@ -529,7 +526,7 @@ export default function ExamPageClient() {
                 </Button>
               </div>
             </Tooltip>
-          )}
+          ) : null}
         </Group>
         <p className="mb-3 text-sm text-[#808898]">
           Manage and track all examinations
@@ -556,6 +553,10 @@ export default function ExamPageClient() {
         </Alert>
       )}
 
+      {!loading && !dbError && !hasActiveSchoolYear ? (
+        <NoActivePeriodBanner />
+      ) : (
+        <>
       {/* Filters */}
       <div>
         <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
@@ -678,7 +679,7 @@ export default function ExamPageClient() {
                           padding="lg"
                           radius="md"
                           withBorder
-                          onClick={() => setOpenMenuExamId(exam.exam_id)}
+                          onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
                           style={{
                             transition:
                               "box-shadow 1.2s ease, border-color 1.2s ease",
@@ -885,6 +886,8 @@ export default function ExamPageClient() {
             </Accordion.Item>
           ))}
         </Accordion>
+      )}
+        </>
       )}
 
       {isObjectivesModalOpen && objectivesExam && (

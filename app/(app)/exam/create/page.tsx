@@ -5,12 +5,12 @@ import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
   Select, MultiSelect, Alert, Badge, ActionIcon, NumberInput, Progress,
-  Loader, TextInput,
+  Loader,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus, IconTrash, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconCheck, IconLink, IconMinus,
+  IconAlertTriangle, IconLink, IconMinus,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
@@ -18,11 +18,12 @@ import { fetchActiveQuarters } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
-import { fetchTeacherClassAssignments } from '@/lib/services/classService';
+import { fetchSchoolYears, fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
+import NoActivePeriodBanner from '@/components/NoActivePeriodBanner';
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // Always 2 columns matching the PDF answer sheet layout
@@ -55,7 +56,6 @@ const DRAFT_KEY = 'exam_create_draft';
 
 interface ExamCreateDraft {
   step: number;
-  examName: string;
   gradeLevelId: string | null;
   subjectId: string | null;
   sectionIds: number[];
@@ -111,11 +111,11 @@ export default function CreateExamPage() {
   const [allSections, setAllSections] = useState<Section[]>([]);
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
+  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState<boolean | null>(null);
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
-  const [examName, setExamName] = useState(d?.examName ?? '');
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(d?.subjectId ?? null);
   const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>(d?.sectionIds ?? []);
@@ -141,16 +141,18 @@ export default function CreateExamPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [q, gl, sub, sec] = await Promise.all([
+      const [q, gl, sub, sec, schoolYears] = await Promise.all([
         fetchActiveQuarters(),
         fetchGradeLevels(),
         fetchSubjectsWithGradeLevels(),
         fetchActiveSections(),
+        fetchSchoolYears(),
       ]);
       setQuarters(q);
       setGradeLevels(gl);
       setSubjects(sub);
       setAllSections(sec);
+      setHasActiveSchoolYear(schoolYears.some((schoolYear) => schoolYear.is_active));
       if (user?.id) {
         const assignments = await fetchTeacherClassAssignments(user.id);
         setTeacherAssignments(assignments);
@@ -188,7 +190,6 @@ export default function CreateExamPage() {
     try {
       const draft: ExamCreateDraft = {
         step: activeStep,
-        examName,
         gradeLevelId: selectedGradeLevelId,
         subjectId: selectedSubjectId,
         sectionIds: selectedSectionIds,
@@ -199,7 +200,7 @@ export default function CreateExamPage() {
       };
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     } catch { /* ignore */ }
-  }, [activeStep, examName, selectedGradeLevelId, selectedSubjectId, selectedSectionIds, totalItems, numChoices, objectiveRows, answers]);
+  }, [activeStep, selectedGradeLevelId, selectedSubjectId, selectedSectionIds, totalItems, numChoices, objectiveRows, answers]);
 
   const choices = ALL_CHOICES.slice(0, numChoices);
   const itemsInCol1 = Math.ceil(totalItems / 2);
@@ -226,11 +227,17 @@ export default function CreateExamPage() {
     if (!isValid) setSelectedSubjectId(null);
   }, [activeSectionType, selectedSectionIds, selectedSubjectId, subjects]);
 
-  // When sections are selected, narrow subjects to those the teacher actually teaches in those sections.
-  // Fall back to the global allowedSubjectIds (or no restriction for full-access) when no sections are chosen yet.
-  const sectionAwareSubjectIds = selectedSectionIds.length > 0 && teacherAssignments.length > 0
-    ? new Set(teacherAssignments.filter(a => selectedSectionIds.includes(a.section_id)).map(a => a.curriculum_subject_id))
-    : allowedSubjectIds;
+  // When sections are selected, narrow subjects to those the teacher handles in ALL selected sections
+  // (intersection, not union) so only valid overlapping subjects appear in the dropdown.
+  // Falls back to the global allowedSubjectIds (or null for full-access) when no sections are chosen yet.
+  const sectionAwareSubjectIds = (() => {
+    if (selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
+    const perSection = selectedSectionIds.map(
+      sectionId => new Set(teacherAssignments.filter(a => a.section_id === sectionId).map(a => a.curriculum_subject_id))
+    );
+    const [first, ...rest] = perSection;
+    return new Set([...first].filter(id => rest.every(set => set.has(id))));
+  })();
 
   const filteredSubjects = Array.from(
     new Map(
@@ -242,11 +249,16 @@ export default function CreateExamPage() {
     ).values()
   );
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
-  const canGoStep1 = examName.trim().length > 0 && Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
-  const toggleSection = (sectionId: number) => {
-    setSelectedSectionIds(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId]);
-  };
+  const generatedExamName = (() => {
+    const term = quarters[0]?.name ?? '';
+    const subjectCode = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.code ?? '';
+    const sectionPart = selectedSectionNames.join(' & ');
+    if (!term || !subjectCode || !sectionPart) return '';
+    return `${term} - ${subjectCode} - ${sectionPart}`;
+  })();
+
+  const canGoStep1 = Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
   // ── Objectives helpers ──
   const addRow = () => setObjectiveRows(prev => [...prev, makeRow()]);
@@ -304,7 +316,7 @@ export default function CreateExamPage() {
       const autoQuarterId = quarters.length > 0 ? quarters[0].quarter_id : null;
 
       const examResult = await createExamWithAssignments(
-        { title: examName.trim(), description: null, curriculum_subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
+        { title: generatedExamName, description: null, curriculum_subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
         selectedSectionIds
       );
       if (!examResult) throw new Error('Failed to create exam');
@@ -361,13 +373,6 @@ export default function CreateExamPage() {
             <Text size="xs" c="dimmed">
               Complete all required fields marked with <Text span c="red">*</Text> to continue.
             </Text>
-            <TextInput
-              label="Examination Name"
-              placeholder="e.g., Mid-term Examination"
-              required
-              value={examName}
-              onChange={(e) => setExamName(e.currentTarget.value)}
-            />
             <Group grow>
               <Select
                 label="Grade Level"
@@ -397,6 +402,17 @@ export default function CreateExamPage() {
                 disabled={selectedSectionIds.length === 0}
               />
             </Group>
+            {generatedExamName && (
+              <div>
+                <Text size="sm" fw={500} mb={4}>
+                  Examination Name{' '}
+                  <Text span fz="xs" c="dimmed">(recommended)</Text>
+                </Text>
+                <Paper withBorder p="sm" radius="sm" bg="green.0" style={{ borderColor: 'var(--mantine-color-green-3)' }}>
+                  <Text fw={600} c="green.9">{generatedExamName}</Text>
+                </Paper>
+              </div>
+            )}
             <div>
               {selectedSectionIds.length === 0 && filteredSections.length === 0 && (
                 <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
@@ -699,7 +715,7 @@ export default function CreateExamPage() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {[
-                ['Exam', examName],
+                ['Exam', generatedExamName],
                 ['Grade', gradeLabel],
                 ['Subject', subjectName],
                 ['Section(s)', sectionNames],
@@ -750,7 +766,6 @@ export default function CreateExamPage() {
   };
 
   const resetAndExit = () => {
-    setExamName('');
     setSelectedGradeLevelId(null);
     setSelectedSubjectId(null);
     setSelectedSectionIds([]);
@@ -782,7 +797,6 @@ export default function CreateExamPage() {
 
     const hasInProgressChanges =
       activeStep > 0 ||
-      examName.trim().length > 0 ||
       Boolean(selectedGradeLevelId) ||
       Boolean(selectedSubjectId) ||
       selectedSectionIds.length > 0 ||
@@ -797,11 +811,13 @@ export default function CreateExamPage() {
     }
 
     modals.openConfirmModal({
-      centered: true,
-      title: 'Discard exam creation progress?',
-      children:
-        'Your current progress will not be saved. If you open Create Examination again, it will start from step 1.',
-      labels: { confirm: 'Discard Progress', cancel: 'Keep Editing' },
+      title: 'Discard changes?',
+      children: (
+        <Text size="sm">
+          You have unsaved changes. Are you sure you want to leave?
+        </Text>
+      ),
+      labels: { confirm: 'Discard', cancel: 'Stay' },
       confirmProps: { color: 'red' },
       onConfirm: resetAndExit,
     });
@@ -835,6 +851,15 @@ export default function CreateExamPage() {
       primaryLoading={isFinalStep ? saving : false}
     />
   );
+
+  if (!dataLoading && hasActiveSchoolYear === false) {
+    return (
+      <>
+        <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
+        <NoActivePeriodBanner />
+      </>
+    );
+  }
 
   return (
     <>

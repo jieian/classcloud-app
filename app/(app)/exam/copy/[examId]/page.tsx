@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
-  Container, Stepper, Button, Group, Text, rem, Paper, Stack,
+  Container, Stepper, Group, Text, rem, Paper, Stack,
   MultiSelect, Alert, Loader,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
@@ -11,12 +11,14 @@ import {
   IconPlus,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { createExamWithAssignments, fetchExamById } from '@/lib/services/examService';
 import type { Section, ExamWithRelations } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
+import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 
 const OBJECTIVE_PALETTE = [
   { dot: '#3b82f6', bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
@@ -342,28 +344,34 @@ export default function CopyExamPage() {
     }
   };
 
+  const resetAndExit = () => {
+    try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
+    router.push('/exam');
+  };
+
+  const handleCancel = () => {
+    const hasProgress = activeStep > 0 || selectedSectionIds.length > 0;
+    if (!hasProgress) { resetAndExit(); return; }
+    modals.openConfirmModal({
+      title: 'Discard changes?',
+      children: <Text size="sm">You have unsaved changes. Are you sure you want to leave?</Text>,
+      labels: { confirm: 'Discard', cancel: 'Stay' },
+      confirmProps: { color: 'red' },
+      onConfirm: resetAndExit,
+    });
+  };
+
+  const isFinalStep = activeStep === 1;
   const navigationButtons = (
-    <Group justify="flex-end" mt="xl">
-      <Button variant="default" onClick={() => {
-        if (activeStep === 0) { try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ } router.push('/exam'); }
-        else prevStep();
-      }}>
-        {activeStep === 0 ? 'Cancel' : 'Previous'}
-      </Button>
-      {activeStep < 1 ? (
-        <Button
-          onClick={handleNext}
-          disabled={!canGoStep1}
-          style={!canGoStep1 ? undefined : { backgroundColor: '#4EAE4A' }}
-        >
-          Next
-        </Button>
-      ) : (
-        <Button onClick={handleFinalCopy} loading={saving} style={{ backgroundColor: '#4EAE4A' }}>
-          Copy Exam
-        </Button>
-      )}
-    </Group>
+    <WizardNavigationButtons
+      onCancel={handleCancel}
+      showPrevious={activeStep > 0}
+      onPrevious={prevStep}
+      onPrimary={isFinalStep ? handleFinalCopy : handleNext}
+      primaryLabel={isFinalStep ? 'Copy Exam' : 'Next'}
+      primaryDisabled={!isFinalStep && !canGoStep1}
+      primaryLoading={isFinalStep ? saving : false}
+    />
   );
 
   if (dataLoading) {
@@ -405,6 +413,7 @@ export default function CopyExamPage() {
             </div>
           </div>
         )}
+        {isMobile && navigationButtons}
       </Container>
     </>
   );

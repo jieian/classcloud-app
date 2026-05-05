@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { Button, Group } from "@mantine/core";
 
 interface WizardNavigationButtonsProps {
@@ -15,6 +16,7 @@ interface WizardNavigationButtonsProps {
   primaryColor?: string;
   colorWhenEnabledOnly?: boolean;
   mt?: number | string;
+  leftExtra?: React.ReactNode;
 }
 
 export default function WizardNavigationButtons({
@@ -30,11 +32,13 @@ export default function WizardNavigationButtons({
   primaryColor = "#4EAE4A",
   colorWhenEnabledOnly = true,
   mt = "xl",
+  leftExtra,
 }: WizardNavigationButtonsProps) {
   const useColor = colorWhenEnabledOnly ? !primaryDisabled : true;
 
   return (
     <Group justify="flex-end" mt={mt}>
+      {leftExtra}
       <Button variant="default" onClick={onCancel}>
         {cancelLabel}
       </Button>
