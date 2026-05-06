@@ -13,6 +13,60 @@ type ScoreRow = {
   graded_at: string | null;
 };
 
+type MaybeArray<T> = T | T[] | null;
+
+type SubjectJoin = {
+  subjects?: { name?: string | null } | null;
+};
+
+type QuarterJoin = {
+  name?: string | null;
+};
+
+type ExamDownloadRow = {
+  exam_id: number;
+  title: string;
+  total_items: number | null;
+  exam_date: string | null;
+  curriculum_subjects?: MaybeArray<SubjectJoin>;
+  quarters?: MaybeArray<QuarterJoin>;
+};
+
+type AssignmentRow = {
+  id: number;
+  section_id: number;
+  sections?: MaybeArray<{
+    name?: string | null;
+    grade_levels?: MaybeArray<{ display_name?: string | null }>;
+  }>;
+};
+
+type EnrollmentRow = {
+  enrollment_id: number;
+  lrn: string | null;
+  section_id: number;
+  students?: MaybeArray<{
+    full_name?: string | null;
+    sex?: "M" | "F" | null;
+  }>;
+};
+
+type ResultsWorksheet = XLSXStyle.WorkSheet & {
+  "!pageSetup"?: { paperSize: number; orientation: "landscape" | "portrait" };
+  "!margins"?: {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+    header: number;
+    footer: number;
+  };
+};
+
+function firstJoin<T>(value: MaybeArray<T> | undefined): T | null {
+  return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
+}
+
 function getProficiency(percent: number): string {
   if (percent >= 90) return "Highly Proficient";
   if (percent >= 75) return "Proficient";
@@ -80,7 +134,7 @@ const _GET = async function (
   if (!examRaw)
     return Response.json({ error: "Exam not found." }, { status: 404 });
 
-  const exam = examRaw as any;
+  const exam = examRaw as ExamDownloadRow;
   const subjectRaw = exam.curriculum_subjects;
   const subjectName: string = Array.isArray(subjectRaw)
     ? (subjectRaw[0]?.subjects?.name ?? "—")
@@ -101,18 +155,17 @@ const _GET = async function (
   if (assignmentError)
     return Response.json({ error: "Internal server error." }, { status: 500 });
 
-  const sectionIds = (assignments ?? []).map((a: any) => a.section_id);
+  const assignmentRows = (assignments ?? []) as AssignmentRow[];
+  const sectionIds = assignmentRows.map((a) => a.section_id);
   const assignmentBySection = new Map<number, number>();
-  for (const row of (assignments ?? []) as any[])
+  for (const row of assignmentRows)
     assignmentBySection.set(row.section_id, row.id);
 
   const sectionNames = Array.from(
     new Set(
-      ((assignments ?? []) as any[]).map((a) => {
-        const sec = Array.isArray(a.sections) ? a.sections[0] : a.sections;
-        const gl = Array.isArray(sec?.grade_levels)
-          ? sec.grade_levels[0]
-          : sec?.grade_levels;
+      assignmentRows.map((a) => {
+        const sec = firstJoin(a.sections);
+        const gl = firstJoin(sec?.grade_levels);
         const glName = gl?.display_name ?? "";
         const secName = sec?.name ?? "";
         return glName && secName ? `${glName} - ${secName}` : secName || glName;
@@ -136,7 +189,7 @@ const _GET = async function (
     return Response.json({ error: "Internal server error." }, { status: 500 });
 
   // ── Fetch scores ───────────────────────────────────────────────────────────
-  const assignmentIds = (assignments ?? []).map((a: any) => a.id);
+  const assignmentIds = assignmentRows.map((a) => a.id);
   const { data: scoreRowsRaw, error: scoreError } = await admin
     .from("scores")
     .select("enrollment_id, exam_assignment_id, calculated_score, graded_at")
@@ -151,8 +204,8 @@ const _GET = async function (
   for (const row of scoreRows)
     if (!latestScore.has(row.enrollment_id)) latestScore.set(row.enrollment_id, row);
 
-  const students = ((enrollments ?? []) as any[]).map((row) => {
-    const student = Array.isArray(row.students) ? row.students[0] : row.students;
+  const students = ((enrollments ?? []) as EnrollmentRow[]).map((row) => {
+    const student = firstJoin(row.students);
     const assignmentId = assignmentBySection.get(row.section_id);
     const latest = latestScore.get(row.enrollment_id);
     const score =
@@ -194,7 +247,7 @@ function buildXlsx(
   females: StudentEntry[],
 ): Response {
   const wb = XLSXStyle.utils.book_new();
-  const ws: XLSXStyle.WorkSheet = {};
+  const ws: ResultsWorksheet = {};
 
   // ── Shared styles (mirrors the roster route) ─────────────────────────────
   const thin = { style: "thin", color: { rgb: "000000" } };
@@ -327,7 +380,7 @@ function buildXlsx(
   ws["!rows"]     = wsRows;
   ws["!merges"]   = merges;
   ws["!ref"]      = `A1:H${rowIdx}`;
-  ws["!pageSetup"]  = { paperSize: 9, orientation: "landscape" } as any;
+  ws["!pageSetup"]  = { paperSize: 9, orientation: "landscape" };
   ws["!margins"]  = { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 };
 
   XLSXStyle.utils.book_append_sheet(wb, ws, "Results");
