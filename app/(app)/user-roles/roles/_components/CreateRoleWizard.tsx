@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Stepper, Button, Group, Text, rem } from "@mantine/core";
+import { Container, Button, Group, Text } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
+import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import StepRoleInfo from "./StepRoleInfo";
 import StepAssignPerms from "./StepAssignPerms";
 import StepReview from "./StepReview";
@@ -294,147 +295,92 @@ export default function CreateRoleWizard() {
       }
     : {};
 
+  const wizardSteps: VerticalWizardStep[] = [
+    {
+      label: "Step 1",
+      description: "Specify role information and configuration",
+      content: <StepRoleInfo form={form} />,
+    },
+    {
+      label: "Step 2",
+      description: "Assign permissions",
+      content: (
+        <StepAssignPerms
+          form={form}
+          availablePermissions={availablePermissions}
+          loadingPermissions={loadingPermissions}
+        />
+      ),
+    },
+    {
+      label: "Step 3",
+      description: "Review and Create Role",
+      content: (
+        <StepReview
+          form={form}
+          availablePermissions={availablePermissions}
+        />
+      ),
+    },
+  ];
+
+  const activeContent = (() => {
+    if (form.values.activeStep === 0) return <StepRoleInfo form={form} />;
+    if (form.values.activeStep === 1) {
+      return (
+        <StepAssignPerms
+          form={form}
+          availablePermissions={availablePermissions}
+          loadingPermissions={loadingPermissions}
+        />
+      );
+    }
+    return (
+      <StepReview
+        form={form}
+        availablePermissions={availablePermissions}
+      />
+    );
+  })();
+
   return (
     <Container fluid py="xl" h="100%">
-      {isMobile ? (
-        // Mobile: Stacked layout
-        <>
-          <Stepper
-            active={form.values.activeStep}
-            color="#4EAE4A"
-            orientation="vertical"
+      <VerticalWizardLayout active={form.values.activeStep} steps={wizardSteps}>
+        {activeContent}
+      </VerticalWizardLayout>
+
+      <Group justify="flex-end" mt="xl">
+        <Button variant="default" onClick={handleCancel}>
+          Cancel
+        </Button>
+
+        {form.values.activeStep > 0 && (
+          <Button variant="outline" onClick={prevStep}>
+            Previous
+          </Button>
+        )}
+
+        {form.values.activeStep < 2 ? (
+          <Button
+            onClick={nextStep}
+            disabled={isNextDisabled}
+            loading={checkingName}
+            style={
+              isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
+            }
           >
-            <Stepper.Step
-              label="Step 1"
-              description="Specify role information and configuration"
-            >
-              <StepRoleInfo form={form} />
-            </Stepper.Step>
-
-            <Stepper.Step label="Step 2" description="Assign permissions">
-              <StepAssignPerms
-                form={form}
-                availablePermissions={availablePermissions}
-                loadingPermissions={loadingPermissions}
-              />
-            </Stepper.Step>
-
-            <Stepper.Step label="Step 3" description="Review and Create Role">
-              <StepReview
-                form={form}
-                availablePermissions={availablePermissions}
-              />
-            </Stepper.Step>
-          </Stepper>
-
-          {/* Navigation Buttons */}
-          <Group justify="flex-end" mt="xl">
-            <Button variant="default" onClick={handleCancel}>
-              Cancel
-            </Button>
-
-            {form.values.activeStep > 0 && (
-              <Button variant="outline" onClick={prevStep}>
-                Previous
-              </Button>
-            )}
-
-            {form.values.activeStep < 2 ? (
-              <Button
-                onClick={nextStep}
-                disabled={isNextDisabled}
-                loading={checkingName}
-                style={
-                  isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
-                }
-              >
-                Next
-              </Button>
-            ) : (
-              <Button
-                onClick={handleCreateRole}
-                loading={loading}
-                style={{ backgroundColor: "#4EAE4A" }}
-              >
-                Create Role
-              </Button>
-            )}
-          </Group>
-        </>
-      ) : (
-        // Desktop: Side-by-side layout
-        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
-          {/* Left side: Stepper (30%) */}
-          <div style={{ flexShrink: 0, width: "20%" }}>
-            <Stepper
-              active={form.values.activeStep}
-              color="#4EAE4A"
-              orientation="vertical"
-            >
-              <Stepper.Step
-                label="Step 1"
-                description="Specify role information and configuration"
-              />
-              <Stepper.Step label="Step 2" description="Assign permissions" />
-              <Stepper.Step
-                label="Step 3"
-                description="Review and Create Role"
-              />
-            </Stepper>
-          </div>
-
-          {/* Right side: Content (70%) */}
-          <div style={{ width: "70%" }}>
-            {form.values.activeStep === 0 && <StepRoleInfo form={form} />}
-            {form.values.activeStep === 1 && (
-              <StepAssignPerms
-                form={form}
-                availablePermissions={availablePermissions}
-                loadingPermissions={loadingPermissions}
-              />
-            )}
-            {form.values.activeStep === 2 && (
-              <StepReview
-                form={form}
-                availablePermissions={availablePermissions}
-              />
-            )}
-
-            {/* Navigation Buttons */}
-            <Group justify="flex-end" mt="xl">
-              <Button variant="default" onClick={handleCancel}>
-                Cancel
-              </Button>
-
-              {form.values.activeStep > 0 && (
-                <Button variant="outline" onClick={prevStep}>
-                  Previous
-                </Button>
-              )}
-
-              {form.values.activeStep < 2 ? (
-                <Button
-                  onClick={nextStep}
-                  disabled={isNextDisabled}
-                  style={
-                    isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
-                  }
-                >
-                  Next
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleCreateRole}
-                  loading={loading}
-                  style={{ backgroundColor: "#4EAE4A" }}
-                >
-                  Create Role
-                </Button>
-              )}
-            </Group>
-          </div>
-        </div>
-      )}
+            Next
+          </Button>
+        ) : (
+          <Button
+            onClick={handleCreateRole}
+            loading={loading}
+            style={{ backgroundColor: "#4EAE4A" }}
+          >
+            Create Role
+          </Button>
+        )}
+      </Group>
     </Container>
   );
 }

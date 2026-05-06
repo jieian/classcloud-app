@@ -2,15 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import BackButton from "@/components/BackButton";
 import {
-  Alert,
   Container,
   Stepper,
-  Stack,
   Text,
-  ThemeIcon,
-  Title,
   rem,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
@@ -20,7 +15,6 @@ import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconBookOff,
   IconCalendarOff,
-  IconInfoCircle,
   IconLayoutOff,
 } from "@tabler/icons-react";
 import StepAssignAdvisory from "./StepAssignAdvisory";
@@ -29,6 +23,7 @@ import StepAssignSubject from "./StepAssignSubject";
 import StepAssignCoordinator from "./StepAssignCoordinator";
 import StepReview from "./StepReview";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
+import WizardBlocker from "@/components/WizardBlocker";
 import {
   assignAcademicLoad,
 } from "../_lib/teachingLoadService";
@@ -38,47 +33,6 @@ interface AddFacultyWizardProps {
   facultyUid: string;
   initialData: WizardData;
   isAddMode: boolean;
-}
-
-// ─── Blocker ──────────────────────────────────────────────────────────────────
-
-function WizardBlocker({
-  icon,
-  title,
-  description,
-  hint,
-  onBack,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  hint: string;
-  onBack: () => void;
-}) {
-  return (
-    <Container fluid py="xl">
-      <Stack align="center" gap="md" py={48} maw={460} mx="auto">
-        <ThemeIcon size={64} radius="xl" color="gray" variant="light">
-          {icon}
-        </ThemeIcon>
-        <Title order={4} ta="center">
-          {title}
-        </Title>
-        <Text size="sm" c="dimmed" ta="center">
-          {description}
-        </Text>
-        <Alert
-          color="blue"
-          variant="light"
-          icon={<IconInfoCircle size={16} />}
-          w="100%"
-        >
-          {hint}
-        </Alert>
-        <BackButton onClick={onBack}>Back to Faculty</BackButton>
-      </Stack>
-    </Container>
-  );
 }
 
 export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }: AddFacultyWizardProps) {
@@ -329,7 +283,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         title="No Active School Year"
         description="Teaching load cannot be assigned without an active school year."
         hint="Go to School → Year and set a school year as active."
-        onBack={goBack}
+        actionLabel="Back to Faculty"
+        onAction={goBack}
       />
     );
   }
@@ -341,7 +296,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         title="No Classes in Active School Year"
         description="The active school year has no classes yet. Classes must exist before you can assign a teaching load."
         hint="Go to School → Classes and create at least one class for the active school year."
-        onBack={goBack}
+        actionLabel="Back to Faculty"
+        onAction={goBack}
       />
     );
   }
@@ -353,7 +309,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         title="No Subjects Configured"
         description="There are no subjects assigned to any grade level. Subjects must exist before you can assign a teaching load."
         hint="Go to School → Subjects and add subjects to the relevant grade levels."
-        onBack={goBack}
+        actionLabel="Back to Faculty"
+        onAction={goBack}
       />
     );
   }

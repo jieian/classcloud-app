@@ -32,11 +32,12 @@ const _POST = async function(request: Request) {
     const { count } = await adminClient
       .from('quarters')
       .select('quarter_id', { count: 'exact', head: true })
-      .eq('sy_id', activeSy.sy_id);
+      .eq('sy_id', activeSy.sy_id)
+      .eq('is_active', true);
 
     if ((count ?? 0) === 0) {
       return Response.json(
-        { error: 'No active term is configured for the current school year. Please set up a term before creating an exam.' },
+        { error: 'No active term is configured for the current school year. Please activate a term before creating an exam.' },
         { status: 400 },
       );
     }
@@ -54,7 +55,7 @@ const _POST = async function(request: Request) {
 
   const { data: sectionRows, error: sectionError } = await adminClient
     .from("sections")
-    .select("section_id, grade_levels(level_number)")
+    .select("section_id, name, grade_levels(level_number)")
     .in("section_id", selectedSectionIds);
 
   if (sectionError) {
@@ -81,17 +82,21 @@ const _POST = async function(request: Request) {
 
   const creatorTeacherId = payload.creator_teacher_id ?? user.id;
 
-  // Ensure no duplicate (section + subject) exam already exists.
+  // Ensure no duplicate (section + subject + term) exam already exists.
   if (!payload.curriculum_subject_id) {
     return Response.json({ error: "Subject is required." }, { status: 400 });
   }
 
+  if (!payload.quarter_id) {
+    return Response.json({ error: "No active term found. Please activate a term before creating an exam." }, { status: 400 });
+  }
+
   const { data: existingDuplications, error: dupError } = await adminClient
     .from("exam_assignments")
-    .select("section_id, exam_id, exams!inner(curriculum_subject_id, deleted_at, creator_teacher_id)")
+    .select("section_id, exams!inner(curriculum_subject_id, quarter_id, deleted_at)")
     .in("section_id", selectedSectionIds)
     .eq("exams.curriculum_subject_id", payload.curriculum_subject_id)
-    .eq("exams.creator_teacher_id", creatorTeacherId)
+    .eq("exams.quarter_id", payload.quarter_id)
     .is("exams.deleted_at", null);
 
   if (dupError) {
@@ -104,52 +109,64 @@ const _POST = async function(request: Request) {
 
   if (nonDuplicateSectionIds.length === 0) {
     return Response.json(
-      { error: "Exam for selected section(s) with this subject already exists." },
+      { error: "An examination for this subject, grade level, and section already exists for the active term." },
       { status: 400 },
     );
   }
 
   const skippedSectionIds = selectedSectionIds.filter((id) => existingSectionIds.has(id));
 
-  const { data: examRow, error: examError } = await adminClient
-    .from("exams")
-    .insert({
-      title: payload.title,
-      total_items: resolvedTotalItems,
-      exam_date: payload.exam_date,
-      curriculum_subject_id: payload.curriculum_subject_id,
-      quarter_id: payload.quarter_id ?? null,
-      description: payload.description ?? null,
-      creator_teacher_id: creatorTeacherId,
-    })
-    .select("exam_id")
-    .single();
+  // Build a lookup so we can generate per-section titles.
+  const sectionNameMap = new Map<number, string>(
+    (sectionRows ?? []).map((r: any) => [r.section_id as number, r.name as string])
+  );
 
-  if (examError || !examRow?.exam_id) {
-    console.error("[api/exams/create] exam insert error:", examError?.message);
-    return Response.json({ error: "Failed to create exam." }, { status: 500 });
+  // Create one independent exam per section.
+  const createdExamIds: number[] = [];
+  for (const sectionId of nonDuplicateSectionIds) {
+    const sectionName = sectionNameMap.get(sectionId) ?? String(sectionId);
+    const examTitle = `${payload.title} - ${sectionName}${payload.titleSuffix ? ` ${payload.titleSuffix}` : ''}`;
+
+    const { data: examRow, error: examError } = await adminClient
+      .from("exams")
+      .insert({
+        title: examTitle,
+        total_items: resolvedTotalItems,
+        exam_date: payload.exam_date,
+        curriculum_subject_id: payload.curriculum_subject_id,
+        quarter_id: payload.quarter_id ?? null,
+        description: payload.description ?? null,
+        creator_teacher_id: creatorTeacherId,
+      })
+      .select("exam_id")
+      .single();
+
+    if (examError || !examRow?.exam_id) {
+      console.error("[api/exams/create] exam insert error:", examError?.message);
+      // Roll back any exams already created in this batch.
+      if (createdExamIds.length > 0) {
+        await adminClient.from("exams").delete().in("exam_id", createdExamIds);
+      }
+      return Response.json({ error: "Failed to create exam." }, { status: 500 });
+    }
+
+    const { error: assignmentError } = await adminClient
+      .from("exam_assignments")
+      .insert({ exam_id: examRow.exam_id, section_id: sectionId });
+
+    if (assignmentError) {
+      console.error("[api/exams/create] assignment insert error:", assignmentError.message);
+      await adminClient.from("exams").delete().in("exam_id", [...createdExamIds, examRow.exam_id]);
+      return Response.json({ error: "Internal server error." }, { status: 500 });
+    }
+
+    createdExamIds.push(examRow.exam_id);
   }
 
-  const assignments = nonDuplicateSectionIds.map((sectionId) => ({
-    exam_id: examRow.exam_id,
-    section_id: sectionId,
-  }));
-
-  const { error: assignmentError } = await adminClient
-    .from("exam_assignments")
-    .insert(assignments);
-
-  if (assignmentError) {
-    console.error("[api/exams/create] assignment insert error:", assignmentError.message);
-    await adminClient.from("exams").delete().eq("exam_id", examRow.exam_id);
-    return Response.json({ error: "Internal server error." }, { status: 500 });
-  }
-
-  if (skippedSectionIds && skippedSectionIds.length > 0) {
-    return Response.json({ exam_id: examRow.exam_id, skipped_sections: skippedSectionIds }, { status: 200 });
-  }
-
-  return Response.json({ exam_id: examRow.exam_id });
+  return Response.json({
+    exam_ids: createdExamIds,
+    skipped_sections: skippedSectionIds.length > 0 ? skippedSectionIds : undefined,
+  });
 }
 
 export const POST = withErrorHandler(_POST)

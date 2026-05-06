@@ -30,6 +30,7 @@ export interface SchoolYear {
 export interface Quarter {
   quarter_id: number;
   name: string;
+  is_active: boolean;
   sy_id: number;
 }
 

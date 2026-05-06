@@ -49,6 +49,7 @@ function getErrorMessageFromPayload(
 
 export type CreateExamPayload = {
   title: string;
+  titleSuffix?: string;
   total_items: number;
   exam_date: string;
   description?: string | null;
@@ -160,12 +161,37 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
   return data as ExamWithRelations;
 }
 
+// ─── Duplicate check ──────────────────────────────────────────────────────────
+
+export async function checkExamDuplicates(
+  sectionIds: number[],
+  curriculumSubjectId: number,
+  quarterId: number,
+): Promise<number[]> {
+  if (sectionIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from('exam_assignments')
+    .select('section_id, exams!inner(curriculum_subject_id, quarter_id, deleted_at)')
+    .in('section_id', sectionIds)
+    .eq('exams.curriculum_subject_id', curriculumSubjectId)
+    .eq('exams.quarter_id', quarterId)
+    .is('exams.deleted_at', null);
+
+  if (error) {
+    console.error('[examService] checkExamDuplicates error:', error.message);
+    return [];
+  }
+
+  return (data ?? []).map((row: unknown) => (row as { section_id: number }).section_id);
+}
+
 // ─── Create ───────────────────────────────────────────────────────────────────
 
 export async function createExamWithAssignments(
   payload: CreateExamPayload,
   sectionIds: number[]
-): Promise<{ exam_id: number } | null> {
+): Promise<{ exam_ids: number[] }> {
   const res = await fetch('/api/exams/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -180,11 +206,11 @@ export async function createExamWithAssignments(
     throw new Error(errorMessage);
   }
 
-  if (typeof body.exam_id !== "number") {
+  if (!Array.isArray(body.exam_ids) || body.exam_ids.length === 0) {
     throw new Error("Invalid response while creating exam.");
   }
 
-  return body as { exam_id: number };
+  return body as { exam_ids: number[] };
 }
 
 
