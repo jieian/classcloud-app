@@ -7,8 +7,10 @@ import {
   Badge,
   Box,
   Button,
+  Container,
   Group,
   Paper,
+  Progress,
   Select,
   Skeleton,
   Table,
@@ -23,10 +25,11 @@ import {
   Tooltip,
   Stack,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
-  IconRefresh, IconDeviceFloppy, IconChevronRight, IconChevronLeft,
+  IconRefresh,
   IconDownload,
 } from '@tabler/icons-react';
 import { processAnswerSheet } from '@/lib/services/omrService';
@@ -97,6 +100,7 @@ export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
   const { permissions } = useAuth();
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
   const [examLoading, setExamLoading] = useState(true);
@@ -429,6 +433,21 @@ export default function ScanPapersPage() {
     )
   );
 
+  const mobileConfirmModalProps = isMobile
+    ? {
+        centered: false,
+        size: '100%',
+        styles: {
+          inner: { alignItems: 'flex-end', padding: 0 },
+          content: {
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
+            marginBottom: 0,
+          },
+        },
+      }
+    : { centered: true };
+
   const resetScanState = () => {
     stopCamera();
     setSelectedStudent(null);
@@ -459,6 +478,7 @@ export default function ScanPapersPage() {
       labels: { confirm: 'Discard', cancel: 'Stay' },
       confirmProps: { color: 'red' },
       onConfirm: resetScanState,
+      ...mobileConfirmModalProps,
     });
   };
 
@@ -596,39 +616,69 @@ export default function ScanPapersPage() {
     );
   }
 
+  const scanProgressPercent = rosterStudents.length > 0
+    ? Math.round((scannedStudentsCount / rosterStudents.length) * 100)
+    : 0;
+
+  // Navigation buttons rendered outside the main Paper
+  const wizardNavButtons = !isStudentStep ? (
+    step === 'capture' ? (
+      <WizardNavigationButtons
+        onCancel={handleCancel}
+        onPrimary={runProcessing}
+        primaryLabel="Process Sheet"
+        primaryDisabled={!previewUrl}
+        cancelLabel="Cancel"
+        leftExtra={previewUrl && !cameraActive ? (
+          <Button
+            variant="default"
+            onClick={() => { setPreviewUrl(null); setCapturedFile(null); }}
+            leftSection={<IconRefresh className="w-4 h-4" />}
+          >
+            Retake
+          </Button>
+        ) : undefined}
+      />
+    ) : step === 'review' ? (
+      <WizardNavigationButtons
+        onCancel={handleCancel}
+        onPrevious={() => setStep('capture')}
+        showPrevious
+        onPrimary={() => setStep('submit')}
+        primaryLabel="Next"
+        cancelLabel="Cancel"
+      />
+    ) : step === 'submit' ? (
+      <WizardNavigationButtons
+        onCancel={handleCancel}
+        onPrevious={() => setStep('review')}
+        showPrevious
+        onPrimary={handleSubmit}
+        primaryLabel={submitting ? 'Saving...' : 'Save Result'}
+        primaryLoading={submitting}
+        primaryDisabled={submitting}
+        cancelLabel="Cancel"
+      />
+    ) : null
+  ) : null;
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  return (
-    <>
-    <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Scan Papers</h1>
-    <Stack gap="md" maw={1000}>
-      <Box>
-        {isStudentStep ? (
-          <BackButton size="sm" href="/exam">
-            Back to Examinations
-          </BackButton>
-        ) : (
-          <BackButton size="sm" onClick={handleCancel}>
-            Back to Students
-          </BackButton>
-        )}
-      </Box>
+  if (isStudentStep) {
+    return (
+      <>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+        <Stack gap="md" maw={1000} style={{ width: '100%' }}>
+          <Box>
+            <BackButton size="sm" href="/exam">
+              Back to Examinations
+            </BackButton>
+          </Box>
 
-      <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-        <Box>
-          <Title order={3} fw={700}>
-            {exam.title}
-          </Title>
-          <Text size="sm" c="dimmed">
-            Scan Papers · {exam.curriculum_subjects?.subjects?.name ?? 'No subject'} · {totalItems} items
-          </Text>
-        </Box>
-
-        {isStudentStep && (
-          <Group gap="xs" wrap="wrap">
-            <Badge color="green" variant="light" size="lg">
-              Scanned: {scannedStudentsCount} / {rosterStudents.length}
-            </Badge>
+          <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Title order={3} fw={700} lineClamp={2}>{exam.title}</Title>
+            </Box>
             <Button
               variant="outline"
               color="gray"
@@ -637,52 +687,59 @@ export default function ScanPapersPage() {
               loading={exportingCsv}
               disabled={exportingCsv || scannedStudentsCount === 0}
               onClick={handleExportCsv}
+              fullWidth={isMobile}
             >
               Download Results
             </Button>
           </Group>
-        )}
-      </Group>
 
-      {isStudentStep && (
-        <Group gap="sm" align="flex-end">
-          <SearchBar
-            id="search-scan-students"
-            placeholder="Search student name or LRN..."
-            ariaLabel="Search students"
-            style={{ flex: 1, minWidth: 0 }}
-            value={studentSearch}
-            onChange={e => setStudentSearch(e.target.value)}
-          />
-          <Select
-            placeholder="Section"
-            data={sectionOptions}
-            value={sectionFilter == null ? null : String(sectionFilter)}
-            onChange={(value) => {
-              setSectionFilter(value ? Number(value) : null);
-              setStudentSearch('');
-            }}
-            w={220}
-            clearable={sections.length > 1}
-            disabled={sections.length === 0}
-          />
-          <Tooltip label="Refresh" position="bottom" withArrow>
-            <ActionIcon
-              variant="outline"
-              color="#808898"
-              size="lg"
-              radius="xl"
-              onClick={loadRosterAndAttempts}
-              loading={rosterLoading}
-              aria-label="Refresh scan roster"
-            >
-              <IconRefresh size={18} stroke={1.5} />
-            </ActionIcon>
-          </Tooltip>
-        </Group>
-      )}
+          <Paper withBorder radius="md" p="md">
+            <Group justify="space-between" mb="xs">
+              <Text size="sm" fw={600} c="dimmed">Scan Progress</Text>
+              <Badge color="green" variant="light">
+                {scannedStudentsCount} / {rosterStudents.length} scanned
+              </Badge>
+            </Group>
+            <Progress value={scanProgressPercent} color="#4EAE4A" radius="xl" size="sm" />
+          </Paper>
 
-      <Paper withBorder radius="md" p={isStudentStep ? 0 : "lg"} style={isStudentStep ? { overflow: "hidden" } : undefined}>
+          <Group gap="sm" align="flex-end" wrap="wrap">
+            <SearchBar
+              id="search-scan-students"
+              placeholder="Search student name or LRN..."
+              ariaLabel="Search students"
+              style={{ flex: '1 1 260px', minWidth: 0 }}
+              value={studentSearch}
+              onChange={e => setStudentSearch(e.target.value)}
+            />
+            <Select
+              placeholder="Section"
+              data={sectionOptions}
+              value={sectionFilter == null ? null : String(sectionFilter)}
+              onChange={(value) => {
+                setSectionFilter(value ? Number(value) : null);
+                setStudentSearch('');
+              }}
+              w={isMobile ? '100%' : 220}
+              clearable={sections.length > 1}
+              disabled={sections.length === 0}
+            />
+            <Tooltip label="Refresh" position="bottom" withArrow>
+              <ActionIcon
+                variant="outline"
+                color="#808898"
+                size="lg"
+                radius="xl"
+                onClick={loadRosterAndAttempts}
+                loading={rosterLoading}
+                aria-label="Refresh scan roster"
+              >
+                <IconRefresh size={18} stroke={1.5} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+
+          <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: '100%' }}>
 
         {/* â"€â"€ STEP: STUDENTS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'students' && (
@@ -707,7 +764,7 @@ export default function ScanPapersPage() {
                 <p className="text-xs text-gray-400 mt-1">No roster is linked to the sections assigned to this exam.</p>
               </div>
             ) : (
-                <TableScrollContainer minWidth={640}>
+                <TableScrollContainer minWidth={640} type="native">
                   <Table verticalSpacing="sm" striped={false} highlightOnHover>
                     <TableThead>
                       <TableTr>
@@ -840,10 +897,25 @@ export default function ScanPapersPage() {
           </>
         )}
 
-        {!isStudentStep && (
-          <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
+          </Paper>
+        </Stack>
+      </>
+    );
+  }
 
-        {/* â"€â"€ STEP: CAPTURE â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
+  // Wizard steps: capture / review / submit
+  return (
+    <>
+      <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+      <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm" mb="xl">
+          <Box style={{ minWidth: 0 }}>
+            <Title order={3} fw={700} lineClamp={2}>{exam.title}</Title>
+          </Box>
+        </Group>
+      <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
+
+        {/* STEP: CAPTURE */}
         {step === 'capture' && (
           <div className="space-y-5">
             {selectedStudent && (
@@ -938,25 +1010,6 @@ export default function ScanPapersPage() {
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
 
-            <WizardNavigationButtons
-              onCancel={handleCancel}
-              onPrimary={runProcessing}
-              primaryLabel="Process Sheet"
-              primaryDisabled={!previewUrl}
-              cancelLabel="Cancel"
-              leftExtra={previewUrl && !cameraActive ? (
-                <Button
-                  variant="default"
-                  onClick={() => {
-                    setPreviewUrl(null);
-                    setCapturedFile(null);
-                  }}
-                  leftSection={<IconRefresh className="w-4 h-4" />}
-                >
-                  Retake
-                </Button>
-              ) : undefined}
-            />
           </div>
         )}
 
@@ -1075,14 +1128,6 @@ export default function ScanPapersPage() {
               })}
             </div>
 
-            <WizardNavigationButtons
-              onCancel={handleCancel}
-              onPrevious={() => setStep('capture')}
-              showPrevious
-              onPrimary={() => setStep('submit')}
-              primaryLabel="Next"
-              cancelLabel="Cancel"
-            />
           </div>
         )}
 
@@ -1143,22 +1188,11 @@ export default function ScanPapersPage() {
               </div>
             </div>
 
-            <WizardNavigationButtons
-              onCancel={handleCancel}
-              onPrevious={() => setStep('review')}
-              showPrevious
-              onPrimary={handleSubmit}
-              primaryLabel={submitting ? 'Saving...' : 'Save Result'}
-              primaryLoading={submitting}
-              primaryDisabled={submitting}
-              cancelLabel="Cancel"
-            />
           </div>
         )}
-          </VerticalWizardLayout>
-        )}
-      </Paper>
-    </Stack>
+      </VerticalWizardLayout>
+      {wizardNavButtons}
+    </Container>
     </>
   );
 }

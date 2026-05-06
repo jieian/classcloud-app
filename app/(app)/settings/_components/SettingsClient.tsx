@@ -18,6 +18,7 @@ import {
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notifications } from "@mantine/notifications";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconAlertCircle,
   IconCheck,
@@ -52,6 +53,7 @@ const NAME_REGEX = /^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/;
 export default function SettingsClient() {
   const router = useRouter();
   const { refreshUserName } = useAuth();
+  const isMobile = useMediaQuery("(max-width: 640px)");
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +93,8 @@ export default function SettingsClient() {
         return null;
       },
     },
-  });
+	  });
+  const formIsDirty = form.isDirty();
 
   const loadProfile = useCallback(async () => {
     try {
@@ -118,7 +121,7 @@ export default function SettingsClient() {
 
   // Intercept NavBar link clicks while in edit mode with unsaved changes
   useEffect(() => {
-    if (!isEditMode || !form.isDirty()) return;
+	    if (!isEditMode || !formIsDirty) return;
 
     const handleClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest("a[href]");
@@ -131,7 +134,7 @@ export default function SettingsClient() {
 
       modals.openConfirmModal({
         title: "Discard changes?",
-        centered: true,
+	      centered: !isMobile,
         children: (
           <Text size="sm">
             You have unsaved changes. Are you sure you want to leave?
@@ -149,7 +152,7 @@ export default function SettingsClient() {
 
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [isEditMode, form.isDirty()]);
+	  }, [isEditMode, formIsDirty, isMobile, router, form]);
 
   const enterEditMode = () => {
     if (!profile) return;
@@ -165,7 +168,7 @@ export default function SettingsClient() {
   const handleDiscard = () => {
     modals.openConfirmModal({
       title: "Discard changes?",
-      centered: true,
+	      centered: !isMobile,
       children: (
         <Text size="sm">
           Are you sure you want to discard your unsaved changes?
@@ -193,7 +196,7 @@ export default function SettingsClient() {
 
     modals.openConfirmModal({
       title: "Save changes?",
-      centered: true,
+	      centered: !isMobile,
       children: (
         <Text size="sm">
           Are you sure you want to save the changes to your profile?
@@ -283,7 +286,7 @@ export default function SettingsClient() {
   // ─── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <Stack gap="md" maw={680}>
+	    <Stack gap="md" maw={680} style={{ width: "100%" }}>
         <Skeleton height={130} radius="md" />
         <Skeleton height={100} radius="md" />
         <Skeleton height={80} radius="md" />
@@ -306,17 +309,18 @@ export default function SettingsClient() {
       {/* ── About ─────────────────────────────────────────────────────────── */}
       <Paper withBorder p="md" radius="md">
         {/* Header row — always visible */}
-        <Group justify="space-between" mb="sm">
+	        <Group justify="space-between" mb="sm" align="flex-start" wrap="wrap">
           <Text fw={700} c="#298925">
             About
           </Text>
           {!isEditMode && (
-            <Button
-              size="xs"
-              variant="default"
-              leftSection={<IconPencil size={14} />}
-              onClick={enterEditMode}
-            >
+	            <Button
+	              size="xs"
+	              variant="default"
+	              leftSection={<IconPencil size={14} />}
+	              onClick={enterEditMode}
+	              fullWidth={isMobile}
+	            >
               Edit Profile
             </Button>
           )}
@@ -325,43 +329,43 @@ export default function SettingsClient() {
         {/* View mode — fields only */}
         {!isEditMode && (
           <Stack gap="xs">
-            <Group gap="xs">
-              <Text size="sm" fw={600}>First Name:</Text>
+	            <Group gap="xs" align="flex-start">
+	              <Text size="sm" fw={600}>First Name:</Text>
               <Text size="sm">{profile.first_name}</Text>
             </Group>
-            <Group gap="xs">
+	            <Group gap="xs" align="flex-start">
               <Text size="sm" fw={600}>Middle Name:</Text>
               <Text size="sm" c={profile.middle_name ? undefined : "dimmed"}>
                 {profile.middle_name || <i>—</i>}
               </Text>
             </Group>
-            <Group gap="xs">
+	            <Group gap="xs" align="flex-start">
               <Text size="sm" fw={600}>Last Name:</Text>
               <Text size="sm">{profile.last_name}</Text>
             </Group>
-            <Group gap="xs">
-              <Text size="sm" fw={600}>Email:</Text>
-              <Text size="sm">{profile.email}</Text>
+	            <Group gap="xs" align="flex-start">
+	              <Text size="sm" fw={600}>Email:</Text>
+	              <Text size="sm" style={{ overflowWrap: "anywhere" }}>{profile.email}</Text>
             </Group>
           </Stack>
         )}
 
         {/* Edit mode — inputs on left, Save/Discard buttons on right */}
         {isEditMode && (
-          <Group align="flex-start" justify="space-between" gap="md">
-            <Stack gap={8} style={{ flex: 1 }}>
+	          <Group align="flex-start" justify="space-between" gap="md" wrap="wrap">
+	            <Stack gap={8} style={{ flex: "1 1 320px", minWidth: 0 }}>
             {/* First Name */}
-            <Group gap="xs" align="center" wrap="nowrap">
+	            <Group gap="xs" align={isMobile ? "flex-start" : "center"} wrap={isMobile ? "wrap" : "nowrap"}>
               <Text
                 size="sm"
                 fw={600}
-                style={{ width: 96, flexShrink: 0 }}
+	                style={{ width: isMobile ? "100%" : 96, flexShrink: 0 }}
               >
                 First Name:
               </Text>
               <TextInput
                 size="xs"
-                style={{ flex: 1 }}
+	                style={{ flex: "1 1 220px", minWidth: 0 }}
                 value={form.values.first_name}
                 onChange={(e) =>
                   form.setFieldValue("first_name", e.currentTarget.value)
@@ -376,17 +380,17 @@ export default function SettingsClient() {
             </Group>
 
             {/* Middle Name */}
-            <Group gap="xs" align="center" wrap="nowrap">
+	            <Group gap="xs" align={isMobile ? "flex-start" : "center"} wrap={isMobile ? "wrap" : "nowrap"}>
               <Text
                 size="sm"
                 fw={600}
-                style={{ width: 96, flexShrink: 0 }}
+	                style={{ width: isMobile ? "100%" : 96, flexShrink: 0 }}
               >
                 Middle Name:
               </Text>
               <TextInput
                 size="xs"
-                style={{ flex: 1 }}
+	                style={{ flex: "1 1 220px", minWidth: 0 }}
                 placeholder="(optional)"
                 value={form.values.middle_name}
                 onChange={(e) =>
@@ -402,17 +406,17 @@ export default function SettingsClient() {
             </Group>
 
             {/* Last Name */}
-            <Group gap="xs" align="center" wrap="nowrap">
+	            <Group gap="xs" align={isMobile ? "flex-start" : "center"} wrap={isMobile ? "wrap" : "nowrap"}>
               <Text
                 size="sm"
                 fw={600}
-                style={{ width: 96, flexShrink: 0 }}
+	                style={{ width: isMobile ? "100%" : 96, flexShrink: 0 }}
               >
                 Last Name:
               </Text>
               <TextInput
                 size="xs"
-                style={{ flex: 1 }}
+	                style={{ flex: "1 1 220px", minWidth: 0 }}
                 value={form.values.last_name}
                 onChange={(e) =>
                   form.setFieldValue("last_name", e.currentTarget.value)
@@ -427,15 +431,15 @@ export default function SettingsClient() {
             </Group>
 
             {/* Email (read-only) */}
-            <Group gap="xs" align="center" wrap="nowrap">
+	            <Group gap="xs" align={isMobile ? "flex-start" : "center"} wrap={isMobile ? "wrap" : "nowrap"}>
               <Text
                 size="sm"
                 fw={600}
-                style={{ width: 96, flexShrink: 0 }}
+	                style={{ width: isMobile ? "100%" : 96, flexShrink: 0 }}
               >
                 Email:
               </Text>
-              <Text size="sm" c="dimmed">
+	              <Text size="sm" c="dimmed" style={{ overflowWrap: "anywhere" }}>
                 {profile.email}
               </Text>
               <Tooltip
@@ -453,14 +457,15 @@ export default function SettingsClient() {
           </Stack>
 
           {/* Save / Discard buttons — right column */}
-          <Stack gap={6} pt={2}>
+	          <Stack gap={6} pt={2} style={{ flex: isMobile ? "1 1 100%" : "0 0 auto", width: isMobile ? "100%" : undefined }}>
             <Button
               size="xs"
               color="#4EAE4A"
               leftSection={<IconCheck size={14} />}
               onClick={handleSave}
               loading={saving}
-              disabled={!form.isDirty() || !form.isValid()}
+	              disabled={!formIsDirty || !form.isValid()}
+	              fullWidth={isMobile}
             >
               Save Changes
             </Button>
@@ -469,8 +474,9 @@ export default function SettingsClient() {
               color="red"
               variant="outline"
               leftSection={<IconX size={14} />}
-              onClick={handleDiscard}
-              disabled={saving}
+	              onClick={handleDiscard}
+	              disabled={saving}
+	              fullWidth={isMobile}
             >
               Discard Changes
             </Button>
@@ -511,7 +517,7 @@ export default function SettingsClient() {
                     {index + 1}
                   </Text>
                 </Box>
-                <Text size="sm">{role.name}</Text>
+	                <Text size="sm" style={{ overflowWrap: "anywhere" }}>{role.name}</Text>
               </Group>
             ))}
           </Stack>
@@ -523,12 +529,13 @@ export default function SettingsClient() {
         <Text fw={700} c="#298925" mb="sm">
           Password
         </Text>
-        <Button
+	        <Button
           color="#4EAE4A"
           leftSection={<IconLock size={16} />}
           size="sm"
-          disabled
-        >
+	          disabled
+	          fullWidth={isMobile}
+	        >
           Change Password
         </Button>
       </Paper>

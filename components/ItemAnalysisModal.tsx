@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { IconX, IconRefresh, IconTrendingUp, IconTrendingDown, IconUsers, IconTarget } from '@tabler/icons-react';
 import Image from 'next/image';
 import { fetchAttemptsForExam } from '@/lib/services/attemptService';
@@ -32,9 +32,12 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
   const [activeTab, setActiveTab] = useState<'summary' | 'items' | 'students'>('summary');
 
   const { totalItems } = resolveExamParams(exam);
-  const answerKey: { [item: number]: string | null } = exam.answer_key?.answers ?? {};
+  const answerKey: { [item: number]: string | null } = useMemo(
+    () => exam.answer_key?.answers ?? {},
+    [exam.answer_key?.answers],
+  );
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     const [att] = await Promise.all([fetchAttemptsForExam(exam.exam_id)]);
     setAttempts(att);
@@ -47,9 +50,11 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
       setItemStats([]);
     }
     setLoading(false);
-  };
+  }, [answerKey, exam.exam_id, totalItems]);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    void Promise.resolve().then(loadData);
+  }, [loadData]);
 
   const summary = computeExamSummary(attempts, itemStats, totalItems);
 
@@ -65,19 +70,19 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto animate-slide-in">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fade-in">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-5xl max-h-[96vh] sm:max-h-[92vh] overflow-y-auto animate-slide-in">
 
         {/* Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-5 z-10">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
+	        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 sm:p-5 z-10">
+	          <div className="flex items-start justify-between gap-3 mb-3">
+	            <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 relative flex-shrink-0">
                 <Image src="/logo.png" alt="Logo" fill className="object-contain" />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Item Analysis</h2>
-                <p className="text-gray-500 text-xs mt-0.5">{exam.title}</p>
+	              <div className="min-w-0">
+	                <h2 className="text-xl font-bold text-gray-900">Item Analysis</h2>
+	                <p className="text-gray-500 text-xs mt-0.5 truncate">{exam.title}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -106,7 +111,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
           </div>
         </div>
 
-        <div className="p-6">
+	        <div className="p-4 sm:p-6">
           {loading ? (
             <div className="text-center py-16">
               <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
@@ -116,7 +121,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
             <div className="text-center py-16">
               <IconTarget className="w-14 h-14 text-gray-200 mx-auto mb-4" />
               <p className="text-gray-500 font-medium">No scanned papers yet</p>
-              <p className="text-gray-400 text-sm mt-1">Use "Scan Papers" to add student results.</p>
+	              <p className="text-gray-400 text-sm mt-1">Use &quot;Scan Papers&quot; to add student results.</p>
             </div>
           ) : (
 
@@ -125,7 +130,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
               {activeTab === 'summary' && (
                 <div className="space-y-6">
                   {/* KPI cards */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+	                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
                     {[
                       { icon: IconUsers, label: 'Total Papers', value: summary.total_attempts, color: 'bg-blue-50 text-blue-700' },
                       { icon: IconTrendingUp, label: 'Average Score', value: `${summary.average_score}/${totalItems}`, color: 'bg-green-50 text-green-700' },
@@ -143,7 +148,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                   {/* Score range */}
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-sm font-semibold text-gray-700 mb-3">Score Range</p>
-                    <div className="flex items-center gap-4">
+	                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="text-center">
                         <p className="text-2xl font-bold text-red-500">{summary.lowest_score}</p>
                         <p className="text-xs text-gray-400">Lowest</p>
@@ -198,11 +203,11 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
               {/* ── ITEMS TAB ───────────────────────────────────────────────── */}
               {activeTab === 'items' && (
                 <div>
-                  <div className="flex gap-4 text-xs text-gray-500 mb-3">
+	                  <div className="flex flex-wrap gap-2 sm:gap-4 text-xs text-gray-500 mb-3">
                     <span>🔵 Difficulty: proportion correct (higher = easier)</span>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+	                  <div className="overflow-x-auto">
+	                    <table className="w-full min-w-[680px] text-sm">
                       <thead>
                         <tr className="text-xs text-gray-500 border-b border-gray-200">
                           <th className="text-left py-2 px-2 font-semibold">Item</th>
@@ -236,7 +241,7 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
                                 </div>
                               </td>
                               <td className="py-2 px-2">
-                                <div className="flex gap-1">
+	                                <div className="flex gap-1 min-w-max">
                                   {allChoices.map(ch => {
                                     const count = freq[ch] ?? 0;
                                     const isCorrect = ch === answerKey[stat.item_number];
@@ -269,8 +274,8 @@ export default function ItemAnalysisModal({ exam, onClose }: ItemAnalysisModalPr
               {/* ── STUDENTS TAB ─────────────────────────────────────────────── */}
               {activeTab === 'students' && (
                 <div className="space-y-3">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+	                  <div className="overflow-x-auto">
+	                    <table className="w-full min-w-[640px] text-sm">
                       <thead>
                         <tr className="text-xs text-gray-500 border-b border-gray-200">
                           <th className="text-left py-2 px-3 font-semibold">Student Name</th>

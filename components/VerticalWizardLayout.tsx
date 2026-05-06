@@ -29,17 +29,20 @@ export default function VerticalWizardLayout({
 
   if (isMobile) {
     return (
-      <Stepper active={active} color={color} orientation="vertical">
-        {steps.map((step) => (
-          <Stepper.Step
-            key={`${step.label}-${step.description}`}
-            label={step.label}
-            description={step.description}
-          >
-            {step.content}
-          </Stepper.Step>
-        ))}
-      </Stepper>
+      <div style={{ width: "100%", minWidth: 0 }}>
+        <Stepper active={active} color={color} orientation="vertical">
+          {steps.map((step) => (
+            <Stepper.Step
+              key={`${step.label}-${step.description}`}
+              label={step.label}
+              description={step.description}
+            >
+              {step.content}
+            </Stepper.Step>
+          ))}
+        </Stepper>
+        {children && <div style={{ marginTop: rem(20), minWidth: 0 }}>{children}</div>}
+      </div>
     );
   }
 
@@ -56,7 +59,7 @@ export default function VerticalWizardLayout({
           ))}
         </Stepper>
       </div>
-      <div style={{ width: `calc(100% - ${sidebarWidth})` }}>{children}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>
   );
 }

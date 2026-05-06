@@ -15,6 +15,7 @@ import {
   Alert,
   ScrollArea,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconPlus, IconTrash, IconAlertCircle, IconBookmark } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { saveObjectives } from '@/lib/services/examService';
@@ -49,6 +50,7 @@ export default function LearningObjectivesModal({
   onContinue,
   onSaved,
 }: LearningObjectivesModalProps) {
+  const isMobile = useMediaQuery('(max-width: 640px)');
   const totalItems = exam.total_items;
 
   const initialRows: ObjectiveRow[] =
@@ -141,6 +143,7 @@ export default function LearningObjectivesModal({
       onClose={onClose}
       title="Learning Objectives"
       size="lg"
+      fullScreen={isMobile}
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
       closeOnClickOutside={!saving}
       closeOnEscape={!saving}
@@ -159,7 +162,7 @@ export default function LearningObjectivesModal({
           </Alert>
         )}
 
-        <ScrollArea.Autosize mah={360}>
+	        <ScrollArea.Autosize mah={isMobile ? '65vh' : 360}>
           <Stack gap="sm">
             {rows.map((row, idx) => (
               <Paper key={row.id} p="sm" withBorder radius="md">
@@ -186,7 +189,7 @@ export default function LearningObjectivesModal({
                   mb="xs"
                 />
 
-                <Group gap="sm">
+	                <Group gap="sm" grow wrap="wrap">
                   <NumberInput
                     label="From item"
                     placeholder="1"
@@ -194,7 +197,7 @@ export default function LearningObjectivesModal({
                     max={totalItems}
                     value={row.start_item === '' ? '' : Number(row.start_item)}
                     onChange={(val) => updateRow(row.id, 'start_item', val)}
-                    style={{ flex: 1 }}
+	                    style={{ flex: '1 1 140px' }}
                     allowDecimal={false}
                   />
                   <NumberInput
@@ -204,7 +207,7 @@ export default function LearningObjectivesModal({
                     max={totalItems}
                     value={row.end_item === '' ? '' : Number(row.end_item)}
                     onChange={(val) => updateRow(row.id, 'end_item', val)}
-                    style={{ flex: 1 }}
+	                    style={{ flex: '1 1 140px' }}
                     allowDecimal={false}
                   />
                 </Group>
@@ -238,39 +241,42 @@ export default function LearningObjectivesModal({
           </Text>
         </Paper>
 
-        <Group justify="flex-end" gap="sm">
+	        <Group justify="flex-end" gap="sm" wrap="wrap">
           {onContinue ? (
             <>
-              <Button variant="default" onClick={onClose} disabled={saving}>
+	              <Button variant="default" onClick={onClose} disabled={saving} fullWidth={isMobile}>
                 Skip
               </Button>
               <Button
                 variant="default"
                 onClick={() => handleSave(false)}
-                loading={saving}
-              >
+	                loading={saving}
+	                fullWidth={isMobile}
+	              >
                 Save Only
               </Button>
               <Button
                 color="#466D1D"
                 onClick={() => handleSave(true)}
                 loading={saving}
-                disabled={uniqueCovered < totalItems}
-                title={uniqueCovered < totalItems ? `Cover all ${totalItems} items before proceeding` : undefined}
-              >
+	                disabled={uniqueCovered < totalItems}
+	                title={uniqueCovered < totalItems ? `Cover all ${totalItems} items before proceeding` : undefined}
+	                fullWidth={isMobile}
+	              >
                 Save &amp; Set Answer Key
               </Button>
             </>
           ) : (
             <>
-              <Button variant="default" onClick={onClose} disabled={saving}>
+	              <Button variant="default" onClick={onClose} disabled={saving} fullWidth={isMobile}>
                 Cancel
               </Button>
               <Button
                 color="#466D1D"
-                onClick={() => handleSave(false)}
-                loading={saving}
-              >
+	                onClick={() => handleSave(false)}
+	                loading={saving}
+	                fullWidth={isMobile}
+	              >
                 Save Objectives
               </Button>
             </>

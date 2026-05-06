@@ -435,7 +435,7 @@ export default function CreateAnswerKeyModal({ exam, onClose, onSuccess, onBack,
                     onClick={() => setShowObjectiveEditor((v) => !v)}
                     className="text-xs font-semibold text-blue-700 hover:text-blue-800"
                   >
-                    {showObjectiveEditor ? 'Hide Editor' : 'Edit Objectives'}
+                    {showObjectiveEditor ? 'Hide Objectives' : 'Edit Objectives'}
                   </button>
                 </div>
                 <p className="text-xs text-blue-700 mt-1">

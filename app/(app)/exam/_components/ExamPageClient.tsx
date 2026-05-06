@@ -33,28 +33,23 @@ import {
   IconRefresh,
   IconSchool,
   IconSettings,
-  IconEye,
   IconUsers,
   IconBook,
   IconKey,
-  IconTargetArrow,
-  IconScanEye,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
 
-import ItemAnalysisModal from "@/components/ItemAnalysisModal";
-import LearningObjectivesModal from "@/components/LearningObjectivesModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
   fetchExamsWithRelations,
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
-import { fetchExamIdsWithScores } from "@/lib/services/attemptService";
 import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
 import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
+import { fetchActiveQuarters } from "@/lib/services/quarterService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 
@@ -72,7 +67,6 @@ export default function ExamPageClient() {
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
-  const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
     null,
   );
@@ -85,37 +79,34 @@ export default function ExamPageClient() {
   const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(
     null,
   );
-  const [isObjectivesModalOpen, setIsObjectivesModalOpen] = useState(false);
-  const [objectivesExam, setObjectivesExam] =
-    useState<ExamWithRelations | null>(null);
 
   /** Exam ID to highlight after creation flow completes */
-  const [newlyCreatedExamId, setNewlyCreatedExamId] = useState<number | null>(
-    null,
+  const [newlyCreatedExamIds, setNewlyCreatedExamIds] = useState<Set<number>>(
+    new Set(),
   );
   const [highlightExpiring, setHighlightExpiring] = useState(false);
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
 
-  // Handle ?newExamId= short-lived highlight persisted in localStorage
+  // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
-    const HIGHLIGHT_MS = 20 * 1000; // visible for 20 seconds
-    const FADE_BEFORE_MS = 8 * 1000; // start fading during the last 8 seconds
+    const HIGHLIGHT_MS = 20 * 1000;
+    const FADE_BEFORE_MS = 8 * 1000;
     const STORAGE_KEY = "examHighlight";
 
-    // If a new exam was just created, record it with an expiry timestamp
-    const newId = searchParams.get("newExamId");
-    if (newId) {
-      const examId = Number(newId);
-      if (!isNaN(examId)) {
+    // If new exams were just created, record all IDs with an expiry timestamp
+    const newIds = searchParams.get("newExamIds");
+    if (newIds) {
+      const examIds = newIds.split(",").map(Number).filter((n) => !isNaN(n));
+      if (examIds.length > 0) {
         localStorage.setItem(
           STORAGE_KEY,
-          JSON.stringify({ examId, expiresAt: Date.now() + HIGHLIGHT_MS }),
+          JSON.stringify({ examIds, expiresAt: Date.now() + HIGHLIGHT_MS }),
         );
       }
       const url = new URL(window.location.href);
-      url.searchParams.delete("newExamId");
+      url.searchParams.delete("newExamIds");
       window.history.replaceState({}, "", url.toString());
     }
 
@@ -123,8 +114,8 @@ export default function ExamPageClient() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     try {
-      const { examId, expiresAt } = JSON.parse(raw) as {
-        examId: number;
+      const { examIds, expiresAt } = JSON.parse(raw) as {
+        examIds: number[];
         expiresAt: number;
       };
       const remaining = expiresAt - Date.now();
@@ -133,19 +124,17 @@ export default function ExamPageClient() {
         return;
       }
 
-      setNewlyCreatedExamId(examId);
+      setNewlyCreatedExamIds(new Set(examIds));
       setHighlightExpiring(remaining <= FADE_BEFORE_MS);
 
-      // Start fade when 10 s remain
       const fadeDelay = remaining - FADE_BEFORE_MS;
       const fadeTimer =
         fadeDelay > 0
           ? setTimeout(() => setHighlightExpiring(true), fadeDelay)
           : null;
 
-      // Clear highlight when fully expired
       const clearTimer = setTimeout(() => {
-        setNewlyCreatedExamId(null);
+        setNewlyCreatedExamIds(new Set());
         setHighlightExpiring(false);
         localStorage.removeItem(STORAGE_KEY);
       }, remaining);
@@ -170,12 +159,8 @@ export default function ExamPageClient() {
   const [assignedSectionSubjectPairs, setAssignedSectionSubjectPairs] =
     useState<Set<string>>(new Set());
 
-  // Exam IDs that have at least one scanned/saved score
-  const [examIdsWithScores, setExamIdsWithScores] = useState<Set<number>>(
-    new Set(),
-  );
-
   const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(true);
+  const [hasActiveTerm, setHasActiveTerm] = useState(true);
 
   const fetchExams = async () => {
     setLoading(true);
@@ -188,14 +173,6 @@ export default function ExamPageClient() {
 
       // Build assignmentId → examId map and load score badges in background
       // (non-blocking — list is already visible by this point)
-      const assignmentIdToExamId = new Map<number, number>();
-      for (const exam of data) {
-        for (const a of exam.exam_assignments ?? []) {
-          assignmentIdToExamId.set(a.id, exam.exam_id);
-        }
-      }
-      const withScores = await fetchExamIdsWithScores(assignmentIdToExamId);
-      setExamIdsWithScores(withScores);
     } catch (error: unknown) {
       setDbError(error instanceof Error ? error.message : "Unknown error");
       setLoading(false);
@@ -207,6 +184,9 @@ export default function ExamPageClient() {
     fetchExams();
     fetchSchoolYears().then((years) => {
       setHasActiveSchoolYear(years.some((y) => y.is_active));
+    });
+    fetchActiveQuarters().then((quarters) => {
+      setHasActiveTerm(quarters.some((q) => q.is_active));
     });
 
     if (user?.id) {
@@ -439,16 +419,6 @@ export default function ExamPageClient() {
     });
   };
 
-  const handleOpenObjectivesModal = (exam: ExamWithRelations) => {
-    setObjectivesExam(exam);
-    setIsObjectivesModalOpen(true);
-  };
-
-  const handleCloseObjectivesModal = () => {
-    setIsObjectivesModalOpen(false);
-    setObjectivesExam(null);
-  };
-
   const handleOpenDeleteModal = (exam: ExamWithRelations) => {
     setExamToDelete(exam);
     setConfirmText("");
@@ -487,7 +457,7 @@ export default function ExamPageClient() {
   return (
     <>
       <div>
-        <Group justify="space-between">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
           <h1 className="mb-3 text-2xl font-bold">
             Examinations{" "}
             {!loading && hasActiveSchoolYear && (
@@ -501,7 +471,7 @@ export default function ExamPageClient() {
               </Text>
               <Skeleton height={40} width={140} radius="md" />
             </Stack>
-          ) : hasActiveSchoolYear ? (
+          ) : hasActiveSchoolYear && hasActiveTerm ? (
             <Tooltip
               label={
                 "You need to be assigned to at least one class before you can create exams."
@@ -553,18 +523,18 @@ export default function ExamPageClient() {
         </Alert>
       )}
 
-      {!loading && !dbError && !hasActiveSchoolYear ? (
+      {!loading && !dbError && (!hasActiveSchoolYear || !hasActiveTerm) ? (
         <NoActivePeriodBanner />
       ) : (
         <>
       {/* Filters */}
-      <div>
-        <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-          <SearchBar
+	      <div>
+	        <Group mb="md" wrap="wrap" align="flex-end" gap="sm">
+	          <SearchBar
             id="search-exams"
             placeholder="Search examinations..."
             ariaLabel="Search examinations"
-            style={{ flex: 1, minWidth: 0 }}
+	            style={{ flex: "1 1 260px", minWidth: 0 }}
             maw={700}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
@@ -583,14 +553,14 @@ export default function ExamPageClient() {
             </ActionIcon>
           </Tooltip>
         </Group>
-        <Group mb="md" gap="sm">
-          <Select
+	        <Group mb="md" gap="sm" wrap="wrap">
+	          <Select
             placeholder="Grade Level"
             data={gradeLevelOptions}
             value={selectedGradeLevel}
             onChange={setSelectedGradeLevel}
             leftSection={<IconSchool size={16} />}
-            w={200}
+	            w={{ base: "100%", sm: 200 }}
             clearable
           />
           <Select
@@ -599,7 +569,7 @@ export default function ExamPageClient() {
             value={selectedSection}
             onChange={setSelectedSection}
             leftSection={<IconUsers size={16} />}
-            w={200}
+	            w={{ base: "100%", sm: 200 }}
             clearable
             disabled={sectionOptions.length === 0}
           />
@@ -609,7 +579,7 @@ export default function ExamPageClient() {
             value={selectedSubject}
             onChange={setSelectedSubject}
             leftSection={<IconBook size={16} />}
-            w={200}
+	            w={{ base: "100%", sm: 200 }}
             clearable
             disabled={subjectOptions.length === 0}
           />
@@ -658,7 +628,7 @@ export default function ExamPageClient() {
                 </Group>
               </Accordion.Control>
               <Accordion.Panel>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p="xs">
+	                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p={{ base: 0, sm: "xs" }} spacing={{ base: "sm", sm: "md" }}>
                   {group.exams
                     .slice(
                       ((pageMap.get(group.gradeLabel) ?? 1) - 1) * PAGE_SIZE,
@@ -671,7 +641,7 @@ export default function ExamPageClient() {
                         .map((a) => a.sections?.name)
                         .filter(Boolean)
                         .join(", ");
-                      const isNew = exam.exam_id === newlyCreatedExamId;
+                      const isNew = newlyCreatedExamIds.has(exam.exam_id);
                       return (
                         <Card
                           key={exam.exam_id}
@@ -697,12 +667,12 @@ export default function ExamPageClient() {
                             cursor: "pointer",
                           }}
                         >
-                          <Group justify="space-between" mt="md" mb="xs">
+	                          <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
                             <Text
                               fw={550}
                               size="lg"
                               lineClamp={2}
-                              style={{ flex: 1 }}
+	                              style={{ flex: 1, minWidth: 0 }}
                             >
                               {exam.title}
                             </Text>
@@ -791,36 +761,6 @@ export default function ExamPageClient() {
                                     Edit Answer Key
                                   </Menu.Item>
                                   <Menu.Item
-                                    leftSection={<IconTargetArrow size={14} />}
-                                    onClick={() =>
-                                      handleOpenObjectivesModal(exam)
-                                    }
-                                  >
-                                    Edit Objectives
-                                  </Menu.Item>
-                                  <Menu.Item
-                                    leftSection={<IconScanEye size={14} />}
-                                    disabled={!exam.answer_key}
-                                    onClick={() =>
-                                      router.push(`/exam/${exam.exam_id}/scan`)
-                                    }
-                                  >
-                                    Scan Papers
-                                  </Menu.Item>
-                                  <Menu.Item
-                                    leftSection={<IconEye size={14} />}
-                                    disabled={
-                                      !exam.answer_key ||
-                                      !examIdsWithScores.has(exam.exam_id)
-                                    }
-                                    onClick={() => {
-                                      setSelectedExam(exam);
-                                      setIsAnalysisModalOpen(true);
-                                    }}
-                                  >
-                                    Review Papers
-                                  </Menu.Item>
-                                  <Menu.Item
                                     leftSection={<IconPlus size={14} />}
                                     onClick={() =>
                                       router.push(`/exam/copy/${exam.exam_id}`)
@@ -890,13 +830,6 @@ export default function ExamPageClient() {
         </>
       )}
 
-      {isObjectivesModalOpen && objectivesExam && (
-        <LearningObjectivesModal
-          exam={objectivesExam}
-          onClose={handleCloseObjectivesModal}
-          onSaved={fetchExams}
-        />
-      )}
       {isAnswerKeyModalOpen && selectedExam && (
         <CreateAnswerKeyModal
           exam={selectedExam}
@@ -905,16 +838,6 @@ export default function ExamPageClient() {
             setSelectedExam(null);
           }}
           onSuccess={fetchExams}
-        />
-      )}
-
-      {isAnalysisModalOpen && selectedExam && (
-        <ItemAnalysisModal
-          exam={selectedExam}
-          onClose={() => {
-            setIsAnalysisModalOpen(false);
-            setSelectedExam(null);
-          }}
         />
       )}
 
@@ -957,11 +880,12 @@ export default function ExamPageClient() {
           mb="lg"
           disabled={deleting}
         />
-        <Group justify="flex-end">
+        <Group justify="flex-end" wrap="wrap">
           <Button
             variant="default"
             onClick={handleCloseDeleteModal}
             disabled={deleting}
+            fullWidth={false}
           >
             Cancel
           </Button>
@@ -970,6 +894,7 @@ export default function ExamPageClient() {
             disabled={confirmText.toLowerCase() !== "delete"}
             loading={deleting}
             onClick={handleDeleteExam}
+            fullWidth={false}
           >
             Delete
           </Button>

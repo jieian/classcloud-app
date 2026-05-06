@@ -6,13 +6,13 @@ const STEPS = ['Create Exam', 'Learning Objectives', 'Answer Key', 'Summary'];
 
 export default function CreationFlowStepper({ activeStep }: { activeStep: number }) {
   return (
-    <div className="flex items-center mb-5">
+    <div className="flex items-start mb-5 overflow-x-auto pb-2">
       {STEPS.map((label, idx) => {
         const done = idx < activeStep;
         const active = idx === activeStep;
         return (
-          <div key={idx} className="flex items-center" style={{ flex: idx < STEPS.length - 1 ? '1' : 'none' }}>
-            <div className="flex flex-col items-center">
+          <div key={idx} className="flex items-center min-w-[92px] sm:min-w-0" style={{ flex: idx < STEPS.length - 1 ? '1' : 'none' }}>
+            <div className="flex flex-col items-center min-w-0">
               <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
                 ${done ? 'bg-[#466D1D] border-[#466D1D] text-white'
                   : active ? 'bg-white border-[#466D1D] text-[#466D1D]'
@@ -20,7 +20,7 @@ export default function CreationFlowStepper({ activeStep }: { activeStep: number
               >
                 {done ? <IconCheck size={13} strokeWidth={3} /> : idx + 1}
               </div>
-              <span className={`text-[10px] mt-1 font-semibold whitespace-nowrap
+              <span className={`text-[10px] mt-1 font-semibold text-center leading-tight whitespace-normal sm:whitespace-nowrap
                 ${done || active ? 'text-[#466D1D]' : 'text-gray-400'}`}
               >
                 {label}

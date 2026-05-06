@@ -471,16 +471,16 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-y-auto animate-slide-in">
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-5 z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+	    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 animate-fade-in">
+	      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-5xl max-h-[96vh] sm:max-h-[92vh] overflow-y-auto animate-slide-in">
+	        <div className="sticky top-0 bg-white border-b border-gray-200 p-4 sm:p-5 z-10 flex flex-wrap items-start justify-between gap-3">
+	          <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 relative flex-shrink-0">
               <Image src="/logo.png" alt="Logo" fill className="object-contain" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-gray-900">Scan Papers</h2>
-              <p className="text-gray-500 text-xs mt-0.5">{exam.title}</p>
+	            <div className="min-w-0">
+	              <h2 className="text-xl font-bold text-gray-900">Scan Papers</h2>
+	              <p className="text-gray-500 text-xs mt-0.5 truncate">{exam.title}</p>
             </div>
           </div>
           {step !== 'students' && (
@@ -493,7 +493,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
           </button>
         </div>
 
-        <div className="p-6">
+	        <div className="p-4 sm:p-6">
           {step === 'students' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -524,8 +524,8 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               </div>
 
-              <div className="rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
+	              <div className="rounded-xl border border-gray-200 overflow-x-auto">
+	                <table className="w-full min-w-[640px] text-sm">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr className="text-left text-gray-700">
                       <th className="py-3 px-4 font-semibold">Name of Pupil</th>
@@ -677,7 +677,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </p>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-center">
+	                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div className="bg-blue-50 rounded-xl p-3">
                   <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
                   <p className="text-xs text-blue-500 mt-0.5">Detected</p>
@@ -692,10 +692,11 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </div>
               </div>
 
-              <div className={`grid gap-4 ${totalItems > 20 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+              <div className={`grid gap-4 ${totalItems > 1 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                 {[1, 2].map((col) => {
-                  const start = col === 1 ? 1 : 21;
-                  const end = col === 1 ? Math.min(20, totalItems) : totalItems;
+                  const itemsInCol1 = Math.ceil(totalItems / 2);
+                  const start = col === 1 ? 1 : itemsInCol1 + 1;
+                  const end = col === 1 ? itemsInCol1 : totalItems;
                   if (start > totalItems) return null;
                   return (
                     <div key={col} className="space-y-0.5">
@@ -732,7 +733,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 })}
               </div>
 
-              <div className="flex gap-3 pt-4 border-t">
+	              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
                 <button onClick={() => setStep('capture')} className="btn-secondary flex items-center gap-2">
                   <IconChevronLeft className="w-4 h-4" /> Rescan
                 </button>
@@ -795,7 +796,7 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                 </p>
               </div>
 
-              <div className="flex gap-3 pt-4 border-t">
+	              <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
                 <button onClick={() => setStep('review')} className="btn-secondary flex items-center gap-2">
                   <IconChevronLeft className="w-4 h-4" /> Back
                 </button>

@@ -10,7 +10,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus, IconTrash, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconLink, IconMinus,
+  IconAlertTriangle, IconMinus,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
@@ -19,7 +19,7 @@ import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchSchoolYears, fetchTeacherClassAssignments } from '@/lib/services/classService';
-import { createExamWithAssignments, saveObjectives, saveAnswerKey } from '@/lib/services/examService';
+import { createExamWithAssignments, saveObjectives, saveAnswerKey, checkExamDuplicates } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
@@ -112,6 +112,7 @@ export default function CreateExamPage() {
   const [quarters, setQuarters] = useState<Quarter[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState<boolean | null>(null);
+  const [duplicateSectionIds, setDuplicateSectionIds] = useState<Set<number>>(new Set());
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
@@ -227,11 +228,22 @@ export default function CreateExamPage() {
     if (!isValid) setSelectedSubjectId(null);
   }, [activeSectionType, selectedSectionIds, selectedSubjectId, subjects]);
 
+  // Real-time duplicate check: fires whenever subject or sections change
+  useEffect(() => {
+    const activeQuarter = quarters.find((q) => q.is_active);
+    if (!selectedSubjectId || selectedSectionIds.length === 0 || !activeQuarter) {
+      setDuplicateSectionIds(new Set());
+      return;
+    }
+    checkExamDuplicates(selectedSectionIds, Number(selectedSubjectId), activeQuarter.quarter_id)
+      .then((ids) => setDuplicateSectionIds(new Set(ids)));
+  }, [selectedSubjectId, selectedSectionIds, quarters]);
+
   // When sections are selected, narrow subjects to those the teacher handles in ALL selected sections
   // (intersection, not union) so only valid overlapping subjects appear in the dropdown.
   // Falls back to the global allowedSubjectIds (or null for full-access) when no sections are chosen yet.
   const sectionAwareSubjectIds = (() => {
-    if (selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
+    if (hasFullAccess || selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
     const perSection = selectedSectionIds.map(
       sectionId => new Set(teacherAssignments.filter(a => a.section_id === sectionId).map(a => a.curriculum_subject_id))
     );
@@ -250,12 +262,17 @@ export default function CreateExamPage() {
   );
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
 
-  const generatedExamName = (() => {
-    const term = quarters[0]?.name ?? '';
+  const titleBase = (() => {
+    const term = quarters.find((q) => q.is_active)?.name ?? '';
     const subjectCode = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.code ?? '';
+    if (!term || !subjectCode) return '';
+    return `${term} - ${subjectCode}`;
+  })();
+
+  const generatedExamName = (() => {
     const sectionPart = selectedSectionNames.join(' & ');
-    if (!term || !subjectCode || !sectionPart) return '';
-    return `${term} - ${subjectCode} - ${sectionPart}`;
+    if (!titleBase || !sectionPart) return '';
+    return `${titleBase} - ${sectionPart}`;
   })();
 
   const canGoStep1 = Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
@@ -313,34 +330,35 @@ export default function CreateExamPage() {
     setSaving(true);
     try {
       const today = new Date().toISOString().split('T')[0];
-      const autoQuarterId = quarters.length > 0 ? quarters[0].quarter_id : null;
+      const autoQuarterId = quarters.find((q) => q.is_active)?.quarter_id ?? null;
 
-      const examResult = await createExamWithAssignments(
-        { title: generatedExamName, description: null, curriculum_subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
+      const { exam_ids } = await createExamWithAssignments(
+        { title: titleBase, description: null, curriculum_subject_id: Number(selectedSubjectId), quarter_id: autoQuarterId, exam_date: today, total_items: totalItems },
         selectedSectionIds
       );
-      if (!examResult) throw new Error('Failed to create exam');
-      const examId = examResult.exam_id;
 
       const validObjectives: LearningObjective[] = objectiveRows
         .filter(r => r.objective.trim() && Number(r.start_item) && Number(r.end_item))
         .map(r => ({ objective: r.objective.trim(), start_item: Number(r.start_item), end_item: Number(r.end_item) }));
-      if (validObjectives.length > 0) await saveObjectives(examId, validObjectives);
 
       const answerKeyData: AnswerKeyJsonb = {
         total_questions: totalItems,
         num_choices: numChoices,
         answers: answers as { [questionNumber: number]: string | null },
       };
-      await saveAnswerKey(examId, answerKeyData);
+
+      await Promise.all(exam_ids.map(async (id) => {
+        if (validObjectives.length > 0) await saveObjectives(id, validObjectives);
+        await saveAnswerKey(id, answerKeyData);
+      }));
 
       notifications.show({
         title: 'Examination Created',
-        message: selectedSectionIds.length > 1 ? `${selectedSectionIds.length} examinations were created successfully.` : 'Examination was created successfully.',
+        message: exam_ids.length > 1 ? `${exam_ids.length} examinations were created successfully.` : 'Examination was created successfully.',
         color: 'teal', withBorder: true, autoClose: 2500,
       });
       clearDraft();
-      router.push(`/exam?newExamId=${examId}`);
+      router.push(`/exam?newExamIds=${exam_ids.join(',')}`);
     } catch (error) {
       notifications.show({ title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
     } finally {
@@ -361,10 +379,10 @@ export default function CreateExamPage() {
           <Group justify="center" py="xl"><Loader /></Group>
         ) : (
           <Stack gap="md">
-            {quarters.length === 0 && (
-              <Alert color="orange" icon={<IconAlertTriangle size={16} />} title="No Active Term Configured">
-                There are no terms set up for the current school year. An administrator must configure
-                at least one term before exams can be created.
+            {!quarters.some((q) => q.is_active) && (
+              <Alert color="orange" icon={<IconAlertTriangle size={16} />} title="No Active Term">
+                No term is currently active for this school year. An administrator must activate
+                a term before exams can be created.
               </Alert>
             )}
             <Alert color="blue" icon={<IconAlertCircle size={16} />}>
@@ -400,42 +418,24 @@ export default function CreateExamPage() {
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
                 disabled={selectedSectionIds.length === 0}
+                error={duplicateSectionIds.size > 0 ? 'An examination for this subject already exists for the active term.' : undefined}
               />
             </Group>
             {generatedExamName && (
               <div>
                 <Text size="sm" fw={500} mb={4}>
-                  Examination Name{' '}
-                  <Text span fz="xs" c="dimmed">(recommended)</Text>
+                  Examination Name
                 </Text>
                 <Paper withBorder p="sm" radius="sm" bg="green.0" style={{ borderColor: 'var(--mantine-color-green-3)' }}>
                   <Text fw={600} c="green.9">{generatedExamName}</Text>
                 </Paper>
               </div>
             )}
-            <div>
-              {selectedSectionIds.length === 0 && filteredSections.length === 0 && (
-                <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-                  {selectedGradeLevelId ? 'No sections found for selected grade level' : 'Select a grade level first'}
-                </Alert>
-              )}
-              {selectedSectionIds.length > 1 && (
-                <Paper p="sm" mt="sm" bg="blue.0" withBorder>
-                  <Group gap="xs">
-                    <IconLink size={16} />
-                    <Text size="xs">
-                      <Text span fw={600}>{selectedSectionIds.length} exams will be created</Text> for sections{' '}
-                      {selectedSectionNames.map(n => `Section ${n}`).join(', ')}. Editing the answer key on any one will update all sections.
-                    </Text>
-                  </Group>
-                </Paper>
-              )}
-              {selectedSectionIds.length === 1 && (
-                <Paper p="sm" mt="sm" bg="green.0" withBorder>
-                  <Text size="xs"><Text span fw={600}>1 exam</Text> will be created for Section {selectedSectionNames[0]}</Text>
-                </Paper>
-              )}
-            </div>
+            {selectedSectionIds.length === 0 && filteredSections.length === 0 && (
+              <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
+                {selectedGradeLevelId ? 'No sections found for selected grade level' : 'Select a grade level first'}
+              </Alert>
+            )}
           </Stack>
         )}
       </Paper>
@@ -744,7 +744,7 @@ export default function CreateExamPage() {
   };
 
   const isNextDisabled = (() => {
-    if (activeStep === 0) return !canGoStep1 || dataLoading || quarters.length === 0;
+    if (activeStep === 0) return !canGoStep1 || dataLoading || !quarters.some((q) => q.is_active) || duplicateSectionIds.size > 0;
     if (activeStep === 2) return uniqueCovered < totalItems;
     return false;
   })();
@@ -784,6 +784,21 @@ export default function CreateExamPage() {
     router.push('/exam');
   };
 
+  const mobileConfirmModalProps = isMobile
+    ? {
+        centered: false,
+        size: '100%',
+        styles: {
+          inner: { alignItems: 'flex-end', padding: 0 },
+          content: {
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
+            marginBottom: 0,
+          },
+        },
+      }
+    : { centered: true };
+
   const handleCancel = () => {
     const defaultObjectiveRow = objectiveRows[0];
     const hasObjectiveProgress = objectiveRows.length > 1 || Boolean(
@@ -820,6 +835,7 @@ export default function CreateExamPage() {
       labels: { confirm: 'Discard', cancel: 'Stay' },
       confirmProps: { color: 'red' },
       onConfirm: resetAndExit,
+      ...mobileConfirmModalProps,
     });
   };
 
@@ -852,7 +868,7 @@ export default function CreateExamPage() {
     />
   );
 
-  if (!dataLoading && hasActiveSchoolYear === false) {
+  if (!dataLoading && (hasActiveSchoolYear === false || !quarters.some((q) => q.is_active))) {
     return (
       <>
         <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
@@ -864,15 +880,18 @@ export default function CreateExamPage() {
   return (
     <>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
-      <Container fluid py="xl" h="100%">
+      <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
         {isMobile ? (
-          <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
-            {stepDescriptions.map((s, i) => (
-              <Stepper.Step key={i} label={s.label} description={s.description}>
-                {stepContent[i]()}
-              </Stepper.Step>
-            ))}
-          </Stepper>
+          <Stack gap="md">
+            <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
+              {stepDescriptions.map((s, i) => (
+                <Stepper.Step key={i} label={s.label} description={s.description}>
+                  {activeStep === i ? stepContent[i]() : null}
+                </Stepper.Step>
+              ))}
+            </Stepper>
+            {navigationButtons}
+          </Stack>
         ) : (
           <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>
             {/* Left: Stepper */}
@@ -884,13 +903,12 @@ export default function CreateExamPage() {
               </Stepper>
             </div>
             {/* Right: Content */}
-            <div style={{ width: '70%' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               {stepContent[activeStep]()}
               {navigationButtons}
             </div>
           </div>
         )}
-        {isMobile && navigationButtons}
       </Container>
     </>
   );

@@ -50,13 +50,13 @@ export const OMR = {
   ROW_H:          22,   // vertical distance between bubble row centers (≥ 2×BUBBLE_R + gap)
   CHOICE_SPACING: 25,   // horizontal distance between choice bubble centers (≥ 2×BUBBLE_R + gap)
   GRID_START_Y:   203,  // y-center of the first row of bubbles
-  ITEMS_PER_COL:  20,   // maximum items per column
+  ITEMS_PER_COL:  25,   // current grade defaults can place up to 25 items per column
 
-  // Column 1 — items 1–20
+  // Column 1 — first half of the items
   COL1_NUM_X: 52,       // x for printing item number text
   COL1_FIRST_BUBBLE_X: 82,  // x-center of choice A in col 1
 
-  // Column 2 — items 21–40
+  // Column 2 — second half of the items
   COL2_NUM_X: 315,
   COL2_FIRST_BUBBLE_X: 345,
 

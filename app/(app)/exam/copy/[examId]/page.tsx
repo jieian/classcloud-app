@@ -31,6 +31,12 @@ const OBJECTIVE_PALETTE = [
   { dot: '#eab308', bg: '#fefce8', border: '#fef08a', text: '#854d0e' },
 ];
 
+type TeacherClassAssignment = {
+  section_id: number;
+  curriculum_subject_id: number;
+  subject_id: number;
+};
+
 export default function CopyExamPage() {
   const router = useRouter();
   const params = useParams();
@@ -57,7 +63,7 @@ export default function CopyExamPage() {
   const [allSections, setAllSections] = useState<Section[]>([]);
   const [subjects, setSubjects] = useState<SubjectWithGradeLevel[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<TeacherClassAssignment[]>([]);
 
   // Original exam data
   const [originalExam, setOriginalExam] = useState<ExamWithRelations | null>(null);
@@ -114,20 +120,28 @@ export default function CopyExamPage() {
 
   const originalSubjectName = originalExam?.curriculum_subjects?.subjects?.name ?? null;
 
+  // Section IDs already assigned to the source exam — must be excluded from destination.
+  const sourceSectionIds = new Set(
+    (originalExam?.exam_assignments ?? []).map(a => a.sections?.section_id).filter(Boolean) as number[]
+  );
+
   const filteredSections = allSections.filter(s => {
     if (!originalExam?.curriculum_subject_id) return false;
+    // Exclude the source section(s).
+    if (sourceSectionIds.has(s.section_id)) return false;
 
-    return assignments.some(a => {
-      if (a.section_id !== s.section_id) return false;
+    if (!hasFullAccess) {
+      return assignments.some(a => {
+        if (a.section_id !== s.section_id) return false;
+        if (a.curriculum_subject_id === originalExam.curriculum_subject_id) return true;
+        if (!originalSubjectName || !originalGradeLevelId) return false;
+        const sub = subjects.find(sub => sub.subject_id === a.subject_id);
+        return sub?.name === originalSubjectName && sub?.grade_level_id === originalGradeLevelId;
+      });
+    }
 
-      // Primary: exact curriculum_subject match
-      if (a.curriculum_subject_id === originalExam.curriculum_subject_id) return true;
-
-      // Fallback: same subject name + same grade level
-      if (!originalSubjectName || !originalGradeLevelId) return false;
-      const sub = subjects.find(sub => sub.subject_id === a.subject_id);
-      return sub?.name === originalSubjectName && sub?.grade_level_id === originalGradeLevelId;
-    });
+    // Admin: show all sections that match the same grade level.
+    return s.grade_level_id === originalGradeLevelId;
   });
 
   const sectionOptions = filteredSections.map(s => ({
@@ -176,10 +190,12 @@ export default function CopyExamPage() {
           required
           hidePickedOptions
           comboboxProps={{ dropdownPadding: 0 }}
-          onOptionSubmit={() => {
-            // Close the dropdown after each selection so it doesn't cover the buttons
-            document.activeElement instanceof HTMLElement && document.activeElement.blur();
-          }}
+	          onOptionSubmit={() => {
+	            // Close the dropdown after each selection so it doesn't cover the buttons.
+	            if (document.activeElement instanceof HTMLElement) {
+	              document.activeElement.blur();
+	            }
+	          }}
         />
         {!canGoStep1 && (
           <Alert icon={<IconPlus size={16} />} title="Selection Required" color="blue" mt="md">
@@ -289,49 +305,49 @@ export default function CopyExamPage() {
 
     setSaving(true);
     try {
+      // Derive the base title by stripping the source section suffix so the API
+      // can append each destination section name independently.
+      const sourceSectionName = originalExam.exam_assignments?.[0]?.sections?.name ?? '';
+      const suffix = sourceSectionName ? ` - ${sourceSectionName}` : '';
+      const titleBase = suffix && originalExam.title.endsWith(suffix)
+        ? originalExam.title.slice(0, -suffix.length)
+        : originalExam.title;
+
       const payload = {
-        title: `${originalExam.title} (Copy)`,
+        title: titleBase,
+        titleSuffix: '(Copy)',
         total_items: originalExam.total_items,
-        exam_date: new Date().toISOString().split('T')[0], // Today
+        exam_date: new Date().toISOString().split('T')[0],
         curriculum_subject_id: originalExam.curriculum_subject_id,
         quarter_id: originalExam.quarter_id,
         description: originalExam.description,
         creator_teacher_id: user?.id,
       };
 
-      const result = await createExamWithAssignments(payload, selectedSectionIds);
+      const { exam_ids } = await createExamWithAssignments(payload, selectedSectionIds);
 
-      if (!result) throw new Error('Failed to create exam');
+      const sanitizedObjectives = (originalExam.objectives ?? [])
+        .map(o => ({
+          objective: o.objective,
+          start_item: Number(o.start_item),
+          end_item: Number(o.end_item),
+        }))
+        .filter(o => o.objective?.trim() && o.start_item > 0 && o.end_item > 0);
 
-      // Copy answer key if exists
-      if (originalExam.answer_key) {
-        const { saveAnswerKey } = await import('@/lib/services/examService');
-        await saveAnswerKey(result.exam_id, originalExam.answer_key);
-      }
-
-      // Copy learning objectives if exist
-      if (originalExam.objectives && originalExam.objectives.length > 0) {
-        const { saveObjectives } = await import('@/lib/services/examService');
-        const sanitizedObjectives = originalExam.objectives
-          .map(o => ({
-            objective: o.objective,
-            start_item: Number(o.start_item),
-            end_item: Number(o.end_item),
-          }))
-          .filter(o => o.objective?.trim() && o.start_item > 0 && o.end_item > 0);
-        if (sanitizedObjectives.length > 0) {
-          await saveObjectives(result.exam_id, sanitizedObjectives);
-        }
-      }
+      const { saveAnswerKey, saveObjectives } = await import('@/lib/services/examService');
+      await Promise.all(exam_ids.map(async (id) => {
+        if (originalExam.answer_key) await saveAnswerKey(id, originalExam.answer_key);
+        if (sanitizedObjectives.length > 0) await saveObjectives(id, sanitizedObjectives);
+      }));
 
       notifications.show({
         title: 'Success',
-        message: 'Exam copied successfully!',
+        message: exam_ids.length > 1 ? `${exam_ids.length} exams copied successfully!` : 'Exam copied successfully!',
         color: 'green',
       });
 
       try { sessionStorage.removeItem(draftKey); } catch { /* ignore */ }
-      router.push(`/exam?newExamId=${result.exam_id}`);
+      router.push(`/exam?newExamIds=${exam_ids.join(',')}`);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       notifications.show({
@@ -349,6 +365,21 @@ export default function CopyExamPage() {
     router.push('/exam');
   };
 
+  const mobileConfirmModalProps = isMobile
+    ? {
+        centered: false,
+        size: '100%',
+        styles: {
+          inner: { alignItems: 'flex-end', padding: 0 },
+          content: {
+            borderBottomLeftRadius: 0,
+            borderBottomRightRadius: 0,
+            marginBottom: 0,
+          },
+        },
+      }
+    : { centered: true };
+
   const handleCancel = () => {
     const hasProgress = activeStep > 0 || selectedSectionIds.length > 0;
     if (!hasProgress) { resetAndExit(); return; }
@@ -358,6 +389,7 @@ export default function CopyExamPage() {
       labels: { confirm: 'Discard', cancel: 'Stay' },
       confirmProps: { color: 'red' },
       onConfirm: resetAndExit,
+      ...mobileConfirmModalProps,
     });
   };
 
@@ -387,15 +419,18 @@ export default function CopyExamPage() {
   return (
     <>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Copy Examination</h1>
-      <Container fluid py="xl" h="100%">
+      <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
         {isMobile ? (
-          <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
-            {stepDescriptions.map((s, i) => (
-              <Stepper.Step key={i} label={s.label} description={s.description}>
-                {stepContent[i]()}
-              </Stepper.Step>
-            ))}
-          </Stepper>
+          <Stack gap="md">
+            <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
+              {stepDescriptions.map((s, i) => (
+                <Stepper.Step key={i} label={s.label} description={s.description}>
+                  {activeStep === i ? stepContent[i]() : null}
+                </Stepper.Step>
+              ))}
+            </Stepper>
+            {navigationButtons}
+          </Stack>
         ) : (
           <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>
             {/* Left: Stepper */}
@@ -407,13 +442,12 @@ export default function CopyExamPage() {
               </Stepper>
             </div>
             {/* Right: Content */}
-            <div style={{ width: '70%' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               {stepContent[activeStep]()}
               {navigationButtons}
             </div>
           </div>
         )}
-        {isMobile && navigationButtons}
       </Container>
     </>
   );

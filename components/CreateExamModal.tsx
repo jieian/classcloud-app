@@ -5,6 +5,7 @@ import {
   Modal, TextInput, Select, MultiSelect, Button, Stack, Group, Paper, Text, Alert, Loader,
 } from '@mantine/core';
 import { IconCheck, IconLink, IconAlertCircle, IconMinus, IconPlus } from '@tabler/icons-react';
+import { useMediaQuery } from '@mantine/hooks';
 import { fetchSubjectsWithGradeLevels, SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
@@ -44,6 +45,7 @@ interface CreateExamModalProps {
 export default function CreateExamModal({ onClose, onProceed, initialDraft, existingTitles = [] }: CreateExamModalProps) {
   const { user, permissions } = useAuth();
   const hasFullAccess = permissions.includes('exams.full_access');
+  const isMobile = useMediaQuery('(max-width: 640px)');
 
   const [step, setStep] = useState(0);
 
@@ -163,6 +165,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
       onClose={onClose}
       title="Create Examination"
       size="lg"
+      fullScreen={isMobile}
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
     >
       <Stack gap="md">
@@ -189,7 +192,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
                 onChange={(e) => setExamName(e.currentTarget.value)}
               />
 
-              <Group grow>
+              <Group grow wrap="wrap">
                 <Select
                   label="Grade Level"
                   placeholder="Select grade"
@@ -220,7 +223,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
                 />
               </Group>
 
-              <Group justify="flex-end" mt="md">
+              <Group justify="flex-end" mt="md" wrap="wrap">
                 <Button variant="default" onClick={onClose}>Cancel</Button>
                 <Button color="#4EAE4A" onClick={() => setStep(1)} disabled={!canGoStep1 || dataLoading}>Next</Button>
               </Group>
@@ -231,10 +234,10 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
         {/* ── Step 1: Items + Choices ── */}
         {step === 1 && (
           <>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Number of Items</p>
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <button type="button" onClick={() => setTotalItems(prev => Math.max(10, prev - 1))} disabled={totalItems <= 10}
                     className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalItems <= 10 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
                     <IconMinus className="w-4 h-4" />
@@ -255,7 +258,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
 
               <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
                 <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Choices per Item</p>
-                <div className="flex items-center justify-center gap-3">
+                <div className="flex flex-wrap items-center justify-center gap-3">
                   <button type="button" onClick={() => setNumChoices(prev => Math.max(2, prev - 1))} disabled={numChoices <= 2}
                     className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
                     <IconMinus className="w-4 h-4" />
@@ -278,7 +281,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
               </div>
             </div>
 
-            <Group justify="flex-end" mt="md">
+            <Group justify="flex-end" mt="md" wrap="wrap">
               <Button variant="default" onClick={() => setStep(0)}>Back</Button>
               <Button color="#4EAE4A" onClick={handleProceed}>Next</Button>
             </Group>

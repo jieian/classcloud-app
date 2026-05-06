@@ -499,6 +499,39 @@ function regionEdgeDensity(edges, x, y, w, h) {
   return edgeCount / (rw * rh);
 }
 
+function regionTextureScore(gray, edges, x, y, w, h) {
+  const rx = Math.max(0, Math.min(gray.cols - 1, Math.floor(x)));
+  const ry = Math.max(0, Math.min(gray.rows - 1, Math.floor(y)));
+  const rw = Math.max(0, Math.min(gray.cols - rx, Math.floor(w)));
+  const rh = Math.max(0, Math.min(gray.rows - ry, Math.floor(h)));
+  if (rw < 8 || rh < 8) return 0;
+
+  const rect = new cv.Rect(rx, ry, rw, rh);
+  const grayRoi = gray.roi(rect);
+  const edgeRoi = edges.roi(rect);
+  const mean = new cv.Mat();
+  const stddev = new cv.Mat();
+
+  try {
+    cv.meanStdDev(grayRoi, mean, stddev);
+    const std = stddev.data64F[0];
+    const edgeDensity = cv.countNonZero(edgeRoi) / (rw * rh);
+
+    const dark = new cv.Mat();
+    cv.threshold(grayRoi, dark, 150, 255, cv.THRESH_BINARY_INV);
+    const darkRatio = cv.countNonZero(dark) / (rw * rh);
+    dark.delete();
+
+    const darkBonus = darkRatio > 0.08 && darkRatio < 0.65 ? 1 : 0;
+    return std * 0.02 + edgeDensity * 10 + darkBonus;
+  } finally {
+    grayRoi.delete();
+    edgeRoi.delete();
+    mean.delete();
+    stddev.delete();
+  }
+}
+
 // Extra orientation signal from known page layout:
 // - top header area is denser than footer area
 // - QR corner (top-right) is denser than the opposite corner (bottom-left)
@@ -532,9 +565,17 @@ function layoutOrientationScore(buffer, width, height) {
     const oppositeQrY = Math.round((OMR.PAGE_H - OMR.QR_Y - OMR.QR_SIZE) * S) - qrPad;
     const oppositeQrDensity = regionEdgeDensity(edges, oppositeQrX, oppositeQrY, qrW, qrH);
 
+    const qrTexture = regionTextureScore(gray, edges, qrX, qrY, qrW, qrH);
+    const otherQrTexture = Math.max(
+      regionTextureScore(gray, edges, oppositeQrX, qrY, qrW, qrH),
+      regionTextureScore(gray, edges, qrX, oppositeQrY, qrW, qrH),
+      regionTextureScore(gray, edges, oppositeQrX, oppositeQrY, qrW, qrH)
+    );
+
     const score =
       (topDensity - bottomDensity) * 90 +
-      (qrDensity - oppositeQrDensity) * 140;
+      (qrDensity - oppositeQrDensity) * 140 +
+      (qrTexture - otherQrTexture) * 8;
 
     return {
       score,
@@ -542,6 +583,8 @@ function layoutOrientationScore(buffer, width, height) {
       bottomDensity,
       qrDensity,
       oppositeQrDensity,
+      qrTexture,
+      otherQrTexture,
     };
   } finally {
     src.delete();
