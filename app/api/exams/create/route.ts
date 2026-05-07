@@ -125,7 +125,9 @@ const _POST = async function(request: Request) {
   const createdExamIds: number[] = [];
   for (const sectionId of nonDuplicateSectionIds) {
     const sectionName = sectionNameMap.get(sectionId) ?? String(sectionId);
-    const examTitle = `${payload.title} - ${sectionName}${payload.titleSuffix ? ` ${payload.titleSuffix}` : ''}`;
+    const examTitle = payload.skipSectionSuffix
+      ? payload.title
+      : `${payload.title} - ${sectionName}${payload.titleSuffix ? ` ${payload.titleSuffix}` : ''}`;
 
     const { data: examRow, error: examError } = await adminClient
       .from("exams")

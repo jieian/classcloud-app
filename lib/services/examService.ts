@@ -50,6 +50,7 @@ function getErrorMessageFromPayload(
 export type CreateExamPayload = {
   title: string;
   titleSuffix?: string;
+  skipSectionSuffix?: boolean;
   total_items: number;
   exam_date: string;
   description?: string | null;
@@ -213,6 +214,26 @@ export async function createExamWithAssignments(
   return body as { exam_ids: number[] };
 }
 
+
+// ─── Duplicate check (client-side, used in copy flow) ────────────────────────
+
+export async function checkDuplicateExamSections(
+  sectionIds: number[],
+  curriculumSubjectId: number,
+  quarterId: number,
+): Promise<Set<number>> {
+  if (sectionIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from("exam_assignments")
+    .select("section_id, exams!inner(curriculum_subject_id, quarter_id, deleted_at)")
+    .in("section_id", sectionIds)
+    .eq("exams.curriculum_subject_id", curriculumSubjectId)
+    .eq("exams.quarter_id", quarterId)
+    .is("exams.deleted_at", null);
+
+  if (error) return new Set();
+  return new Set((data ?? []).map((row: any) => row.section_id as number));
+}
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 

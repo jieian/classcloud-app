@@ -20,7 +20,10 @@ export default function Exam() {
         </div>
       }
     >
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Examinations</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-3xl font-bold text-[#597D37]">Examinations</h1>
+        <div id="exam-header-actions" />
+      </div>
       <ExamPageClient />
     </ProtectedRoute>
   );

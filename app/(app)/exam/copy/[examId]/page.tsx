@@ -4,18 +4,19 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   Container, Stepper, Group, Text, rem, Paper, Stack,
-  MultiSelect, Alert, Loader,
+  MultiSelect, Alert, Loader, ThemeIcon,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus,
+  IconAlertTriangle,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
-import { createExamWithAssignments, fetchExamById } from '@/lib/services/examService';
+import { createExamWithAssignments, fetchExamById, checkDuplicateExamSections } from '@/lib/services/examService';
 import type { Section, ExamWithRelations } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
@@ -70,12 +71,26 @@ export default function CopyExamPage() {
 
   // Step 0 — Select Sections
   const [selectedSectionIds, setSelectedSectionIds] = useState<number[]>(d?.sectionIds ?? []);
+  const [duplicateSectionIds, setDuplicateSectionIds] = useState<Set<number>>(new Set());
 
   // Save draft whenever step or sections change
   useEffect(() => {
     try { sessionStorage.setItem(draftKey, JSON.stringify({ step: activeStep, sectionIds: selectedSectionIds })); }
     catch { /* ignore */ }
   }, [activeStep, selectedSectionIds, draftKey]);
+
+  // Check for duplicate sections as soon as they are selected
+  useEffect(() => {
+    if (!originalExam?.curriculum_subject_id || !originalExam?.quarter_id || selectedSectionIds.length === 0) {
+      setDuplicateSectionIds(new Set());
+      return;
+    }
+    checkDuplicateExamSections(
+      selectedSectionIds,
+      originalExam.curriculum_subject_id,
+      originalExam.quarter_id,
+    ).then(setDuplicateSectionIds);
+  }, [selectedSectionIds, originalExam?.curriculum_subject_id, originalExam?.quarter_id]);
 
   useEffect(() => {
     if (!Number.isFinite(examId)) return;
@@ -154,7 +169,8 @@ export default function CopyExamPage() {
     return section?.name ?? '';
   });
 
-  const canGoStep1 = selectedSectionIds.length > 0;
+  const allDuplicates = selectedSectionIds.length > 0 && duplicateSectionIds.size === selectedSectionIds.length;
+  const canGoStep1 = selectedSectionIds.length > 0 && !allDuplicates;
 
   const nextStep = () => setActiveStep((current) => (current < 1 ? current + 1 : current));
   const prevStep = () => setActiveStep((current) => (current > 0 ? current - 1 : current));
@@ -197,7 +213,43 @@ export default function CopyExamPage() {
 	            }
 	          }}
         />
-        {!canGoStep1 && (
+        {duplicateSectionIds.size > 0 && duplicateSectionIds.size === selectedSectionIds.length && (
+          <Alert
+            variant="filled"
+            radius="md"
+            mt="md"
+            styles={{
+              root: { backgroundColor: '#FF6666' },
+              icon: { alignSelf: 'center', marginTop: 0 },
+            }}
+            icon={
+              <ThemeIcon color="white" variant="transparent" size="md">
+                <IconAlertTriangle size={20} />
+              </ThemeIcon>
+            }
+          >
+            <Text fw={700} size="sm">Cannot Copy to Selected Sections</Text>
+            <Text size="sm" fs="italic">
+              An examination for <Text span fw={700} fs="normal">{originalSubjectName ?? 'this subject'}</Text> already
+              exists in all selected sections for the current term. Please select different sections to proceed.
+            </Text>
+          </Alert>
+        )}
+        {duplicateSectionIds.size > 0 && duplicateSectionIds.size < selectedSectionIds.length && (
+          <Alert icon={<IconAlertTriangle size={16} />} title="Some Sections Will Be Skipped" color="yellow" mt="md">
+            <Text size="sm">
+              The following sections already have an examination for <Text span fw={700}>{originalSubjectName ?? 'this subject'}</Text> this
+              term and will not receive a copy:{' '}
+              <Text span fw={700}>
+                {allSections
+                  .filter(s => duplicateSectionIds.has(s.section_id))
+                  .map(s => s.name)
+                  .join(', ')}
+              </Text>. Only the remaining sections will be included.
+            </Text>
+          </Alert>
+        )}
+        {!canGoStep1 && duplicateSectionIds.size === 0 && (
           <Alert icon={<IconPlus size={16} />} title="Selection Required" color="blue" mt="md">
             Please select at least one section to copy the exam to.
           </Alert>
@@ -315,7 +367,7 @@ export default function CopyExamPage() {
 
       const payload = {
         title: titleBase,
-        titleSuffix: '(Copy)',
+        skipSectionSuffix: true,
         total_items: originalExam.total_items,
         exam_date: new Date().toISOString().split('T')[0],
         curriculum_subject_id: originalExam.curriculum_subject_id,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Title,
@@ -36,6 +37,7 @@ import {
   IconUsers,
   IconBook,
   IconKey,
+  IconBinoculars,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
@@ -88,6 +90,7 @@ export default function ExamPageClient() {
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<"admin" | "faculty">("admin");
 
   // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
@@ -159,6 +162,18 @@ export default function ExamPageClient() {
   const [assignedSectionSubjectPairs, setAssignedSectionSubjectPairs] =
     useState<Set<string>>(new Set());
 
+  // Admin with teaching load can switch between views; others stay in their natural view.
+  // effectiveFullAccess is false when an admin opts into Faculty View.
+  const showViewToggle =
+    hasFullAccess && allowedSectionIds !== null && allowedSectionIds.size > 0;
+  const effectiveFullAccess = hasFullAccess && viewMode === "admin";
+
+  // In admin view: no section/subject filter (see all). In faculty view: restrict to assigned.
+  const effectiveAllowedSectionIds = effectiveFullAccess ? null : allowedSectionIds;
+  const effectiveAllowedCurriculumSubjectIds = effectiveFullAccess
+    ? null
+    : allowedCurriculumSubjectIds;
+
   const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(true);
   const [hasActiveTerm, setHasActiveTerm] = useState(true);
 
@@ -166,7 +181,9 @@ export default function ExamPageClient() {
     setLoading(true);
     setDbError(null);
     try {
-      const teacherId = hasFullAccess ? undefined : user?.id;
+      const isEffectiveFullAccess =
+        permissions.includes("exams.full_access") && viewMode === "admin";
+      const teacherId = isEffectiveFullAccess ? undefined : user?.id;
       const data = await fetchExamsWithRelations(teacherId);
       setExams(data);
       setLoading(false);
@@ -209,7 +226,15 @@ export default function ExamPageClient() {
       setAssignedSectionSubjectPairs(new Set());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, hasFullAccess]);
+  }, [authLoading, user?.id, hasFullAccess, viewMode]);
+
+  // Reset to admin view if the user no longer has a teaching load (e.g. load removed mid-session)
+  useEffect(() => {
+    if (!showViewToggle && viewMode === "faculty") {
+      setViewMode("admin");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showViewToggle]);
 
   const gradeLevelOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -217,8 +242,8 @@ export default function ExamPageClient() {
       for (const a of exam.exam_assignments ?? []) {
         const sectionId = a.sections?.section_id;
         if (
-          allowedSectionIds &&
-          (sectionId == null || !allowedSectionIds.has(sectionId))
+          effectiveAllowedSectionIds &&
+          (sectionId == null || !effectiveAllowedSectionIds.has(sectionId))
         )
           continue;
         const name = a.sections?.grade_levels?.display_name;
@@ -228,7 +253,7 @@ export default function ExamPageClient() {
     return Array.from(seen)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, allowedSectionIds]);
+  }, [exams, effectiveAllowedSectionIds]);
 
   const sectionOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -236,8 +261,8 @@ export default function ExamPageClient() {
       for (const a of exam.exam_assignments ?? []) {
         const sectionId = a.sections?.section_id;
         if (
-          allowedSectionIds &&
-          (sectionId == null || !allowedSectionIds.has(sectionId))
+          effectiveAllowedSectionIds &&
+          (sectionId == null || !effectiveAllowedSectionIds.has(sectionId))
         )
           continue;
         if (
@@ -252,11 +277,11 @@ export default function ExamPageClient() {
     return Array.from(seen)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, selectedGradeLevel, allowedSectionIds]);
+  }, [exams, selectedGradeLevel, effectiveAllowedSectionIds]);
 
   const canDeleteExam = (exam: ExamWithRelations): boolean => {
     if (!exam.curriculum_subject_id) return false;
-    if (hasFullAccess) return true;
+    if (effectiveFullAccess) return true;
     // Creator can always delete their own exam (covers copies assigned to SSES/cross-type sections)
     if (user?.id && exam.creator_teacher_id === user.id) return true;
     if (assignedSectionSubjectPairs.size === 0) return false;
@@ -290,8 +315,8 @@ export default function ExamPageClient() {
         filtered
           .filter(
             (e) =>
-              !allowedCurriculumSubjectIds ||
-              allowedCurriculumSubjectIds.has(e.curriculum_subject_id),
+              !effectiveAllowedCurriculumSubjectIds ||
+              effectiveAllowedCurriculumSubjectIds.has(e.curriculum_subject_id),
           )
           .map((e) => e.curriculum_subjects?.subjects?.name)
           .filter(Boolean) as string[],
@@ -299,7 +324,7 @@ export default function ExamPageClient() {
     )
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, selectedGradeLevel, allowedCurriculumSubjectIds]);
+  }, [exams, selectedGradeLevel, effectiveAllowedCurriculumSubjectIds]);
 
   useEffect(() => {
     setSelectedSection(null);
@@ -464,39 +489,45 @@ export default function ExamPageClient() {
               <span className="text-[#808898]">({filteredExams.length})</span>
             )}
           </h1>
-          {loading ? (
-            <Stack gap={4} style={{ alignItems: "flex-end" }}>
-              <Text size="xs" c="dimmed">
-                Create Exam
-              </Text>
-              <Skeleton height={40} width={140} radius="md" />
-            </Stack>
-          ) : hasActiveSchoolYear && hasActiveTerm ? (
-            <Tooltip
-              label={
-                "You need to be assigned to at least one class before you can create exams."
-              }
-              disabled={
-                hasFullAccess || !allowedSectionIds || allowedSectionIds.size > 0
-              }
-              withArrow
-              multiline
-              w={240}
-            >
-              <div style={{ display: "inline-block" }}>
-                <Button
-                  color="#4EAE4A"
-                  radius="md"
-                  onClick={() => router.push("/exam/create")}
-                  disabled={
-                    (!hasFullAccess && !!allowedSectionIds && allowedSectionIds.size === 0)
-                  }
-                >
+          <Stack gap="xs" align="flex-end">
+            {loading ? (
+              <Stack gap={4} style={{ alignItems: "flex-end" }}>
+                <Text size="xs" c="dimmed">
                   Create Exam
-                </Button>
-              </div>
-            </Tooltip>
-          ) : null}
+                </Text>
+                <Skeleton height={40} width={140} radius="md" />
+              </Stack>
+            ) : hasActiveSchoolYear && hasActiveTerm ? (
+              <Tooltip
+                label={
+                  "You need to be assigned to at least one class before you can create exams."
+                }
+                disabled={
+                  effectiveFullAccess ||
+                  !effectiveAllowedSectionIds ||
+                  effectiveAllowedSectionIds.size > 0
+                }
+                withArrow
+                multiline
+                w={240}
+              >
+                <div style={{ display: "inline-block" }}>
+                  <Button
+                    color="#4EAE4A"
+                    radius="md"
+                    onClick={() => router.push("/exam/create")}
+                    disabled={
+                      !effectiveFullAccess &&
+                      !!effectiveAllowedSectionIds &&
+                      effectiveAllowedSectionIds.size === 0
+                    }
+                  >
+                    Create Exam
+                  </Button>
+                </div>
+              </Tooltip>
+            ) : null}
+          </Stack>
         </Group>
         <p className="mb-3 text-sm text-[#808898]">
           Manage and track all examinations
@@ -716,7 +747,7 @@ export default function ExamPageClient() {
                                   </ActionIcon>
                                 </Menu.Target>
                                 <Menu.Dropdown>
-                                  {hasFullAccess && (
+                                  {effectiveFullAccess && (
                                     <>
                                       <Menu.Label>Status</Menu.Label>
                                       <Menu.Item
@@ -900,6 +931,30 @@ export default function ExamPageClient() {
           </Button>
         </Group>
       </Modal>
+
+      {!authLoading && showViewToggle &&
+        typeof document !== "undefined" &&
+        (() => {
+          const el = document.getElementById("exam-header-actions");
+          return el
+            ? createPortal(
+                <Button
+                  variant="filled"
+                  color="#4A72AE"
+                  radius="md"
+                  leftSection={<IconBinoculars size={16} stroke={1.5} />}
+                  onClick={() =>
+                    setViewMode(viewMode === "admin" ? "faculty" : "admin")
+                  }
+                >
+                  {viewMode === "admin"
+                    ? "Switch to Faculty View"
+                    : "Switch to Admin View"}
+                </Button>,
+                el,
+              )
+            : null;
+        })()}
     </>
   );
 }

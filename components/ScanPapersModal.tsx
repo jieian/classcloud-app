@@ -576,11 +576,11 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
           {step === 'capture' && (
             <div className="space-y-5">
               {processingError && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
-                  <IconAlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                <div className="rounded-xl p-4 flex gap-3" style={{ backgroundColor: '#FF6666' }}>
+                  <IconAlertTriangle className="w-5 h-5 text-white flex-shrink-0 mt-0.5" />
                   <div>
-                    <p className="font-semibold text-red-700">Processing failed</p>
-                    <p className="text-red-600 text-sm mt-1">{processingError}</p>
+                    <p className="font-bold text-white text-sm">Processing Failed</p>
+                    <p className="text-white text-sm italic mt-0.5">{processingError}</p>
                   </div>
                 </div>
               )}

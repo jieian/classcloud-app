@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ActionIcon,
+  Alert,
   Badge,
   Box,
   Button,
@@ -21,6 +22,7 @@ import {
   TableThead,
   TableTr,
   Text,
+  ThemeIcon,
   Title,
   Tooltip,
   Stack,
@@ -931,15 +933,24 @@ export default function ScanPapersPage() {
             )}
 
             {processingError && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
-                <IconAlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-semibold text-red-700">
-                    {processingError.startsWith('Wrong answer sheet') ? 'Wrong Answer Sheet' : 'Processing Failed'}
-                  </p>
-                  <p className="text-red-600 text-sm mt-1">{processingError}</p>
-                </div>
-              </div>
+              <Alert
+                variant="filled"
+                radius="md"
+                styles={{
+                  root: { backgroundColor: '#FF6666' },
+                  icon: { alignSelf: 'center', marginTop: 0 },
+                }}
+                icon={
+                  <ThemeIcon color="white" variant="transparent" size="md">
+                    <IconAlertTriangle size={20} />
+                  </ThemeIcon>
+                }
+              >
+                <Text fw={700} size="sm">
+                  {processingError.includes('answer sheet is for') ? 'Wrong Answer Sheet' : 'Processing Failed'}
+                </Text>
+                <Text size="sm" fs="italic">{processingError}</Text>
+              </Alert>
             )}
 
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
