@@ -115,6 +115,11 @@ export default function CreateExamPage() {
   const [duplicateSectionIds, setDuplicateSectionIds] = useState<Set<number>>(new Set());
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+  const [isFacultyView] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("examViewMode") === "faculty",
+  );
+  // An admin in faculty view is treated as restricted — only their assigned sections/subjects.
+  const isRestricted = !hasFullAccess || isFacultyView;
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
@@ -157,7 +162,8 @@ export default function CreateExamPage() {
       if (user?.id) {
         const assignments = await fetchTeacherClassAssignments(user.id);
         setTeacherAssignments(assignments);
-        if (!hasFullAccess) {
+        const viewMode = typeof window !== "undefined" && localStorage.getItem("examViewMode");
+        if (!hasFullAccess || viewMode === "faculty") {
           setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
           setAllowedSubjectIds(new Set(assignments.map(a => a.curriculum_subject_id)));
         }
@@ -243,7 +249,7 @@ export default function CreateExamPage() {
   // (intersection, not union) so only valid overlapping subjects appear in the dropdown.
   // Falls back to the global allowedSubjectIds (or null for full-access) when no sections are chosen yet.
   const sectionAwareSubjectIds = (() => {
-    if (hasFullAccess || selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
+    if (!isRestricted || selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
     const perSection = selectedSectionIds.map(
       sectionId => new Set(teacherAssignments.filter(a => a.section_id === sectionId).map(a => a.curriculum_subject_id))
     );
@@ -269,11 +275,9 @@ export default function CreateExamPage() {
     return `${term} - ${subjectCode}`;
   })();
 
-  const generatedExamName = (() => {
-    const sectionPart = selectedSectionNames.join(' & ');
-    if (!titleBase || !sectionPart) return '';
-    return `${titleBase} - ${sectionPart}`;
-  })();
+  const generatedExamNames: string[] = titleBase
+    ? selectedSectionNames.map((name) => `${titleBase} - ${name}`)
+    : [];
 
   const canGoStep1 = Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
@@ -396,6 +400,7 @@ export default function CreateExamPage() {
                 label="Grade Level"
                 placeholder="Select grade"
                 required
+                clearable
                 data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
                 value={selectedGradeLevelId}
                 onChange={setSelectedGradeLevelId}
@@ -414,6 +419,7 @@ export default function CreateExamPage() {
                 label="Subject"
                 placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                 required
+                clearable
                 data={filteredSubjects.map(s => ({ value: String(s.curriculum_subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
@@ -421,13 +427,15 @@ export default function CreateExamPage() {
                 error={duplicateSectionIds.size > 0 ? 'An examination for this subject already exists for the active term.' : undefined}
               />
             </Group>
-            {generatedExamName && (
+            {generatedExamNames.length > 0 && (
               <div>
                 <Text size="sm" fw={500} mb={4}>
-                  Examination Name
+                  Examination Name{generatedExamNames.length > 1 ? 's' : ''}
                 </Text>
                 <Paper withBorder p="sm" radius="sm" bg="green.0" style={{ borderColor: 'var(--mantine-color-green-3)' }}>
-                  <Text fw={600} c="green.9">{generatedExamName}</Text>
+                  {generatedExamNames.map((name) => (
+                    <Text key={name} fw={600} c="green.9">{name}</Text>
+                  ))}
                 </Paper>
               </div>
             )}
@@ -715,7 +723,7 @@ export default function CreateExamPage() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {[
-                ['Exam', generatedExamName],
+                ['Exam', generatedExamNames.join('\n')],
                 ['Grade', gradeLabel],
                 ['Subject', subjectName],
                 ['Section(s)', sectionNames],
@@ -724,7 +732,7 @@ export default function CreateExamPage() {
               ].map(([label, value]) => (
                 <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  <p className="font-semibold text-gray-900 truncate">{value}</p>
+                  <p className="font-semibold text-gray-900 break-words" style={{ whiteSpace: 'pre-line' }}>{value}</p>
                 </div>
               ))}
             </div>
@@ -786,18 +794,16 @@ export default function CreateExamPage() {
 
   const mobileConfirmModalProps = isMobile
     ? {
-        centered: false,
-        size: '100%',
         styles: {
-          inner: { alignItems: 'flex-end', padding: 0 },
+          inner: { alignItems: 'flex-end', paddingBottom: '20px' },
           content: {
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-            marginBottom: 0,
+            width: '100%',
+            maxWidth: '100%',
+            borderRadius: '12px 12px 0 0',
           },
         },
       }
-    : { centered: true };
+    : {};
 
   const handleCancel = () => {
     const defaultObjectiveRow = objectiveRows[0];

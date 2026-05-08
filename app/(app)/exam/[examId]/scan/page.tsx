@@ -3,12 +3,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ActionIcon,
   Alert,
-  Badge,
   Box,
   Button,
   Container,
+  Divider,
   Group,
   Paper,
   Progress,
@@ -24,7 +23,6 @@ import {
   Text,
   ThemeIcon,
   Title,
-  Tooltip,
   Stack,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
@@ -33,6 +31,7 @@ import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
   IconRefresh,
   IconDownload,
+  IconGenderBigender,
 } from '@tabler/icons-react';
 import { processAnswerSheet } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
@@ -126,7 +125,7 @@ export default function ScanPapersPage() {
   const [existingAttempts, setExistingAttempts] = useState<ExamScore[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<RosterStudent | null>(null);
   const [studentSearch, setStudentSearch] = useState('');
-  const [sectionFilter, setSectionFilter] = useState<number | null>(null);
+  const [sexFilter, setSexFilter] = useState<string>('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -241,10 +240,6 @@ export default function ScanPapersPage() {
 
       setExistingAttempts(attempts);
       setRosterStudents(all);
-      setSectionFilter(current => {
-        if (current != null && all.some(student => student.section_id === current)) return current;
-        return all[0]?.section_id ?? null;
-      });
     } catch (err) {
       console.error('[ScanPage] Failed to load scan roster data:', err);
     } finally {
@@ -264,19 +259,12 @@ export default function ScanPapersPage() {
   }
   const getStudentAttempt = (s: RosterStudent) => attemptByEnrollment.get(s.enrollment_id);
 
-  const sections = Array.from(
-    new Map(rosterStudents.map(s => [s.section_id, { section_id: s.section_id, section_name: s.section_name, grade_level_display: s.grade_level_display }])).values()
-  );
-  const sectionOptions = sections.map(section => ({
-    value: String(section.section_id),
-    label: `${section.grade_level_display} - ${section.section_name}`,
-  }));
 
   const filteredStudents = rosterStudents.filter(s => {
     const q = studentSearch.toLowerCase();
     const matchesSearch = !q || s.full_name.toLowerCase().includes(q) || s.lrn.includes(q);
-    const matchesSection = sectionFilter == null || s.section_id === sectionFilter;
-    return matchesSearch && matchesSection;
+    const matchesSex = sexFilter === '' || s.sex === sexFilter;
+    return matchesSearch && matchesSex;
   });
   const maleStudents = filteredStudents.filter((s) => s.sex === 'M');
   const femaleStudents = filteredStudents.filter((s) => s.sex === 'F');
@@ -437,18 +425,16 @@ export default function ScanPapersPage() {
 
   const mobileConfirmModalProps = isMobile
     ? {
-        centered: false,
-        size: '100%',
         styles: {
-          inner: { alignItems: 'flex-end', padding: 0 },
+          inner: { alignItems: 'flex-end', paddingBottom: '20px' },
           content: {
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-            marginBottom: 0,
+            width: '100%',
+            maxWidth: '100%',
+            borderRadius: '12px 12px 0 0',
           },
         },
       }
-    : { centered: true };
+    : {};
 
   const resetScanState = () => {
     stopCamera();
@@ -686,22 +672,37 @@ export default function ScanPapersPage() {
               color="gray"
               leftSection={<IconDownload size={16} />}
               size="sm"
+              w={isMobile ? '100%' : 180}
               loading={exportingCsv}
               disabled={exportingCsv || scannedStudentsCount === 0}
               onClick={handleExportCsv}
-              fullWidth={isMobile}
             >
               Download Results
             </Button>
+            {rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+              <Button
+                variant="filled"
+                size="sm"
+                w={isMobile ? '100%' : 180}
+                styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
+                onClick={() => router.push('/reports')}
+              >
+                Proceed to Reports
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                color="gray"
+                size="sm"
+                w={isMobile ? '100%' : 180}
+                disabled
+              >
+                Scanned {scannedStudentsCount}/{rosterStudents.length}
+              </Button>
+            )}
           </Group>
 
           <Paper withBorder radius="md" p="md">
-            <Group justify="space-between" mb="xs">
-              <Text size="sm" fw={600} c="dimmed">Scan Progress</Text>
-              <Badge color="green" variant="light">
-                {scannedStudentsCount} / {rosterStudents.length} scanned
-              </Badge>
-            </Group>
             <Progress value={scanProgressPercent} color="#4EAE4A" radius="xl" size="sm" />
           </Paper>
 
@@ -715,30 +716,18 @@ export default function ScanPapersPage() {
               onChange={e => setStudentSearch(e.target.value)}
             />
             <Select
-              placeholder="Section"
-              data={sectionOptions}
-              value={sectionFilter == null ? null : String(sectionFilter)}
-              onChange={(value) => {
-                setSectionFilter(value ? Number(value) : null);
-                setStudentSearch('');
-              }}
-              w={isMobile ? '100%' : 220}
-              clearable={sections.length > 1}
-              disabled={sections.length === 0}
+              data={[
+                { value: '', label: 'All Sexes' },
+                { value: 'M', label: 'Male' },
+                { value: 'F', label: 'Female' },
+              ]}
+              value={sexFilter}
+              onChange={(v) => setSexFilter(v ?? '')}
+              placeholder="All Sexes"
+              leftSection={<IconGenderBigender size={16} />}
+              w={isMobile ? '100%' : 140}
+              clearable={false}
             />
-            <Tooltip label="Refresh" position="bottom" withArrow>
-              <ActionIcon
-                variant="outline"
-                color="#808898"
-                size="lg"
-                radius="xl"
-                onClick={loadRosterAndAttempts}
-                loading={rosterLoading}
-                aria-label="Refresh scan roster"
-              >
-                <IconRefresh size={18} stroke={1.5} />
-              </ActionIcon>
-            </Tooltip>
           </Group>
 
           <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: '100%' }}>
@@ -808,9 +797,7 @@ export default function ScanPapersPage() {
                                   >
                                     {student.full_name}
                                   </Text>
-                                  {sectionFilter == null && (
-                                    <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
-                                  )}
+                                  <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
                                 </TableTd>
                                 <TableTd ta="center">
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
@@ -861,9 +848,7 @@ export default function ScanPapersPage() {
                                   >
                                     {student.full_name}
                                   </Text>
-                                  {sectionFilter == null && (
-                                    <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
-                                  )}
+                                  <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
                                 </TableTd>
                                 <TableTd ta="center">
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
@@ -919,23 +904,44 @@ export default function ScanPapersPage() {
 
         {/* STEP: CAPTURE */}
         {step === 'capture' && (
-          <div className="space-y-5">
+          <Paper withBorder radius="md" p="lg">
+            <Text size="lg" fw={700} c="#3D9B39">Scan Answer Sheet</Text>
+            <Divider my="md" />
+
+            {/* Selected Student */}
             {selectedStudent && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <IconCircleCheck className="w-5 h-5 text-blue-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
-                  <p className="text-xs text-blue-500">
-                    {selectedStudent.grade_level_display} – {selectedStudent.section_name} · LRN: {selectedStudent.lrn}
-                  </p>
+              <>
+                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4">
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
+                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
+                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
+                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
+                  </div>
                 </div>
-              </div>
+                <Divider mb="md" />
+              </>
             )}
 
+            {/* Exam Information */}
+            <Text fw={600} size="sm" c="#3D9B39" mb="sm">Exam Information</Text>
+            <Text fw={550} size="md">{exam.title}</Text>
+            <Text size="xs" c="dimmed" mt={2} mb="md">{totalItems} items</Text>
+            <Divider mb="md" />
+
+            {/* Processing Error */}
             {processingError && (
               <Alert
                 variant="filled"
                 radius="md"
+                mb="md"
                 styles={{
                   root: { backgroundColor: '#FF6666' },
                   icon: { alignSelf: 'center', marginTop: 0 },
@@ -953,20 +959,11 @@ export default function ScanPapersPage() {
               </Alert>
             )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-              <p className="font-semibold mb-1">Tips for best results:</p>
-              <ul className="space-y-0.5 list-disc list-inside text-xs">
-                <li>Place sheet on a dark, flat surface with good lighting</li>
-                <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
-                <li>Avoid glare and shadows; hold camera directly above the sheet</li>
-                <li>Ensure student has filled bubbles darkly and completely</li>
-              </ul>
-            </div>
-
+            {/* Camera active */}
             {(cameraActive || startingCamera) && (
               <div>
                 <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                {startingCamera && <p className="text-xs text-gray-500 mt-2">Initializing camera...</p>}
+                {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
                 <Group mt="sm">
                   <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
                     Capture
@@ -976,27 +973,47 @@ export default function ScanPapersPage() {
               </div>
             )}
 
+            {/* Image preview */}
             {previewUrl && !cameraActive && (
-              <div className="space-y-3">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
-              </div>
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
             )}
 
+            {/* Upload section */}
             {!cameraActive && !previewUrl && (
-              <div className="space-y-3">
-                <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
-                  <p className="font-semibold mb-1">📷 Photo tips for best results</p>
-                  <ul className="list-disc list-inside space-y-0.5 text-blue-700">
-                    <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
-                    <li>All <strong>4 black corner squares</strong> must be visible</li>
-                    <li>Good lighting — avoid shadows over the bubbles</li>
-                  </ul>
+              <>
+                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Scanning Guidelines</Text>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
+                    <p className="font-semibold mb-2 flex items-center gap-1.5">
+                      <IconCircleCheck className="w-4 h-4 text-blue-500 shrink-0" />
+                      Tips for best results:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Place sheet on a dark, flat surface with good lighting</li>
+                      <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
+                      <li>Avoid glare and shadows; hold camera directly above the sheet</li>
+                      <li>Ensure student has filled bubbles darkly and completely</li>
+                    </ul>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
+                    <p className="font-semibold mb-2 flex items-center gap-1.5">
+                      <IconCamera className="w-4 h-4 text-blue-500 shrink-0" />
+                      Photo tips for best results:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-xs">
+                      <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
+                      <li>All <strong>4 black corner squares</strong> must be visible</li>
+                      <li>Good lighting — avoid shadows over the bubbles</li>
+                    </ul>
+                  </div>
                 </div>
+
+                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Upload Answer Sheet</Text>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all"
                   >
                     <IconUpload className="w-8 h-8 text-gray-400" />
                     <div className="text-center">
@@ -1007,7 +1024,7 @@ export default function ScanPapersPage() {
                   <button
                     onClick={startCamera}
                     disabled={startingCamera}
-                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-primary rounded-xl hover:bg-green-50 transition-all"
+                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <IconCamera className="w-8 h-8 text-gray-400" />
                     <div className="text-center">
@@ -1016,12 +1033,11 @@ export default function ScanPapersPage() {
                     </div>
                   </button>
                 </div>
-              </div>
+              </>
             )}
 
             <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
-
-          </div>
+          </Paper>
         )}
 
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
@@ -1039,13 +1055,23 @@ export default function ScanPapersPage() {
         {step === 'review' && (
           <div className="space-y-5">
             {selectedStudent && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-center gap-3">
-                <IconCircleCheck className="w-5 h-5 text-blue-500 shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-blue-800">{selectedStudent.full_name}</p>
-                  <p className="text-xs text-blue-500">{selectedStudent.grade_level_display} - {selectedStudent.section_name}</p>
+              <Paper withBorder radius="md" p="lg">
+                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
+                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
+                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
+                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
+                  </div>
                 </div>
-              </div>
+              </Paper>
             )}
 
             <div className={`rounded-xl p-3 flex items-start gap-3 text-sm ${cornersOk ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
@@ -1146,13 +1172,23 @@ export default function ScanPapersPage() {
         {step === 'submit' && (
           <div className="space-y-5">
             {selectedStudent && (
-              <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                <p className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">Student</p>
-                <p className="text-base font-bold text-blue-800">{selectedStudent.full_name}</p>
-                <p className="text-xs text-blue-500 mt-0.5">
-                  LRN: {selectedStudent.lrn} · {selectedStudent.grade_level_display} - {selectedStudent.section_name}
-                </p>
-              </div>
+              <Paper withBorder radius="md" p="lg">
+                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
+                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
+                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
+                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
+                  </div>
+                </div>
+              </Paper>
             )}
 
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">

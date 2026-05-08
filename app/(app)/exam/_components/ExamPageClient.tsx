@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -90,7 +90,11 @@ export default function ExamPageClient() {
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const PAGE_SIZE = 3;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"admin" | "faculty">("admin");
+  const [viewMode, setViewMode] = useState<"admin" | "faculty">(() => {
+    if (typeof window === "undefined") return "admin";
+    return localStorage.getItem("examViewMode") === "faculty" ? "faculty" : "admin";
+  });
+  const fetchSectionIdsRef = useRef<number[] | undefined>(undefined);
 
   // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
@@ -174,67 +178,87 @@ export default function ExamPageClient() {
     ? null
     : allowedCurriculumSubjectIds;
 
-  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(true);
-  const [hasActiveTerm, setHasActiveTerm] = useState(true);
+  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
+  const [hasActiveTerm, setHasActiveTerm] = useState(false);
 
-  const fetchExams = async () => {
+  const fetchExams = async (sectionIds?: number[]) => {
+    fetchSectionIdsRef.current = sectionIds;
     setLoading(true);
     setDbError(null);
     try {
-      const isEffectiveFullAccess =
-        permissions.includes("exams.full_access") && viewMode === "admin";
-      const teacherId = isEffectiveFullAccess ? undefined : user?.id;
-      const data = await fetchExamsWithRelations(teacherId);
+      const data = await fetchExamsWithRelations(sectionIds);
       setExams(data);
-      setLoading(false);
-
-      // Build assignmentId → examId map and load score badges in background
-      // (non-blocking — list is already visible by this point)
     } catch (error: unknown) {
       setDbError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
       setLoading(false);
     }
   };
 
+  const refetchExams = () => fetchExams(fetchSectionIdsRef.current);
+
   useEffect(() => {
     if (authLoading) return;
-    fetchExams();
-    fetchSchoolYears().then((years) => {
-      setHasActiveSchoolYear(years.some((y) => y.is_active));
-    });
-    fetchActiveQuarters().then((quarters) => {
-      setHasActiveTerm(quarters.some((q) => q.is_active));
-    });
 
-    if (user?.id) {
-      fetchTeacherClassAssignments(user.id).then((assignments) => {
-        setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
+    const isEffectiveFullAccess =
+      permissions.includes("exams.full_access") && viewMode === "admin";
+
+    setLoading(true);
+    setDbError(null);
+
+    const init = async () => {
+      const [years, quarters, assignments] = await Promise.all([
+        fetchSchoolYears(),
+        fetchActiveQuarters(),
+        user?.id ? fetchTeacherClassAssignments(user.id) : Promise.resolve([]),
+      ]);
+
+      setHasActiveSchoolYear(years.some((y) => y.is_active));
+      setHasActiveTerm(quarters.some((q) => q.is_active));
+
+      if (user?.id) {
+        const sectionSet = new Set(assignments.map((a) => a.section_id));
+        setAllowedSectionIds(sectionSet);
         setAllowedCurriculumSubjectIds(
           new Set(assignments.map((a) => a.curriculum_subject_id)),
         );
         setAssignedSectionSubjectPairs(
           new Set(
-            assignments.map(
-              (a) => `${a.section_id}-${a.curriculum_subject_id}`,
-            ),
+            assignments.map((a) => `${a.section_id}-${a.curriculum_subject_id}`),
           ),
         );
-      });
-    } else {
-      setAllowedSectionIds(null);
-      setAllowedCurriculumSubjectIds(null);
-      setAssignedSectionSubjectPairs(new Set());
-    }
+        const sectionIds = isEffectiveFullAccess
+          ? undefined
+          : Array.from(sectionSet);
+        fetchExams(sectionIds);
+      } else {
+        setAllowedSectionIds(null);
+        setAllowedCurriculumSubjectIds(null);
+        setAssignedSectionSubjectPairs(new Set());
+        fetchExams(isEffectiveFullAccess ? undefined : []);
+      }
+    };
+
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user?.id, hasFullAccess, viewMode]);
 
-  // Reset to admin view if the user no longer has a teaching load (e.g. load removed mid-session)
+  // Persist view mode so navigation away and back keeps the faculty view active.
   useEffect(() => {
+    localStorage.setItem("examViewMode", viewMode);
+  }, [viewMode]);
+
+  // Reset to admin view if the user no longer has a teaching load (e.g. load removed mid-session).
+  // Guard: allowedSectionIds === null means assignments haven't loaded yet — skip to avoid
+  // prematurely resetting a faculty view that was restored from localStorage.
+  useEffect(() => {
+    if (allowedSectionIds === null) return;
     if (!showViewToggle && viewMode === "faculty") {
       setViewMode("admin");
+      localStorage.setItem("examViewMode", "admin");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showViewToggle]);
+  }, [showViewToggle, allowedSectionIds]);
 
   const gradeLevelOptions = useMemo(() => {
     const seen = new Set<string>();
@@ -417,7 +441,7 @@ export default function ExamPageClient() {
         message: "Could not save exam status. Check permissions and try again.",
         color: "red",
       });
-      await fetchExams();
+      await refetchExams();
     }
     setUpdatingStatus(null);
   };
@@ -468,7 +492,7 @@ export default function ExamPageClient() {
         color: "green",
       });
       handleCloseDeleteModal();
-      await fetchExams();
+      await refetchExams();
     } else {
       notifications.show({
         title: "Delete Failed",
@@ -547,7 +571,7 @@ export default function ExamPageClient() {
             variant="light"
             color="red"
             mt="sm"
-            onClick={fetchExams}
+            onClick={refetchExams}
           >
             <IconRefreshDot size={14} /> Retry
           </Button>
@@ -576,7 +600,7 @@ export default function ExamPageClient() {
               color="#808898"
               size="lg"
               radius="xl"
-              onClick={fetchExams}
+              onClick={refetchExams}
               loading={loading}
               aria-label="Refresh examinations"
             >
@@ -932,28 +956,34 @@ export default function ExamPageClient() {
         </Group>
       </Modal>
 
-      {!authLoading && showViewToggle &&
+      {hasFullAccess &&
         typeof document !== "undefined" &&
         (() => {
           const el = document.getElementById("exam-header-actions");
-          return el
-            ? createPortal(
-                <Button
-                  variant="filled"
-                  color="#4A72AE"
-                  radius="md"
-                  leftSection={<IconBinoculars size={16} stroke={1.5} />}
-                  onClick={() =>
-                    setViewMode(viewMode === "admin" ? "faculty" : "admin")
-                  }
-                >
-                  {viewMode === "admin"
-                    ? "Switch to Faculty View"
-                    : "Switch to Admin View"}
-                </Button>,
-                el,
-              )
-            : null;
+          if (!el) return null;
+          if (authLoading || loading) {
+            return createPortal(
+              <Skeleton height={36} width={180} radius="md" />,
+              el,
+            );
+          }
+          if (!showViewToggle) return null;
+          return createPortal(
+            <Button
+              variant="filled"
+              color="#4A72AE"
+              radius="md"
+              leftSection={<IconBinoculars size={16} stroke={1.5} />}
+              onClick={() =>
+                setViewMode(viewMode === "admin" ? "faculty" : "admin")
+              }
+            >
+              {viewMode === "admin"
+                ? "Switch to Faculty View"
+                : "Switch to Admin View"}
+            </Button>,
+            el,
+          );
         })()}
     </>
   );
