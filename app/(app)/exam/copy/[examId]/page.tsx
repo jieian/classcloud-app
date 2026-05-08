@@ -419,18 +419,16 @@ export default function CopyExamPage() {
 
   const mobileConfirmModalProps = isMobile
     ? {
-        centered: false,
-        size: '100%',
         styles: {
-          inner: { alignItems: 'flex-end', padding: 0 },
+          inner: { alignItems: 'flex-end', paddingBottom: '20px' },
           content: {
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-            marginBottom: 0,
+            width: '100%',
+            maxWidth: '100%',
+            borderRadius: '12px 12px 0 0',
           },
         },
       }
-    : { centered: true };
+    : {};
 
   const handleCancel = () => {
     const hasProgress = activeStep > 0 || selectedSectionIds.length > 0;
