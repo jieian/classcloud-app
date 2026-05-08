@@ -367,7 +367,6 @@ export default function CopyExamPage() {
 
       const payload = {
         title: titleBase,
-        skipSectionSuffix: true,
         total_items: originalExam.total_items,
         exam_date: new Date().toISOString().split('T')[0],
         curriculum_subject_id: originalExam.curriculum_subject_id,
