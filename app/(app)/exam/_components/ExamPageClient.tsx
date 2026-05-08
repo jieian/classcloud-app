@@ -325,6 +325,54 @@ export default function ExamPageClient() {
     return false;
   };
 
+  // sectionId → grade level display name (derived from exam assignments already loaded)
+  const sectionGradeLevelMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const exam of exams) {
+      for (const a of exam.exam_assignments ?? []) {
+        const sid = a.sections?.section_id;
+        const gl = a.sections?.grade_levels?.display_name;
+        if (sid != null && gl) map.set(sid, gl);
+      }
+    }
+    return map;
+  }, [exams]);
+
+  // "sectionId-curriculumSubjectId-quarterId" already taken by an existing exam
+  const occupiedCombinations = useMemo(() => {
+    const set = new Set<string>();
+    for (const exam of exams) {
+      if (!exam.curriculum_subject_id || !exam.quarter_id) continue;
+      for (const a of exam.exam_assignments ?? []) {
+        const sid = a.sections?.section_id;
+        if (sid != null) set.add(`${sid}-${exam.curriculum_subject_id}-${exam.quarter_id}`);
+      }
+    }
+    return set;
+  }, [exams]);
+
+  const isCopyBlocked = (exam: ExamWithRelations): boolean => {
+    if (effectiveFullAccess) return false;
+    if (!effectiveAllowedSectionIds || effectiveAllowedSectionIds.size === 0) return true;
+    const examGradeLevel = exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name;
+    if (!examGradeLevel) return false;
+    const sourceSectionIds = new Set(
+      (exam.exam_assignments ?? [])
+        .map((a) => a.sections?.section_id)
+        .filter((id): id is number => id != null),
+    );
+    for (const sid of effectiveAllowedSectionIds) {
+      if (sourceSectionIds.has(sid)) continue;
+      const gl = sectionGradeLevelMap.get(sid);
+      // Unknown grade level → can't confirm blocked, allow copy flow to handle it
+      if (!gl) return false;
+      if (gl !== examGradeLevel) continue;
+      const key = `${sid}-${exam.curriculum_subject_id}-${exam.quarter_id}`;
+      if (!occupiedCombinations.has(key)) return false; // at least one eligible section
+    }
+    return true; // no eligible destination section found
+  };
+
   const subjectOptions = useMemo(() => {
     let filtered = exams;
     if (selectedGradeLevel) {
@@ -815,14 +863,29 @@ export default function ExamPageClient() {
                                   >
                                     Edit Answer Key
                                   </Menu.Item>
-                                  <Menu.Item
-                                    leftSection={<IconPlus size={14} />}
-                                    onClick={() =>
-                                      router.push(`/exam/copy/${exam.exam_id}`)
-                                    }
-                                  >
-                                    Copy Exam
-                                  </Menu.Item>
+                                  {(() => {
+                                    const copyBlocked = isCopyBlocked(exam);
+                                    return (
+                                      <Tooltip
+                                        label="All your sections already have this exam for this term"
+                                        disabled={!copyBlocked}
+                                        withArrow
+                                        multiline
+                                        w={220}
+                                        position="left"
+                                      >
+                                        <div>
+                                          <Menu.Item
+                                            leftSection={<IconPlus size={14} />}
+                                            disabled={copyBlocked}
+                                            onClick={() => router.push(`/exam/copy/${exam.exam_id}`)}
+                                          >
+                                            Copy Exam
+                                          </Menu.Item>
+                                        </div>
+                                      </Tooltip>
+                                    );
+                                  })()}
                                   {canDeleteExam(exam) && (
                                     <>
                                       <Menu.Divider />
