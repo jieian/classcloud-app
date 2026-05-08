@@ -302,6 +302,16 @@ export default function CreateCurriculumWizard() {
         message: `"${form.values.name.trim()}" has been created.`,
         color: "green",
       });
+      // Notify any open School Year wizard tab that a new curriculum is ready
+      try {
+        const bc = new BroadcastChannel("curriculum_created");
+        bc.postMessage({
+          type: "CURRICULUM_CREATED",
+          curriculum_id: data.curriculum_id,
+          name: form.values.name.trim(),
+        });
+        bc.close();
+      } catch { /* BroadcastChannel unavailable — ignore */ }
       form.reset();
       router.replace("/school/curriculum");
       router.refresh();

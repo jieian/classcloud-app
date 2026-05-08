@@ -49,7 +49,11 @@ function PasswordRequirement({
   );
 }
 
-export default function StepUserInfo({ form, checkingEmail, onEmailBlur }: StepUserInfoProps) {
+export default function StepUserInfo({
+  form,
+  checkingEmail,
+  onEmailBlur,
+}: StepUserInfoProps) {
   const passwordStrength = getPasswordStrength(form.values.password);
 
   const passwordChecks = passwordRequirements.map((requirement, index) => (
@@ -87,7 +91,7 @@ export default function StepUserInfo({ form, checkingEmail, onEmailBlur }: StepU
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
+      <Text size="lg" fw={700} mb="md" c="#298925">
         Specify User Information
       </Text>
 
@@ -95,7 +99,7 @@ export default function StepUserInfo({ form, checkingEmail, onEmailBlur }: StepU
       <Box
         p="lg"
         style={{
-          border: "1px solid #e0e0e0",
+          border: "1px solid #B8B8B8",
           borderRadius: "8px",
         }}
       >
@@ -182,9 +186,7 @@ export default function StepUserInfo({ form, checkingEmail, onEmailBlur }: StepU
           mb="md"
           onBlur={onEmailBlur}
           rightSection={
-            checkingEmail ? (
-              <Loader size="xs" color="#4EAE4A" />
-            ) : undefined
+            checkingEmail ? <Loader size="xs" color="#4EAE4A" /> : undefined
           }
         />
 

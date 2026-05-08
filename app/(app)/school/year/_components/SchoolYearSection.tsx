@@ -3,6 +3,7 @@
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ActionIcon,
   Alert,
@@ -17,7 +18,6 @@ import { getSchoolYears, SchoolYear } from "../_lib/yearService";
 import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
 import EditSchoolYearDrawer from "./EditSchoolYearDrawer";
-import CreateSchoolYearModal from "./CreateSchoolYearModal";
 
 export default function SchoolYearSection() {
   const router = useRouter();
@@ -27,7 +27,6 @@ export default function SchoolYearSection() {
   const [search, setSearch] = useState("");
   const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
   const [drawerOpened, setDrawerOpened] = useState(false);
-  const [createModalOpened, setCreateModalOpened] = useState(false);
 
   const handleManage = (sy: SchoolYear) => {
     setSelectedYear(sy);
@@ -70,7 +69,7 @@ export default function SchoolYearSection() {
             <span className="text-[#808898]">({schoolYears.length})</span>
           )}
         </h1>
-        <Button color="#4EAE4A" radius="md" mr="md" onClick={() => setCreateModalOpened(true)}>
+        <Button color="#4EAE4A" radius="md" mr="md" component={Link} href="/school/year/create">
           Create School Year
         </Button>
       </Group>
@@ -128,13 +127,6 @@ export default function SchoolYearSection() {
           ))}
         </SimpleGrid>
       )}
-
-      <CreateSchoolYearModal
-        opened={createModalOpened}
-        onClose={() => setCreateModalOpened(false)}
-        onSuccess={loadSchoolYears}
-        existingYears={schoolYears}
-      />
 
       {selectedYear && (
         <EditSchoolYearDrawer

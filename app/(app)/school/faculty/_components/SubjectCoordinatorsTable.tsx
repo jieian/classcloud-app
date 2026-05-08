@@ -19,7 +19,7 @@ import {
   VisuallyHidden,
 } from "@mantine/core";
 import { useClickOutside, useDisclosure } from "@mantine/hooks";
-import { IconChevronRight, IconPencil } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronRight, IconPencil } from "@tabler/icons-react";
 import type { SubjectCoordinatorRow } from "../_lib/facultyService";
 import SubjectBadge from "./SubjectBadge";
 import SubjectOverflowCard from "./SubjectOverflowCard";
@@ -81,17 +81,28 @@ function SubjectCoordinatorMobileRow({
                 color: "#808898",
               }}
             />
-            <Text
-              fw={500}
-              fz="sm"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {group.name}
-            </Text>
+            <Group gap={6} wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                fw={500}
+                fz="sm"
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {group.name}
+              </Text>
+              {group.coordinator === null && (
+                <Tooltip label="No coordinator assigned" withArrow position="top">
+                  <IconAlertTriangle
+                    size={14}
+                    color="#EF4444"
+                    style={{ flexShrink: 0 }}
+                  />
+                </Tooltip>
+              )}
+            </Group>
           </Group>
           <div onClick={(e) => e.stopPropagation()}>
             <Tooltip label="Edit subject coordinator" withArrow position="left">
@@ -245,9 +256,20 @@ export default function SubjectCoordinatorsTable({
         }}
       >
         <TableTd>
-          <Text size="sm" fw={500}>
-            {group.name}
-          </Text>
+          <Group gap={6} wrap="nowrap" align="center">
+            <Text size="sm" fw={500}>
+              {group.name}
+            </Text>
+            {group.coordinator === null && (
+              <Tooltip label="No coordinator assigned" withArrow position="top">
+                <IconAlertTriangle
+                  size={14}
+                  color="#EF4444"
+                  style={{ flexShrink: 0 }}
+                />
+              </Tooltip>
+            )}
+          </Group>
         </TableTd>
         <TableTd>
           <Text c="dimmed" size="sm">

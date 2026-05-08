@@ -140,18 +140,22 @@ export async function checkEmailStatus(
   email: string,
   excludeUid?: string,
 ): Promise<EmailStatus> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase.rpc("check_email_status", {
-    p_email: email.trim(),
-    p_exclude_uid: excludeUid ?? null,
+  const params = new URLSearchParams({ email: email.trim() });
+  if (excludeUid) params.set("excludeUid", excludeUid);
+
+  const response = await fetch(`/api/users/check-email-status?${params}`, {
+    method: "GET",
+    cache: "no-store",
   });
 
-  if (error) {
-    console.error("Error checking email status:", error);
+  const result = await response.json();
+
+  if (!response.ok) {
+    console.error("Error checking email status:", result?.error ?? result);
     throw new Error("Failed to verify email availability.");
   }
 
-  return data as EmailStatus;
+  return result.data as EmailStatus;
 }
 
 /**

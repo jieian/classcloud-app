@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import CreateClassModal from "./CreateClassModal";
 import Link from "next/link";
 import {
   Accordion,
@@ -42,7 +41,6 @@ export default function ClassesClient({ initialData }: Props = {}) {
   const { user, permissions } = useAuth();
 
   // Derived directly from AuthContext — no extra DB round-trips
-  const hasCreatePermission = permissions.includes("classes.full_access");
   const isPartialAccess = !permissions.includes("classes.full_access");
 
   const canViewTransferRequests =
@@ -85,7 +83,6 @@ export default function ClassesClient({ initialData }: Props = {}) {
   const isAdviser =
     permissions.includes("students.limited_access") &&
     !permissions.includes("students.full_access");
-  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const loadClasses = useCallback(async (syId: number) => {
     setLoadingClasses(true);
@@ -163,14 +160,6 @@ export default function ClassesClient({ initialData }: Props = {}) {
     [schoolYears],
   );
 
-  const handleCreateSuccess = useCallback(() => {
-    if (activeSyId) {
-      setSelectedSyId(activeSyId);
-      setGradeLevelFilter(null);
-      loadClasses(activeSyId);
-    }
-  }, [activeSyId, loadClasses]);
-
   // Client-side filtering
   const filteredSections = useMemo(() => {
     const query = search.toLowerCase().trim();
@@ -246,24 +235,12 @@ export default function ClassesClient({ initialData }: Props = {}) {
               Transfer Requests
             </Button>
           )}
-          {hasCreatePermission && (
-            <Button color="#4EAE4A" radius="md" onClick={() => setCreateModalOpen(true)}>
-              Create a Class
-            </Button>
-          )}
         </Group>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
         A class, or section, is a distinct group of students within a specific
         grade level, organized under a dedicated Class Adviser.
       </p>
-      <CreateClassModal
-          opened={createModalOpen}
-          onClose={() => setCreateModalOpen(false)}
-          onSuccess={handleCreateSuccess}
-          gradeLevels={gradeLevels}
-          activeSyId={activeSyId}
-        />
         <UtilitiesSection
           schoolYears={schoolYears}
           selectedSyId={selectedSyId}
