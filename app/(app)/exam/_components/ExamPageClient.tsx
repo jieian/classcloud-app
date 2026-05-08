@@ -871,8 +871,7 @@ export default function ExamPageClient() {
                                         disabled={!copyBlocked}
                                         withArrow
                                         multiline
-                                        w={220}
-                                        position="left"
+                                        w={240}
                                       >
                                         <div>
                                           <Menu.Item
