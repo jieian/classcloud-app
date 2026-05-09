@@ -63,11 +63,9 @@ export default function ExamPageClient() {
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedGradeLevel, setSelectedGradeLevel] = useState<string | null>(
-    null,
-  );
-  const [selectedSection, setSelectedSection] = useState<string | null>(null);
-  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [selectedGradeLevel, setSelectedGradeLevel] = useState("");
+  const [selectedSection, setSelectedSection] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
   const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
     null,
@@ -180,6 +178,7 @@ export default function ExamPageClient() {
 
   const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
   const [hasActiveTerm, setHasActiveTerm] = useState(false);
+  const showViewToggleVisible = showViewToggle && hasActiveSchoolYear && hasActiveTerm;
 
   const fetchExams = async (sectionIds?: number[]) => {
     fetchSectionIdsRef.current = sectionIds;
@@ -351,26 +350,31 @@ export default function ExamPageClient() {
     return set;
   }, [exams]);
 
-  const isCopyBlocked = (exam: ExamWithRelations): boolean => {
-    if (effectiveFullAccess) return false;
-    if (!effectiveAllowedSectionIds || effectiveAllowedSectionIds.size === 0) return true;
+  const getCopyBlockReason = (exam: ExamWithRelations): string | null => {
+    if (effectiveFullAccess) return null;
+    if (!effectiveAllowedSectionIds || effectiveAllowedSectionIds.size === 0)
+      return "You are not assigned to any sections.";
     const examGradeLevel = exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name;
-    if (!examGradeLevel) return false;
+    if (!examGradeLevel) return null;
     const sourceSectionIds = new Set(
       (exam.exam_assignments ?? [])
         .map((a) => a.sections?.section_id)
         .filter((id): id is number => id != null),
     );
+    let hasSubjectMatchSection = false;
     for (const sid of effectiveAllowedSectionIds) {
       if (sourceSectionIds.has(sid)) continue;
       const gl = sectionGradeLevelMap.get(sid);
-      // Unknown grade level → can't confirm blocked, allow copy flow to handle it
-      if (!gl) return false;
+      if (!gl) return null; // Unknown grade level — let copy flow handle it
       if (gl !== examGradeLevel) continue;
+      if (!assignedSectionSubjectPairs.has(`${sid}-${exam.curriculum_subject_id}`)) continue;
+      hasSubjectMatchSection = true;
       const key = `${sid}-${exam.curriculum_subject_id}-${exam.quarter_id}`;
-      if (!occupiedCombinations.has(key)) return false; // at least one eligible section
+      if (!occupiedCombinations.has(key)) return null; // at least one eligible section
     }
-    return true; // no eligible destination section found
+    if (!hasSubjectMatchSection)
+      return "You don't handle this subject in any of your other sections.";
+    return "All your sections already have this exam for this term.";
   };
 
   const subjectOptions = useMemo(() => {
@@ -399,12 +403,12 @@ export default function ExamPageClient() {
   }, [exams, selectedGradeLevel, effectiveAllowedCurriculumSubjectIds]);
 
   useEffect(() => {
-    setSelectedSection(null);
-    setSelectedSubject(null);
+    setSelectedSection("");
+    setSelectedSubject("");
   }, [selectedGradeLevel]);
 
   useEffect(() => {
-    setSelectedSubject(null);
+    setSelectedSubject("");
   }, [selectedSection]);
 
   useEffect(() => {
@@ -554,26 +558,20 @@ export default function ExamPageClient() {
   return (
     <>
       <div>
-        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+        {/* Heading row — desktop shows Create Exam here, mobile omits it */}
+        <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
           <h1 className="mb-3 text-2xl font-bold">
             Examinations{" "}
-            {!loading && hasActiveSchoolYear && (
+            {!loading && hasActiveSchoolYear && hasActiveTerm && (
               <span className="text-[#808898]">({filteredExams.length})</span>
             )}
           </h1>
-          <Stack gap="xs" align="flex-end">
+          <div className="hidden sm:block">
             {loading ? (
-              <Stack gap={4} style={{ alignItems: "flex-end" }}>
-                <Text size="xs" c="dimmed">
-                  Create Exam
-                </Text>
-                <Skeleton height={40} width={140} radius="md" />
-              </Stack>
-            ) : hasActiveSchoolYear && hasActiveTerm ? (
+              <Skeleton height={40} width={140} radius="md" />
+            ) : hasActiveSchoolYear && hasActiveTerm && !effectiveFullAccess ? (
               <Tooltip
-                label={
-                  "You need to be assigned to at least one class before you can create exams."
-                }
+                label="You need to be assigned to at least one class before you can create exams."
                 disabled={
                   effectiveFullAccess ||
                   !effectiveAllowedSectionIds ||
@@ -599,11 +597,63 @@ export default function ExamPageClient() {
                 </div>
               </Tooltip>
             ) : null}
-          </Stack>
+          </div>
         </Group>
+
         <p className="mb-3 text-sm text-[#808898]">
           Manage and track all examinations
         </p>
+
+        {/* Mobile only: toggle left, Create Exam right */}
+        <div className="flex sm:hidden items-center justify-between gap-2 mb-2">
+          {showViewToggleVisible && !loading && !authLoading ? (
+            <Button
+              variant="outline"
+              color={viewMode === "admin" ? "#298925" : "#4A72AE"}
+              radius="md"
+              leftSection={<IconBinoculars size={16} stroke={1.5} />}
+              onClick={() =>
+                setViewMode(viewMode === "admin" ? "faculty" : "admin")
+              }
+            >
+              {viewMode === "admin"
+                ? "Switch to Faculty View"
+                : "Switch to Admin View"}
+            </Button>
+          ) : (
+            <div />
+          )}
+          {loading ? (
+            <Skeleton height={40} width={140} radius="md" />
+          ) : hasActiveSchoolYear && hasActiveTerm && !effectiveFullAccess ? (
+            <Tooltip
+              label="You need to be assigned to at least one class before you can create exams."
+              disabled={
+                effectiveFullAccess ||
+                !effectiveAllowedSectionIds ||
+                effectiveAllowedSectionIds.size > 0
+              }
+              withArrow
+              multiline
+              w={240}
+            >
+              <div style={{ display: "inline-block" }}>
+                <Button
+                  color="#4EAE4A"
+                  radius="md"
+                  onClick={() => router.push("/exam/create")}
+                  disabled={
+                    !effectiveFullAccess &&
+                    !!effectiveAllowedSectionIds &&
+                    effectiveAllowedSectionIds.size === 0
+                  }
+                >
+                  Create Exam
+                </Button>
+              </div>
+            </Tooltip>
+          ) : null}
+        </div>
       </div>
 
       {/* Error */}
@@ -658,32 +708,26 @@ export default function ExamPageClient() {
         </Group>
 	        <Group mb="md" gap="sm" wrap="wrap">
 	          <Select
-            placeholder="Grade Level"
-            data={gradeLevelOptions}
+            data={[{ value: "", label: "All Grade Levels" }, ...gradeLevelOptions]}
             value={selectedGradeLevel}
-            onChange={setSelectedGradeLevel}
+            onChange={(v) => setSelectedGradeLevel(v ?? "")}
             leftSection={<IconSchool size={16} />}
 	            w={{ base: "100%", sm: 200 }}
-            clearable
           />
           <Select
-            placeholder="Section"
-            data={sectionOptions}
+            data={[{ value: "", label: "All Sections" }, ...sectionOptions]}
             value={selectedSection}
-            onChange={setSelectedSection}
+            onChange={(v) => setSelectedSection(v ?? "")}
             leftSection={<IconUsers size={16} />}
 	            w={{ base: "100%", sm: 200 }}
-            clearable
             disabled={sectionOptions.length === 0}
           />
           <Select
-            placeholder="Subject"
-            data={subjectOptions}
+            data={[{ value: "", label: "All Subjects" }, ...subjectOptions]}
             value={selectedSubject}
-            onChange={setSelectedSubject}
+            onChange={(v) => setSelectedSubject(v ?? "")}
             leftSection={<IconBook size={16} />}
 	            w={{ base: "100%", sm: 200 }}
-            clearable
             disabled={subjectOptions.length === 0}
           />
         </Group>
@@ -714,8 +758,8 @@ export default function ExamPageClient() {
           defaultValue={groupedExams.map((g) => g.gradeLabel)}
           variant="separated"
           styles={{
-            control: { backgroundColor: "#f0f7ee" },
-            item: { border: "1px solid #d3e9d0" },
+            control: { backgroundColor: effectiveFullAccess ? "#e2edff" : "#f0f7ee" },
+            item: { border: effectiveFullAccess ? "1px solid #e2edff" : "1px solid #d3e9d0" },
           }}
         >
           {groupedExams.map((group) => (
@@ -790,7 +834,7 @@ export default function ExamPageClient() {
                               >
                                 {exam.is_locked ? "Inactive" : "Active"}
                               </Badge>
-                              <Menu
+                              {!effectiveFullAccess && <Menu
                                 shadow="md"
                                 width={230}
                                 position="bottom-end"
@@ -864,11 +908,11 @@ export default function ExamPageClient() {
                                     Edit Answer Key
                                   </Menu.Item>
                                   {(() => {
-                                    const copyBlocked = isCopyBlocked(exam);
+                                    const copyBlockReason = getCopyBlockReason(exam);
                                     return (
                                       <Tooltip
-                                        label="All your sections already have this exam for this term"
-                                        disabled={!copyBlocked}
+                                        label={copyBlockReason ?? ""}
+                                        disabled={!copyBlockReason}
                                         withArrow
                                         multiline
                                         w={240}
@@ -876,7 +920,7 @@ export default function ExamPageClient() {
                                         <div>
                                           <Menu.Item
                                             leftSection={<IconPlus size={14} />}
-                                            disabled={copyBlocked}
+                                            disabled={!!copyBlockReason}
                                             onClick={() => router.push(`/exam/copy/${exam.exam_id}`)}
                                           >
                                             Copy Exam
@@ -900,7 +944,7 @@ export default function ExamPageClient() {
                                     </>
                                   )}
                                 </Menu.Dropdown>
-                              </Menu>
+                              </Menu>}
                             </Group>
                           </Group>
 
@@ -1025,25 +1069,29 @@ export default function ExamPageClient() {
           if (!el) return null;
           if (authLoading || loading) {
             return createPortal(
-              <Skeleton height={36} width={180} radius="md" />,
+              <div className="hidden sm:block">
+                <Skeleton height={36} width={180} radius="md" />
+              </div>,
               el,
             );
           }
-          if (!showViewToggle) return null;
+          if (!showViewToggleVisible) return null;
           return createPortal(
-            <Button
-              variant="filled"
-              color="#4A72AE"
-              radius="md"
-              leftSection={<IconBinoculars size={16} stroke={1.5} />}
-              onClick={() =>
-                setViewMode(viewMode === "admin" ? "faculty" : "admin")
-              }
-            >
-              {viewMode === "admin"
-                ? "Switch to Faculty View"
-                : "Switch to Admin View"}
-            </Button>,
+            <div className="hidden sm:block">
+              <Button
+                variant="outline"
+                color={viewMode === "admin" ? "#298925" : "#4A72AE"}
+                radius="md"
+                leftSection={<IconBinoculars size={16} stroke={1.5} />}
+                onClick={() =>
+                  setViewMode(viewMode === "admin" ? "faculty" : "admin")
+                }
+              >
+                {viewMode === "admin"
+                  ? "Switch to Faculty View"
+                  : "Switch to Admin View"}
+              </Button>
+            </div>,
             el,
           );
         })()}

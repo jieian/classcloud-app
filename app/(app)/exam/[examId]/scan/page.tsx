@@ -408,6 +408,9 @@ export default function ScanPapersPage() {
     permissions.includes("exams.full_access") ||
     permissions.includes("exams.limited_access") ||
     permissions.includes("access_examinations");
+  const hasFullAccess = permissions.includes("exams.full_access");
+  const viewMode = typeof window !== "undefined" ? localStorage.getItem("examViewMode") : "admin";
+  const isAdminView = hasFullAccess && viewMode !== "faculty";
 
   const hasScanProgress = Boolean(
     selectedStudent && (
@@ -762,13 +765,13 @@ export default function ScanPapersPage() {
                         <TableTh>Name of Pupil</TableTh>
                         <TableTh w={160} ta="center">Test Score</TableTh>
                         <TableTh w={220} ta="center">Level of Proficiency</TableTh>
-                        <TableTh w={120} ta="center">Action</TableTh>
+                        {!isAdminView && <TableTh w={120} ta="center">Action</TableTh>}
                       </TableTr>
                     </TableThead>
                     <TableTbody>
                       {filteredStudents.length === 0 ? (
                         <TableTr>
-                          <TableTd colSpan={4}>
+                          <TableTd colSpan={isAdminView ? 3 : 4}>
                             <Text size="sm" c="dimmed" ta="center" py="md">No matching students</Text>
                           </TableTd>
                         </TableTr>
@@ -776,7 +779,7 @@ export default function ScanPapersPage() {
                         <>
                           {maleStudents.length > 0 && (
                             <TableTr>
-                              <TableTd colSpan={4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                              <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
                                 Male ({maleStudents.length})
                               </TableTd>
                             </TableTr>
@@ -811,23 +814,25 @@ export default function ScanPapersPage() {
                                     </span>
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
-                                <TableTd ta="center">
-                                  <Button
-                                    size="xs"
-                                    radius="md"
-                                    color={hasScanned ? "yellow" : "#4EAE4A"}
-                                    onClick={() => handleScanStudent(student)}
-                                  >
-                                    {hasScanned ? 'Rescan' : 'Scan'}
-                                  </Button>
-                                </TableTd>
+                                {!isAdminView && (
+                                  <TableTd ta="center">
+                                    <Button
+                                      size="xs"
+                                      radius="md"
+                                      color={hasScanned ? "yellow" : "#4EAE4A"}
+                                      onClick={() => handleScanStudent(student)}
+                                    >
+                                      {hasScanned ? 'Rescan' : 'Scan'}
+                                    </Button>
+                                  </TableTd>
+                                )}
                               </TableTr>
                             );
                           })}
 
                           {femaleStudents.length > 0 && (
                             <TableTr>
-                              <TableTd colSpan={4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                              <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
                                 Female ({femaleStudents.length})
                               </TableTd>
                             </TableTr>
@@ -862,16 +867,18 @@ export default function ScanPapersPage() {
                                     </span>
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
-                                <TableTd ta="center">
-                                  <Button
-                                    size="xs"
-                                    radius="md"
-                                    color={hasScanned ? "yellow" : "#4EAE4A"}
-                                    onClick={() => handleScanStudent(student)}
-                                  >
-                                    {hasScanned ? 'Rescan' : 'Scan'}
-                                  </Button>
-                                </TableTd>
+                                {!isAdminView && (
+                                  <TableTd ta="center">
+                                    <Button
+                                      size="xs"
+                                      radius="md"
+                                      color={hasScanned ? "yellow" : "#4EAE4A"}
+                                      onClick={() => handleScanStudent(student)}
+                                    >
+                                      {hasScanned ? 'Rescan' : 'Scan'}
+                                    </Button>
+                                  </TableTd>
+                                )}
                               </TableTr>
                             );
                           })}
