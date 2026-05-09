@@ -35,8 +35,17 @@ export default function WizardNavigationButtons({
   mt = "xl",
   leftExtra,
 }: WizardNavigationButtonsProps) {
-  const useColor = colorWhenEnabledOnly ? !primaryDisabled : true;
+  const useColor = colorWhenEnabledOnly ? (!primaryDisabled || primaryLoading) : true;
   const isMobile = useMediaQuery("(max-width: 640px)");
+  const primaryButtonStyle = useColor
+    ? ({
+        backgroundColor: primaryColor,
+        opacity: 1,
+        "--button-bg": primaryColor,
+        "--button-hover": primaryColor,
+        "--button-bd": `1px solid ${primaryColor}`,
+      } as React.CSSProperties)
+    : undefined;
 
   return (
     <Group
@@ -65,7 +74,8 @@ export default function WizardNavigationButtons({
         onClick={onPrimary}
         disabled={primaryDisabled}
         loading={primaryLoading}
-        style={useColor ? { backgroundColor: primaryColor } : undefined}
+        color={useColor ? primaryColor : undefined}
+        style={primaryButtonStyle}
         fullWidth={isMobile}
       >
         {primaryLabel}

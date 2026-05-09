@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Title,
   Text,
   Card,
   Select,
@@ -26,7 +25,6 @@ import {
 } from "@mantine/core";
 import {
   IconPlus,
-  IconFileText,
   IconDownload,
   IconTrash,
   IconAlertCircle,
@@ -51,9 +49,11 @@ import {
 import type { ExamWithRelations } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
 import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
+import { fetchGradeLevels } from "@/lib/services/gradeLevelService";
 import { fetchActiveQuarters } from "@/lib/services/quarterService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
+import EmptySearchState from "@/components/EmptySearchState";
 
 export default function ExamPageClient() {
   const router = useRouter();
@@ -176,9 +176,19 @@ export default function ExamPageClient() {
     ? null
     : allowedCurriculumSubjectIds;
 
-  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
-  const [hasActiveTerm, setHasActiveTerm] = useState(false);
-  const showViewToggleVisible = showViewToggle && hasActiveSchoolYear && hasActiveTerm;
+	  const [allGradeLevels, setAllGradeLevels] = useState<{ display_name: string; level_number: number }[]>([]);
+	  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
+	  const [hasActiveTerm, setHasActiveTerm] = useState(false);
+	  const showViewToggleVisible = showViewToggle && hasActiveSchoolYear && hasActiveTerm;
+
+	  const getVisibleAssignments = useCallback((exam: ExamWithRelations) => {
+	    const assignments = exam.exam_assignments ?? [];
+	    if (!effectiveAllowedSectionIds) return assignments;
+	    return assignments.filter((a) => {
+	      const sectionId = a.sections?.section_id;
+	      return sectionId != null && effectiveAllowedSectionIds.has(sectionId);
+	    });
+	  }, [effectiveAllowedSectionIds]);
 
   const fetchExams = async (sectionIds?: number[]) => {
     fetchSectionIdsRef.current = sectionIds;
@@ -206,14 +216,16 @@ export default function ExamPageClient() {
     setDbError(null);
 
     const init = async () => {
-      const [years, quarters, assignments] = await Promise.all([
+      const [years, quarters, assignments, gradeLevels] = await Promise.all([
         fetchSchoolYears(),
         fetchActiveQuarters(),
         user?.id ? fetchTeacherClassAssignments(user.id) : Promise.resolve([]),
+        fetchGradeLevels(),
       ]);
 
       setHasActiveSchoolYear(years.some((y) => y.is_active));
       setHasActiveTerm(quarters.some((q) => q.is_active));
+      setAllGradeLevels(gradeLevels);
 
       if (user?.id) {
         const sectionSet = new Set(assignments.map((a) => a.section_id));
@@ -259,38 +271,26 @@ export default function ExamPageClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showViewToggle, allowedSectionIds]);
 
-  const gradeLevelOptions = useMemo(() => {
-    const seen = new Set<string>();
-    for (const exam of exams) {
-      for (const a of exam.exam_assignments ?? []) {
-        const sectionId = a.sections?.section_id;
-        if (
-          effectiveAllowedSectionIds &&
-          (sectionId == null || !effectiveAllowedSectionIds.has(sectionId))
-        )
-          continue;
-        const name = a.sections?.grade_levels?.display_name;
-        if (name) seen.add(name);
-      }
-    }
+	  const gradeLevelOptions = useMemo(() => {
+	    const seen = new Set<string>();
+	    for (const exam of exams) {
+	      for (const a of getVisibleAssignments(exam)) {
+	        const name = a.sections?.grade_levels?.display_name;
+	        if (name) seen.add(name);
+	      }
+	    }
     return Array.from(seen)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, effectiveAllowedSectionIds]);
+	  }, [exams, getVisibleAssignments]);
 
-  const sectionOptions = useMemo(() => {
-    const seen = new Set<string>();
-    for (const exam of exams) {
-      for (const a of exam.exam_assignments ?? []) {
-        const sectionId = a.sections?.section_id;
-        if (
-          effectiveAllowedSectionIds &&
-          (sectionId == null || !effectiveAllowedSectionIds.has(sectionId))
-        )
-          continue;
-        if (
-          selectedGradeLevel &&
-          a.sections?.grade_levels?.display_name !== selectedGradeLevel
+	  const sectionOptions = useMemo(() => {
+	    const seen = new Set<string>();
+	    for (const exam of exams) {
+	      for (const a of getVisibleAssignments(exam)) {
+	        if (
+	          selectedGradeLevel &&
+	          a.sections?.grade_levels?.display_name !== selectedGradeLevel
         )
           continue;
         const name = a.sections?.name;
@@ -300,7 +300,7 @@ export default function ExamPageClient() {
     return Array.from(seen)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, selectedGradeLevel, effectiveAllowedSectionIds]);
+	  }, [exams, selectedGradeLevel, getVisibleAssignments]);
 
   const canDeleteExam = (exam: ExamWithRelations): boolean => {
     if (!exam.curriculum_subject_id) return false;
@@ -377,14 +377,14 @@ export default function ExamPageClient() {
     return "All your sections already have this exam for this term.";
   };
 
-  const subjectOptions = useMemo(() => {
-    let filtered = exams;
-    if (selectedGradeLevel) {
-      filtered = filtered.filter((e) =>
-        (e.exam_assignments ?? []).some(
-          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
-        ),
-      );
+	  const subjectOptions = useMemo(() => {
+	    let filtered = exams;
+	    if (selectedGradeLevel) {
+	      filtered = filtered.filter((e) =>
+	        getVisibleAssignments(e).some(
+	          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
+	        ),
+	      );
     }
     return Array.from(
       new Set(
@@ -400,7 +400,7 @@ export default function ExamPageClient() {
     )
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-  }, [exams, selectedGradeLevel, effectiveAllowedCurriculumSubjectIds]);
+	  }, [exams, selectedGradeLevel, effectiveAllowedCurriculumSubjectIds, getVisibleAssignments]);
 
   useEffect(() => {
     setSelectedSection("");
@@ -418,56 +418,62 @@ export default function ExamPageClient() {
         e.title.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
-    if (selectedGradeLevel) {
-      filtered = filtered.filter((e) =>
-        (e.exam_assignments ?? []).some(
-          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
-        ),
-      );
-    }
-    if (selectedSection) {
-      filtered = filtered.filter((e) =>
-        (e.exam_assignments ?? []).some(
-          (a) => a.sections?.name === selectedSection,
-        ),
-      );
+	    if (selectedGradeLevel) {
+	      filtered = filtered.filter((e) =>
+	        getVisibleAssignments(e).some(
+	          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
+	        ),
+	      );
+	    }
+	    if (selectedSection) {
+	      filtered = filtered.filter((e) =>
+	        getVisibleAssignments(e).some(
+	          (a) => a.sections?.name === selectedSection,
+	        ),
+	      );
     }
     if (selectedSubject) {
       filtered = filtered.filter(
         (e) => e.curriculum_subjects?.subjects?.name === selectedSubject,
       );
     }
-    setFilteredExams(filtered);
-  }, [
-    exams,
-    searchQuery,
-    selectedGradeLevel,
-    selectedSection,
-    selectedSubject,
-  ]);
+	    setFilteredExams(filtered);
+	  }, [
+	    exams,
+	    searchQuery,
+	    selectedGradeLevel,
+	    selectedSection,
+	    selectedSubject,
+	    getVisibleAssignments,
+	  ]);
 
-  const groupedExams = useMemo(() => {
-    const groups = new Map<
-      string,
-      { gradeLabel: string; exams: ExamWithRelations[] }
-    >();
-    for (const exam of filteredExams) {
-      const gl = exam.exam_assignments?.[0]?.sections?.grade_levels;
-      const key = gl?.display_name ?? "Unknown";
-      if (!groups.has(key)) {
-        groups.set(key, {
-          gradeLabel: gl?.display_name ?? "Unknown",
-          exams: [],
-        });
+  const isFiltering = !!(searchQuery || selectedGradeLevel || selectedSection || selectedSubject);
+
+	  const groupedExams = useMemo(() => {
+	    const groups = new Map<string, { gradeLabel: string; levelNumber: number; exams: ExamWithRelations[] }>();
+	
+	    // Admin view can show all grade groups; restricted views only show handled groups.
+	    if (effectiveFullAccess) {
+	      for (const gl of allGradeLevels) {
+	        groups.set(gl.display_name, { gradeLabel: gl.display_name, levelNumber: gl.level_number, exams: [] });
+	      }
+	    }
+	
+	    for (const exam of filteredExams) {
+	      const visibleAssignments = getVisibleAssignments(exam);
+	      if (!effectiveFullAccess && visibleAssignments.length === 0) continue;
+	      const gl = visibleAssignments[0]?.sections?.grade_levels;
+	      const key = gl?.display_name ?? "Unknown";
+	      if (!groups.has(key)) {
+	        groups.set(key, { gradeLabel: key, levelNumber: Infinity, exams: [] });
       }
       groups.get(key)!.exams.push(exam);
     }
-    return Array.from(groups.values()).sort((a, b) =>
-      a.gradeLabel.localeCompare(b.gradeLabel, undefined, {
-        sensitivity: "base",
-      }),
-    );
-  }, [filteredExams]);
+
+    return Array.from(groups.values())
+      .filter((g) => !isFiltering || g.exams.length > 0)
+      .sort((a, b) => a.levelNumber - b.levelNumber);
+	  }, [filteredExams, allGradeLevels, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
   const handleStatusChange = async (
     exam: ExamWithRelations,
@@ -740,18 +746,8 @@ export default function ExamPageClient() {
             <Skeleton key={i} height={180} radius="md" />
           ))}
         </Stack>
-      ) : dbError ? null : filteredExams.length === 0 ? (
-        <Card padding={60} radius="md" withBorder>
-          <Stack align="center">
-            <IconFileText size={64} color="gray" stroke={1} />
-            <Title order={3} c="dimmed">
-              No examinations found
-            </Title>
-            <Text c="dimmed" size="sm">
-              Create your first examination to get started.
-            </Text>
-          </Stack>
-        </Card>
+      ) : dbError ? null : isFiltering && filteredExams.length === 0 ? (
+        <EmptySearchState />
       ) : (
         <Accordion
           multiple
@@ -784,7 +780,7 @@ export default function ExamPageClient() {
                     .map((exam) => {
                       const subjectName =
                         exam.curriculum_subjects?.subjects?.name ?? "";
-                      const sectionNames = (exam.exam_assignments ?? [])
+                      const sectionNames = getVisibleAssignments(exam)
                         .map((a) => a.sections?.name)
                         .filter(Boolean)
                         .join(", ");
@@ -980,8 +976,15 @@ export default function ExamPageClient() {
                         )
                       }
                       size="sm"
+                      color={effectiveFullAccess ? undefined : "#4EAE4A"}
                     />
                   </Group>
+                )}
+                {group.exams.length === 0 && (
+                  <EmptySearchState
+                    title="No examinations found."
+                    description="Create your first examination to get started."
+                  />
                 )}
               </Accordion.Panel>
             </Accordion.Item>

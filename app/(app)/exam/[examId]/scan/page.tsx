@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, type CSSProperties } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Alert,
@@ -9,8 +9,8 @@ import {
   Container,
   Divider,
   Group,
+  Modal,
   Paper,
-  Progress,
   Select,
   Skeleton,
   Table,
@@ -87,11 +87,35 @@ function proficiencyBadge(mpl: number): string {
   return 'bg-red-100 text-red-800';
 }
 
+function studentHighlightCellStyle(
+  isHighlighted: boolean,
+  edge: 'start' | 'middle' | 'end' = 'middle',
+): CSSProperties | undefined {
+  if (!isHighlighted) return undefined;
+
+  const shadows = [
+    'inset 0 3px 0 #4EAE4A',
+    'inset 0 -3px 0 #4EAE4A',
+  ];
+
+  if (edge === 'start') shadows.push('inset 3px 0 0 #4EAE4A');
+  if (edge === 'end') shadows.push('inset -3px 0 0 #4EAE4A');
+
+  return {
+    boxShadow: shadows.join(', '),
+    borderBottomLeftRadius: edge === 'start' ? 8 : undefined,
+    borderTopLeftRadius: edge === 'start' ? 8 : undefined,
+    borderBottomRightRadius: edge === 'end' ? 8 : undefined,
+    borderTopRightRadius: edge === 'end' ? 8 : undefined,
+    transition: 'box-shadow 1.2s ease',
+  };
+}
+
 const STEP_LABELS: Record<string, string> = {
   students: 'Students',
-  capture: 'Scan',
-  review: 'Review',
-  submit: 'Save',
+  capture: 'Scan Answer Sheet',
+  review: 'Review Detected Answers',
+  submit: 'Save Scanned Results',
 };
 const STEP_ORDER = ['capture', 'review', 'submit'] as const;
 
@@ -109,6 +133,7 @@ export default function ScanPapersPage() {
   const [step, setStep] = useState<Step>('students');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewModalOpened, setPreviewModalOpened] = useState(false);
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
@@ -118,6 +143,7 @@ export default function ScanPapersPage() {
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
+  const [highlightedEnrollmentId, setHighlightedEnrollmentId] = useState<number | null>(null);
   const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
 
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
@@ -506,12 +532,15 @@ export default function ScanPapersPage() {
       await saveItemStatistics(exam.exam_id, itemStats);
 
       // Refresh existing attempts and go back to student list
+      const scannedId = selectedStudent.enrollment_id;
       setExistingAttempts(allAttempts);
       setStep('students');
       setSelectedStudent(null);
       setCapturedFile(null);
       setPreviewUrl(null);
       setDetectedAnswers({});
+      setHighlightedEnrollmentId(scannedId);
+      setTimeout(() => setHighlightedEnrollmentId(null), 3000);
     } else {
       alert('Failed to save. Please try again.');
     }
@@ -607,28 +636,15 @@ export default function ScanPapersPage() {
     );
   }
 
-  const scanProgressPercent = rosterStudents.length > 0
-    ? Math.round((scannedStudentsCount / rosterStudents.length) * 100)
-    : 0;
-
   // Navigation buttons rendered outside the main Paper
   const wizardNavButtons = !isStudentStep ? (
     step === 'capture' ? (
       <WizardNavigationButtons
         onCancel={handleCancel}
         onPrimary={runProcessing}
-        primaryLabel="Process Sheet"
+        primaryLabel="Next"
         primaryDisabled={!previewUrl}
         cancelLabel="Cancel"
-        leftExtra={previewUrl && !cameraActive ? (
-          <Button
-            variant="default"
-            onClick={() => { setPreviewUrl(null); setCapturedFile(null); }}
-            leftSection={<IconRefresh className="w-4 h-4" />}
-          >
-            Retake
-          </Button>
-        ) : undefined}
       />
     ) : step === 'review' ? (
       <WizardNavigationButtons
@@ -704,10 +720,6 @@ export default function ScanPapersPage() {
               </Button>
             )}
           </Group>
-
-          <Paper withBorder radius="md" p="md">
-            <Progress value={scanProgressPercent} color="#4EAE4A" radius="xl" size="sm" />
-          </Paper>
 
           <Group gap="sm" align="flex-end" wrap="wrap">
             <SearchBar
@@ -789,9 +801,10 @@ export default function ScanPapersPage() {
                             const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
                             const proficiency = mpl != null ? getProficiency(mpl) : null;
                             const hasScanned = attempt != null;
+                            const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
                             return (
                               <TableTr key={student.enrollment_id}>
-                                <TableTd>
+                                <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
                                   <Text
                                     fz="sm"
                                     fw={500}
@@ -800,14 +813,14 @@ export default function ScanPapersPage() {
                                   >
                                     {student.full_name}
                                   </Text>
-                                  <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
+                                  <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
                                 </TableTd>
-                                <TableTd ta="center">
+                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
                                     {attempt ? `${attempt.calculated_score} / ${totalItems}` : '—'}
                                   </Text>
                                 </TableTd>
-                                <TableTd ta="center">
+                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
                                   {proficiency ? (
                                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
                                       {proficiency}
@@ -815,7 +828,7 @@ export default function ScanPapersPage() {
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
                                 {!isAdminView && (
-                                  <TableTd ta="center">
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
                                     <Button
                                       size="xs"
                                       radius="md"
@@ -842,9 +855,10 @@ export default function ScanPapersPage() {
                             const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
                             const proficiency = mpl != null ? getProficiency(mpl) : null;
                             const hasScanned = attempt != null;
+                            const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
                             return (
                               <TableTr key={student.enrollment_id}>
-                                <TableTd>
+                                <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
                                   <Text
                                     fz="sm"
                                     fw={500}
@@ -853,14 +867,14 @@ export default function ScanPapersPage() {
                                   >
                                     {student.full_name}
                                   </Text>
-                                  <Text fz="xs" c="dimmed" mt={2}>{student.grade_level_display} - {student.section_name}</Text>
+                                  <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
                                 </TableTd>
-                                <TableTd ta="center">
+                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
                                     {attempt ? `${attempt.calculated_score} / ${totalItems}` : '—'}
                                   </Text>
                                 </TableTd>
-                                <TableTd ta="center">
+                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
                                   {proficiency ? (
                                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
                                       {proficiency}
@@ -868,7 +882,7 @@ export default function ScanPapersPage() {
                                   ) : <Text span size="sm" c="dimmed">—</Text>}
                                 </TableTd>
                                 {!isAdminView && (
-                                  <TableTd ta="center">
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
                                     <Button
                                       size="xs"
                                       radius="md"
@@ -900,151 +914,178 @@ export default function ScanPapersPage() {
   // Wizard steps: capture / review / submit
   return (
     <>
+      <Modal
+        opened={previewModalOpened}
+        onClose={() => setPreviewModalOpened(false)}
+        title="Uploaded Answer Sheet"
+        size="xl"
+        centered
+      >
+        {previewUrl && (
+          <div className="max-h-[80vh] overflow-auto rounded-xl bg-gray-50">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={previewUrl}
+              alt="Uploaded answer sheet preview"
+              className="mx-auto h-auto max-w-none"
+            />
+          </div>
+        )}
+      </Modal>
       <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
-        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm" mb="xl">
-          <Box style={{ minWidth: 0 }}>
-            <Title order={3} fw={700} lineClamp={2}>{exam.title}</Title>
-          </Box>
-        </Group>
       <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
 
         {/* STEP: CAPTURE */}
         {step === 'capture' && (
-          <Paper withBorder radius="md" p="lg">
-            <Text size="lg" fw={700} c="#3D9B39">Scan Answer Sheet</Text>
-            <Divider my="md" />
+          <Stack gap="md">
+            <Text size="xl" fw={700} mb="md" c="#298925">Scan Answer Sheet</Text>
 
-            {/* Selected Student */}
-            {selectedStudent && (
-              <>
-                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-4">
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
-                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
-                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
-                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
-                  </div>
-                </div>
-                <Divider mb="md" />
-              </>
-            )}
-
-            {/* Exam Information */}
-            <Text fw={600} size="sm" c="#3D9B39" mb="sm">Exam Information</Text>
-            <Text fw={550} size="md">{exam.title}</Text>
-            <Text size="xs" c="dimmed" mt={2} mb="md">{totalItems} items</Text>
-            <Divider mb="md" />
-
-            {/* Processing Error */}
-            {processingError && (
-              <Alert
-                variant="filled"
-                radius="md"
-                mb="md"
-                styles={{
-                  root: { backgroundColor: '#FF6666' },
-                  icon: { alignSelf: 'center', marginTop: 0 },
-                }}
-                icon={
-                  <ThemeIcon color="white" variant="transparent" size="md">
-                    <IconAlertTriangle size={20} />
-                  </ThemeIcon>
-                }
-              >
-                <Text fw={700} size="sm">
-                  {processingError.includes('answer sheet is for') ? 'Wrong Answer Sheet' : 'Processing Failed'}
-                </Text>
-                <Text size="sm" fs="italic">{processingError}</Text>
-              </Alert>
-            )}
-
-            {/* Camera active */}
-            {(cameraActive || startingCamera) && (
-              <div>
-                <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
-                <Group mt="sm">
-                  <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
-                    Capture
-                  </Button>
-                  <Button variant="default" onClick={stopCamera}>Cancel</Button>
-                </Group>
-              </div>
-            )}
-
-            {/* Image preview */}
-            {previewUrl && !cameraActive && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={previewUrl} alt="Captured sheet" className="w-full rounded-xl border border-gray-200 max-h-64 object-contain bg-gray-50" />
-            )}
-
-            {/* Upload section */}
-            {!cameraActive && !previewUrl && (
-              <>
-                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Scanning Guidelines</Text>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                    <p className="font-semibold mb-2 flex items-center gap-1.5">
-                      <IconCircleCheck className="w-4 h-4 text-blue-500 shrink-0" />
-                      Tips for best results:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li>Place sheet on a dark, flat surface with good lighting</li>
-                      <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
-                      <li>Avoid glare and shadows; hold camera directly above the sheet</li>
-                      <li>Ensure student has filled bubbles darkly and completely</li>
-                    </ul>
-                  </div>
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-700">
-                    <p className="font-semibold mb-2 flex items-center gap-1.5">
-                      <IconCamera className="w-4 h-4 text-blue-500 shrink-0" />
-                      Photo tips for best results:
-                    </p>
-                    <ul className="list-disc list-inside space-y-1 text-xs">
-                      <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
-                      <li>All <strong>4 black corner squares</strong> must be visible</li>
-                      <li>Good lighting — avoid shadows over the bubbles</li>
-                    </ul>
-                  </div>
-                </div>
-
-                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Upload Answer Sheet</Text>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all"
-                  >
-                    <IconUpload className="w-8 h-8 text-gray-400" />
-                    <div className="text-center">
-                      <p className="font-semibold text-gray-700">Upload Photo</p>
-                      <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
+            <Paper withBorder radius="md" p="lg">
+              <Stack gap="md">
+                {/* Student & Examination Information */}
+                <Paper withBorder radius="md" p="md">
+                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Student Name</Text>
+                      <Text size="sm">{selectedStudent?.full_name ?? '—'}</Text>
                     </div>
-                  </button>
-                  <button
-                    onClick={startCamera}
-                    disabled={startingCamera}
-                    className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <IconCamera className="w-8 h-8 text-gray-400" />
-                    <div className="text-center">
-                      <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>LRN</Text>
+                      <Text size="sm">{selectedStudent?.lrn ?? '—'}</Text>
                     </div>
-                  </button>
-                </div>
-              </>
-            )}
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Exam Name</Text>
+                      <Text size="sm">{exam.title}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Items</Text>
+                      <Text size="sm">{totalItems}</Text>
+                    </div>
+                  </div>
+                </Paper>
 
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
-          </Paper>
+{/* Camera active state */}
+                {(cameraActive || startingCamera) && (
+                  <Paper withBorder radius="md" p="md">
+                    <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
+                    {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
+                    <Group mt="sm">
+                      <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
+                        Capture
+                      </Button>
+                      <Button variant="default" onClick={stopCamera}>Cancel</Button>
+                    </Group>
+                  </Paper>
+                )}
+
+                {/* Scanning Guidelines — only on the initial upload page */}
+                {!cameraActive && !previewUrl && (
+                  <Paper withBorder radius="md" p="md">
+                    <Text size="lg" fw={700} mb="md" c="#298925">Scanning Guidelines</Text>
+                    <div>
+                      <p className="font-semibold text-sm mb-2">Tips for best results:</p>
+                      <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                        <li>Place sheet on a dark, flat surface with good lighting</li>
+                        <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
+                        <li>Avoid glare and shadows; hold camera directly above the sheet</li>
+                        <li>Ensure student has filled bubbles darkly and completely</li>
+                        <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
+                        <li>All <strong>4 black corner squares</strong> must be visible</li>
+                      </ul>
+                    </div>
+                  </Paper>
+                )}
+
+                {/* Upload Answer Sheet — shows upload buttons or uploaded preview */}
+                {!cameraActive && (
+                  <Paper withBorder radius="md" p="md">
+                    <Text size="lg" fw={700} mb="md" c="#298925">Upload Answer Sheet</Text>
+
+                    {processingError && (
+                      <Alert
+                        variant="filled"
+                        radius="md"
+                        mb="md"
+                        styles={{
+                          root: { backgroundColor: '#FF6666' },
+                          icon: { alignSelf: 'center', marginTop: 0 },
+                        }}
+                        icon={
+                          <ThemeIcon color="white" variant="transparent" size="md">
+                            <IconAlertTriangle size={20} />
+                          </ThemeIcon>
+                        }
+                      >
+                        <Text fw={700} size="sm">
+                          {processingError.includes('answer sheet is for') ? 'Wrong Answer Sheet' : 'Processing Failed'}
+                        </Text>
+                        <Text size="sm" fs="italic">{processingError}</Text>
+                      </Alert>
+                    )}
+
+                    {previewUrl ? (
+                      <>
+                        <button
+                          type="button"
+                          className="mb-4 block w-full max-h-96 overflow-hidden rounded-xl bg-gray-50 cursor-zoom-in"
+                          onClick={() => setPreviewModalOpened(true)}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={previewUrl}
+                            alt="Captured sheet"
+                            className="w-full max-h-96 object-contain"
+                          />
+                        </button>
+                        <Group justify="flex-end">
+                          <Button
+                            variant="default"
+                            onClick={() => {
+                              setPreviewModalOpened(false);
+                              setProcessingError(null);
+                              setPreviewUrl(null);
+                              setCapturedFile(null);
+                            }}
+                            leftSection={<IconRefresh className="w-4 h-4" />}
+                          >
+                            Retake
+                          </Button>
+                        </Group>
+                      </>
+                    ) : (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all"
+                        >
+                          <IconUpload className="w-8 h-8 text-gray-400" />
+                          <div className="text-center">
+                            <p className="font-semibold text-gray-700">Upload Photo</p>
+                            <p className="text-xs text-gray-400 mt-0.5">JPG, PNG from gallery</p>
+                          </div>
+                        </button>
+                        <button
+                          onClick={startCamera}
+                          disabled={startingCamera}
+                          className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <IconCamera className="w-8 h-8 text-gray-400" />
+                          <div className="text-center">
+                            <p className="font-semibold text-gray-700">{startingCamera ? 'Starting camera...' : 'Use Camera'}</p>
+                            <p className="text-xs text-gray-400 mt-0.5">Phone or webcam</p>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </Paper>
+                )}
+
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
+              </Stack>
+            </Paper>
+          </Stack>
         )}
 
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
@@ -1060,189 +1101,233 @@ export default function ScanPapersPage() {
 
         {/* â"€â"€ STEP: REVIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'review' && (
-          <div className="space-y-5">
-            {selectedStudent && (
-              <Paper withBorder radius="md" p="lg">
-                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
-                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
-                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
-                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
-                  </div>
-                </div>
-              </Paper>
-            )}
+          <Stack gap="md">
+            <Text size="xl" fw={700} c="#298925">Review Detected Answers</Text>
 
-            <div className={`rounded-xl p-3 flex items-start gap-3 text-sm ${cornersOk ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'}`}>
-              {cornersOk
-                ? <IconCircleCheck className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
-                : <IconAlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />}
-              <p className={cornersOk ? 'text-green-700' : 'text-yellow-700'}>
-                {cornersOk
-                  ? 'Corner markers detected automatically - high confidence detection.'
-                  : 'Corner markers not found - results may be less accurate. Review and correct any wrong answers.'}
-              </p>
-            </div>
+            <Paper withBorder radius="md" p="lg">
+              <Stack gap="md">
 
-            {warpedImageUrl && (
-              <details className="rounded-xl border border-gray-200">
-                <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-gray-600 select-none">
-                  Debug: Perspective-Corrected Image (verify alignment)
-                </summary>
-                <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-b-xl" />
-              </details>
-            )}
-
-            {debugImageUrl && (
-              <div className="rounded-xl border border-gray-200 overflow-hidden">
-                <p className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border-b border-gray-200">
-                  Bubble Detection Map — <span className="text-green-600">green = detected</span>, <span className="text-red-500">red = not selected</span>. Verify circles align with bubbles.
-                </p>
-                <div className="overflow-auto bg-gray-100 flex items-start justify-center p-2" style={{ maxHeight: '640px' }}>
-                  <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain" />
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="bg-blue-50 rounded-xl p-3">
-                <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
-                <p className="text-xs text-blue-500 mt-0.5">Detected</p>
-              </div>
-              <div className="bg-orange-50 rounded-xl p-3">
-                <p className="text-2xl font-bold text-orange-600">{totalItems - answeredCount}</p>
-                <p className="text-xs text-orange-400 mt-0.5">Undetected</p>
-              </div>
-              <div className="bg-green-50 rounded-xl p-3">
-                <p className="text-2xl font-bold text-green-700">{score}</p>
-                <p className="text-xs text-green-500 mt-0.5">Correct (preview)</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-500 text-center">
-              Student answer is gray. Correct answer key is light green. Click any bubble to correct.
-            </p>
-
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-              {[1, 2].map(col => {
-                const itemsInCol1 = Math.ceil(totalItems / 2);
-                const start = col === 1 ? 1 : itemsInCol1 + 1;
-                const end = col === 1 ? itemsInCol1 : totalItems;
-                if (start > totalItems) return null;
-                return (
-                  <div key={col} className="space-y-0.5">
-                    <div className="flex items-center gap-2 pb-1 border-b border-gray-100">
-                      <span className="text-xs font-semibold text-gray-400 w-7">#</span>
-                      {choices.map(ch => <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>)}
-                      <span className="text-xs font-semibold text-gray-400 w-5 text-center">✓</span>
+                {/* Student & Examination Information */}
+                <Paper withBorder radius="md" p="md">
+                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Student Name</Text>
+                      <Text size="sm">{selectedStudent?.full_name ?? '—'}</Text>
                     </div>
-                    {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(item => {
-                      const correct = answerKey[item];
-                      const detected = detectedAnswers[item];
-                      const isRight = detected && correct && detected === correct;
-                      return (
-                        <div key={item} className={`flex items-center gap-2 py-0.5 px-1 rounded-lg transition-all ${!detected ? 'bg-orange-50' : ''}`}>
-                          <span className="text-xs font-semibold w-7 text-right text-gray-600">{item}</span>
-                          {choices.map(ch => (
-                            <button
-                              key={ch}
-                              type="button"
-                              onClick={() => toggleAnswer(item, ch)}
-                              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-100 hover:scale-110 ${confColor(item, ch)}`}
-                            >
-                              {ch}
-                            </button>
-                          ))}
-                          <span className="w-5 text-center text-sm">
-                            {detected && correct ? (isRight ? '✓' : '✗') : detected ? '·' : ' - '}
-                          </span>
-                        </div>
-                      );
-                    })}
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>LRN</Text>
+                      <Text size="sm">{selectedStudent?.lrn ?? '—'}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Exam Name</Text>
+                      <Text size="sm">{exam.title}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Items</Text>
+                      <Text size="sm">{totalItems}</Text>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
+                </Paper>
 
-          </div>
+                {/* Answer Bubble Detection Map */}
+                {debugImageUrl && (
+                  <Paper withBorder radius="md" p="md">
+                    <Text size="lg" fw={700} mb="md" c="#298925">Answer Bubble Detection Map</Text>
+                    <div className="mb-3">
+                      <Text size="sm" fw={600} mb={4}>Detection Guide:</Text>
+                      <div className="flex items-center gap-4 text-sm mb-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="inline-block w-3 h-3 rounded-full bg-green-500" />
+                          Detected Answer
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="inline-block w-3 h-3 rounded-full bg-red-500" />
+                          Not Selected
+                        </span>
+                      </div>
+                      <Text size="xs" c="dimmed">Confirm that all markers correctly align with the answer bubbles.</Text>
+                    </div>
+                    {!cornersOk && (
+                      <div className="flex items-start gap-2 text-sm bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                        <IconAlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5 shrink-0" />
+                        <p className="text-yellow-700">Corner markers not found — results may be less accurate. Review and correct any wrong answers.</p>
+                      </div>
+                    )}
+                    <div className="overflow-auto bg-gray-100 rounded-xl flex items-start justify-center p-2" style={{ maxHeight: '640px' }}>
+                      <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain" />
+                    </div>
+                  </Paper>
+                )}
+
+                {/* Uploaded Answer Sheet (warped/perspective-corrected) */}
+                {warpedImageUrl && (
+                  <Paper withBorder radius="md" p="md">
+                    <Text size="lg" fw={700} mb="md" c="#298925">Uploaded Answer Sheet</Text>
+                    <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl" />
+                  </Paper>
+                )}
+
+                {/* Review Detected Answers */}
+                <Paper withBorder radius="md" p="md">
+                  <Text size="lg" fw={700} mb="md" c="#298925">Review Detected Answers</Text>
+
+                  <div className="mx-auto w-fit flex flex-col gap-4">
+                    {/* Stat cards — stretch to match columns width */}
+                    <div className="flex gap-3 w-full">
+                      <div className="bg-blue-50 rounded-xl p-3 text-center flex-1">
+                        <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
+                        <p className="text-xs text-blue-500 mt-0.5">Detected</p>
+                      </div>
+                      <div className="bg-orange-50 rounded-xl p-3 text-center flex-1">
+                        <p className="text-2xl font-bold text-orange-600">{totalItems - answeredCount}</p>
+                        <p className="text-xs text-orange-400 mt-0.5">Undetected</p>
+                      </div>
+                      <div className="bg-green-50 rounded-xl p-3 text-center flex-1">
+                        <p className="text-2xl font-bold text-green-700">{score}</p>
+                        <p className="text-xs text-green-500 mt-0.5">Correct (preview)</p>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-gray-500 text-center">
+                      Student answer is gray. Correct answer key is light green. Click any bubble to correct.
+                    </p>
+
+                    {/* Bubble columns */}
+                    <div className="flex gap-6">
+                      {[1, 2].map(col => {
+                        const itemsInCol1 = Math.ceil(totalItems / 2);
+                        const start = col === 1 ? 1 : itemsInCol1 + 1;
+                        const end = col === 1 ? itemsInCol1 : totalItems;
+                        if (start > totalItems) return null;
+                        return (
+                          <div key={col} className="space-y-0.5">
+                            <div className="flex items-center justify-center gap-2 pb-1 border-b border-gray-100">
+                              <span className="text-xs font-semibold text-gray-400 w-7 text-center">#</span>
+                              {choices.map(ch => <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>)}
+                              <span className="text-xs font-semibold text-gray-400 w-5 text-center">✓</span>
+                            </div>
+                            {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(item => {
+                              const correct = answerKey[item];
+                              const detected = detectedAnswers[item];
+                              const isRight = detected && correct && detected === correct;
+                              return (
+                                <div key={item} className={`flex items-center justify-center gap-2 py-0.5 px-1 rounded-lg transition-all ${!detected ? 'bg-orange-50' : ''}`}>
+                                  <span className="text-xs font-semibold w-7 text-center text-gray-600">{item}</span>
+                                  {choices.map(ch => (
+                                    <button
+                                      key={ch}
+                                      type="button"
+                                      onClick={() => toggleAnswer(item, ch)}
+                                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-100 hover:scale-110 ${confColor(item, ch)}`}
+                                    >
+                                      {ch}
+                                    </button>
+                                  ))}
+                                  <span className="w-5 text-center text-sm">
+                                    {detected && correct ? (isRight ? '✓' : '✗') : detected ? '·' : ' - '}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </Paper>
+
+              </Stack>
+            </Paper>
+          </Stack>
         )}
 
         {/* â"€â"€ STEP: SUBMIT â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'submit' && (
-          <div className="space-y-5">
-            {selectedStudent && (
-              <Paper withBorder radius="md" p="lg">
-                <Text fw={600} size="sm" c="#3D9B39" mb="sm">Selected Student</Text>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Name</Text>
-                    <Text fw={550} size="md">{selectedStudent.full_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>Grade & Section</Text>
-                    <Text fw={550} size="md">{selectedStudent.grade_level_display} – {selectedStudent.section_name}</Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed" mb={2}>LRN</Text>
-                    <Text fw={550} size="md">{selectedStudent.lrn}</Text>
-                  </div>
-                </div>
-              </Paper>
-            )}
+          <Stack gap="md">
+            <Text size="xl" fw={700} c="#298925">Save Scanned Results</Text>
 
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                <p className="text-3xl font-bold text-green-700">{score} / {totalItems}</p>
-                <p className="text-green-600 text-sm mt-1">
-                  Level of Proficiency: {getProficiency(scoreMpl)} · {answeredCount} bubbles detected
-                </p>
-              </div>
+            <Paper withBorder radius="md" p="lg">
+              <Stack gap="md">
 
-            <div className="rounded-xl border border-gray-200 overflow-hidden">
-              <div className="bg-gray-50 px-4 py-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-700">Student vs Correct Answer</p>
-                {!hasAnswerKey && <p className="text-xs text-amber-600">Set answer key to score correctness</p>}
-              </div>
-              <div className="max-h-56 overflow-auto">
-                <table className="w-full text-sm">
-                  <thead className="sticky top-0 bg-white border-b border-gray-200">
-                    <tr className="text-left text-gray-500">
-                      <th className="px-4 py-2 font-semibold">#</th>
-                      <th className="px-4 py-2 font-semibold">Student</th>
-                      <th className="px-4 py-2 font-semibold">Correct</th>
-                      <th className="px-4 py-2 font-semibold">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {itemResults.map(r => (
-                      <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
-                        <td className="px-4 py-2 font-medium text-gray-700">{r.item}</td>
-                        <td className="px-4 py-2">{r.student ?? '-'}</td>
-                        <td className="px-4 py-2">{r.correct ?? '-'}</td>
-                        <td className="px-4 py-2">
-                          {!r.student
-                            ? <span className="text-orange-600">No answer</span>
-                            : !r.correct
-                              ? <span className="text-gray-500">No key</span>
-                              : r.isCorrect
-                                ? <span className="text-green-700 font-medium">Correct</span>
-                                : <span className="text-red-600 font-medium">Wrong</span>}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+                {/* Student & Examination Information */}
+                <Paper withBorder radius="md" p="md">
+                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Student Name</Text>
+                      <Text size="sm">{selectedStudent?.full_name ?? '—'}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>LRN</Text>
+                      <Text size="sm">{selectedStudent?.lrn ?? '—'}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Exam Name</Text>
+                      <Text size="sm">{exam.title}</Text>
+                    </div>
+                    <div>
+                      <Text size="sm" fw={700} mb={2}>Items</Text>
+                      <Text size="sm">{totalItems}</Text>
+                    </div>
+                  </div>
+                </Paper>
 
-          </div>
+                {/* Student Responses & Correct Answers */}
+                <Paper withBorder radius="md" p="md">
+                  <Text size="lg" fw={700} mb="md" c="#298925">Student Responses &amp; Correct Answers</Text>
+
+                  {/* Score card */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center mb-4 mx-auto max-w-sm">
+                    <p className="text-3xl font-bold text-green-700">{score} / {totalItems}</p>
+                    <p className="text-green-600 text-sm mt-1">
+                      Level of Proficiency: {getProficiency(scoreMpl)} · {answeredCount} bubbles detected
+                    </p>
+                    {!hasAnswerKey && <p className="text-xs text-amber-600 mt-1">Set answer key to score correctness</p>}
+                  </div>
+
+                  {/* Two tables in one shared border */}
+                  <div className="mx-auto w-fit flex gap-4">
+                    {[1, 2].map((col, idx) => {
+                      const itemsInCol1 = Math.ceil(itemResults.length / 2);
+                      const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
+                      return (
+                        <table key={col} className="text-xs border-collapse rounded-xl border border-gray-200 overflow-hidden">
+                          <thead>
+                            <tr className="text-left text-gray-600 bg-gray-50 border-b border-gray-200">
+                              <th className="px-4 py-2 font-semibold">Item</th>
+                              <th className="px-4 py-2 font-semibold">Student</th>
+                              <th className="px-4 py-2 font-semibold">Correct</th>
+                              <th className="px-4 py-2 font-semibold">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {colItems.map(r => (
+                              <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
+                                <td className="px-4 py-1.5 font-medium text-gray-600">{r.item}</td>
+                                <td className="px-4 py-1.5 text-center">{r.student ?? '-'}</td>
+                                <td className="px-4 py-1.5 text-center">{r.correct ?? '-'}</td>
+                                <td className="px-4 py-1.5">
+                                  {!r.student
+                                    ? <span className="text-orange-500">No answer</span>
+                                    : !r.correct
+                                      ? <span className="text-gray-400">No key</span>
+                                      : r.isCorrect
+                                        ? <span className="text-green-600 font-semibold">Correct</span>
+                                        : <span className="text-red-500 font-semibold">Wrong</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })}
+                  </div>
+                </Paper>
+
+              </Stack>
+            </Paper>
+          </Stack>
         )}
       </VerticalWizardLayout>
       {wizardNavButtons}
