@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
   Select, MultiSelect, Alert, Badge, ActionIcon, NumberInput, Progress,
-  Loader,
+  Skeleton,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -115,6 +115,11 @@ export default function CreateExamPage() {
   const [duplicateSectionIds, setDuplicateSectionIds] = useState<Set<number>>(new Set());
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
+  const [isFacultyView] = useState(() =>
+    typeof window !== "undefined" && localStorage.getItem("examViewMode") === "faculty",
+  );
+  // An admin in faculty view is treated as restricted — only their assigned sections/subjects.
+  const isRestricted = !hasFullAccess || isFacultyView;
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
@@ -137,6 +142,7 @@ export default function CreateExamPage() {
 
   // Refs to skip auto-reset effects on the very first mount (would clear restored data)
   const gradeLevelMountedRef = useRef(false);
+  const sectionMountedRef = useRef(false);
   const totalItemsMountedRef = useRef(false);
   const prevGradeLevelForItemsRef = useRef<string | null | undefined>(d?.gradeLevelId);
 
@@ -157,7 +163,8 @@ export default function CreateExamPage() {
       if (user?.id) {
         const assignments = await fetchTeacherClassAssignments(user.id);
         setTeacherAssignments(assignments);
-        if (!hasFullAccess) {
+        const viewMode = typeof window !== "undefined" && localStorage.getItem("examViewMode");
+        if (!hasFullAccess || viewMode === "faculty") {
           setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
           setAllowedSubjectIds(new Set(assignments.map(a => a.curriculum_subject_id)));
         }
@@ -217,16 +224,23 @@ export default function CreateExamPage() {
   const selectedSectionTypes = new Set(filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.section_type).filter(Boolean));
   const activeSectionType = selectedSectionTypes.size === 1 ? [...selectedSectionTypes][0] : null;
 
-  useEffect(() => {
-    if (selectedSectionIds.length === 0) {
-      setSelectedSubjectId(null);
-      return;
-    }
+  // Subjects the teacher handles in ALL selected sections (intersection). Memoized so the
+  // validation effect below only re-fires when the actual set of IDs changes.
+  const sectionAwareSubjectIds = useMemo(() => {
+    if (!isRestricted || selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
+    const perSection = selectedSectionIds.map(
+      sectionId => new Set(teacherAssignments.filter(a => a.section_id === sectionId).map(a => a.curriculum_subject_id))
+    );
+    const [first, ...rest] = perSection;
+    return new Set([...first].filter(id => rest.every(set => set.has(id))));
+  }, [isRestricted, selectedSectionIds, teacherAssignments, allowedSubjectIds]);
 
-    if (!activeSectionType || !selectedSubjectId) return;
-    const isValid = subjects.some(s => String(s.curriculum_subject_id) === selectedSubjectId && (s.subject_type === 'BOTH' || activeSectionType === 'SSES'));
-    if (!isValid) setSelectedSubjectId(null);
-  }, [activeSectionType, selectedSectionIds, selectedSubjectId, subjects]);
+  // Any change to the section selection always clears the subject so the user must
+  // re-pick from the freshly computed intersection of subjects across the new sections.
+  useEffect(() => {
+    if (!sectionMountedRef.current) { sectionMountedRef.current = true; return; }
+    setSelectedSubjectId(null);
+  }, [selectedSectionIds]);
 
   // Real-time duplicate check: fires whenever subject or sections change
   useEffect(() => {
@@ -238,18 +252,6 @@ export default function CreateExamPage() {
     checkExamDuplicates(selectedSectionIds, Number(selectedSubjectId), activeQuarter.quarter_id)
       .then((ids) => setDuplicateSectionIds(new Set(ids)));
   }, [selectedSubjectId, selectedSectionIds, quarters]);
-
-  // When sections are selected, narrow subjects to those the teacher handles in ALL selected sections
-  // (intersection, not union) so only valid overlapping subjects appear in the dropdown.
-  // Falls back to the global allowedSubjectIds (or null for full-access) when no sections are chosen yet.
-  const sectionAwareSubjectIds = (() => {
-    if (hasFullAccess || selectedSectionIds.length === 0 || teacherAssignments.length === 0) return allowedSubjectIds;
-    const perSection = selectedSectionIds.map(
-      sectionId => new Set(teacherAssignments.filter(a => a.section_id === sectionId).map(a => a.curriculum_subject_id))
-    );
-    const [first, ...rest] = perSection;
-    return new Set([...first].filter(id => rest.every(set => set.has(id))));
-  })();
 
   const filteredSubjects = Array.from(
     new Map(
@@ -269,11 +271,9 @@ export default function CreateExamPage() {
     return `${term} - ${subjectCode}`;
   })();
 
-  const generatedExamName = (() => {
-    const sectionPart = selectedSectionNames.join(' & ');
-    if (!titleBase || !sectionPart) return '';
-    return `${titleBase} - ${sectionPart}`;
-  })();
+  const generatedExamNames: string[] = titleBase
+    ? selectedSectionNames.map((name) => `${titleBase} - ${name}`)
+    : [];
 
   const canGoStep1 = Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
@@ -376,7 +376,24 @@ export default function CreateExamPage() {
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Details</Text>
         {dataLoading ? (
-          <Group justify="center" py="xl"><Loader /></Group>
+          <Stack gap="md">
+            <Skeleton height={52} radius="md" />
+            <Skeleton height={16} width="55%" radius="sm" />
+            <Group grow>
+              <Stack gap={6}>
+                <Skeleton height={14} width={80} radius="sm" />
+                <Skeleton height={36} radius="sm" />
+              </Stack>
+              <Stack gap={6}>
+                <Skeleton height={14} width={60} radius="sm" />
+                <Skeleton height={36} radius="sm" />
+              </Stack>
+              <Stack gap={6}>
+                <Skeleton height={14} width={60} radius="sm" />
+                <Skeleton height={36} radius="sm" />
+              </Stack>
+            </Group>
+          </Stack>
         ) : (
           <Stack gap="md">
             {!quarters.some((q) => q.is_active) && (
@@ -396,6 +413,7 @@ export default function CreateExamPage() {
                 label="Grade Level"
                 placeholder="Select grade"
                 required
+                clearable
                 data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
                 value={selectedGradeLevelId}
                 onChange={setSelectedGradeLevelId}
@@ -414,6 +432,7 @@ export default function CreateExamPage() {
                 label="Subject"
                 placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
                 required
+                clearable
                 data={filteredSubjects.map(s => ({ value: String(s.curriculum_subject_id), label: s.name }))}
                 value={selectedSubjectId}
                 onChange={setSelectedSubjectId}
@@ -421,13 +440,15 @@ export default function CreateExamPage() {
                 error={duplicateSectionIds.size > 0 ? 'An examination for this subject already exists for the active term.' : undefined}
               />
             </Group>
-            {generatedExamName && (
+            {generatedExamNames.length > 0 && (
               <div>
                 <Text size="sm" fw={500} mb={4}>
-                  Examination Name
+                  Examination Name{generatedExamNames.length > 1 ? 's' : ''}
                 </Text>
                 <Paper withBorder p="sm" radius="sm" bg="green.0" style={{ borderColor: 'var(--mantine-color-green-3)' }}>
-                  <Text fw={600} c="green.9">{generatedExamName}</Text>
+                  {generatedExamNames.map((name) => (
+                    <Text key={name} fw={600} c="green.9">{name}</Text>
+                  ))}
                 </Paper>
               </div>
             )}
@@ -715,7 +736,7 @@ export default function CreateExamPage() {
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {[
-                ['Exam', generatedExamName],
+                ['Exam', generatedExamNames.join('\n')],
                 ['Grade', gradeLabel],
                 ['Subject', subjectName],
                 ['Section(s)', sectionNames],
@@ -724,7 +745,7 @@ export default function CreateExamPage() {
               ].map(([label, value]) => (
                 <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                   <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  <p className="font-semibold text-gray-900 truncate">{value}</p>
+                  <p className="font-semibold text-gray-900 break-words" style={{ whiteSpace: 'pre-line' }}>{value}</p>
                 </div>
               ))}
             </div>
@@ -786,18 +807,16 @@ export default function CreateExamPage() {
 
   const mobileConfirmModalProps = isMobile
     ? {
-        centered: false,
-        size: '100%',
         styles: {
-          inner: { alignItems: 'flex-end', padding: 0 },
+          inner: { alignItems: 'flex-end', paddingBottom: '20px' },
           content: {
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
-            marginBottom: 0,
+            width: '100%',
+            maxWidth: '100%',
+            borderRadius: '12px 12px 0 0',
           },
         },
       }
-    : { centered: true };
+    : {};
 
   const handleCancel = () => {
     const defaultObjectiveRow = objectiveRows[0];

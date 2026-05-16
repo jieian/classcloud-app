@@ -77,13 +77,39 @@ async function fetchActiveSchoolYearId(): Promise<number | null> {
   return typeof syId === 'number' ? syId : null;
 }
 
+async function fetchActiveQuarterId(): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('quarters')
+    .select('quarter_id')
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[examService] active quarter lookup error:', error.message);
+    return null;
+  }
+
+  const qId = (data as { quarter_id?: number } | null)?.quarter_id;
+  return typeof qId === 'number' ? qId : null;
+}
+
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
-export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamWithRelations[]> {
-  // Fetch the active SY for optional filtering, but never block exam visibility when it's absent.
-  // Exams belong to sections permanently — toggling a school year's active status must not
-  // cause previously created exams to disappear.
-  const activeSyId = await fetchActiveSchoolYearId();
+export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<ExamWithRelations[]> {
+  // Exams are isolated per active Term. Fetch both the active SY and active quarter up front.
+  // No active quarter → no exams are shown (creation is also blocked without an active term).
+  const [activeSyId, activeQuarterId] = await Promise.all([
+    fetchActiveSchoolYearId(),
+    fetchActiveQuarterId(),
+  ]);
+
+  if (!activeQuarterId) return [];
+
+  // Faculty/restricted view: filter to exams assigned to the teacher's sections.
+  // Empty array means the user has no assigned sections — return nothing.
+  if (sectionIds !== undefined && sectionIds.length === 0) {
+    return [];
+  }
 
   let query = supabase
     .from('exams')
@@ -104,10 +130,27 @@ export async function fetchExamsWithRelations(teacherId?: string): Promise<ExamW
       )
     `)
     .is('deleted_at', null)
+    .eq('quarter_id', activeQuarterId)
     .order('created_at', { ascending: false });
 
-  if (teacherId) {
-    query = query.eq('creator_teacher_id', teacherId);
+  if (sectionIds !== undefined && sectionIds.length > 0) {
+    // Resolve exam IDs that have at least one assignment in the teacher's sections.
+    const { data: assignmentRows, error: assignmentError } = await supabase
+      .from('exam_assignments')
+      .select('exam_id')
+      .in('section_id', sectionIds);
+
+    if (assignmentError) {
+      console.error('[examService] exam_assignments lookup error:', assignmentError.message);
+      return [];
+    }
+
+    const examIds = [
+      ...new Set((assignmentRows ?? []).map((r: { exam_id: number }) => r.exam_id)),
+    ];
+    if (examIds.length === 0) return [];
+
+    query = query.in('exam_id', examIds);
   }
 
   const { data, error } = await query;

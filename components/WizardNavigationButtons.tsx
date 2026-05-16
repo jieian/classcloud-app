@@ -39,8 +39,13 @@ export default function WizardNavigationButtons({
   return (
     <Group justify="flex-end" mt={mt} gap="sm" wrap="wrap">
       {leftExtra && leftExtra}
-      <UnstyledButton onClick={onCancel} style={{ color: "#000", cursor: "pointer" }}>
-        <Text size="sm" fw={600}>{cancelLabel}</Text>
+      <UnstyledButton
+        onClick={onCancel}
+        style={{ color: "#000", cursor: "pointer" }}
+      >
+        <Text size="sm" fw={600}>
+          {cancelLabel}
+        </Text>
       </UnstyledButton>
 
       {showPrevious && onPrevious && (
