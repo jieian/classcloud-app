@@ -124,7 +124,14 @@ const _POST = async function (request: Request) {
         { status: 409 }
       );
     }
-    console.error("create_school_year_full failed:", result.message);
+    if (result.code === "MISSING_ROLES") {
+      console.error("create_school_year_full: required roles missing in DB:", result.message);
+      return Response.json(
+        { error: "Server misconfiguration: required roles are missing. Contact an administrator." },
+        { status: 500 }
+      );
+    }
+    console.error("create_school_year_full failed:", result.code, result.message);
     return Response.json(
       { error: result.message ?? "Failed to create school year." },
       { status: 500 }

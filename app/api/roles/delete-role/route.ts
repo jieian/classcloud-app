@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import {
   createServerSupabaseClient,
   getPermissionsFromUser,
@@ -52,11 +53,22 @@ const _DELETE = async function(request: Request) {
     );
   }
 
-  // 7. Sync JWT claims for all previously affected users (non-fatal)
+  // 7. Sync JWT claims for all previously affected users after the response is sent.
+  // Batched to avoid hitting the Auth admin API rate limit; after() guarantees
+  // completion even after the serverless function responds.
   if (affectedUids.length > 0) {
-    Promise.all(affectedUids.map((uid) => syncUserPermissions(uid))).catch((err) =>
-      console.error("syncUserPermissions failed after delete-role:", err),
-    );
+    after(async () => {
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < affectedUids.length; i += BATCH_SIZE) {
+        const batch = affectedUids.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(batch.map((uid) => syncUserPermissions(uid)));
+        results.forEach((result, index) => {
+          if (result.status === "rejected") {
+            console.error(`syncUserPermissions failed after delete-role for uid ${batch[index]}:`, result.reason);
+          }
+        });
+      }
+    });
   }
 
   // 8. Audit

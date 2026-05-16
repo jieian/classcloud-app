@@ -1,8 +1,7 @@
 "use client";
 
 import React from "react";
-import { Button, Group } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { Button, Group, Text, UnstyledButton } from "@mantine/core";
 
 interface WizardNavigationButtonsProps {
   onCancel: () => void;
@@ -36,27 +35,16 @@ export default function WizardNavigationButtons({
   leftExtra,
 }: WizardNavigationButtonsProps) {
   const useColor = colorWhenEnabledOnly ? !primaryDisabled : true;
-  const isMobile = useMediaQuery("(max-width: 640px)");
 
   return (
-    <Group
-      justify={isMobile ? "stretch" : "flex-end"}
-      mt={mt}
-      gap="sm"
-      wrap="wrap"
-      style={isMobile ? { width: "100%" } : undefined}
-    >
-      {leftExtra && (
-        <div style={isMobile ? { width: "100%" } : undefined}>
-          {leftExtra}
-        </div>
-      )}
-      <Button variant="default" onClick={onCancel} fullWidth={isMobile}>
-        {cancelLabel}
-      </Button>
+    <Group justify="flex-end" mt={mt} gap="sm" wrap="wrap">
+      {leftExtra && leftExtra}
+      <UnstyledButton onClick={onCancel} style={{ color: "#000", cursor: "pointer" }}>
+        <Text size="sm" fw={600}>{cancelLabel}</Text>
+      </UnstyledButton>
 
       {showPrevious && onPrevious && (
-        <Button variant="outline" onClick={onPrevious} fullWidth={isMobile}>
+        <Button variant="default" onClick={onPrevious} radius="md">
           {previousLabel}
         </Button>
       )}
@@ -65,8 +53,8 @@ export default function WizardNavigationButtons({
         onClick={onPrimary}
         disabled={primaryDisabled}
         loading={primaryLoading}
+        radius="md"
         style={useColor ? { backgroundColor: primaryColor } : undefined}
-        fullWidth={isMobile}
       >
         {primaryLabel}
       </Button>

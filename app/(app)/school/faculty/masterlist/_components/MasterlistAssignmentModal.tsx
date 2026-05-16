@@ -42,8 +42,9 @@ interface MasterlistAssignmentModalProps {
   assignmentLabel: string;
   assignedAdviserUids: Set<string>;
   teachingLoadByTeacher: Map<string, MasterlistTeacherLoad[]>;
+  filterAdvisers?: boolean;
   onClose: () => void;
-  onAssign: (uid: string) => void;
+  onAssign: (uid: string, name: string) => void;
 }
 
 interface CandidateRow {
@@ -67,6 +68,7 @@ export default function MasterlistAssignmentModal({
   assignmentLabel,
   assignedAdviserUids,
   teachingLoadByTeacher,
+  filterAdvisers = true,
   onClose,
   onAssign,
 }: MasterlistAssignmentModalProps) {
@@ -101,11 +103,11 @@ export default function MasterlistAssignmentModal({
   }
 
   const candidates = useMemo(() => {
-    const facultyRoleUsers = users.filter((user) =>
-      user.roles.some((role) => role.is_faculty === true),
-    );
+    const eligibleUsers = filterAdvisers
+      ? users.filter((user) => user.roles.some((role) => role.is_faculty === true))
+      : users;
 
-    return facultyRoleUsers
+    return eligibleUsers
       .filter((user) => {
         if (user.uid === currentAssignedUid) return false;
         if (mode !== "adviser") return true;
@@ -146,7 +148,9 @@ export default function MasterlistAssignmentModal({
   const title = mode === "adviser" ? "Assign Class Adviser" : "Assign Subject Teacher";
   const description =
     mode === "adviser"
-      ? "Choose a faculty member who does not yet hold an advisory class."
+      ? filterAdvisers
+        ? "Choose a faculty member who does not yet hold an advisory class."
+        : "Choose a faculty member to serve as class adviser."
       : "Choose a faculty member to handle this subject assignment.";
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const pageStart = (page - 1) * PAGE_SIZE;
@@ -313,7 +317,7 @@ export default function MasterlistAssignmentModal({
                           color="#4EAE4A"
                           radius="md"
                           size="xs"
-                          onClick={() => onAssign(candidate.uid)}
+                          onClick={() => onAssign(candidate.uid, getFullName(candidate))}
                         >
                           Assign
                         </Button>

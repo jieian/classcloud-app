@@ -8,16 +8,20 @@ import {
   ActionIcon,
   Alert,
   Button,
+  Center,
   Group,
   SimpleGrid,
+  Stack,
   Text,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconCalendarOff, IconRefresh } from "@tabler/icons-react";
 import { getSchoolYears, SchoolYear } from "../_lib/yearService";
 import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
 import EditSchoolYearDrawer from "./EditSchoolYearDrawer";
+import EmptySearchState from "@/components/EmptySearchState";
 
 export default function SchoolYearSection() {
   const router = useRouter();
@@ -52,11 +56,11 @@ export default function SchoolYearSection() {
 
   const filteredYears = useMemo(() => {
     const sorted = [...schoolYears].sort(
-      (a, b) => Number(b.is_active) - Number(a.is_active)
+      (a, b) => Number(b.is_active) - Number(a.is_active),
     );
     if (!search.trim()) return sorted;
     return sorted.filter((sy) =>
-      sy.year_range.toLowerCase().includes(search.toLowerCase().trim())
+      sy.year_range.toLowerCase().includes(search.toLowerCase().trim()),
     );
   }, [schoolYears, search]);
 
@@ -69,37 +73,45 @@ export default function SchoolYearSection() {
             <span className="text-[#808898]">({schoolYears.length})</span>
           )}
         </h1>
-        <Button color="#4EAE4A" radius="md" mr="md" component={Link} href="/school/year/create">
-          Create School Year
+        <Button
+          color="#4EAE4A"
+          radius="md"
+          mr="md"
+          component={Link}
+          href="/school/year/create"
+        >
+          Create a School Year
         </Button>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
         A school year is a period of time that defines the academic calendar for
         a school.
       </p>
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-        <SearchBar
-          id="search-school-years"
-          placeholder="Search school years..."
-          ariaLabel="Search school years"
-          style={{ flex: 1, minWidth: 0 }}
-          maw={700}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-        <Tooltip label="Refresh" position="bottom" withArrow>
-          <ActionIcon
-            variant="outline"
-            color="#808898"
-            size="lg"
-            radius="xl"
-            aria-label="Refresh school years data"
-            onClick={loadSchoolYears}
-          >
-            <IconRefresh size={18} stroke={1.5} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
+      {schoolYears.length > 0 && (
+        <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+          <SearchBar
+            id="search-school-years"
+            placeholder="Search school years..."
+            ariaLabel="Search school years"
+            style={{ flex: 1, minWidth: 0 }}
+            maw={700}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+          />
+          <Tooltip label="Refresh" position="bottom" withArrow>
+            <ActionIcon
+              variant="outline"
+              color="#808898"
+              size="lg"
+              radius="xl"
+              aria-label="Refresh school years data"
+              onClick={loadSchoolYears}
+            >
+              <IconRefresh size={18} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+      )}
 
       {loading && <SchoolYearCardSkeleton />}
 
@@ -109,10 +121,49 @@ export default function SchoolYearSection() {
         </Alert>
       )}
 
-      {!loading && !error && filteredYears.length === 0 && (
-        <Text c="dimmed" ta="center" py="xl">
-          No school year found
-        </Text>
+      {!loading &&
+        !error &&
+        filteredYears.length === 0 &&
+        schoolYears.length === 0 && (
+          <Center
+            py={36}
+            px="md"
+            style={{
+              border: "1px solid var(--mantine-color-gray-3)",
+              borderRadius: "8px",
+              backgroundColor: "#FFFFFF",
+            }}
+          >
+            <Stack gap={10} align="center">
+              <ThemeIcon
+                size={48}
+                radius="xl"
+                color="gray.2"
+                variant="filled"
+                mb="sm"
+              >
+                <IconCalendarOff size={28} stroke={1.5} color="#3D4147" />
+              </ThemeIcon>
+              <Stack gap={4} align="center">
+                <Text size="md" fw={700} c="#111827" mb="sm">
+                  No School Year yet created.
+                </Text>
+              </Stack>
+              <Button
+                color="#4EAE4A"
+                radius="md"
+                size="sm"
+                component={Link}
+                href="/school/year/create"
+              >
+                Create a School Year
+              </Button>
+            </Stack>
+          </Center>
+        )}
+
+      {!loading && !error && filteredYears.length === 0 && schoolYears.length > 0 && (
+        <EmptySearchState />
       )}
 
       {!loading && !error && filteredYears.length > 0 && (

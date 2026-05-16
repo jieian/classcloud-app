@@ -21,11 +21,11 @@ export default function NoActivePeriodBanner({
       }}
     >
       <Stack gap={10} align="center">
-        <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled">
+        <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled" mb="sm">
           <IconCalendarOff size={28} stroke={1.5} color="#3D4147" />
         </ThemeIcon>
         <Stack gap={4} align="center">
-          <Text size="sm" fw={500} c="#111827">
+          <Text size="md" fw={700} c="#111827" mb="sm">
             {title}
           </Text>
           <Text size="sm" c="dimmed" ta="center">

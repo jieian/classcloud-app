@@ -24,12 +24,23 @@ const _POST = async function(request: Request) {
     return Response.json({ error: "Subject code is required." }, { status: 400 });
   }
 
-  const { data: existing, error: dupError } = await adminClient
+  // Map UI section_type values ("REGULAR", "BOTH", "SSES") to DB subject_type enum ("BOTH", "SSES")
+  const rawType = body?.section_type as string | undefined;
+  const subjectType: "BOTH" | "SSES" | null =
+    rawType === "SSES" ? "SSES" : rawType != null ? "BOTH" : null;
+
+  let query = adminClient
     .from("subjects")
     .select("subject_id, code, name, description, subject_type")
     .ilike("code", code)
     .is("deleted_at", null)
     .limit(1);
+
+  if (subjectType) {
+    query = query.eq("subject_type", subjectType);
+  }
+
+  const { data: existing, error: dupError } = await query;
 
   if (dupError) {
     return Response.json({ error: "Internal server error." }, { status: 500 });

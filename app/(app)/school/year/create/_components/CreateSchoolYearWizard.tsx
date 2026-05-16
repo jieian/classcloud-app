@@ -46,9 +46,11 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
 
   // ── Faculty draft (Step 4) — Map avoids O(n) re-renders per cell ───────────
   const [facultyDraft, setFacultyDraft] = useState<Map<FacultyCellKey, string | null>>(new Map());
+  const [extraFacultyNames, setExtraFacultyNames] = useState<Map<string, string>>(new Map());
 
   // ── Coordinator draft (Step 5) ──────────────────────────────────────────────
   const [coordinatorDraft, setCoordinatorDraft] = useState<CoordinatorDraftMap>(new Map());
+  const [extraCoordinatorNames, setExtraCoordinatorNames] = useState<Map<string, string>>(new Map());
 
   // ── Mantine form (Steps 1–3 + mode selections) ─────────────────────────────
   const form = useForm<CreateSchoolYearForm>({
@@ -60,9 +62,9 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       startYearLocked: initialData.prevSy !== null,
       curriculum_id: null,
       sections: [],
-      step3Mode: null,
-      step4Mode: null,
-      step5Mode: null,
+      step3Mode: initialData.prevSy ? null : "scratch",
+      step4Mode: initialData.prevSy ? null : "scratch",
+      step5Mode: initialData.prevSy ? null : "scratch",
       activeStep: 0,
     },
   });
@@ -144,6 +146,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       if (!anchor) return;
       const href = anchor.getAttribute("href")!;
       if (/^(https?:|#|mailto:|tel:)/.test(href)) return;
+      if (anchor.getAttribute("target") === "_blank") return;
       e.preventDefault();
       e.stopPropagation();
       modals.openConfirmModal({
@@ -466,7 +469,9 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       });
       form.reset();
       setFacultyDraft(new Map());
+      setExtraFacultyNames(new Map());
       setCoordinatorDraft(new Map());
+      setExtraCoordinatorNames(new Map());
       router.replace("/school/year");
       router.refresh();
     } catch {
@@ -519,6 +524,8 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           setFacultyDraft={setFacultyDraft}
           teachingLoadByTeacher={teachingLoadByTeacher}
           assignedAdviserUids={assignedAdviserUids}
+          extraFacultyNames={extraFacultyNames}
+          setExtraFacultyNames={setExtraFacultyNames}
         />
       )}
       {form.values.activeStep === 4 && curriculumDetail && (
@@ -532,6 +539,8 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           onSnapshotNeeded={loadSnapshot}
           coordinatorDraft={coordinatorDraft}
           setCoordinatorDraft={setCoordinatorDraft}
+          extraCoordinatorNames={extraCoordinatorNames}
+          setExtraCoordinatorNames={setExtraCoordinatorNames}
         />
       )}
       {form.values.activeStep === 5 && curriculumDetail && (
@@ -541,6 +550,8 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           faculty={initialData.faculty}
           facultyDraft={facultyDraft}
           coordinatorDraft={coordinatorDraft}
+          extraFacultyNames={extraFacultyNames}
+          extraCoordinatorNames={extraCoordinatorNames}
           submitError={submitError}
         />
       )}
@@ -571,18 +582,13 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           Next
         </Button>
       ) : (
-        <Tooltip label="This feature is still under development." withArrow>
-          <span style={{ display: "inline-block" }}>
-            <Button
-              onClick={handleCreate}
-              loading={submitting}
-              disabled
-              style={{ backgroundColor: "#4EAE4A" }}
-            >
-              Create School Year
-            </Button>
-          </span>
-        </Tooltip>
+        <Button
+          onClick={handleCreate}
+          loading={submitting}
+          style={{ backgroundColor: "#4EAE4A" }}
+        >
+          Create School Year
+        </Button>
       )}
     </Group>
   );

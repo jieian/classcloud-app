@@ -44,6 +44,8 @@ interface StepReviewCreateProps {
   faculty: WizardFacultyOption[];
   facultyDraft: Map<FacultyCellKey, string | null>;
   coordinatorDraft: CoordinatorDraftMap;
+  extraFacultyNames: Map<string, string>;
+  extraCoordinatorNames: Map<string, string>;
   submitError: string | null;
 }
 
@@ -53,6 +55,8 @@ export default function StepReviewCreate({
   faculty,
   facultyDraft,
   coordinatorDraft,
+  extraFacultyNames,
+  extraCoordinatorNames,
   submitError,
 }: StepReviewCreateProps) {
   const startYear = parseInt(form.values.start_year, 10);
@@ -65,11 +69,12 @@ export default function StepReviewCreate({
     return "2 Terms (T1–T2)";
   })();
 
-  const facultyNames = useMemo(
-    () =>
-      new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`])),
-    [faculty],
-  );
+  const facultyNames = useMemo(() => {
+    const map = new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]));
+    for (const [uid, name] of extraFacultyNames) map.set(uid, name);
+    for (const [uid, name] of extraCoordinatorNames) map.set(uid, name);
+    return map;
+  }, [faculty, extraFacultyNames, extraCoordinatorNames]);
 
   function getCellValue(key: FacultyCellKey): string | null {
     return facultyDraft.get(key) ?? null;

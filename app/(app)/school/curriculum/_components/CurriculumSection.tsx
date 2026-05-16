@@ -1,32 +1,36 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
   Button,
+  Center,
   Flex,
   Group,
+  Stack,
   Text,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
-import { IconRefresh } from "@tabler/icons-react";
+import { IconRefresh, IconSchoolOff } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import { getCurriculums, type Curriculum } from "../_lib/curriculumService";
 import CurriculumCard from "./CurriculumCard";
 import CurriculumCardSkeleton from "./CurriculumCardSkeleton";
+import EmptySearchState from "@/components/EmptySearchState";
 
-interface Props {
-  initialData: Curriculum[];
-}
-
-export default function CurriculumSection({ initialData }: Props) {
+export default function CurriculumSection() {
   const router = useRouter();
-  const [curriculums, setCurriculums] = useState<Curriculum[]>(initialData);
-  const [loading, setLoading] = useState(false);
+  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    load();
+  }, []);
 
   async function load() {
     try {
@@ -70,29 +74,31 @@ export default function CurriculumSection({ initialData }: Props) {
         A curriculum defines the subjects offered per grade level for a school year.
       </p>
 
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-        <SearchBar
-          id="search-curriculums"
-          placeholder="Search curriculums..."
-          ariaLabel="Search curriculums"
-          style={{ flex: 1, minWidth: 0 }}
-          maw={700}
-          value={search}
-          onChange={(e) => setSearch(e.currentTarget.value)}
-        />
-        <Tooltip label="Refresh" position="bottom" withArrow>
-          <ActionIcon
-            variant="outline"
-            color="#808898"
-            size="lg"
-            radius="xl"
-            aria-label="Refresh curriculums"
-            onClick={load}
-          >
-            <IconRefresh size={18} stroke={1.5} />
-          </ActionIcon>
-        </Tooltip>
-      </Group>
+      {curriculums.length > 0 && (
+        <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
+          <SearchBar
+            id="search-curriculums"
+            placeholder="Search curriculums..."
+            ariaLabel="Search curriculums"
+            style={{ flex: 1, minWidth: 0 }}
+            maw={700}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+          />
+          <Tooltip label="Refresh" position="bottom" withArrow>
+            <ActionIcon
+              variant="outline"
+              color="#808898"
+              size="lg"
+              radius="xl"
+              aria-label="Refresh curriculums"
+              onClick={load}
+            >
+              <IconRefresh size={18} stroke={1.5} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+      )}
 
       {loading && <CurriculumCardSkeleton />}
 
@@ -102,10 +108,39 @@ export default function CurriculumSection({ initialData }: Props) {
         </Alert>
       )}
 
-      {!loading && !error && filtered.length === 0 && (
-        <Text c="dimmed" ta="center" py="xl">
-          No curriculums found.
-        </Text>
+      {!loading && !error && filtered.length === 0 && curriculums.length === 0 && (
+        <Center
+          py={36}
+          px="md"
+          style={{
+            border: "1px solid var(--mantine-color-gray-3)",
+            borderRadius: "8px",
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Stack gap={10} align="center">
+            <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled" mb="sm">
+              <IconSchoolOff size={28} stroke={1.5} color="#3D4147" />
+            </ThemeIcon>
+            <Stack gap={4} align="center">
+              <Text size="md" fw={700} c="#111827" mb="sm">
+                No Curriculum yet created.
+              </Text>
+            </Stack>
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              size="sm"
+              onClick={() => router.push("/school/curriculum/create")}
+            >
+              Create a Curriculum
+            </Button>
+          </Stack>
+        </Center>
+      )}
+
+      {!loading && !error && filtered.length === 0 && curriculums.length > 0 && (
+        <EmptySearchState />
       )}
 
       {!loading && !error && filtered.length > 0 && (

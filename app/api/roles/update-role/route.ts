@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -62,9 +63,12 @@ const _PUT = async function (request: Request) {
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 
-  // 6. Sync JWT claims for all users holding this role (non-fatal)
-  syncAllUsersWithRole(role_id).catch((err) =>
-    console.error("syncAllUsersWithRole failed after update-role:", err),
+  // 6. Sync JWT claims for all users holding this role after the response is sent.
+  // after() guarantees completion even after the serverless function responds.
+  after(() =>
+    syncAllUsersWithRole(role_id).catch((err) =>
+      console.error("syncAllUsersWithRole failed after update-role:", err),
+    ),
   );
 
   // 7. Audit

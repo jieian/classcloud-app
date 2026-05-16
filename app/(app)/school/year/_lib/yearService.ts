@@ -96,34 +96,6 @@ export class DuplicateYearError extends Error {
   }
 }
 
-/*
- * Creates a new school year and 3 default terms atomically via RPC.
- * Both the year and all terms are inactive by default.
- * Throws a DuplicateYearError if the year range already exists.
- */
-export async function createSchoolYear(
-  start_year: number,
-  end_year: number,
-): Promise<void> {
-  const response = await fetch("/api/schoolYear/create-schoolYear", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ start_year, end_year }),
-  });
-
-  const result = await response.json();
-
-  if (response.status === 409) {
-    throw new DuplicateYearError(
-      result.error || "A school year with this range already exists.",
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(result.error || "Failed to create school year.");
-  }
-}
-
 export async function updateSchoolYear(
   sy_id: number,
   start_year: number,

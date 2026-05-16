@@ -11,12 +11,20 @@ interface Props {
 export default function StepCurriculumNameDesc({ form }: Props) {
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
-        Specify Name and Description
+      <Text size="xl" fw={700} mb="md" c="#298925">
+        Specify Curriculum Information
       </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">
+      <Box
+        p="lg"
+        w="100%"
+        style={{
+          border: "1px solid #B8B8B8",
+          borderRadius: "8px",
+          minWidth: 0,
+        }}
+      >
+        <Text size="lg" fw={700} mb="xs" c="#298925">
           Name and Description
         </Text>
 

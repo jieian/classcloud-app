@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -36,6 +36,7 @@ import {
 import type { UseFormReturnType } from "@mantine/form";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import EmptySearchState from "@/components/EmptySearchState";
+import { fetchActiveUsersWithRoles, type UserWithRoles } from "@/app/(app)/user-roles/users/_lib";
 import SubjectBadge from "@/app/(app)/school/faculty/_components/SubjectBadge";
 import SubjectOverflowCard from "@/app/(app)/school/faculty/_components/SubjectOverflowCard";
 import type {
@@ -78,6 +79,8 @@ interface StepSubjectCoordinatorsProps {
   setCoordinatorDraft: React.Dispatch<
     React.SetStateAction<CoordinatorDraftMap>
   >;
+  extraCoordinatorNames: Map<string, string>;
+  setExtraCoordinatorNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
 }
 
 export default function StepSubjectCoordinators({
@@ -90,6 +93,8 @@ export default function StepSubjectCoordinators({
   onSnapshotNeeded,
   coordinatorDraft,
   setCoordinatorDraft,
+  extraCoordinatorNames,
+  setExtraCoordinatorNames,
 }: StepSubjectCoordinatorsProps) {
   const hasPrevSy = prevSy !== null;
   const mode = form.values.step5Mode;
@@ -123,6 +128,8 @@ export default function StepSubjectCoordinators({
       faculty={faculty}
       coordinatorDraft={coordinatorDraft}
       setCoordinatorDraft={setCoordinatorDraft}
+      extraCoordinatorNames={extraCoordinatorNames}
+      setExtraCoordinatorNames={setExtraCoordinatorNames}
       hasPrevSy={hasPrevSy}
       onResetMode={() => {
         form.setFieldValue("step5Mode", null);
@@ -208,6 +215,8 @@ interface CoordinatorTableProps {
   setCoordinatorDraft: React.Dispatch<
     React.SetStateAction<CoordinatorDraftMap>
   >;
+  extraCoordinatorNames: Map<string, string>;
+  setExtraCoordinatorNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   hasPrevSy: boolean;
   onResetMode: () => void;
 }
@@ -217,6 +226,8 @@ function CoordinatorTable({
   faculty,
   coordinatorDraft,
   setCoordinatorDraft,
+  extraCoordinatorNames,
+  setExtraCoordinatorNames,
   hasPrevSy,
   onResetMode,
 }: CoordinatorTableProps) {
@@ -239,10 +250,11 @@ function CoordinatorTable({
     name: string;
   } | null>(null);
 
-  const facultyNames = useMemo(
-    () => new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`])),
-    [faculty],
-  );
+  const facultyNames = useMemo(() => {
+    const map = new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]));
+    for (const [uid, name] of extraCoordinatorNames) map.set(uid, name);
+    return map;
+  }, [faculty, extraCoordinatorNames]);
 
   // All UIDs currently assigned across all groups
   const assignedCoordinatorUids = useMemo(() => {
@@ -476,17 +488,23 @@ function CoordinatorTable({
         opened={editingGroup !== null}
         subjectGroupName={editingGroup?.name ?? ""}
         currentCoordinatorUid={
+          editingGroup ? (coordinatorDraft.get(editingGroup.id) ?? null) : null
+        }
+        currentCoordinatorName={
           editingGroup
-            ? (coordinatorDraft.get(editingGroup.id) ?? null)
+            ? (facultyNames.get(coordinatorDraft.get(editingGroup.id) ?? "") ?? null)
             : null
         }
         faculty={faculty}
-        facultyNames={facultyNames}
+        hasPrevSy={hasPrevSy}
         assignedCoordinatorUids={assignedCoordinatorUids}
         onClose={() => setEditingGroup(null)}
-        onAssign={(uid) => {
+        onAssign={(uid, name) => {
           if (!editingGroup) return;
           handleAssign(editingGroup.id, uid);
+          if (uid && name && !facultyNames.has(uid)) {
+            setExtraCoordinatorNames((prev) => new Map(prev).set(uid, name));
+          }
           setEditingGroup(null);
         }}
       />
@@ -644,54 +662,74 @@ interface WizardCoordinatorModalProps {
   opened: boolean;
   subjectGroupName: string;
   currentCoordinatorUid: string | null;
+  currentCoordinatorName: string | null;
   faculty: WizardFacultyOption[];
-  facultyNames: Map<string, string>;
+  hasPrevSy: boolean;
   assignedCoordinatorUids: Set<string>;
   onClose: () => void;
-  onAssign: (uid: string | null) => void;
+  onAssign: (uid: string | null, name: string | null) => void;
 }
 
 function WizardCoordinatorModal({
   opened,
   subjectGroupName,
   currentCoordinatorUid,
+  currentCoordinatorName,
   faculty,
-  facultyNames,
+  hasPrevSy,
   assignedCoordinatorUids,
   onClose,
   onAssign,
 }: WizardCoordinatorModalProps) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [allUsers, setAllUsers] = useState<UserWithRoles[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadAllUsers = useCallback(async () => {
+    setLoading(true);
+    try {
+      const users = await fetchActiveUsersWithRoles();
+      setAllUsers(users);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!opened) return;
     setSearch("");
     setPage(1);
-  }, [opened]);
+    if (!hasPrevSy) loadAllUsers();
+  }, [opened]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setPage(1);
   }, [search]);
 
-  const currentCoordinatorName = currentCoordinatorUid
-    ? (facultyNames.get(currentCoordinatorUid) ?? null)
-    : null;
-
   const filtered = useMemo(() => {
     const query = search.toLowerCase().trim();
-    const eligible = faculty.filter((f) => !assignedCoordinatorUids.has(f.uid));
+
+    // When no prev SY: all active users; otherwise faculty-role only
+    // Either way: exclude the current coordinator of this group and anyone already coordinating another group
+    const candidates: { uid: string; first_name: string; last_name: string }[] = hasPrevSy
+      ? faculty.filter((f) => f.uid !== currentCoordinatorUid && !assignedCoordinatorUids.has(f.uid))
+      : allUsers
+          .filter((u) => u.uid !== currentCoordinatorUid && !assignedCoordinatorUids.has(u.uid))
+          .map((u) => ({ uid: u.uid, first_name: u.first_name, last_name: u.last_name }));
+
     const list = query
-      ? eligible.filter((f) =>
-          `${f.first_name} ${f.last_name}`.toLowerCase().includes(query),
+      ? candidates.filter((c) =>
+          `${c.first_name} ${c.last_name}`.toLowerCase().includes(query),
         )
-      : eligible;
+      : candidates;
+
     return list.sort(
       (a, b) =>
         a.first_name.localeCompare(b.first_name) ||
         a.last_name.localeCompare(b.last_name),
     );
-  }, [faculty, search, assignedCoordinatorUids, currentCoordinatorUid]);
+  }, [faculty, allUsers, hasPrevSy, search, currentCoordinatorUid, assignedCoordinatorUids]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -706,7 +744,7 @@ function WizardCoordinatorModal({
       transitionProps={{ onEntered: () => document.getElementById("search-wizard-coordinator")?.focus() }}
     >
       <Text size="sm" c="dimmed" mb="md">
-        Select a faculty member to assign as subject coordinator for{" "}
+        Select a{hasPrevSy ? " faculty member" : " user"} to assign as subject coordinator for{" "}
         <Text span fw={600}>
           {subjectGroupName}
         </Text>
@@ -751,7 +789,7 @@ function WizardCoordinatorModal({
               variant="subtle"
               color="red"
               size="xs"
-              onClick={() => onAssign(null)}
+              onClick={() => onAssign(null, null)}
             >
               Remove
             </Button>
@@ -761,24 +799,26 @@ function WizardCoordinatorModal({
 
       <SearchBar
         id="search-wizard-coordinator"
-        placeholder="Search faculty..."
-        ariaLabel="Search faculty"
+        placeholder={hasPrevSy ? "Search faculty..." : "Search users..."}
+        ariaLabel="Search"
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
         mb="md"
         autoFocus
       />
 
-      {filtered.length === 0 ? (
+      {!loading && filtered.length === 0 && (
         <EmptySearchState
-          title={search.trim() ? "No faculty found." : "No available faculty."}
+          title={search.trim() ? "No results found." : "No available users."}
           description={
             search.trim()
               ? "Try adjusting your search to find what you're looking for."
-              : "All faculty are already assigned as coordinators."
+              : "All eligible users are already assigned as coordinators."
           }
         />
-      ) : (
+      )}
+
+      {!loading && filtered.length > 0 && (
         <>
           <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
             <TableThead>
@@ -788,29 +828,25 @@ function WizardCoordinatorModal({
               </TableTr>
             </TableThead>
             <TableTbody>
-              {paged.map((f) => {
-                const isCurrent = f.uid === currentCoordinatorUid;
-                return (
-                  <TableTr key={f.uid}>
-                    <TableTd>
-                      <Text size="sm" fw={500}>
-                        {f.first_name} {f.last_name}
-                      </Text>
-                    </TableTd>
-                    <TableTd ta="right">
-                      <Button
-                        color="#4EAE4A"
-                        radius="md"
-                        size="xs"
-                        disabled={isCurrent}
-                        onClick={() => onAssign(f.uid)}
-                      >
-                        {isCurrent ? "Assigned" : "Assign"}
-                      </Button>
-                    </TableTd>
-                  </TableTr>
-                );
-              })}
+              {paged.map((c) => (
+                <TableTr key={c.uid}>
+                  <TableTd>
+                    <Text size="sm" fw={500}>
+                      {c.first_name} {c.last_name}
+                    </Text>
+                  </TableTd>
+                  <TableTd ta="right">
+                    <Button
+                      color="#4EAE4A"
+                      radius="md"
+                      size="xs"
+                      onClick={() => onAssign(c.uid, `${c.first_name} ${c.last_name}`)}
+                    >
+                      Assign
+                    </Button>
+                  </TableTd>
+                </TableTr>
+              ))}
             </TableTbody>
           </Table>
 

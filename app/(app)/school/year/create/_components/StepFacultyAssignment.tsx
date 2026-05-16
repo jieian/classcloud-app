@@ -87,6 +87,8 @@ interface StepFacultyAssignmentProps {
   setFacultyDraft: React.Dispatch<
     React.SetStateAction<Map<FacultyCellKey, string | null>>
   >;
+  extraFacultyNames: Map<string, string>;
+  setExtraFacultyNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   teachingLoadByTeacher: Map<
     string,
     {
@@ -109,6 +111,8 @@ export default function StepFacultyAssignment({
   onSnapshotNeeded,
   facultyDraft,
   setFacultyDraft,
+  extraFacultyNames,
+  setExtraFacultyNames,
   teachingLoadByTeacher,
   assignedAdviserUids,
 }: StepFacultyAssignmentProps) {
@@ -146,6 +150,8 @@ export default function StepFacultyAssignment({
       faculty={faculty}
       facultyDraft={facultyDraft}
       setFacultyDraft={setFacultyDraft}
+      extraFacultyNames={extraFacultyNames}
+      setExtraFacultyNames={setExtraFacultyNames}
       teachingLoadByTeacher={teachingLoadByTeacher}
       assignedAdviserUids={assignedAdviserUids}
       hasPrevSy={hasPrevSy}
@@ -236,6 +242,8 @@ interface FacultyGridProps {
   setFacultyDraft: React.Dispatch<
     React.SetStateAction<Map<FacultyCellKey, string | null>>
   >;
+  extraFacultyNames: Map<string, string>;
+  setExtraFacultyNames: React.Dispatch<React.SetStateAction<Map<string, string>>>;
   teachingLoadByTeacher: Map<
     string,
     {
@@ -258,6 +266,8 @@ function FacultyGrid({
   faculty,
   facultyDraft,
   setFacultyDraft,
+  extraFacultyNames,
+  setExtraFacultyNames,
   teachingLoadByTeacher,
   assignedAdviserUids,
   hasPrevSy,
@@ -287,11 +297,11 @@ function FacultyGrid({
     assignmentLabel: string;
   } | null>(null);
 
-  const facultyNames = useMemo(
-    () =>
-      new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`])),
-    [faculty],
-  );
+  const facultyNames = useMemo(() => {
+    const map = new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]));
+    for (const [uid, name] of extraFacultyNames) map.set(uid, name);
+    return map;
+  }, [faculty, extraFacultyNames]);
 
   const masterlistTeachingLoad = useMemo(() => {
     const result = new Map<string, MasterlistTeacherLoad[]>();
@@ -393,7 +403,7 @@ function FacultyGrid({
     return { missingAdvisers, missingSubjects, panelHasErrors: errors };
   }, [facultyDraft, form.values.sections, curriculumDetail]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (faculty.length === 0) {
+  if (faculty.length === 0 && hasPrevSy) {
     return (
       <Alert color="orange" title="No Faculty Found">
         No active faculty members found.{" "}
@@ -825,10 +835,14 @@ function FacultyGrid({
           assignmentLabel={pickerState?.assignmentLabel ?? ""}
           assignedAdviserUids={assignedAdviserUids}
           teachingLoadByTeacher={masterlistTeachingLoad}
+          filterAdvisers={hasPrevSy}
           onClose={() => setPickerState(null)}
-          onAssign={(uid) => {
+          onAssign={(uid, name) => {
             if (!pickerState) return;
             handleCellChange(pickerState.key, uid);
+            if (!facultyNames.has(uid)) {
+              setExtraFacultyNames((prev) => new Map(prev).set(uid, name));
+            }
             setPickerState(null);
           }}
         />

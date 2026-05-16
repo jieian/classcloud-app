@@ -15,6 +15,17 @@ import StepCurriculumSubjectGroups from "./StepCurriculumSubjectGroups";
 import StepCurriculumReview from "./StepCurriculumReview";
 import type { CreateCurriculumForm, GradeLevel } from "../_lib/types";
 
+function EnterToConfirm({ onEnter }: { onEnter: () => void }) {
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === "Enter") onEnter();
+    }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 // ── Name validation ────────────────────────────────────────────────────────────
 function validateName(v: string): string | null {
   if (!v.trim()) return "Curriculum name is required.";
@@ -39,6 +50,14 @@ function validateDescription(v: string): string | null {
 export default function CreateCurriculumWizard() {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
   const [loading, setLoading] = useState(false);
   const [checkingName, setCheckingName] = useState(false);
   const busyRef = useRef(false);
@@ -100,19 +119,19 @@ export default function CreateCurriculumWizard() {
       if (/^(https?:|#|mailto:|tel:)/.test(href)) return;
       e.preventDefault();
       e.stopPropagation();
-      modals.openConfirmModal({
+      let navModalId!: string;
+      navModalId = modals.openConfirmModal({
         title: "Discard changes?",
         children: (
-          <Text size="sm">
-            You have unsaved changes. Are you sure you want to leave?
-          </Text>
+          <>
+            <EnterToConfirm onEnter={() => { form.reset(); router.push(href); modals.close(navModalId); }} />
+            <Text size="sm">You have unsaved changes. Are you sure you want to leave?</Text>
+          </>
         ),
         labels: { confirm: "Discard", cancel: "Stay" },
         confirmProps: { color: "red" },
-        onConfirm: () => {
-          form.reset();
-          router.push(href);
-        },
+        onConfirm: () => { form.reset(); router.push(href); },
+        ...confirmModalProps,
       });
     };
     document.addEventListener("click", handleClick, true);
@@ -123,16 +142,8 @@ export default function CreateCurriculumWizard() {
     if (busyRef.current) return;
 
     if (form.values.activeStep === 0) {
-      // Validate Step 1 fields
       const result = form.validate();
-      if (result.errors.name || result.errors.description) {
-        notifications.show({
-          title: "Validation Error",
-          message: "Please fix all errors before proceeding.",
-          color: "red",
-        });
-        return;
-      }
+      if (result.errors.name || result.errors.description) return;
       // Async name uniqueness check
       const trimmed = form.values.name.trim();
       if (verifiedNameRef.current !== trimmed) {
@@ -146,15 +157,7 @@ export default function CreateCurriculumWizard() {
           });
           const data = await res.json();
           if (!data.available) {
-            form.setFieldError(
-              "name",
-              "A curriculum with this name already exists.",
-            );
-            notifications.show({
-              title: "Name Taken",
-              message: "Please choose a different curriculum name.",
-              color: "red",
-            });
+            form.setFieldError("name", "A curriculum with this name already exists.");
             return;
           }
           verifiedNameRef.current = trimmed;
@@ -237,21 +240,20 @@ export default function CreateCurriculumWizard() {
 
   const handleCancel = () => {
     if (form.isDirty()) {
-      modals.openConfirmModal({
-        title: "Discard changes?",
-        children: (
-          <Text size="sm">
-            You have unsaved changes. Are you sure you want to leave?
-          </Text>
-        ),
-        labels: { confirm: "Discard", cancel: "Stay" },
-        confirmProps: { color: "red" },
-        onConfirm: () => {
-          form.reset();
-          router.replace("/school/curriculum");
-          router.refresh();
-        },
-      });
+      let cancelModalId!: string;
+    cancelModalId = modals.openConfirmModal({
+      title: "Discard changes?",
+      children: (
+        <>
+          <EnterToConfirm onEnter={() => { form.reset(); router.replace("/school/curriculum"); router.refresh(); modals.close(cancelModalId); }} />
+          <Text size="sm">You have unsaved changes. Are you sure you want to leave?</Text>
+        </>
+      ),
+      labels: { confirm: "Discard", cancel: "Stay" },
+      confirmProps: { color: "red" },
+      onConfirm: () => { form.reset(); router.replace("/school/curriculum"); router.refresh(); },
+      ...confirmModalProps,
+    });
     } else {
       router.replace("/school/curriculum");
       router.refresh();
@@ -259,18 +261,23 @@ export default function CreateCurriculumWizard() {
   };
 
   const handleCreate = () => {
-    modals.openConfirmModal({
+    let createModalId!: string;
+    createModalId = modals.openConfirmModal({
       title: "Create Curriculum?",
       children: (
-        <Text size="sm">
-          This will create <strong>{form.values.name.trim()}</strong> with{" "}
-          {form.values.subjects.length} subject(s) and{" "}
-          {form.values.subject_groups.length} group(s).
-        </Text>
+        <>
+          <EnterToConfirm onEnter={() => { submitForm(); modals.close(createModalId); }} />
+          <Text size="sm">
+            This will create <strong>{form.values.name.trim()}</strong> with{" "}
+            {form.values.subjects.length} subject(s) and{" "}
+            {form.values.subject_groups.length} group(s).
+          </Text>
+        </>
       ),
       labels: { confirm: "Create Curriculum", cancel: "Cancel" },
       confirmProps: { style: { backgroundColor: "#4EAE4A" } },
       onConfirm: submitForm,
+      ...confirmModalProps,
     });
   };
 
@@ -326,30 +333,6 @@ export default function CreateCurriculumWizard() {
     }
   };
 
-  // Next button disabled logic
-  const isNextDisabled = (() => {
-    if (form.values.activeStep === 0) {
-      return (
-        !form.values.name.trim() ||
-        !form.values.description.trim() ||
-        !!form.errors.name ||
-        !!form.errors.description
-      );
-    }
-    if (form.values.activeStep === 1) {
-      if (form.values.subjects.length === 0) return true;
-      const coveredGlIds = new Set(
-        form.values.subjects.map((s) => s.grade_level_id),
-      );
-      return Array.from(gradeLevelNames.keys()).some(
-        (id) => !coveredGlIds.has(id),
-      );
-    }
-    if (form.values.activeStep === 2)
-      return form.values.subject_groups.length === 0;
-    return false;
-  })();
-
   const steps = [
     { label: "Step 1", description: "Curriculum Information" },
     { label: "Step 2", description: "Define Subjects" },
@@ -387,7 +370,7 @@ export default function CreateCurriculumWizard() {
       onPrevious={prevStep}
       onPrimary={isFinalStep ? handleCreate : nextStep}
       primaryLabel={isFinalStep ? "Create Curriculum" : "Next"}
-      primaryDisabled={isFinalStep ? false : isNextDisabled}
+      primaryDisabled={false}
       primaryLoading={isFinalStep ? loading : checkingName}
     />
   );

@@ -363,7 +363,7 @@ export default function MasterlistTable({
         assignedAdviserUids={assignedAdviserUids}
         teachingLoadByTeacher={teachingLoadByTeacher}
         onClose={() => setPickerState(null)}
-        onAssign={(uid) => {
+        onAssign={(uid, _name) => {
           if (!pickerState) return;
           onCellChange(pickerState.key, uid);
           setPickerState(null);
