@@ -303,16 +303,21 @@ export default function CreateExamPage() {
   const lockedSectionIds = useMemo(() => {
     const locked = new Set<number>();
     for (const section of allSections.filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id))) {
-      const applicable = subjects.filter(
-        s => s.grade_level_id === section.grade_level_id &&
-          (s.subject_type === 'BOTH' || section.section_type === 'SSES'),
-      );
+      const applicable = subjects.filter(s => {
+        if (s.grade_level_id !== section.grade_level_id) return false;
+        if (s.subject_type !== 'BOTH' && section.section_type !== 'SSES') return false;
+        // Admin: all subjects count. Restricted: only subjects assigned to THIS section.
+        if (!allowedSubjectIds) return true;
+        return teacherAssignments.some(
+          a => a.section_id === section.section_id && a.curriculum_subject_id === s.curriculum_subject_id,
+        );
+      });
       if (applicable.length === 0) continue;
       const occupied = allOccupiedPairs.get(section.section_id) ?? new Set<number>();
       if (applicable.every(s => occupied.has(s.curriculum_subject_id))) locked.add(section.section_id);
     }
     return locked;
-  }, [allSections, subjects, allOccupiedPairs, allowedSectionIds]);
+  }, [allSections, subjects, allOccupiedPairs, allowedSectionIds, allowedSubjectIds, teacherAssignments]);
 
   // Grade levels where every visible section is locked.
   const lockedGradeLevelIds = useMemo(() => {
@@ -508,7 +513,7 @@ export default function CreateExamPage() {
                           <Tooltip label="All subjects in this grade level already have an exam" position="right" withArrow>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
-                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                              <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
                             </Group>
                           </Tooltip>
                         ) : (
@@ -539,7 +544,7 @@ export default function CreateExamPage() {
                           <Tooltip label="All subjects in this section already have an exam" position="right" withArrow>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
-                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                              <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
                             </Group>
                           </Tooltip>
                         ) : (
@@ -571,7 +576,7 @@ export default function CreateExamPage() {
                           <Tooltip label="An exam already exists for this subject" position="right" withArrow>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
-                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                              <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
                             </Group>
                           </Tooltip>
                         ) : (

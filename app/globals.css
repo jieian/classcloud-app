@@ -13,11 +13,10 @@
 }
 
 
-/* Locked/occupied options in Mantine Select/MultiSelect dropdowns */
+/* Locked/occupied options: gray, not-allowed cursor, hover events for tooltip */
 [data-combobox-disabled] {
-  opacity: 1 !important;
-  cursor: default !important;
-  color: #111827 !important;
+  pointer-events: auto !important;
+  cursor: not-allowed !important;
 }
 
 html,

@@ -814,7 +814,7 @@ export async function fetchItemAnalysisSummary(
           .eq("exam_id", examId)).data ?? []
         )
           .map((r: { id?: number | null }) => r.id ?? null)
-          .filter((id): id is number => id != null);
+          .filter((id: number | null): id is number => id != null);
   if (scopedAssignmentIds.length === 0) return empty;
 
   const { data: scoreData, error: scoreError } = await supabase

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Card,
   Collapse,
@@ -144,6 +144,7 @@ export default function ReportAnalyticsClient({
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [subjectHydrated, setSubjectHydrated] = useState(false);
   const [subjectClearedByUser, setSubjectClearedByUser] = useState(false);
+  const isFirstSectionLoadRef = useRef(true);
   const [sectionSubjectOptions, setSectionSubjectOptions] = useState<
     { value: string; label: string }[]
   >([]);
@@ -161,12 +162,15 @@ export default function ReportAnalyticsClient({
     topMostLearned: [],
     topLeastLearned: [],
   });
+  // All start closed to avoid flash before sessionStorage is read (same as exam accordion).
   const [detailsOpened, setDetailsOpened] = useState(false);
   const [itemAnalysisOpened, setItemAnalysisOpened] = useState(false);
   const [proficiencyOpened, setProficiencyOpened] = useState(false);
   const [proficiencyLevelTableOpened, setProficiencyLevelTableOpened] = useState(false);
   const [laemplTableOpened, setLaemplTableOpened] = useState(false);
   const [mplOpened, setMplOpened] = useState(false);
+  const [collapsibleStateReady, setCollapsibleStateReady] = useState(false);
+  const [collapsibleInitialized, setCollapsibleInitialized] = useState(false);
   const SUBJECT_CLEARED_SENTINEL = "__CLEARED__";
   const subjectStorageKey = useMemo(
     () =>
@@ -175,24 +179,10 @@ export default function ReportAnalyticsClient({
         : null,
     [selectedSectionId],
   );
-  const detailsOpenedStorageKey = useMemo(
+  const collapsibleStorageKey = useMemo(
     () =>
       selectedSectionId != null
-        ? `assessment-reports:details-opened:section:${selectedSectionId}`
-        : null,
-    [selectedSectionId],
-  );
-  const proficiencyOpenedStorageKey = useMemo(
-    () =>
-      selectedSectionId != null
-        ? `assessment-reports:proficiency-opened:section:${selectedSectionId}`
-        : null,
-    [selectedSectionId],
-  );
-  const mplOpenedStorageKey = useMemo(
-    () =>
-      selectedSectionId != null
-        ? `assessment-reports:mpl-opened:section:${selectedSectionId}`
+        ? `assessment-reports:collapsible-state:section:${selectedSectionId}`
         : null,
     [selectedSectionId],
   );
@@ -365,7 +355,7 @@ export default function ReportAnalyticsClient({
       return;
     }
 
-    if (subjectStorageKey && typeof window !== "undefined") {
+    if (subjectStorageKey && typeof window !== "undefined" && !isFirstSectionLoadRef.current) {
       const stored = window.sessionStorage.getItem(subjectStorageKey);
       if (stored === SUBJECT_CLEARED_SENTINEL) {
         setSelectedSubject(null);
@@ -380,6 +370,7 @@ export default function ReportAnalyticsClient({
         return;
       }
     }
+    isFirstSectionLoadRef.current = false;
 
     const examSubjectFromQuery =
       Number.isFinite(examParam) && selectedSectionId != null
@@ -425,34 +416,78 @@ export default function ReportAnalyticsClient({
     window.sessionStorage.setItem(subjectStorageKey, selectedSubject);
   }, [selectedSubject, subjectStorageKey, subjectHydrated, subjectClearedByUser, SUBJECT_CLEARED_SENTINEL]);
 
+  // Phase 1: restore from sessionStorage when section changes (resets to closed first).
   useEffect(() => {
-    if (
-      !detailsOpenedStorageKey ||
-      !proficiencyOpenedStorageKey ||
-      !mplOpenedStorageKey ||
-      typeof window === "undefined"
-    ) {
+    setCollapsibleStateReady(false);
+    setCollapsibleInitialized(false);
+    setDetailsOpened(false);
+    setProficiencyOpened(false);
+    setMplOpened(false);
+    setItemAnalysisOpened(false);
+    setProficiencyLevelTableOpened(false);
+    setLaemplTableOpened(false);
+
+    if (!collapsibleStorageKey || typeof window === "undefined") {
+      setCollapsibleStateReady(true);
       return;
     }
-    setDetailsOpened(window.sessionStorage.getItem(detailsOpenedStorageKey) === "1");
-    setProficiencyOpened(window.sessionStorage.getItem(proficiencyOpenedStorageKey) === "1");
-    setMplOpened(window.sessionStorage.getItem(mplOpenedStorageKey) === "1");
-  }, [detailsOpenedStorageKey, proficiencyOpenedStorageKey, mplOpenedStorageKey]);
+    try {
+      const raw = window.sessionStorage.getItem(collapsibleStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        setDetailsOpened(parsed.details === "1");
+        setProficiencyOpened(parsed.proficiency === "1");
+        setMplOpened(parsed.mpl === "1");
+        setItemAnalysisOpened(parsed.itemAnalysis === "1");
+        setProficiencyLevelTableOpened(parsed.proficiencyLevel === "1");
+        setLaemplTableOpened(parsed.laempl === "1");
+      }
+    } catch { /* ignore malformed */ }
+    setCollapsibleStateReady(true);
+  }, [collapsibleStorageKey]);
 
+  // Phase 2: open all on first visit (no stored state for this section).
   useEffect(() => {
-    if (!detailsOpenedStorageKey || typeof window === "undefined") return;
-    window.sessionStorage.setItem(detailsOpenedStorageKey, detailsOpened ? "1" : "0");
-  }, [detailsOpened, detailsOpenedStorageKey]);
+    if (!collapsibleStateReady || collapsibleInitialized) return;
+    const hasStored =
+      collapsibleStorageKey != null &&
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem(collapsibleStorageKey) !== null;
+    if (!hasStored) {
+      setDetailsOpened(true);
+      setProficiencyOpened(true);
+      setMplOpened(true);
+      setItemAnalysisOpened(true);
+      setProficiencyLevelTableOpened(true);
+      setLaemplTableOpened(true);
+    }
+    setCollapsibleInitialized(true);
+  }, [collapsibleStateReady, collapsibleInitialized, collapsibleStorageKey]);
 
+  // Save all states to sessionStorage after initialization.
   useEffect(() => {
-    if (!proficiencyOpenedStorageKey || typeof window === "undefined") return;
-    window.sessionStorage.setItem(proficiencyOpenedStorageKey, proficiencyOpened ? "1" : "0");
-  }, [proficiencyOpened, proficiencyOpenedStorageKey]);
-
-  useEffect(() => {
-    if (!mplOpenedStorageKey || typeof window === "undefined") return;
-    window.sessionStorage.setItem(mplOpenedStorageKey, mplOpened ? "1" : "0");
-  }, [mplOpened, mplOpenedStorageKey]);
+    if (!collapsibleInitialized || !collapsibleStorageKey || typeof window === "undefined") return;
+    window.sessionStorage.setItem(
+      collapsibleStorageKey,
+      JSON.stringify({
+        details: detailsOpened ? "1" : "0",
+        proficiency: proficiencyOpened ? "1" : "0",
+        mpl: mplOpened ? "1" : "0",
+        itemAnalysis: itemAnalysisOpened ? "1" : "0",
+        proficiencyLevel: proficiencyLevelTableOpened ? "1" : "0",
+        laempl: laemplTableOpened ? "1" : "0",
+      }),
+    );
+  }, [
+    collapsibleInitialized,
+    collapsibleStorageKey,
+    detailsOpened,
+    proficiencyOpened,
+    mplOpened,
+    itemAnalysisOpened,
+    proficiencyLevelTableOpened,
+    laemplTableOpened,
+  ]);
 
   const examOptions = useMemo(() => {
     return availableExamCards.map((card) => ({
