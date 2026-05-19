@@ -132,13 +132,7 @@ const navigationData: NavigationLink[] = [
     icon: IconFileText,
     label: "Assessment Reports",
     href: "/assessment-reports",
-    requiredPermissions: [
-      "reports.view_all",
-      "reports.view_assigned",
-      "reports.monitor_grade_level",
-      "reports.monitor_subjects",
-      "reports.approve",
-    ],
+    requiredPermissions: ["reports.view_all"],
     sublinks: [],
   },
 ];

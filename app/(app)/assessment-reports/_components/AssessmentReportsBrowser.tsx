@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Accordion,
   ActionIcon,
+  Box,
   Card,
   Divider,
   Group,
@@ -29,6 +30,7 @@ import {
   fetchReportSectionCards,
   type ReportSectionCard,
 } from "@/lib/services/reportsAnalysisService";
+import type { ReportInitData } from "@/app/(app)/assessment-reports/_lib/reportServerService";
 
 type GradeGroup = {
   gradeLevelId: number;
@@ -40,10 +42,12 @@ type GradeGroup = {
 
 interface AssessmentReportsBrowserProps {
   initialGradeLevelId?: number | null;
+  initialData?: ReportInitData;
 }
 
 export default function AssessmentReportsBrowser({
   initialGradeLevelId = null,
+  initialData,
 }: AssessmentReportsBrowserProps) {
   const OPEN_GROUPS_STORAGE_KEY = "assessment-reports:open-grade-groups:v2";
   const GRADE_FILTER_STORAGE_KEY = "assessment-reports:grade-filter";
@@ -55,9 +59,9 @@ export default function AssessmentReportsBrowser({
     ? Number(initialGradeLevelId)
     : queryGrade;
 
-  const [loading, setLoading] = useState(true);
-  const [cards, setCards] = useState<ReportSectionCard[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const [loading, setLoading] = useState(!initialData);
+  const [cards, setCards] = useState<ReportSectionCard[]>(initialData?.sectionCards ?? []);
+  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>(initialData?.gradeLevels ?? []);
   const [searchQuery, setSearchQuery] = useState("");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
   const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
@@ -78,7 +82,7 @@ export default function AssessmentReportsBrowser({
   };
 
   useEffect(() => {
-    void loadData();
+    if (!initialData) void loadData();
   }, []);
 
   useEffect(() => {
@@ -207,10 +211,33 @@ export default function AssessmentReportsBrowser({
   if (loading) {
     return (
       <Stack gap="md">
-        <Skeleton height={26} width={240} radius="sm" />
-        <Skeleton height={18} width={260} radius="sm" />
-        <Skeleton height={40} radius="sm" />
-        <Skeleton height={180} radius="sm" />
+        {[
+          { widthLabel: 72, cards: 4 },
+          { widthLabel: 56, cards: 2 },
+        ].map((group, gi) => (
+          <Box
+            key={gi}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              overflow: "hidden",
+            }}
+          >
+            <Box px="md" py="sm" style={{ backgroundColor: "#f3f4f6" }}>
+              <Group gap="xs">
+                <Skeleton height={18} width={group.widthLabel} radius="sm" />
+                <Skeleton height={14} width={28} radius="sm" />
+              </Group>
+            </Box>
+            <Box p="sm">
+              <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} spacing="sm">
+                {Array.from({ length: group.cards }).map((_, i) => (
+                  <Skeleton key={i} height={170} radius="md" />
+                ))}
+              </SimpleGrid>
+            </Box>
+          </Box>
+        ))}
       </Stack>
     );
   }
@@ -218,10 +245,11 @@ export default function AssessmentReportsBrowser({
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="mb-3 text-2xl font-bold">
-          Assessment Reports <span className="text-[#808898]">({totalVisibleCards})</span>
+        <h1 className="text-3xl font-bold text-[#597D37]">
+          Assessment Reports{" "}
+          <span className="text-[#808898] text-xl font-semibold">({totalVisibleCards})</span>
         </h1>
-        <p className="mb-3 text-sm text-[#808898]">Manage and track all examinations</p>
+        <p className="mb-3 text-sm text-[#808898]">Manage and track all assessment reports</p>
       </div>
 
       <div>

@@ -45,6 +45,7 @@ import { SearchBar } from '@/components/searchBar/SearchBar';
 import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/VerticalWizardLayout';
 import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
 import { resolveExamParams } from '@/lib/exam-supabase';
+import { invalidateReportsCache } from '@/lib/services/reportsAnalysisService';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -854,6 +855,7 @@ export default function ScanPapersPage() {
         return;
       }
 
+      invalidateReportsCache();
       router.push(
         `/assessment-reports/report-analytics/${gradeLevelId}/${sectionId}/${finalizedExamId}`,
       );

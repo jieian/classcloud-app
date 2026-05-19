@@ -461,24 +461,19 @@ export default function CreateExamPage() {
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Details</Text>
         {dataLoading ? (
-          <Stack gap="md">
-            <Skeleton height={52} radius="md" />
-            <Skeleton height={16} width="55%" radius="sm" />
-            <Group grow>
-              <Stack gap={6}>
-                <Skeleton height={14} width={80} radius="sm" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[
+              { labelW: 84 },
+              { labelW: 56 },
+              { labelW: 56 },
+            ].map((col, i) => (
+              <Stack key={i} gap={6}>
+                <Skeleton height={14} width={col.labelW} radius="sm" />
                 <Skeleton height={36} radius="sm" />
+                <Skeleton height={14} width={0} radius="sm" />
               </Stack>
-              <Stack gap={6}>
-                <Skeleton height={14} width={60} radius="sm" />
-                <Skeleton height={36} radius="sm" />
-              </Stack>
-              <Stack gap={6}>
-                <Skeleton height={14} width={60} radius="sm" />
-                <Skeleton height={36} radius="sm" />
-              </Stack>
-            </Group>
-          </Stack>
+            ))}
+          </div>
         ) : (
           <Stack gap="md">
             {!quarters.some((q) => q.is_active) && (

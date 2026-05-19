@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
+import { REPORTS_CACHE_TAG } from "@/app/(app)/assessment-reports/_lib/reportServerService";
 
 type FinalizeParams = { examId: string };
 
@@ -355,6 +356,7 @@ const _POST = async function (
   }
 
   revalidateTag(EXAMS_CACHE_TAG, "minutes");
+  revalidateTag(REPORTS_CACHE_TAG, "minutes");
   return Response.json(
     {
       examId,

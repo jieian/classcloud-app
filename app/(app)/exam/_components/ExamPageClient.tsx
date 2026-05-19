@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Text,
@@ -12,6 +11,7 @@ import {
   Group,
   Tooltip,
   Stack,
+  Box,
   SimpleGrid,
   Accordion,
   ActionIcon,
@@ -700,55 +700,20 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   return (
     <>
-      <div>
-        {/* Heading row — desktop shows Create Exam here, mobile omits it */}
-        <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
-          <h1 className="mb-3 text-2xl font-bold">
-            Examinations{" "}
-            {!loading && hasActiveSchoolYear && hasActiveTerm && (
-              <span className="text-[#808898]">({filteredExams.length})</span>
-            )}
-          </h1>
-          <div className="hidden sm:block">
-            {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
-            !effectiveFullAccess ? (
-              <Tooltip
-                label="You need to be assigned to at least one class before you can create exams."
-                disabled={
-                  effectiveFullAccess ||
-                  !effectiveAllowedSectionIds ||
-                  effectiveAllowedSectionIds.size > 0
-                }
-                withArrow
-                multiline
-                w={240}
-              >
-                <div style={{ display: "inline-block" }}>
-                  <Button
-                    color="#4EAE4A"
-                    radius="md"
-                    onClick={() => router.push("/exam/create")}
-                    disabled={
-                      !effectiveFullAccess &&
-                      !!effectiveAllowedSectionIds &&
-                      effectiveAllowedSectionIds.size === 0
-                    }
-                  >
-                    Create Exam
-                  </Button>
-                </div>
-              </Tooltip>
-            ) : null}
-          </div>
-        </Group>
-
-        <p className="mb-3 text-sm text-[#808898]">
+      <div className="relative mb-3">
+        <h1 className="text-3xl font-bold text-[#597D37]">
+          Examinations{" "}
+          {!loading && hasActiveSchoolYear && hasActiveTerm && (
+            <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
+          )}
+        </h1>
+        <p className="text-sm text-[#808898]">
           Manage and track all examinations
         </p>
 
-        {/* Mobile only: toggle left, Create Exam right */}
-        <div className="flex sm:hidden items-center justify-between gap-2 mb-2">
-          {showViewToggleVisible && !loading && !authLoading ? (
+        {/* Absolutely positioned so buttons don't add height to this block */}
+        <Stack gap="xs" align="flex-end" style={{ position: "absolute", top: 0, right: 0 }}>
+          {showViewToggleVisible && !loading && !authLoading && (
             <Button
               variant="outline"
               color={viewMode === "admin" ? "#298925" : "#4A72AE"}
@@ -762,8 +727,6 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                 ? "Switch to Faculty View"
                 : "Switch to Admin View"}
             </Button>
-          ) : (
-            <div />
           )}
           {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
           !effectiveFullAccess ? (
@@ -794,7 +757,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
               </div>
             </Tooltip>
           ) : null}
-        </div>
+        </Stack>
       </div>
 
       {/* Error */}
@@ -882,8 +845,39 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
       {/* Content */}
       {loading ? (
         <Stack gap="md">
-          {[1, 2].map((i) => (
-            <Skeleton key={i} height={180} radius="md" />
+          {[
+            { widthLabel: 72, cards: 4 },
+            { widthLabel: 56, cards: 2 },
+          ].map((group, gi) => (
+            <Box
+              key={gi}
+              style={{
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                overflow: "hidden",
+              }}
+            >
+              <Box
+                px="md"
+                py="sm"
+                style={{ backgroundColor: "#f3f4f6" }}
+              >
+                <Group gap="xs">
+                  <Skeleton height={18} width={group.widthLabel} radius="sm" />
+                  <Skeleton height={14} width={28} radius="sm" />
+                </Group>
+              </Box>
+              <Box p="sm">
+                <SimpleGrid
+                  cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
+                  spacing="sm"
+                >
+                  {Array.from({ length: group.cards }).map((_, i) => (
+                    <Skeleton key={i} height={170} radius="md" />
+                  ))}
+                </SimpleGrid>
+              </Box>
+            </Box>
           ))}
         </Stack>
       ) : dbError ? null : isFiltering && filteredExams.length === 0 ? (
@@ -1236,31 +1230,6 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         </Group>
       </Modal>
 
-      {hasFullAccess &&
-        typeof document !== "undefined" &&
-        (() => {
-          const el = document.getElementById("exam-header-actions");
-          if (!el) return null;
-          if (!showViewToggleVisible) return null;
-          return createPortal(
-            <div className="hidden sm:block">
-              <Button
-                variant="outline"
-                color={viewMode === "admin" ? "#298925" : "#4A72AE"}
-                radius="md"
-                leftSection={<IconBinoculars size={16} stroke={1.5} />}
-                onClick={() =>
-                  setViewMode(viewMode === "admin" ? "faculty" : "admin")
-                }
-              >
-                {viewMode === "admin"
-                  ? "Switch to Faculty View"
-                  : "Switch to Admin View"}
-              </Button>
-            </div>,
-            el,
-          );
-        })()}
     </>
   );
 }

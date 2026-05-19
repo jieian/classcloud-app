@@ -13,13 +13,7 @@ export default async function ReportDetailsByGradePage({ params }: Props) {
   return (
     <ProtectedRoute
       match="any"
-      requiredPermissions={[
-        "reports.view_all",
-        "reports.view_assigned",
-        "reports.monitor_grade_level",
-        "reports.monitor_subjects",
-        "reports.approve",
-      ]}
+      requiredPermissions={["reports.view_all"]}
     >
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Report Details</h1>
       <ReportDetailsClient
