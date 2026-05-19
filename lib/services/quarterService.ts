@@ -34,3 +34,17 @@ export async function fetchActiveQuarters(): Promise<Quarter[]> {
   }
   return data ?? [];
 }
+
+export function abbreviateQuarterName(name: string): string {
+  const lower = name.toLowerCase().trim();
+  const ordinals: Record<string, string> = {
+    first: '1', second: '2', third: '3', fourth: '4',
+  };
+  for (const [word, num] of Object.entries(ordinals)) {
+    if (lower.includes(word)) {
+      if (lower.includes('quarter')) return `Q${num}`;
+      if (lower.includes('term')) return `T${num}`;
+    }
+  }
+  return name;
+}

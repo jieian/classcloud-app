@@ -49,6 +49,7 @@ import { resolveExamParams } from '@/lib/exam-supabase';
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
+type ReviewFilter = 'all' | 'detected' | 'undetected' | 'needs_attention';
 
 interface DetectedAnswers { [item: number]: string | null; }
 
@@ -60,6 +61,18 @@ interface RosterStudent {
   section_id: number;
   section_name: string;
   grade_level_display: string;
+}
+
+interface ScanPageCache {
+  cachedAt: number;
+  exam: ExamWithRelations | null;
+  rosterStudents: RosterStudent[];
+  existingAttempts: ExamScore[];
+}
+
+interface ItemConfidenceSummary {
+  top: number;
+  second: number;
 }
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -118,6 +131,10 @@ const STEP_LABELS: Record<string, string> = {
   submit: 'Save Scanned Results',
 };
 const STEP_ORDER = ['capture', 'review', 'submit'] as const;
+const STEP_HEADING_COLOR = '#4EAE4A';
+const STEP_BORDER_COLOR = '#e0e0e0';
+const SCAN_PAGE_CACHE_TTL_MS = 2 * 60 * 1000;
+const getScanPageCacheKey = (id: number) => `scanPageCache:${id}`;
 
 // â"€â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -135,11 +152,14 @@ export default function ScanPapersPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewModalOpened, setPreviewModalOpened] = useState(false);
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
+  const [initialDetectedAnswers, setInitialDetectedAnswers] = useState<DetectedAnswers>({});
+  const [detectedConfidence, setDetectedConfidence] = useState<{ [item: number]: { [choice: string]: number } }>({});
   const [cornersOk, setCornersOk] = useState(true);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
+  const [finalizingReports, setFinalizingReports] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
@@ -150,27 +170,102 @@ export default function ScanPapersPage() {
   const [rosterLoading, setRosterLoading] = useState(false);
   const [existingAttempts, setExistingAttempts] = useState<ExamScore[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<RosterStudent | null>(null);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>('all');
   const [studentSearch, setStudentSearch] = useState('');
   const [sexFilter, setSexFilter] = useState<string>('');
+  const [manuallyReviewedItems, setManuallyReviewedItems] = useState<Set<number>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const rosterStudentsRef = useRef<RosterStudent[]>([]);
+  const existingAttemptsRef = useRef<ExamScore[]>([]);
+  const useSilentRosterRefreshRef = useRef(false);
+
+  useEffect(() => {
+    rosterStudentsRef.current = rosterStudents;
+  }, [rosterStudents]);
+
+  useEffect(() => {
+    existingAttemptsRef.current = existingAttempts;
+  }, [existingAttempts]);
+
+  const persistScanPageCache = useCallback(
+    (
+      examData: ExamWithRelations | null,
+      rosterData: RosterStudent[],
+      attemptsData: ExamScore[],
+    ) => {
+      const examIdNum = Number(examId);
+      if (!Number.isFinite(examIdNum) || !examData) return;
+      try {
+        const payload: ScanPageCache = {
+          cachedAt: Date.now(),
+          exam: examData,
+          rosterStudents: rosterData,
+          existingAttempts: attemptsData,
+        };
+        sessionStorage.setItem(
+          getScanPageCacheKey(examIdNum),
+          JSON.stringify(payload),
+        );
+      } catch {
+        // Ignore cache write errors.
+      }
+    },
+    [examId],
+  );
 
   // â"€â"€ Fetch exam â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
-    console.log('[scan] examId:', examId, typeof examId);
     const examIdNum = Number(examId);
     if (!examId || !Number.isFinite(examIdNum)) {
       setExamLoading(false);
       return;
     }
-    fetchExamById(examIdNum).then(data => {
-      console.log('[scan] fetchExamById result:', data);
-      setExam(data);
-    }).catch(console.error).finally(() => setExamLoading(false));
-  }, [examId]);
+
+    let hydratedFromCache = false;
+    try {
+      const raw = sessionStorage.getItem(getScanPageCacheKey(examIdNum));
+      if (raw) {
+        const parsed = JSON.parse(raw) as ScanPageCache;
+        if (
+          parsed &&
+          typeof parsed.cachedAt === 'number' &&
+          Date.now() - parsed.cachedAt <= SCAN_PAGE_CACHE_TTL_MS &&
+          parsed.exam
+        ) {
+          setExam(parsed.exam);
+          setRosterStudents(parsed.rosterStudents ?? []);
+          setExistingAttempts(parsed.existingAttempts ?? []);
+          useSilentRosterRefreshRef.current =
+            (parsed.rosterStudents?.length ?? 0) > 0 ||
+            (parsed.existingAttempts?.length ?? 0) > 0;
+          setExamLoading(false);
+          hydratedFromCache = true;
+        }
+      }
+    } catch {
+      // Ignore malformed cache.
+    }
+
+    fetchExamById(examIdNum)
+      .then((data) => {
+        setExam(data);
+        if (data) {
+          persistScanPageCache(
+            data,
+            rosterStudentsRef.current,
+            existingAttemptsRef.current,
+          );
+        }
+      })
+      .catch(console.error)
+      .finally(() => {
+        if (!hydratedFromCache) setExamLoading(false);
+      });
+  }, [examId, persistScanPageCache]);
 
   const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = CHOICES.slice(0, numChoices);
@@ -237,14 +332,16 @@ export default function ScanPapersPage() {
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
-  const loadRosterAndAttempts = useCallback(async () => {
+  const loadRosterAndAttempts = useCallback(async (options?: { silent?: boolean }) => {
     if (!exam) return;
 
     const sectionIds = (exam.exam_assignments ?? [])
       .map(a => a.sections?.section_id)
       .filter((id): id is number => id != null);
 
-    setRosterLoading(true);
+    if (!options?.silent) {
+      setRosterLoading(true);
+    }
     try {
       const [attempts, rosterResults] = await Promise.all([
         fetchAttemptsForExam(exam.exam_id),
@@ -266,16 +363,22 @@ export default function ScanPapersPage() {
 
       setExistingAttempts(attempts);
       setRosterStudents(all);
+      persistScanPageCache(exam, all, attempts);
     } catch (err) {
       console.error('[ScanPage] Failed to load scan roster data:', err);
     } finally {
-      setRosterLoading(false);
+      if (!options?.silent) {
+        setRosterLoading(false);
+      }
     }
-  }, [exam]);
+  }, [exam, persistScanPageCache]);
 
   // â"€â"€ Fetch roster + existing attempts once exam is loaded â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   useEffect(() => {
-    void loadRosterAndAttempts();
+    void loadRosterAndAttempts({
+      silent: useSilentRosterRefreshRef.current,
+    });
+    useSilentRosterRefreshRef.current = false;
   }, [loadRosterAndAttempts]);
 
   // â"€â"€ Attempt lookup map â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -299,15 +402,23 @@ export default function ScanPapersPage() {
   // â"€â"€ Camera capture â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   // ── Scan student: preload OpenCV + transition to capture step ────────────
   const handleScanStudent = useCallback((student: RosterStudent) => {
+    if (exam?.is_locked) {
+      alert("This examination has been finalized and can no longer accept scans.");
+      return;
+    }
     setSelectedStudent(student);
     setCapturedFile(null);
     setPreviewUrl(null);
     setDetectedAnswers({});
+    setInitialDetectedAnswers({});
+    setDetectedConfidence({});
+    setManuallyReviewedItems(new Set());
+    setReviewFilter('all');
     setDebugImageUrl(null);
     setWarpedImageUrl(null);
     setProcessingError(null);
     setStep('capture');
-  }, []);
+  }, [exam?.is_locked]);
 
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
@@ -396,7 +507,35 @@ export default function ScanPapersPage() {
         return;
       }
 
+      // Item-count mismatch — scanned sheet layout does not match this exam
+      if (
+        result.detectedTotalItems !== null &&
+        result.detectedTotalItems !== totalItems
+      ) {
+        setProcessingError(
+          `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
+          'Please use the correct answer sheet and try again.'
+        );
+        setStep('capture');
+        return;
+      }
+
+      // Choice-count mismatch — prevents mapping answers to the wrong option set
+      if (
+        result.detectedNumChoices !== null &&
+        result.detectedNumChoices !== numChoices
+      ) {
+        setProcessingError(
+          `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
+          'Please use the correct answer sheet and try again.'
+        );
+        setStep('capture');
+        return;
+      }
+
       setDetectedAnswers(result.answers);
+      setInitialDetectedAnswers({ ...result.answers });
+      setDetectedConfidence(result.confidence);
       setCornersOk(result.cornersAutoDetected);
       setDebugImageUrl(result.debugDataUrl);
       setStep('review');
@@ -409,16 +548,61 @@ export default function ScanPapersPage() {
   // â"€â"€ Review â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const toggleAnswer = (item: number, choice: string) => {
     setDetectedAnswers(prev => ({ ...prev, [item]: prev[item] === choice ? null : choice }));
+    setManuallyReviewedItems((prev) => {
+      const next = new Set(prev);
+      next.add(item);
+      return next;
+    });
+  };
+
+  const handleResetToDetected = () => {
+    setDetectedAnswers({ ...initialDetectedAnswers });
+    setManuallyReviewedItems(new Set());
+    setReviewFilter('all');
   };
 
   const answeredCount = Object.values(detectedAnswers).filter(Boolean).length;
+  const allReviewItems = Array.from({ length: totalItems }, (_, i) => i + 1);
+
+  const getConfidenceSummary = (item: number): ItemConfidenceSummary => {
+    const values = Object.values(detectedConfidence[item] ?? {}).sort((a, b) => b - a);
+    return {
+      top: values[0] ?? 0,
+      second: values[1] ?? 0,
+    };
+  };
+
+  const isLowConfidenceItem = (item: number): boolean => {
+    if (!detectedAnswers[item]) return false;
+    if (manuallyReviewedItems.has(item)) return false;
+    const { top, second } = getConfidenceSummary(item);
+    return top < 0.08 || top - second < 0.04;
+  };
+
+  const undetectedCount = allReviewItems.filter((item) => !detectedAnswers[item]).length;
+  const lowConfidenceCount = allReviewItems.filter((item) => isLowConfidenceItem(item)).length;
+  const needsAttentionItems = allReviewItems.filter(
+    (item) => !detectedAnswers[item] || isLowConfidenceItem(item),
+  );
+  const needsAttentionCount = needsAttentionItems.length;
+
+  const filteredReviewItems = allReviewItems.filter((item) => {
+    if (reviewFilter === 'detected') return Boolean(detectedAnswers[item]);
+    if (reviewFilter === 'undetected') return !detectedAnswers[item];
+    if (reviewFilter === 'needs_attention') return needsAttentionItems.includes(item);
+    return true;
+  });
+
+  const hasManualReviewChanges = allReviewItems.some(
+    (item) => (detectedAnswers[item] ?? null) !== (initialDetectedAnswers[item] ?? null),
+  );
+
   const score = scoreResponses(
     Object.fromEntries(Object.entries(detectedAnswers).filter(([, v]) => v)) as { [k: number]: string },
     answerKey
   );
   const hasAnswerKey = Object.keys(answerKey).length > 0;
-  const itemResults = Array.from({ length: totalItems }, (_, i) => {
-    const item = i + 1;
+  const itemResults = allReviewItems.map((item) => {
     const student = detectedAnswers[item] ?? null;
     const correct = answerKey[item] ?? null;
     return { item, student, correct, isCorrect: Boolean(student && correct && student === correct) };
@@ -471,6 +655,10 @@ export default function ScanPapersPage() {
     setCapturedFile(null);
     setPreviewUrl(null);
     setDetectedAnswers({});
+    setInitialDetectedAnswers({});
+    setDetectedConfidence({});
+    setManuallyReviewedItems(new Set());
+    setReviewFilter('all');
     setDebugImageUrl(null);
     setWarpedImageUrl(null);
     setProcessingError(null);
@@ -506,6 +694,10 @@ export default function ScanPapersPage() {
       return;
     }
     if (!exam || !selectedStudent) { alert('No student selected.'); return; }
+    if (exam.is_locked) {
+      alert("This examination has been finalized and can no longer accept scans.");
+      return;
+    }
 
     const examAssignmentId = (exam.exam_assignments ?? [])
       .find(a => a.sections?.section_id === selectedStudent.section_id)?.id;
@@ -539,12 +731,38 @@ export default function ScanPapersPage() {
       setCapturedFile(null);
       setPreviewUrl(null);
       setDetectedAnswers({});
+      setInitialDetectedAnswers({});
+      setDetectedConfidence({});
+      setManuallyReviewedItems(new Set());
+      setReviewFilter('all');
       setHighlightedEnrollmentId(scannedId);
       setTimeout(() => setHighlightedEnrollmentId(null), 3000);
     } else {
       alert('Failed to save. Please try again.');
     }
     setSubmitting(false);
+  };
+
+  const handleSubmitWithValidation = () => {
+    if (undetectedCount <= 0) {
+      void handleSubmit();
+      return;
+    }
+
+    modals.openConfirmModal({
+      title: 'Submit with unanswered items?',
+      children: (
+        <Text size="sm">
+          {`There are ${undetectedCount} undetected item${undetectedCount > 1 ? 's' : ''}. You can still save this scan, or go back and review first.`}
+        </Text>
+      ),
+      labels: { confirm: 'Save Anyway', cancel: 'Review Answers' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => {
+        void handleSubmit();
+      },
+      ...mobileConfirmModalProps,
+    });
   };
 
   const handleExportCsv = async () => {
@@ -591,10 +809,75 @@ export default function ScanPapersPage() {
 
   // â"€â"€ Answer bubble color â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const confColor = (item: number, ch: string) => {
-    if (answerKey[item] === ch) return 'bg-green-200 border-green-400 text-green-900 shadow-sm ring-2 ring-green-200';
-    if (detectedAnswers[item] === ch) return 'bg-gray-300 border-gray-500 text-gray-900 shadow-sm ring-2 ring-gray-200';
-    return 'bg-white border-gray-300 text-gray-500 hover:border-blue-500 hover:bg-blue-50';
+    if (answerKey[item] === ch) return 'bg-[#eef8e9] border-[#4EAE4A] text-[#2f5f2d]';
+    if (detectedAnswers[item] === ch) return 'bg-gray-200 border-gray-400 text-gray-900';
+    return 'bg-white border-gray-200 text-gray-500 hover:border-[#4EAE4A] hover:bg-[#f7fbf4]';
   };
+
+  const handleProceedToReports = async () => {
+    if (!exam) return;
+    setFinalizingReports(true);
+    try {
+      const response = await fetch(
+        `/api/exams/${exam.exam_id}/finalize-reports`,
+        { method: "POST" },
+      );
+
+      const body = (await response.json().catch(() => null)) as
+        | {
+            error?: string;
+            gradeLevelId?: number;
+            sectionId?: number;
+            examId?: number;
+            finalized?: boolean;
+          }
+        | null;
+
+      if (!response.ok) {
+        alert(
+          body?.error ??
+            "Unable to finalize examination for reports. Please try again.",
+        );
+        return;
+      }
+
+      const gradeLevelId = Number(body?.gradeLevelId);
+      const sectionId = Number(body?.sectionId);
+      const finalizedExamId = Number(body?.examId ?? exam.exam_id);
+
+      if (
+        !Number.isFinite(gradeLevelId) ||
+        !Number.isFinite(sectionId) ||
+        !Number.isFinite(finalizedExamId)
+      ) {
+        alert("Finalization succeeded but report context is incomplete.");
+        return;
+      }
+
+      router.push(
+        `/assessment-reports/report-analytics/${gradeLevelId}/${sectionId}/${finalizedExamId}`,
+      );
+    } catch (error) {
+      console.error("Failed to finalize examination:", error);
+      alert("Unable to finalize examination for reports. Please try again.");
+    } finally {
+      setFinalizingReports(false);
+    }
+  };
+
+  const getStatusChip = (studentAnswer: string | null, correctAnswer: string | null) => {
+    if (!studentAnswer) {
+      return { label: 'Blank', className: 'bg-gray-100 text-gray-600' };
+    }
+    if (!correctAnswer) {
+      return { label: 'No key', className: 'bg-gray-100 text-gray-700' };
+    }
+    if (studentAnswer === correctAnswer) {
+      return { label: 'Correct', className: 'bg-[#eef8e9] text-[#2f5f2d]' };
+    }
+    return { label: 'Wrong', className: 'bg-gray-200 text-gray-800' };
+  };
+  const STATUS_CHIP_CLASS = 'inline-flex w-[64px] items-center justify-center text-[10px] font-medium px-1.5 py-0.5 rounded';
 
   const activeStep = step === 'processing' ? 'capture' : step;
   const stepIndex = STEP_ORDER.indexOf(activeStep as typeof STEP_ORDER[number]);
@@ -603,18 +886,45 @@ export default function ScanPapersPage() {
 
   if (examLoading) {
     return (
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <Skeleton height={36} width={220} radius="md" />
-          <Skeleton height={14} width={160} radius="md" />
-        </div>
-        <Paper withBorder radius="md" p="md">
-          <Skeleton height={42} radius="md" mb="md" />
-          <Skeleton height={16} radius="md" mb="xs" />
-          <Skeleton height={16} radius="md" mb="xs" />
-          <Skeleton height={16} width="72%" radius="md" />
-        </Paper>
-      </div>
+      <>
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+        <Stack gap="md" maw={1000} style={{ width: '100%' }}>
+          <Box>
+            <BackButton size="sm" href="/exam">
+              Back to Examinations
+            </BackButton>
+          </Box>
+
+          <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Skeleton height={30} width="65%" radius="md" />
+            </Box>
+            <Skeleton height={36} w={180} radius="md" />
+            <Skeleton height={36} w={180} radius="md" />
+          </Group>
+
+          <Group gap="sm" align="flex-end" wrap="wrap">
+            <Skeleton height={36} style={{ flex: '1 1 260px', minWidth: 0 }} radius="md" />
+            <Skeleton height={36} w={140} radius="md" />
+          </Group>
+
+          <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: '100%' }}>
+            <div className="p-4">
+              <div className="space-y-3">
+                <Skeleton height={18} width={180} radius="md" />
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <Group key={n} justify="space-between" wrap="nowrap">
+                    <Skeleton height={16} width="40%" radius="md" />
+                    <Skeleton height={16} width={90} radius="md" />
+                    <Skeleton height={16} width={150} radius="md" />
+                    <Skeleton height={28} width={90} radius="md" />
+                  </Group>
+                ))}
+              </div>
+            </div>
+          </Paper>
+        </Stack>
+      </>
     );
   }
 
@@ -660,10 +970,11 @@ export default function ScanPapersPage() {
         onCancel={handleCancel}
         onPrevious={() => setStep('review')}
         showPrevious
-        onPrimary={handleSubmit}
+        onPrimary={handleSubmitWithValidation}
         primaryLabel={submitting ? 'Saving...' : 'Save Result'}
         primaryLoading={submitting}
         primaryDisabled={submitting}
+        colorWhenEnabledOnly={false}
         cancelLabel="Cancel"
       />
     ) : null
@@ -698,13 +1009,27 @@ export default function ScanPapersPage() {
             >
               Download Results
             </Button>
-            {rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+            {exam.is_locked ? (
               <Button
                 variant="filled"
                 size="sm"
                 w={isMobile ? '100%' : 180}
                 styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
-                onClick={() => router.push('/reports')}
+                onClick={handleProceedToReports}
+                loading={finalizingReports}
+                disabled={finalizingReports}
+              >
+                Proceed to Reports
+              </Button>
+            ) : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+              <Button
+                variant="filled"
+                size="sm"
+                w={isMobile ? '100%' : 180}
+                styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
+                onClick={handleProceedToReports}
+                loading={finalizingReports}
+                disabled={finalizingReports}
               >
                 Proceed to Reports
               </Button>
@@ -777,7 +1102,7 @@ export default function ScanPapersPage() {
                         <TableTh>Name of Pupil</TableTh>
                         <TableTh w={160} ta="center">Test Score</TableTh>
                         <TableTh w={220} ta="center">Level of Proficiency</TableTh>
-                        {!isAdminView && <TableTh w={120} ta="center">Action</TableTh>}
+                        {!isAdminView && <TableTh w={120} ta="center" />}
                       </TableTr>
                     </TableThead>
                     <TableTbody>
@@ -808,8 +1133,7 @@ export default function ScanPapersPage() {
                                   <Text
                                     fz="sm"
                                     fw={500}
-                                    c={hasScanned ? undefined : "dimmed"}
-                                    style={!hasScanned ? { opacity: 0.75 } : undefined}
+                                    c="dark"
                                   >
                                     {student.full_name}
                                   </Text>
@@ -817,7 +1141,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
-                                    {attempt ? `${attempt.calculated_score} / ${totalItems}` : '—'}
+                                    {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
                                   </Text>
                                 </TableTd>
                                 <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
@@ -834,6 +1158,7 @@ export default function ScanPapersPage() {
                                       radius="md"
                                       color={hasScanned ? "yellow" : "#4EAE4A"}
                                       onClick={() => handleScanStudent(student)}
+                                      disabled={exam.is_locked}
                                     >
                                       {hasScanned ? 'Rescan' : 'Scan'}
                                     </Button>
@@ -862,8 +1187,7 @@ export default function ScanPapersPage() {
                                   <Text
                                     fz="sm"
                                     fw={500}
-                                    c={hasScanned ? undefined : "dimmed"}
-                                    style={!hasScanned ? { opacity: 0.75 } : undefined}
+                                    c="dark"
                                   >
                                     {student.full_name}
                                   </Text>
@@ -871,7 +1195,7 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
                                   <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
-                                    {attempt ? `${attempt.calculated_score} / ${totalItems}` : '—'}
+                                    {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
                                   </Text>
                                 </TableTd>
                                 <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
@@ -888,6 +1212,7 @@ export default function ScanPapersPage() {
                                       radius="md"
                                       color={hasScanned ? "yellow" : "#4EAE4A"}
                                       onClick={() => handleScanStudent(student)}
+                                      disabled={exam.is_locked}
                                     >
                                       {hasScanned ? 'Rescan' : 'Scan'}
                                     </Button>
@@ -938,14 +1263,12 @@ export default function ScanPapersPage() {
 
         {/* STEP: CAPTURE */}
         {step === 'capture' && (
-          <Stack gap="md">
-            <Text size="xl" fw={700} mb="md" c="#298925">Scan Answer Sheet</Text>
-
-            <Paper withBorder radius="md" p="lg">
-              <Stack gap="md">
+          <Stack gap="sm">
+            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>
+            <Stack gap="md">
                 {/* Student & Examination Information */}
-                <Paper withBorder radius="md" p="md">
-                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                  <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student &amp; Examination Information</Text>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div>
                       <Text size="sm" fw={700} mb={2}>Student Name</Text>
@@ -968,7 +1291,7 @@ export default function ScanPapersPage() {
 
 {/* Camera active state */}
                 {(cameraActive || startingCamera) && (
-                  <Paper withBorder radius="md" p="md">
+                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
                     <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
                     {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
                     <Group mt="sm">
@@ -982,17 +1305,15 @@ export default function ScanPapersPage() {
 
                 {/* Scanning Guidelines — only on the initial upload page */}
                 {!cameraActive && !previewUrl && (
-                  <Paper withBorder radius="md" p="md">
-                    <Text size="lg" fw={700} mb="md" c="#298925">Scanning Guidelines</Text>
+                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Scanning Guidelines</Text>
                     <div>
                       <p className="font-semibold text-sm mb-2">Tips for best results:</p>
                       <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
-                        <li>Place sheet on a dark, flat surface with good lighting</li>
-                        <li>Keep the entire sheet visible — all 4 corners must be in frame</li>
-                        <li>Avoid glare and shadows; hold camera directly above the sheet</li>
-                        <li>Ensure student has filled bubbles darkly and completely</li>
-                        <li>Hold the camera <strong>directly above</strong> the sheet (no tilt)</li>
-                        <li>All <strong>4 black corner squares</strong> must be visible</li>
+                        <li>Place the sheet on a dark, flat surface with good lighting.</li>
+                        <li>Keep all 4 black corner squares fully visible in the frame.</li>
+                        <li>Hold the camera directly above the sheet and avoid tilt, glare, and shadows.</li>
+                        <li>Make sure bubbles are filled darkly and completely.</li>
                       </ul>
                     </div>
                   </Paper>
@@ -1000,8 +1321,8 @@ export default function ScanPapersPage() {
 
                 {/* Upload Answer Sheet — shows upload buttons or uploaded preview */}
                 {!cameraActive && (
-                  <Paper withBorder radius="md" p="md">
-                    <Text size="lg" fw={700} mb="md" c="#298925">Upload Answer Sheet</Text>
+                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Upload Answer Sheet</Text>
 
                     {processingError && (
                       <Alert
@@ -1019,7 +1340,7 @@ export default function ScanPapersPage() {
                         }
                       >
                         <Text fw={700} size="sm">
-                          {processingError.includes('answer sheet is for') ? 'Wrong Answer Sheet' : 'Processing Failed'}
+                          {processingError.toLowerCase().includes('answer sheet') ? 'Wrong Answer Sheet' : 'Processing Failed'}
                         </Text>
                         <Text size="sm" fs="italic">{processingError}</Text>
                       </Alert>
@@ -1083,33 +1404,65 @@ export default function ScanPapersPage() {
                 )}
 
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileInput} />
-              </Stack>
-            </Paper>
+            </Stack>
           </Stack>
         )}
 
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'processing' && (
-          <div className="py-12 flex flex-col items-center gap-5">
-            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm font-medium text-gray-700">
-              {processingStatus || 'Processing…'}
-            </p>
-            <p className="text-xs text-gray-400">This may take a few seconds</p>
-          </div>
+          <Stack gap="sm">
+            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>
+            <Stack gap="md">
+              <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student &amp; Examination Information</Text>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div>
+                    <Text size="sm" fw={700} mb={2}>Student Name</Text>
+                    <Text size="sm">{selectedStudent?.full_name ?? '—'}</Text>
+                  </div>
+                  <div>
+                    <Text size="sm" fw={700} mb={2}>LRN</Text>
+                    <Text size="sm">{selectedStudent?.lrn ?? '—'}</Text>
+                  </div>
+                  <div>
+                    <Text size="sm" fw={700} mb={2}>Exam Name</Text>
+                    <Text size="sm">{exam.title}</Text>
+                  </div>
+                  <div>
+                    <Text size="sm" fw={700} mb={2}>Items</Text>
+                    <Text size="sm">{totalItems}</Text>
+                  </div>
+                </div>
+              </Paper>
+
+              <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                <Group justify="space-between" align="center" mb="md">
+                  <Skeleton height={22} width="48%" radius="md" />
+                  <Text size="sm" fw={500} c="dimmed">
+                    {processingStatus || 'Processing answer sheet...'}
+                  </Text>
+                </Group>
+
+                <Skeleton height={260} radius="md" mb="md" />
+
+                <Group justify="space-between" align="center">
+                  <Skeleton height={12} width="36%" radius="md" />
+                  <Skeleton height={30} width={96} radius="md" />
+                </Group>
+              </Paper>
+            </Stack>
+          </Stack>
         )}
 
         {/* â"€â"€ STEP: REVIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'review' && (
-          <Stack gap="md">
-            <Text size="xl" fw={700} c="#298925">Review Detected Answers</Text>
-
-            <Paper withBorder radius="md" p="lg">
-              <Stack gap="md">
+          <Stack gap="sm">
+            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Review Detected Answers</Text>
+            <Stack gap="md">
 
                 {/* Student & Examination Information */}
-                <Paper withBorder radius="md" p="md">
-                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                  <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student &amp; Examination Information</Text>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div>
                       <Text size="sm" fw={700} mb={2}>Student Name</Text>
@@ -1132,8 +1485,8 @@ export default function ScanPapersPage() {
 
                 {/* Answer Bubble Detection Map */}
                 {debugImageUrl && (
-                  <Paper withBorder radius="md" p="md">
-                    <Text size="lg" fw={700} mb="md" c="#298925">Answer Bubble Detection Map</Text>
+                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Answer Bubble Detection Map</Text>
                     <div className="mb-3">
                       <Text size="sm" fw={600} mb={4}>Detection Guide:</Text>
                       <div className="flex items-center gap-4 text-sm mb-1">
@@ -1162,70 +1515,113 @@ export default function ScanPapersPage() {
 
                 {/* Uploaded Answer Sheet (warped/perspective-corrected) */}
                 {warpedImageUrl && (
-                  <Paper withBorder radius="md" p="md">
-                    <Text size="lg" fw={700} mb="md" c="#298925">Uploaded Answer Sheet</Text>
+                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Uploaded Answer Sheet</Text>
                     <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl" />
                   </Paper>
                 )}
 
                 {/* Review Detected Answers */}
-                <Paper withBorder radius="md" p="md">
-                  <Text size="lg" fw={700} mb="md" c="#298925">Review Detected Answers</Text>
+                <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                  <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Review Detected Answers</Text>
 
-                  <div className="mx-auto w-fit flex flex-col gap-4">
-                    {/* Stat cards — stretch to match columns width */}
+                  <div className="mx-auto w-full max-w-[860px] flex flex-col gap-4">
+                    {/* Stat cards — clickable filters for faster review */}
                     <div className="flex gap-3 w-full">
-                      <div className="bg-blue-50 rounded-xl p-3 text-center flex-1">
-                        <p className="text-2xl font-bold text-blue-700">{answeredCount}</p>
-                        <p className="text-xs text-blue-500 mt-0.5">Detected</p>
-                      </div>
-                      <div className="bg-orange-50 rounded-xl p-3 text-center flex-1">
-                        <p className="text-2xl font-bold text-orange-600">{totalItems - answeredCount}</p>
-                        <p className="text-xs text-orange-400 mt-0.5">Undetected</p>
-                      </div>
-                      <div className="bg-green-50 rounded-xl p-3 text-center flex-1">
-                        <p className="text-2xl font-bold text-green-700">{score}</p>
-                        <p className="text-xs text-green-500 mt-0.5">Correct (preview)</p>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReviewFilter('detected')}
+                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'detected' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <p className={`text-2xl font-bold ${reviewFilter === 'detected' ? 'text-white' : 'text-gray-900'}`}>{answeredCount}</p>
+                        <p className={`text-xs mt-0.5 ${reviewFilter === 'detected' ? 'text-white/95' : 'text-gray-600'}`}>Detected</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReviewFilter('undetected')}
+                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'undetected' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <p className={`text-2xl font-bold ${reviewFilter === 'undetected' ? 'text-white' : 'text-gray-900'}`}>{undetectedCount}</p>
+                        <p className={`text-xs mt-0.5 ${reviewFilter === 'undetected' ? 'text-white/95' : 'text-gray-600'}`}>Undetected</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReviewFilter('needs_attention')}
+                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'needs_attention' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <p className={`text-2xl font-bold ${reviewFilter === 'needs_attention' ? 'text-white' : 'text-gray-900'}`}>{needsAttentionCount}</p>
+                        <p className={`text-xs mt-0.5 ${reviewFilter === 'needs_attention' ? 'text-white/95' : 'text-gray-600'}`}>Needs Attention</p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReviewFilter('all')}
+                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'all' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                      >
+                        <p className={`text-2xl font-bold ${reviewFilter === 'all' ? 'text-white' : 'text-gray-900'}`}>{totalItems}</p>
+                        <p className={`text-xs mt-0.5 ${reviewFilter === 'all' ? 'text-white/95' : 'text-gray-600'}`}>All Items</p>
+                      </button>
                     </div>
+                    <Group justify="center" align="center" gap="sm">
+                      <Text size="xs" c="dimmed">
+                        {`Low-confidence items: ${lowConfidenceCount}. Tap a count card to filter.`}
+                      </Text>
+                    </Group>
 
                     <p className="text-xs text-gray-500 text-center">
                       Student answer is gray. Correct answer key is light green. Click any bubble to correct.
                     </p>
 
                     {/* Bubble columns */}
-                    <div className="flex gap-6">
+                    {filteredReviewItems.length === 0 ? (
+                      <div className="w-full rounded-xl border border-gray-200 bg-white p-5 text-center">
+                        <Text size="sm" fw={700} c="dark">No items found for this filter</Text>
+                        <Text size="xs" c="dimmed" mt={4}>
+                          Try another filter, or show all items to continue reviewing.
+                        </Text>
+                        <Group justify="center" mt="sm">
+                          <Button
+                            size="xs"
+                            variant="default"
+                            onClick={() => setReviewFilter('all')}
+                          >
+                            Show all items
+                          </Button>
+                        </Group>
+                      </div>
+                    ) : (
+                      <div className="flex justify-center gap-6 w-full">
                       {[1, 2].map(col => {
-                        const itemsInCol1 = Math.ceil(totalItems / 2);
-                        const start = col === 1 ? 1 : itemsInCol1 + 1;
-                        const end = col === 1 ? itemsInCol1 : totalItems;
-                        if (start > totalItems) return null;
+                        const splitIndex = Math.ceil(filteredReviewItems.length / 2);
+                        const columnItems = col === 1
+                          ? filteredReviewItems.slice(0, splitIndex)
+                          : filteredReviewItems.slice(splitIndex);
+                        if (columnItems.length === 0) return null;
                         return (
                           <div key={col} className="space-y-0.5">
-                            <div className="flex items-center justify-center gap-2 pb-1 border-b border-gray-100">
-                              <span className="text-xs font-semibold text-gray-400 w-7 text-center">#</span>
-                              {choices.map(ch => <span key={ch} className="text-xs font-bold text-gray-500 w-8 text-center">{ch}</span>)}
-                              <span className="text-xs font-semibold text-gray-400 w-5 text-center">✓</span>
+                            <div className="flex items-center justify-center gap-1.5 py-1 border-b border-[#3f8f3b] bg-[#4EAE4A] rounded-md min-h-[26px] px-1.5 mb-0.5">
+                              <span className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-7 text-center">No.</span>
+                              {choices.map(ch => <span key={ch} className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-8 text-center">{ch}</span>)}
+                              <span className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-[64px] text-center">Status</span>
                             </div>
-                            {Array.from({ length: end - start + 1 }, (_, i) => start + i).map(item => {
+                            {columnItems.map(item => {
                               const correct = answerKey[item];
                               const detected = detectedAnswers[item];
-                              const isRight = detected && correct && detected === correct;
+                              const statusChip = getStatusChip(detected, correct);
                               return (
-                                <div key={item} className={`flex items-center justify-center gap-2 py-0.5 px-1 rounded-lg transition-all ${!detected ? 'bg-orange-50' : ''}`}>
+                                <div key={item} className={`flex items-center justify-center gap-1.5 py-1 px-1 border-b border-gray-100 last:border-b-0 transition-colors ${!detected ? 'bg-gray-50' : ''}`}>
                                   <span className="text-xs font-semibold w-7 text-center text-gray-600">{item}</span>
                                   {choices.map(ch => (
                                     <button
                                       key={ch}
                                       type="button"
                                       onClick={() => toggleAnswer(item, ch)}
-                                      className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-100 hover:scale-110 ${confColor(item, ch)}`}
+                                      className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition duration-75 hover:scale-105 ${confColor(item, ch)}`}
                                     >
                                       {ch}
                                     </button>
                                   ))}
-                                  <span className="w-5 text-center text-sm">
-                                    {detected && correct ? (isRight ? '✓' : '✗') : detected ? '·' : ' - '}
+                                  <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                    {statusChip.label}
                                   </span>
                                 </div>
                               );
@@ -1234,25 +1630,35 @@ export default function ScanPapersPage() {
                         );
                       })}
                     </div>
+                    )}
+
                   </div>
+
+                  <Group justify="flex-end" mt="md">
+                    <Button
+                      variant="default"
+                      onClick={handleResetToDetected}
+                      disabled={!hasManualReviewChanges}
+                      leftSection={<IconRefresh className="w-4 h-4" />}
+                    >
+                      Reset to detected
+                    </Button>
+                  </Group>
                 </Paper>
 
-              </Stack>
-            </Paper>
+            </Stack>
           </Stack>
         )}
 
         {/* â"€â"€ STEP: SUBMIT â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'submit' && (
-          <Stack gap="md">
-            <Text size="xl" fw={700} c="#298925">Save Scanned Results</Text>
-
-            <Paper withBorder radius="md" p="lg">
-              <Stack gap="md">
+          <Stack gap="sm">
+            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Save Scanned Results</Text>
+            <Stack gap="md">
 
                 {/* Student & Examination Information */}
-                <Paper withBorder radius="md" p="md">
-                  <Text size="lg" fw={700} mb="md" c="#298925">Student &amp; Examination Information</Text>
+                <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                  <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student &amp; Examination Information</Text>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div>
                       <Text size="sm" fw={700} mb={2}>Student Name</Text>
@@ -1274,13 +1680,13 @@ export default function ScanPapersPage() {
                 </Paper>
 
                 {/* Student Responses & Correct Answers */}
-                <Paper withBorder radius="md" p="md">
-                  <Text size="lg" fw={700} mb="md" c="#298925">Student Responses &amp; Correct Answers</Text>
+                <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
+                  <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student Responses &amp; Correct Answers</Text>
 
                   {/* Score card */}
-                  <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center mb-4 mx-auto max-w-sm">
-                    <p className="text-3xl font-bold text-green-700">{score} / {totalItems}</p>
-                    <p className="text-green-600 text-sm mt-1">
+                  <div className="bg-white border border-gray-200 rounded-xl p-4 text-center mb-4 mx-auto max-w-sm">
+                    <p className="text-3xl font-bold text-gray-900">{score}/{totalItems}</p>
+                    <p className="text-gray-800 text-sm mt-1">
                       Level of Proficiency: {getProficiency(scoreMpl)} · {answeredCount} bubbles detected
                     </p>
                     {!hasAnswerKey && <p className="text-xs text-amber-600 mt-1">Set answer key to score correctness</p>}
@@ -1292,9 +1698,9 @@ export default function ScanPapersPage() {
                       const itemsInCol1 = Math.ceil(itemResults.length / 2);
                       const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
                       return (
-                        <table key={col} className="text-xs border-collapse rounded-xl border border-gray-200 overflow-hidden">
+                        <table key={col} className="text-xs border-collapse rounded-md overflow-hidden">
                           <thead>
-                            <tr className="text-left text-gray-600 bg-gray-50 border-b border-gray-200">
+                            <tr className="text-left text-white bg-[#4EAE4A] border-b border-[#3f8f3b]">
                               <th className="px-4 py-2 font-semibold">Item</th>
                               <th className="px-4 py-2 font-semibold">Student</th>
                               <th className="px-4 py-2 font-semibold">Correct</th>
@@ -1304,17 +1710,18 @@ export default function ScanPapersPage() {
                           <tbody>
                             {colItems.map(r => (
                               <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
-                                <td className="px-4 py-1.5 font-medium text-gray-600">{r.item}</td>
+                                <td className="px-4 py-1.5 font-semibold text-gray-600">{r.item}</td>
                                 <td className="px-4 py-1.5 text-center">{r.student ?? '-'}</td>
                                 <td className="px-4 py-1.5 text-center">{r.correct ?? '-'}</td>
-                                <td className="px-4 py-1.5">
-                                  {!r.student
-                                    ? <span className="text-orange-500">No answer</span>
-                                    : !r.correct
-                                      ? <span className="text-gray-400">No key</span>
-                                      : r.isCorrect
-                                        ? <span className="text-green-600 font-semibold">Correct</span>
-                                        : <span className="text-red-500 font-semibold">Wrong</span>}
+                                <td className="px-4 py-1.5 text-center">
+                                  {(() => {
+                                    const statusChip = getStatusChip(r.student, r.correct);
+                                    return (
+                                      <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                        {statusChip.label}
+                                      </span>
+                                    );
+                                  })()}
                                 </td>
                               </tr>
                             ))}
@@ -1325,8 +1732,7 @@ export default function ScanPapersPage() {
                   </div>
                 </Paper>
 
-              </Stack>
-            </Paper>
+            </Stack>
           </Stack>
         )}
       </VerticalWizardLayout>

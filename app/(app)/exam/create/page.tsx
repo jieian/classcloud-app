@@ -4,22 +4,22 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
-  Select, MultiSelect, Alert, Badge, ActionIcon, NumberInput, Progress,
+  Select, MultiSelect, Alert, ActionIcon, NumberInput, TextInput, Tooltip,
   Skeleton,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
-  IconPlus, IconTrash, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconMinus,
+  IconPlus, IconBookmark, IconAlertCircle,
+  IconAlertTriangle, IconMinus, IconX, IconClipboardCheck,
 } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
-import { fetchActiveQuarters } from '@/lib/services/quarterService';
+import { fetchActiveQuarters, abbreviateQuarterName } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
 import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/services/subjectService';
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchSchoolYears, fetchTeacherClassAssignments } from '@/lib/services/classService';
-import { createExamWithAssignments, saveObjectives, saveAnswerKey, checkExamDuplicates } from '@/lib/services/examService';
+import { createExamWithAssignments, saveObjectives, saveAnswerKey, checkExamDuplicates, checkOccupiedSubjects, fetchOccupiedSectionSubjectPairs } from '@/lib/services/examService';
 import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
@@ -113,6 +113,8 @@ export default function CreateExamPage() {
   const [dataLoading, setDataLoading] = useState(true);
   const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState<boolean | null>(null);
   const [duplicateSectionIds, setDuplicateSectionIds] = useState<Set<number>>(new Set());
+  const [occupiedSubjectIds, setOccupiedSubjectIds] = useState<Set<number>>(new Set());
+  const [allOccupiedPairs, setAllOccupiedPairs] = useState<Map<number, Set<number>>>(new Map());
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
   const [isFacultyView] = useState(() =>
@@ -139,6 +141,8 @@ export default function CreateExamPage() {
   // Step 3 — Answer Key
   const [answers, setAnswers] = useState<{ [key: number]: string | null }>(d?.answers ?? {});
   const [triedToSave, setTriedToSave] = useState(false);
+  const [isAnswerKeyFlashStrong, setIsAnswerKeyFlashStrong] = useState(false);
+  const answerKeyFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Refs to skip auto-reset effects on the very first mount (would clear restored data)
   const gradeLevelMountedRef = useRef(false);
@@ -160,19 +164,31 @@ export default function CreateExamPage() {
       setSubjects(sub);
       setAllSections(sec);
       setHasActiveSchoolYear(schoolYears.some((schoolYear) => schoolYear.is_active));
-      if (user?.id) {
-        const assignments = await fetchTeacherClassAssignments(user.id);
-        setTeacherAssignments(assignments);
-        const viewMode = typeof window !== "undefined" && localStorage.getItem("examViewMode");
-        if (!hasFullAccess || viewMode === "faculty") {
-          setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
-          setAllowedSubjectIds(new Set(assignments.map(a => a.curriculum_subject_id)));
-        }
-      }
       setDataLoading(false);
     };
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Runs once auth is ready (user?.id becomes available after session resolves).
+  // Separated from the data-load effect so reload doesn't skip assignment filtering
+  // when user is still null at mount.
+  useEffect(() => {
+    if (!user?.id) return;
+    void fetchTeacherClassAssignments(user.id).then(assignments => {
+      setTeacherAssignments(assignments);
+      if (isRestricted) {
+        setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));
+        setAllowedSubjectIds(new Set(assignments.map(a => a.curriculum_subject_id)));
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
+  useEffect(() => {
+    return () => {
+      if (answerKeyFlashTimeoutRef.current) clearTimeout(answerKeyFlashTimeoutRef.current);
+    };
   }, []);
 
   // Auto-reset sections/subject when grade changes (skip on first mount to preserve restored draft)
@@ -242,6 +258,25 @@ export default function CreateExamPage() {
     setSelectedSubjectId(null);
   }, [selectedSectionIds]);
 
+  // Fetch all occupied subjects for the selected sections + active quarter
+  useEffect(() => {
+    const activeQuarter = quarters.find((q) => q.is_active);
+    if (selectedSectionIds.length === 0 || !activeQuarter) {
+      setOccupiedSubjectIds(new Set());
+      return;
+    }
+    checkOccupiedSubjects(selectedSectionIds, activeQuarter.quarter_id)
+      .then(setOccupiedSubjectIds);
+  }, [selectedSectionIds, quarters]);
+
+  // Fetch all occupied section+subject pairs for the active quarter (used to lock sections/grade levels)
+  useEffect(() => {
+    const activeQuarter = quarters.find((q) => q.is_active);
+    if (!activeQuarter) { setAllOccupiedPairs(new Map()); return; }
+    fetchOccupiedSectionSubjectPairs(activeQuarter.quarter_id)
+      .then(setAllOccupiedPairs);
+  }, [quarters]);
+
   // Real-time duplicate check: fires whenever subject or sections change
   useEffect(() => {
     const activeQuarter = quarters.find((q) => q.is_active);
@@ -264,8 +299,38 @@ export default function CreateExamPage() {
   );
   const selectedSectionNames = filteredSections.filter(s => selectedSectionIds.includes(s.section_id)).map(s => s.name);
 
+  // Sections where every applicable subject already has an exam this quarter.
+  const lockedSectionIds = useMemo(() => {
+    const locked = new Set<number>();
+    for (const section of allSections.filter(s => !allowedSectionIds || allowedSectionIds.has(s.section_id))) {
+      const applicable = subjects.filter(
+        s => s.grade_level_id === section.grade_level_id &&
+          (s.subject_type === 'BOTH' || section.section_type === 'SSES'),
+      );
+      if (applicable.length === 0) continue;
+      const occupied = allOccupiedPairs.get(section.section_id) ?? new Set<number>();
+      if (applicable.every(s => occupied.has(s.curriculum_subject_id))) locked.add(section.section_id);
+    }
+    return locked;
+  }, [allSections, subjects, allOccupiedPairs, allowedSectionIds]);
+
+  // Grade levels where every visible section is locked.
+  const lockedGradeLevelIds = useMemo(() => {
+    const locked = new Set<number>();
+    for (const gl of gradeLevels) {
+      const glSections = allSections.filter(
+        s => s.grade_level_id === gl.grade_level_id &&
+          (!allowedSectionIds || allowedSectionIds.has(s.section_id)),
+      );
+      if (glSections.length > 0 && glSections.every(s => lockedSectionIds.has(s.section_id))) {
+        locked.add(gl.grade_level_id);
+      }
+    }
+    return locked;
+  }, [gradeLevels, allSections, lockedSectionIds, allowedSectionIds]);
+
   const titleBase = (() => {
-    const term = quarters.find((q) => q.is_active)?.name ?? '';
+    const term = abbreviateQuarterName(quarters.find((q) => q.is_active)?.name ?? '');
     const subjectCode = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.code ?? '';
     if (!term || !subjectCode) return '';
     return `${term} - ${subjectCode}`;
@@ -274,8 +339,6 @@ export default function CreateExamPage() {
   const generatedExamNames: string[] = titleBase
     ? selectedSectionNames.map((name) => `${titleBase} - ${name}`)
     : [];
-
-  const canGoStep1 = Boolean(selectedGradeLevelId) && Boolean(selectedSubjectId) && selectedSectionIds.length > 0;
 
   // ── Objectives helpers ──
   const addRow = () => setObjectiveRows(prev => [...prev, makeRow()]);
@@ -312,6 +375,10 @@ export default function CreateExamPage() {
       if (start > end) return 'Start item must be ≤ end item.';
       if (start < 1 || end > totalItems) return `Item numbers must be between 1 and ${totalItems}.`;
     }
+    if (hasOverlap) return 'Objective item ranges overlap. Each item should belong to one objective only.';
+    if (uniqueCovered < totalItems) {
+      return `${totalItems - uniqueCovered} item${totalItems - uniqueCovered > 1 ? 's' : ''} are not mapped to any objective.`;
+    }
     return null;
   };
 
@@ -319,10 +386,20 @@ export default function CreateExamPage() {
   const unansweredQuestions = Array.from({ length: totalItems }, (_, i) => i + 1).filter(q => !answers[q]);
   const isAnswerKeyComplete = unansweredQuestions.length === 0;
   const answeredCount = totalItems - unansweredQuestions.length;
-  const progressPercent = Math.round((answeredCount / totalItems) * 100);
 
   const handleAnswerSelect = (qNum: number, answer: string) => {
     setAnswers(prev => ({ ...prev, [qNum]: prev[qNum] === answer ? null : answer }));
+  };
+  const triggerAnswerKeyMissingFlash = () => {
+    setIsAnswerKeyFlashStrong(true);
+    if (answerKeyFlashTimeoutRef.current) clearTimeout(answerKeyFlashTimeoutRef.current);
+    answerKeyFlashTimeoutRef.current = setTimeout(() => setIsAnswerKeyFlashStrong(false), 2200);
+  };
+  const handleClearAnswerKey = () => {
+    setAnswers({});
+    setTriedToSave(false);
+    setIsAnswerKeyFlashStrong(false);
+    if (answerKeyFlashTimeoutRef.current) clearTimeout(answerKeyFlashTimeoutRef.current);
   };
 
   // ── Final save ──
@@ -368,6 +445,9 @@ export default function CreateExamPage() {
 
   const nextStep = () => setActiveStep(s => s + 1);
   const prevStep = () => setActiveStep(s => s - 1);
+  const neutralFocusStyles = {
+    input: {},
+  };
 
   // ── Step content ──
   const renderStep0 = () => (
@@ -402,53 +482,125 @@ export default function CreateExamPage() {
                 a term before exams can be created.
               </Alert>
             )}
-            <Alert color="blue" icon={<IconAlertCircle size={16} />}>
-              New exam will be set to <Text span fw={600} c="green">Active</Text> automatically
-            </Alert>
-            <Text size="xs" c="dimmed">
-              Complete all required fields marked with <Text span c="red">*</Text> to continue.
-            </Text>
-            <Group grow>
-              <Select
-                label="Grade Level"
-                placeholder="Select grade"
-                required
-                clearable
-                data={filteredGradeLevels.map(g => ({ value: String(g.grade_level_id), label: g.display_name }))}
-                value={selectedGradeLevelId}
-                onChange={setSelectedGradeLevelId}
-              />
-              <MultiSelect
-                label="Section"
-                placeholder={selectedGradeLevelId ? "Select section(s)" : "Select grade level first"}
-                required
-                data={filteredSections.map(s => ({ value: String(s.section_id), label: s.name }))}
-                value={selectedSectionIds.map(String)}
-                onChange={(values) => setSelectedSectionIds(values.map(Number))}
-                nothingFoundMessage={selectedGradeLevelId ? 'No sections available' : 'Select a grade level first'}
-                disabled={!selectedGradeLevelId || filteredSections.length === 0}
-              />
-              <Select
-                label="Subject"
-                placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
-                required
-                clearable
-                data={filteredSubjects.map(s => ({ value: String(s.curriculum_subject_id), label: s.name }))}
-                value={selectedSubjectId}
-                onChange={setSelectedSubjectId}
-                disabled={selectedSectionIds.length === 0}
-                error={duplicateSectionIds.size > 0 ? 'An examination for this subject already exists for the active term.' : undefined}
-              />
-            </Group>
+            {(() => {
+              const subjectError = duplicateSectionIds.size > 0
+                ? 'An examination for this subject already exists for the active term.'
+                : '';
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                  <div className="flex flex-col">
+                    <Select
+                      label="Grade Level"
+                      placeholder="Select grade"
+                      required
+                      clearable
+                      data={filteredGradeLevels
+                        .map(g => ({
+                          value: String(g.grade_level_id),
+                          label: g.display_name,
+                          disabled: lockedGradeLevelIds.has(g.grade_level_id),
+                        }))
+                        .sort((a, b) => Number(a.disabled) - Number(b.disabled))}
+                      value={selectedGradeLevelId}
+                      onChange={setSelectedGradeLevelId}
+                      renderOption={({ option }) =>
+                        option.disabled ? (
+                          <Tooltip label="All subjects in this grade level already have an exam" position="right" withArrow>
+                            <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
+                              <span>{option.label}</span>
+                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                            </Group>
+                          </Tooltip>
+                        ) : (
+                          <Group gap={6} wrap="nowrap"><span>{option.label}</span></Group>
+                        )
+                      }
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>{' '}</Text>
+                  </div>
+                  <div className="flex flex-col">
+                    <MultiSelect
+                      label="Section"
+                      placeholder={selectedGradeLevelId ? "Select section(s)" : "Select grade level first"}
+                      required
+                      data={filteredSections
+                        .map(s => ({
+                          value: String(s.section_id),
+                          label: s.name,
+                          disabled: lockedSectionIds.has(s.section_id),
+                        }))
+                        .sort((a, b) => Number(a.disabled) - Number(b.disabled))}
+                      value={selectedSectionIds.map(String)}
+                      onChange={(values) => setSelectedSectionIds(values.map(Number))}
+                      nothingFoundMessage={selectedGradeLevelId ? 'No sections available' : 'Select a grade level first'}
+                      disabled={!selectedGradeLevelId || filteredSections.length === 0}
+                      renderOption={({ option }) =>
+                        option.disabled ? (
+                          <Tooltip label="All subjects in this section already have an exam" position="right" withArrow>
+                            <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
+                              <span>{option.label}</span>
+                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                            </Group>
+                          </Tooltip>
+                        ) : (
+                          <Group gap={6} wrap="nowrap"><span>{option.label}</span></Group>
+                        )
+                      }
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>{' '}</Text>
+                  </div>
+                  <div className="flex flex-col">
+                    <Select
+                      label="Subject"
+                      placeholder={selectedSectionIds.length > 0 ? 'Select subject' : 'Select section(s) first'}
+                      required
+                      clearable
+                      data={filteredSubjects
+                        .map(s => ({
+                          value: String(s.curriculum_subject_id),
+                          label: s.name,
+                          disabled: occupiedSubjectIds.has(s.curriculum_subject_id),
+                        }))
+                        .sort((a, b) => Number(a.disabled) - Number(b.disabled))}
+                      value={selectedSubjectId}
+                      onChange={setSelectedSubjectId}
+                      disabled={selectedSectionIds.length === 0}
+                      error={Boolean(subjectError)}
+                      renderOption={({ option }) => (
+                        option.disabled ? (
+                          <Tooltip label="An exam already exists for this subject" position="right" withArrow>
+                            <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
+                              <span>{option.label}</span>
+                              <IconClipboardCheck size={14} style={{ color: '#374151', flexShrink: 0 }} />
+                            </Group>
+                          </Tooltip>
+                        ) : (
+                          <Group gap={6} wrap="nowrap">
+                            <span>{option.label}</span>
+                          </Group>
+                        )
+                      )}
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                      {subjectError || ' '}
+                    </Text>
+                  </div>
+                </div>
+              );
+            })()}
             {generatedExamNames.length > 0 && (
               <div>
-                <Text size="sm" fw={500} mb={4}>
+                <Text size="sm" fw={600} mb={4}>
                   Examination Name{generatedExamNames.length > 1 ? 's' : ''}
                 </Text>
-                <Paper withBorder p="sm" radius="sm" bg="green.0" style={{ borderColor: 'var(--mantine-color-green-3)' }}>
-                  {generatedExamNames.map((name) => (
-                    <Text key={name} fw={600} c="green.9">{name}</Text>
-                  ))}
+                <Paper withBorder p="sm" radius="md" bg="white" style={{ borderColor: 'var(--mantine-color-gray-3)' }}>
+                  <Stack gap={6}>
+                    {generatedExamNames.map((name, idx) => (
+                      <Text key={`${name}-${idx}`} size="sm" fw={600} c="dark" title={name} className="truncate">
+                        {name}
+                      </Text>
+                    ))}
+                  </Stack>
                 </Paper>
               </div>
             )}
@@ -465,35 +617,35 @@ export default function CreateExamPage() {
 
   const renderStep1 = () => (
     <Stack gap="md">
-      <Text size="lg" fw={700} c="#4EAE4A">Set Items & Choices</Text>
+      <Text size="lg" fw={700} c="#4EAE4A">Set Items and Choices</Text>
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Configuration</Text>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Number of Items</p>
+          <div className="bg-white border border-gray-200 rounded-md p-4">
+            <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Number of Items</p>
             <div className="flex items-center justify-center gap-3">
               <button type="button" onClick={() => setTotalItems(prev => Math.max(10, prev - 1))} disabled={totalItems <= 10}
-                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalItems <= 10 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
+                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${totalItems <= 10 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
                 <IconMinus className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-2">
                 <input type="number" min={10} max={200} value={totalItems}
                   onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setTotalItems(Math.max(10, Math.min(200, v))); }}
-                  className="w-20 text-center text-2xl font-bold text-gray-900 border-2 border-gray-300 rounded-xl px-2 py-1.5 focus:outline-none focus:border-green-400" />
+                  className="w-20 text-center text-2xl font-bold text-gray-900 border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:border-green-500" />
                 <span className="text-sm text-gray-400">items</span>
               </div>
               <button type="button" onClick={() => setTotalItems(prev => Math.min(200, prev + 1))} disabled={totalItems >= 200}
-                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${totalItems >= 200 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
+                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${totalItems >= 200 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
                 <IconPlus className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-2">Recommended by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
+            <p className="text-xs text-gray-500 text-center mt-2">Recommended by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
           </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-            <p className="text-sm font-semibold text-gray-700 mb-3 text-center">Choices per Item</p>
+          <div className="bg-white border border-gray-200 rounded-md p-4">
+            <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Choices per Item</p>
             <div className="flex items-center justify-center gap-3">
               <button type="button" onClick={() => setNumChoices(prev => Math.max(2, prev - 1))} disabled={numChoices <= 2}
-                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-red-300 text-red-500 hover:bg-red-50 active:scale-95'}`}>
+                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
                 <IconMinus className="w-4 h-4" />
               </button>
               <div className="flex items-center gap-2">
@@ -502,15 +654,15 @@ export default function CreateExamPage() {
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm text-gray-400">choices</span>
-                  <span className="text-xs font-semibold text-green-600">{ALL_CHOICES.slice(0, numChoices).join(' · ')}</span>
+                  <span className="text-xs font-semibold text-green-600">{ALL_CHOICES.slice(0, numChoices).join(' / ')}</span>
                 </div>
               </div>
               <button type="button" onClick={() => setNumChoices(prev => Math.min(8, prev + 1))} disabled={numChoices >= 8}
-                className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${numChoices >= 8 ? 'border-gray-200 text-gray-300 cursor-not-allowed' : 'border-green-300 text-green-600 hover:bg-green-50 active:scale-95'}`}>
+                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${numChoices >= 8 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
                 <IconPlus className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-gray-400 text-center mt-2">Min: 2 (A·B) · Max: 8 (A–H)</p>
+            <p className="text-xs text-gray-500 text-center mt-2">Min: 2 (A/B) / Max: 8 (A-H)</p>
           </div>
         </div>
       </Paper>
@@ -519,66 +671,119 @@ export default function CreateExamPage() {
 
   const renderStep2 = () => (
     <Stack gap="md">
-      <Text size="lg" fw={700} c="#4EAE4A">Learning Objectives</Text>
+      <Text size="lg" fw={700} c="#4EAE4A">Set Learning Objectives</Text>
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Map Objectives to Items</Text>
-        <Stack gap="md">
-          <Alert color="blue" icon={<IconBookmark size={16} />}>
-            Map learning objectives to item ranges. Total items: <Text span fw={700}>{totalItems}</Text>
-          </Alert>
-          {hasOverlap && (
-            <Alert color="yellow" icon={<IconAlertCircle size={16} />}>
-              Some item ranges overlap. Each item should belong to one objective.
-            </Alert>
-          )}
-          <Stack gap="sm">
+        <Stack gap="sm">
+          {(() => {
+            const remaining = Math.max(totalItems - uniqueCovered, 0);
+            const objectiveError = validateObjectives();
+            const subtitleClass = objectiveError && triedToSaveObjectives ? 'text-red-600 font-semibold' : 'text-gray-800';
+            let subtitle = `${remaining} item${remaining !== 1 ? 's' : ''} remaining`;
+            if (!objectiveError && remaining === 0) {
+              subtitle = 'Ready to proceed';
+            } else if (objectiveError && triedToSaveObjectives) {
+              subtitle = hasOverlap
+                ? 'Fix overlapping ranges to continue'
+                : remaining > 0
+                  ? `${remaining} item${remaining > 1 ? 's' : ''} are not mapped to any objective`
+                  : 'Complete required objective fields to continue';
+            }
+            return (
+          <div className="bg-white border border-gray-200 rounded-xl p-5 text-center mx-auto w-full max-w-md">
+            <p className="text-3xl font-bold text-gray-900">{uniqueCovered}/{totalItems}</p>
+            <p className={`text-sm mt-1 ${!objectiveError && remaining === 0 ? 'text-[#2f7f2b]' : subtitleClass}`}>
+              {subtitle}
+            </p>
+          </div>
+            );
+          })()}
+          <Stack gap="xs">
             {objectiveRows.map((row, idx) => {
               const isOverlapping = overlappingRowIds.has(row.id);
-              const descError = triedToSaveObjectives && !row.objective.trim();
-              const startError = (triedToSaveObjectives && !Number(row.start_item)) || isOverlapping;
-              const endError = (triedToSaveObjectives && !Number(row.end_item)) || isOverlapping ||
+              const descriptionMissing = triedToSaveObjectives && !row.objective.trim();
+              const startMissing = triedToSaveObjectives && !Number(row.start_item);
+              const endMissing = triedToSaveObjectives && !Number(row.end_item);
+              const startError = isOverlapping || startMissing;
+              const endError = isOverlapping || endMissing ||
                 (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
+              const startErrorMessage = isOverlapping ? 'Overlap' : '';
+              const endErrorMessage = isOverlapping
+                ? 'Overlap'
+                : (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item)
+                  ? 'Must be >= From'
+                  : '');
               return (
-                <Paper key={row.id} p="md" withBorder radius="md">
-                  <Group gap="xs" mb="xs" justify="space-between">
-                    <Badge size="sm" variant="light" color="blue">Objective {idx + 1}</Badge>
-                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => removeRow(row.id)} disabled={objectiveRows.length === 1}>
-                      <IconTrash size={14} />
-                    </ActionIcon>
-                  </Group>
-                  <input
-                    placeholder="e.g. Identify the parts of a plant"
-                    value={row.objective}
-                    onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
-                    className={`w-full border rounded-md px-3 py-2 text-sm mb-3 focus:outline-none ${descError ? 'border-red-400' : 'border-gray-300 focus:border-blue-400'}`}
-                  />
-                  <Group gap="sm">
-                    <NumberInput label="From item" placeholder="1" min={1} max={totalItems}
+                <div key={row.id} className={`grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_120px_36px] gap-2 items-start rounded-md px-1 ${idx > 0 ? 'pt-1' : ''}`}>
+                  <div className="flex flex-col">
+                    <TextInput
+                      label="Objective Description"
+                      withAsterisk
+                      placeholder="e.g. Identify the parts of a plant"
+                      value={row.objective}
+                      onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
+                      styles={neutralFocusStyles}
+                      error={descriptionMissing}
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                      {' '}
+                    </Text>
+                  </div>
+                  <div className="flex flex-col">
+                    <NumberInput
+                      label="From"
+                      withAsterisk
+                      placeholder="1"
+                      min={1}
+                      max={totalItems}
                       value={row.start_item === '' ? '' : Number(row.start_item)}
                       onChange={(val) => updateRow(row.id, 'start_item', val)}
-                      style={{ flex: 1 }} allowDecimal={false}
-                      error={startError ? (isOverlapping ? 'Range overlaps' : true) : undefined} />
-                    <NumberInput label="To item" placeholder={String(totalItems)} min={1} max={totalItems}
+                      allowDecimal={false}
+                      error={Boolean(startErrorMessage)}
+                      styles={neutralFocusStyles}
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                      {startErrorMessage || ' '}
+                    </Text>
+                  </div>
+                  <div className="flex flex-col">
+                    <NumberInput
+                      label="To"
+                      withAsterisk
+                      placeholder={String(totalItems)}
+                      min={1}
+                      max={totalItems}
                       value={row.end_item === '' ? '' : Number(row.end_item)}
                       onChange={(val) => updateRow(row.id, 'end_item', val)}
-                      style={{ flex: 1 }} allowDecimal={false}
-                      error={endError ? (isOverlapping ? 'Range overlaps' : Number(row.start_item) > Number(row.end_item) ? 'Must be ≥ start' : true) : undefined} />
-                  </Group>
-                </Paper>
+                      allowDecimal={false}
+                      error={Boolean(endErrorMessage)}
+                      styles={neutralFocusStyles}
+                    />
+                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                      {endErrorMessage || ' '}
+                    </Text>
+                  </div>
+                  <div className="pt-7">
+                    <Tooltip label="Remove objective" withArrow position="top">
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="red"
+                        onClick={() => removeRow(row.id)}
+                        disabled={objectiveRows.length === 1}
+                        aria-label="Remove objective"
+                      >
+                        <IconX size={14} stroke={1.8} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </div>
+                </div>
               );
             })}
           </Stack>
-          <Button variant="light" color="blue" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
+          <Button variant="default" leftSection={<IconPlus size={14} />} onClick={addRow} size="sm">
             Add Objective
           </Button>
-          <Paper p="sm" bg={uniqueCovered === totalItems ? 'teal.0' : 'orange.0'} radius="md" withBorder>
-            <Text size="xs" fw={500}>
-              Coverage:{' '}
-              <Text span c={uniqueCovered === totalItems ? 'teal' : 'orange'} fw={700}>{uniqueCovered} / {totalItems} items</Text>
-              {uniqueCovered < totalItems && <Text span c="orange.7" fw={500}> — all {totalItems} items must be covered to proceed</Text>}
-              {uniqueCovered === totalItems && <Text span c="teal.7" fw={500}> — full coverage! Ready to set answer key.</Text>}
-            </Text>
-          </Paper>
         </Stack>
       </Paper>
     </Stack>
@@ -591,86 +796,128 @@ export default function CreateExamPage() {
       if (!start || !end || start > end || !row.objective.trim()) return;
       for (let i = start; i <= end; i++) qNumToObjIdx.set(i, idx);
     });
+    const remainingCount = unansweredQuestions.length;
     return (
       <Stack gap="md">
         <Text size="lg" fw={700} c="#4EAE4A">Answer Key</Text>
         <Paper p="lg" withBorder radius="md">
-          <Text size="md" fw={700} mb="md" c="#4EAE4A">Set Correct Answers</Text>
+          <Text size="md" fw={700} mb="md" c="#4EAE4A">Set Answer Key</Text>
           <Stack gap="md">
-            <Group justify="space-between">
-              <Text size="sm" c="dimmed">Progress</Text>
-              <Text size="sm" fw={600} c={isAnswerKeyComplete ? 'green' : 'orange'}>
-                {answeredCount} / {totalItems} answered ({progressPercent}%)
-              </Text>
-            </Group>
-            <Progress value={progressPercent} color={isAnswerKeyComplete ? 'green' : 'orange'} size="md" radius="xl" />
-            {triedToSave && !isAnswerKeyComplete && (
-              <div className="bg-orange-50 border-2 border-orange-300 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <IconAlertTriangle className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-bold text-orange-800">Answer Key is incomplete!</p>
-                    <p className="text-orange-700 text-sm mt-1">Missing <strong>{unansweredQuestions.length}</strong> answer{unansweredQuestions.length > 1 ? 's' : ''}:</p>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {unansweredQuestions.map(q => <span key={q} className="bg-orange-200 text-orange-900 text-xs font-bold px-2.5 py-1 rounded-md">#{q}</span>)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            {isAnswerKeyComplete && (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2">
-                <span className="text-green-600 text-lg">✅</span>
-                <span className="text-green-700 font-medium text-sm">All {totalItems} questions answered — ready to proceed!</span>
-              </div>
-            )}
-            <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-              {[0, 1].map(col => {
-                const start = col === 0 ? 1 : itemsInCol1 + 1;
-                const count = col === 0 ? itemsInCol1 : totalItems - itemsInCol1;
-                if (start > totalItems) return null;
-                return (
-                <div key={col} className="space-y-1">
-                  {Array.from({ length: count }, (_, row) => {
-                    const qNum = start + row;
-                    const isUnanswered = triedToSave && !answers[qNum];
-                    const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
-                    const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
-                    const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
-                    return (
-                      <div key={qNum} className={`flex items-center gap-2 py-1.5 px-2 rounded-lg transition-all ${isUnanswered ? 'bg-orange-50 border border-orange-200' : 'hover:bg-gray-50'}`}>
-                        <span className={`text-sm font-semibold w-7 text-right flex-shrink-0 ${isUnanswered ? 'text-orange-600' : 'text-gray-700'}`}>{qNum}</span>
-                        <div className="flex gap-1 flex-shrink-0">
-                          {choices.map(option => (
-                            <button key={option} type="button" onClick={() => handleAnswerSelect(qNum, option)}
-                              className={`w-8 h-8 rounded-full border-2 flex items-center justify-center font-bold text-xs transition-all duration-150 hover:scale-110 ${
-                                answers[qNum] === option ? 'bg-green-600 border-green-600 text-white shadow-md'
-                                : isUnanswered ? 'border-orange-300 text-orange-400 hover:border-green-500 hover:bg-green-50'
-                                : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
-                              }`}>
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                        {color && objRow && (
-                          <div className="relative group flex-shrink-0">
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[9px] font-semibold border cursor-help leading-tight"
-                              style={{ background: color.bg, borderColor: color.border, color: color.text }}>
-                              {objRow.objective.length > 14 ? objRow.objective.slice(0, 14) + '…' : objRow.objective}
-                            </span>
-                            <div className="pointer-events-none absolute bottom-full left-0 mb-2 hidden group-hover:block z-50 w-max max-w-[240px]">
-                              <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-xl leading-snug whitespace-normal">{objRow.objective}</div>
-                              <div className="w-2 h-2 bg-gray-900 rotate-45 ml-2 -mt-1" />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                );
-              })}
+            <div className="bg-white border border-gray-200 rounded-xl p-4 text-center mx-auto w-full max-w-md">
+              <p className="text-3xl font-bold text-gray-900">{answeredCount}/{totalItems}</p>
+              <p className={`text-sm mt-1 ${
+                remainingCount === 0
+                  ? 'text-[#2f7f2b]'
+                  : triedToSave
+                    ? 'text-red-600 font-semibold'
+                    : 'text-gray-800'
+              }`}>
+                {remainingCount === 0
+                  ? 'Ready to proceed'
+                  : triedToSave
+                    ? `${remainingCount} item${remainingCount > 1 ? 's' : ''} need answers to continue`
+                    : `${remainingCount} item${remainingCount > 1 ? 's' : ''} remaining`}
+              </p>
             </div>
+            <Paper
+              withBorder
+              radius="md"
+              p={0}
+              style={{ overflow: 'hidden', width: 'fit-content', margin: '0 auto' }}
+            >
+              <div className="flex flex-col md:flex-row justify-center items-start md:divide-x md:divide-gray-100">
+                {[0, 1].map(col => {
+                  const start = col === 0 ? 1 : itemsInCol1 + 1;
+                  const count = col === 0 ? itemsInCol1 : totalItems - itemsInCol1;
+                  if (start > totalItems || count <= 0) return null;
+                  return (
+                    <div key={col} className="overflow-x-auto">
+                      <table className="w-auto border-collapse text-sm">
+                      <thead>
+                        <tr className="bg-[#4EAE4A]">
+                          <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                          {choices.map(option => (
+                            <th key={option} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">
+                              {option}
+                            </th>
+                          ))}
+                          <th className="h-7 w-[96px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">
+                            Objective
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {Array.from({ length: count }, (_, row) => {
+                          const qNum = start + row;
+                          const isUnanswered = triedToSave && !answers[qNum];
+                          const unansweredRowClass = isUnanswered ? (isAnswerKeyFlashStrong ? 'bg-red-200' : 'bg-red-50') : '';
+                          const unansweredNumClass = isUnanswered ? (isAnswerKeyFlashStrong ? 'text-red-700' : 'text-red-600') : 'text-gray-600';
+                          const objIdx = qNumToObjIdx.has(qNum) ? qNumToObjIdx.get(qNum)! : -1;
+                          const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
+                          const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
+                          return (
+                            <tr key={qNum} className={`transition-colors duration-500 ${unansweredRowClass}`}>
+                              <td className={`py-1 px-1 text-center text-xs font-semibold ${unansweredNumClass}`}>{qNum}</td>
+                              {choices.map(option => (
+                                <td key={option} className="py-1 px-1 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAnswerSelect(qNum, option)}
+                                    className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition duration-75 hover:scale-105 ${
+                                      answers[qNum] === option
+                                        ? 'bg-green-600 border-green-600 text-white'
+                                        : isUnanswered
+                                          ? (isAnswerKeyFlashStrong
+                                            ? 'border-red-500 text-red-700 hover:border-red-600 hover:bg-red-100'
+                                            : 'border-red-300 text-red-500 hover:border-red-400 hover:bg-red-50')
+                                          : 'border-gray-300 text-gray-500 hover:border-green-500 hover:bg-green-50'
+                                    }`}
+                                  >
+                                    {option}
+                                  </button>
+                                </td>
+                              ))}
+                              <td className="py-1 px-2 text-center">
+                                <Tooltip
+                                  label={objRow?.objective ?? 'Not mapped'}
+                                  withArrow
+                                  position="top-start"
+                                  multiline
+                                  w={260}
+                                  disabled={!objRow || objRow.objective.length <= 24}
+                                  styles={{ tooltip: { wordBreak: 'break-all' } }}
+                                >
+                                  <span
+                                    className="inline-flex h-7 items-center rounded border px-2 text-[10px] font-semibold leading-none w-[96px] overflow-hidden justify-center text-center"
+                                    style={color && objRow
+                                      ? { background: color.bg, borderColor: color.border, color: color.text }
+                                      : { background: '#ffffff', borderColor: '#e5e7eb', color: '#6b7280' }}
+                                  >
+                                    <span className="block w-full overflow-hidden whitespace-nowrap text-ellipsis">
+                                      {objRow?.objective ?? 'Not mapped'}
+                                    </span>
+                                  </span>
+                                </Tooltip>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+            </Paper>
+            <Group justify="flex-end" mt="xs">
+              <Button
+                variant="default"
+                onClick={handleClearAnswerKey}
+                disabled={answeredCount === 0}
+              >
+                Clear answer key
+              </Button>
+            </Group>
           </Stack>
         </Paper>
       </Stack>
@@ -679,15 +926,15 @@ export default function CreateExamPage() {
 
   const renderStep4 = () => {
     const half = Math.ceil(totalItems / 2);
-    const gradeLabel = gradeLevels.find(g => String(g.grade_level_id) === selectedGradeLevelId)?.display_name ?? '—';
-    const subjectName = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.name ?? '—';
+    const gradeLabel = gradeLevels.find(g => String(g.grade_level_id) === selectedGradeLevelId)?.display_name ?? '-';
+    const subjectName = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.name ?? '-';
     const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
 
     const renderTable = (startIdx: number, endIdx: number) => (
-      <table className="w-full text-sm">
+      <table className="w-full text-sm table-fixed">
         <thead>
-          <tr className="text-xs text-gray-500 border-b border-gray-100 bg-gray-50">
-            <th className="text-left py-2 px-3 font-semibold w-10">#</th>
+          <tr className="text-xs text-white border-b border-[#3f8f3b] bg-[#4EAE4A]">
+            <th className="text-left py-2 px-3 font-semibold w-10">No.</th>
             <th className="text-left py-2 px-3 font-semibold w-14">Answer</th>
             <th className="text-left py-2 px-3 font-semibold">Objective</th>
           </tr>
@@ -695,7 +942,7 @@ export default function CreateExamPage() {
         <tbody className="divide-y divide-gray-50">
           {Array.from({ length: endIdx - startIdx }, (_, i) => {
             const qNum = startIdx + i + 1;
-            const answer = answers[qNum] ?? '—';
+            const answer = answers[qNum] ?? '-';
             const objRow = objectiveRows.find(r => {
               const s = Number(r.start_item); const e = Number(r.end_item);
               return s && e && qNum >= s && qNum <= e && r.objective.trim();
@@ -706,15 +953,26 @@ export default function CreateExamPage() {
               <tr key={qNum} className="hover:bg-gray-50">
                 <td className="py-1.5 px-3 font-semibold text-gray-500">{qNum}</td>
                 <td className="py-1.5 px-3">
-                  <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${answer !== '—' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{answer}</span>
+                  <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${answer !== '-' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{answer}</span>
                 </td>
                 <td className="py-1.5 px-3">
                   {color && objRow ? (
-                    <span className="inline-block px-2 py-0.5 rounded text-xs font-medium border"
-                      style={{ background: color.bg, borderColor: color.border, color: color.text }}>
-                      {objRow.objective}
-                    </span>
-                  ) : <span className="text-xs text-gray-300">—</span>}
+                    <Tooltip
+                      label={objRow.objective}
+                      withArrow
+                      multiline
+                      w={220}
+                      disabled={objRow.objective.length <= 24}
+                      styles={{ tooltip: { wordBreak: 'break-all' } }}
+                    >
+                      <span
+                        className="inline-block max-w-full truncate px-2 py-0.5 rounded text-xs font-medium border"
+                        style={{ background: color.bg, borderColor: color.border, color: color.text }}
+                      >
+                        {objRow.objective}
+                      </span>
+                    </Tooltip>
+                  ) : <span className="text-xs text-gray-300">-</span>}
                 </td>
               </tr>
             );
@@ -729,30 +987,23 @@ export default function CreateExamPage() {
         <Paper p="lg" withBorder radius="md">
           <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Summary</Text>
           <Stack gap="md">
-            <div className="text-center pb-2">
-              <div className="text-4xl mb-2">🎉</div>
-              <h3 className="text-xl font-bold text-gray-900">Ready to Create!</h3>
-              <p className="text-gray-500 text-sm mt-0.5">Review your exam setup below, then hit Create.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
-                ['Exam', generatedExamNames.join('\n')],
-                ['Grade', gradeLabel],
-                ['Subject', subjectName],
-                ['Section(s)', sectionNames],
+                ['Exam Name', generatedExamNames.join('\n')],
                 ['Items', String(totalItems)],
-                ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('·')})`],
+                ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('/')})`],
               ].map(([label, value]) => (
-                <div key={label} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-                  <p className="font-semibold text-gray-900 break-words" style={{ whiteSpace: 'pre-line' }}>{value}</p>
+                <div key={label}>
+                  <Text size="sm" fw={700} mb={2}>
+                    {label}
+                  </Text>
+                  <Text size="sm" style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>
+                    {value}
+                  </Text>
                 </div>
               ))}
             </div>
             <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
-              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items · Answer Key · Objectives</Text>
-              </div>
               <div className="grid grid-cols-2 divide-x divide-gray-100">
                 <div className="overflow-x-auto">{renderTable(0, half)}</div>
                 <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
@@ -764,22 +1015,63 @@ export default function CreateExamPage() {
     );
   };
 
-  const isNextDisabled = (() => {
-    if (activeStep === 0) return !canGoStep1 || dataLoading || !quarters.some((q) => q.is_active) || duplicateSectionIds.size > 0;
-    if (activeStep === 2) return uniqueCovered < totalItems;
-    return false;
-  })();
+  const showValidationNotification = (message: string) => {
+    notifications.show({
+      title: 'Please complete required fields',
+      message,
+      color: 'yellow',
+      withBorder: true,
+      icon: <IconAlertTriangle size={16} />,
+    });
+  };
 
   const handleNext = () => {
     if (activeStep === 0) {
+      if (dataLoading) {
+        showValidationNotification('Please wait while required data is still loading.');
+        return;
+      }
+      if (!quarters.some((q) => q.is_active)) {
+        showValidationNotification('No active quarter found. Please activate a quarter first.');
+        return;
+      }
+      if (!selectedGradeLevelId) {
+        showValidationNotification('Grade level is required.');
+        return;
+      }
+      if (!selectedSubjectId) {
+        showValidationNotification('Subject is required.');
+        return;
+      }
+      if (selectedSectionIds.length === 0) {
+        showValidationNotification('Please select at least one section.');
+        return;
+      }
+      if (duplicateSectionIds.size > 0) {
+        showValidationNotification('An exam already exists for one or more selected sections in the active quarter.');
+        return;
+      }
       nextStep();
     } else if (activeStep === 2) {
       setTriedToSaveObjectives(true);
       const err = validateObjectives();
-      if (err) { notifications.show({ title: 'Validation Error', message: err, color: 'red' }); return; }
+      if (err) {
+        showValidationNotification(err);
+        return;
+      }
       nextStep();
     } else if (activeStep === 3) {
-      if (!isAnswerKeyComplete) { setTriedToSave(true); return; }
+      if (!isAnswerKeyComplete) {
+        setTriedToSave(true);
+        triggerAnswerKeyMissingFlash();
+        const missingCount = unansweredQuestions.length;
+        showValidationNotification(
+          missingCount > 0
+            ? `Answer key is incomplete. ${missingCount} item${missingCount > 1 ? 's are' : ' is'} missing.`
+            : 'Answer key is incomplete.',
+        );
+        return;
+      }
       nextStep();
     } else {
       nextStep();
@@ -859,11 +1151,11 @@ export default function CreateExamPage() {
   };
 
   const stepDescriptions = [
-    { label: 'Step 1', description: 'Specify exam information' },
-    { label: 'Step 2', description: 'Set items and answer choices' },
-    { label: 'Step 3', description: 'Map learning objectives' },
-    { label: 'Step 4', description: 'Set correct answers' },
-    { label: 'Step 5', description: 'Review and create' },
+    { label: 'Step 1', description: 'Specify Exam Information' },
+    { label: 'Step 2', description: 'Set Items and Choices' },
+    { label: 'Step 3', description: 'Set Learning Objectives' },
+    { label: 'Step 4', description: 'Set Answer Key' },
+    { label: 'Step 5', description: 'Review and Create' },
   ];
 
   const stepContent = [renderStep0, renderStep1, renderStep2, renderStep3, renderStep4];
@@ -875,14 +1167,8 @@ export default function CreateExamPage() {
       showPrevious={activeStep > 0}
       onPrevious={prevStep}
       onPrimary={isFinalStep ? handleFinalSave : handleNext}
-      primaryLabel={
-        isFinalStep
-          ? 'Create Examination'
-          : activeStep === 3 && !isAnswerKeyComplete
-            ? `${unansweredQuestions.length} item${unansweredQuestions.length > 1 ? 's' : ''} missing`
-            : 'Next'
-      }
-      primaryDisabled={isFinalStep ? false : isNextDisabled}
+      primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
+      primaryDisabled={false}
       primaryLoading={isFinalStep ? saving : false}
     />
   );
@@ -932,3 +1218,4 @@ export default function CreateExamPage() {
     </>
   );
 }
+

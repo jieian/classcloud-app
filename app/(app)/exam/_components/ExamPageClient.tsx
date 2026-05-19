@@ -24,7 +24,6 @@ import {
   Pagination,
 } from "@mantine/core";
 import {
-  IconPlus,
   IconDownload,
   IconTrash,
   IconAlertCircle,
@@ -34,11 +33,13 @@ import {
   IconSettings,
   IconUsers,
   IconBook,
-  IconKey,
   IconBinoculars,
+  IconUser,
+  IconCopy,
 } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import CreateAnswerKeyModal from "@/components/CreateAnswerKeyModal";
+import ViewExamDetailsModal from "@/components/ViewExamDetailsModal";
+import CopyExamModal from "@/components/CopyExamModal";
 
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
@@ -46,11 +47,16 @@ import {
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
-import type { ExamWithRelations } from "@/lib/exam-supabase";
+import type { ExamWithRelations, GradeLevel, Section } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
 import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
 import { fetchGradeLevels } from "@/lib/services/gradeLevelService";
 import { fetchActiveQuarters } from "@/lib/services/quarterService";
+import { fetchActiveSections } from "@/lib/services/sectionService";
+import {
+  fetchSubjectsWithGradeLevels,
+  type SubjectWithGradeLevel,
+} from "@/lib/services/subjectService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 import EmptySearchState from "@/components/EmptySearchState";
@@ -66,7 +72,8 @@ export default function ExamPageClient() {
   const [selectedGradeLevel, setSelectedGradeLevel] = useState("");
   const [selectedSection, setSelectedSection] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
-  const [isAnswerKeyModalOpen, setIsAnswerKeyModalOpen] = useState(false);
+  const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
+  const [isCopyExamOpen, setIsCopyExamOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState<ExamWithRelations | null>(
     null,
   );
@@ -86,7 +93,10 @@ export default function ExamPageClient() {
   );
   const [highlightExpiring, setHighlightExpiring] = useState(false);
   const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
-  const PAGE_SIZE = 3;
+  const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
+  const [accordionStateReady, setAccordionStateReady] = useState(false);
+  const [accordionInitialized, setAccordionInitialized] = useState(false);
+  const PAGE_SIZE = 4;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"admin" | "faculty">(() => {
     if (typeof window === "undefined") return "admin";
@@ -96,8 +106,8 @@ export default function ExamPageClient() {
 
   // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
-    const HIGHLIGHT_MS = 20 * 1000;
-    const FADE_BEFORE_MS = 8 * 1000;
+    const HIGHLIGHT_MS = 10 * 1000;
+    const FADE_BEFORE_MS = 4 * 1000;
     const STORAGE_KEY = "examHighlight";
 
     // If new exams were just created, record all IDs with an expiry timestamp
@@ -159,10 +169,14 @@ export default function ExamPageClient() {
   // Allowed section/subject IDs for teachers with partial access (null = no filter)
   const [allowedSectionIds, setAllowedSectionIds] =
     useState<Set<number> | null>(null);
-  const [allowedCurriculumSubjectIds, setAllowedCurriculumSubjectIds] =
-    useState<Set<number> | null>(null);
   const [assignedSectionSubjectPairs, setAssignedSectionSubjectPairs] =
     useState<Set<string>>(new Set());
+  const [teacherAssignments, setTeacherAssignments] = useState<
+    { section_id: number; curriculum_subject_id: number; subject_id: number }[]
+  >([]);
+  const [subjectCatalog, setSubjectCatalog] = useState<SubjectWithGradeLevel[]>(
+    [],
+  );
 
   // Admin with teaching load can switch between views; others stay in their natural view.
   // effectiveFullAccess is false when an admin opts into Faculty View.
@@ -172,11 +186,9 @@ export default function ExamPageClient() {
 
   // In admin view: no section/subject filter (see all). In faculty view: restrict to assigned.
   const effectiveAllowedSectionIds = effectiveFullAccess ? null : allowedSectionIds;
-  const effectiveAllowedCurriculumSubjectIds = effectiveFullAccess
-    ? null
-    : allowedCurriculumSubjectIds;
 
-	  const [allGradeLevels, setAllGradeLevels] = useState<{ display_name: string; level_number: number }[]>([]);
+	  const [allGradeLevels, setAllGradeLevels] = useState<GradeLevel[]>([]);
+  const [allSections, setAllSections] = useState<Section[]>([]);
 	  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
 	  const [hasActiveTerm, setHasActiveTerm] = useState(false);
 	  const showViewToggleVisible = showViewToggle && hasActiveSchoolYear && hasActiveTerm;
@@ -216,23 +228,25 @@ export default function ExamPageClient() {
     setDbError(null);
 
     const init = async () => {
-      const [years, quarters, assignments, gradeLevels] = await Promise.all([
+      const [years, quarters, assignments, gradeLevels, subjects, sections] = await Promise.all([
         fetchSchoolYears(),
         fetchActiveQuarters(),
         user?.id ? fetchTeacherClassAssignments(user.id) : Promise.resolve([]),
         fetchGradeLevels(),
+        fetchSubjectsWithGradeLevels(),
+        fetchActiveSections(),
       ]);
 
       setHasActiveSchoolYear(years.some((y) => y.is_active));
       setHasActiveTerm(quarters.some((q) => q.is_active));
       setAllGradeLevels(gradeLevels);
+      setSubjectCatalog(subjects);
+      setAllSections(sections);
 
       if (user?.id) {
+        setTeacherAssignments(assignments);
         const sectionSet = new Set(assignments.map((a) => a.section_id));
         setAllowedSectionIds(sectionSet);
-        setAllowedCurriculumSubjectIds(
-          new Set(assignments.map((a) => a.curriculum_subject_id)),
-        );
         setAssignedSectionSubjectPairs(
           new Set(
             assignments.map((a) => `${a.section_id}-${a.curriculum_subject_id}`),
@@ -243,8 +257,8 @@ export default function ExamPageClient() {
           : Array.from(sectionSet);
         fetchExams(sectionIds);
       } else {
+        setTeacherAssignments([]);
         setAllowedSectionIds(null);
-        setAllowedCurriculumSubjectIds(null);
         setAssignedSectionSubjectPairs(new Set());
         fetchExams(isEffectiveFullAccess ? undefined : []);
       }
@@ -259,6 +273,28 @@ export default function ExamPageClient() {
     localStorage.setItem("examViewMode", viewMode);
   }, [viewMode]);
 
+  // Restore accordion open/closed state for this browser session.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem("examOpenGradeGroups");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setOpenGradeGroups(
+            parsed.filter(
+              (value): value is string => typeof value === "string",
+            ),
+          );
+        }
+      }
+    } catch {
+      // Ignore malformed storage payloads.
+    } finally {
+      setAccordionStateReady(true);
+    }
+  }, []);
+
   // Reset to admin view if the user no longer has a teaching load (e.g. load removed mid-session).
   // Guard: allowedSectionIds === null means assignments haven't loaded yet — skip to avoid
   // prematurely resetting a faculty view that was restored from localStorage.
@@ -272,35 +308,78 @@ export default function ExamPageClient() {
   }, [showViewToggle, allowedSectionIds]);
 
 	  const gradeLevelOptions = useMemo(() => {
-	    const seen = new Set<string>();
-	    for (const exam of exams) {
-	      for (const a of getVisibleAssignments(exam)) {
-	        const name = a.sections?.grade_levels?.display_name;
-	        if (name) seen.add(name);
-	      }
-	    }
-    return Array.from(seen)
+    if (effectiveFullAccess) {
+      return allGradeLevels.map((gradeLevel) => ({
+        value: gradeLevel.display_name,
+        label: gradeLevel.display_name,
+      }));
+    }
+
+    const assignedSectionIds = new Set(
+      teacherAssignments.map((assignment) => assignment.section_id),
+    );
+    const assignedGradeLevelIds = new Set(
+      allSections
+        .filter((section) => assignedSectionIds.has(section.section_id))
+        .map((section) => section.grade_level_id)
+        .filter((gradeLevelId): gradeLevelId is number => gradeLevelId != null),
+    );
+
+    return allGradeLevels
+      .filter((gradeLevel) => assignedGradeLevelIds.has(gradeLevel.grade_level_id))
+      .map((gradeLevel) => gradeLevel.display_name)
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-	  }, [exams, getVisibleAssignments]);
+	  }, [effectiveFullAccess, allGradeLevels, allSections, teacherAssignments]);
 
 	  const sectionOptions = useMemo(() => {
-	    const seen = new Set<string>();
-	    for (const exam of exams) {
-	      for (const a of getVisibleAssignments(exam)) {
-	        if (
-	          selectedGradeLevel &&
-	          a.sections?.grade_levels?.display_name !== selectedGradeLevel
-        )
-          continue;
-        const name = a.sections?.name;
-        if (name) seen.add(name);
-      }
+    if (effectiveFullAccess) {
+      const selectedGradeLevelId = allGradeLevels.find(
+        (grade) => grade.display_name === selectedGradeLevel,
+      )?.grade_level_id;
+
+      return Array.from(
+        new Set(
+          allSections
+            .filter(
+              (section) =>
+                !selectedGradeLevelId || section.grade_level_id === selectedGradeLevelId,
+            )
+            .map((section) => section.name),
+        ),
+      )
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
+        .map((name) => ({ value: name, label: name }));
     }
-    return Array.from(seen)
+
+    const assignedSectionIds = new Set(
+      teacherAssignments.map((assignment) => assignment.section_id),
+    );
+    const selectedGradeLevelId = allGradeLevels.find(
+      (grade) => grade.display_name === selectedGradeLevel,
+    )?.grade_level_id;
+
+    return Array.from(
+      new Set(
+        allSections
+          .filter((section) => assignedSectionIds.has(section.section_id))
+          .filter(
+            (section) =>
+              !selectedGradeLevelId ||
+              section.grade_level_id === selectedGradeLevelId,
+          )
+          .map((section) => section.name),
+      ),
+    )
       .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
       .map((name) => ({ value: name, label: name }));
-	  }, [exams, selectedGradeLevel, getVisibleAssignments]);
+	  }, [
+      effectiveFullAccess,
+      allSections,
+      allGradeLevels,
+      selectedGradeLevel,
+      teacherAssignments,
+    ]);
 
   const canDeleteExam = (exam: ExamWithRelations): boolean => {
     if (!exam.curriculum_subject_id) return false;
@@ -337,6 +416,48 @@ export default function ExamPageClient() {
     return map;
   }, [exams]);
 
+  // Exams where all faculty-handled sections of the same grade level already have this subject's exam.
+  const blockedCopyExamIds = useMemo(() => {
+    const teacherSectionIds = new Set(teacherAssignments.map(a => a.section_id));
+
+    // Pre-build: subject+quarter → covered section IDs across all exams.
+    const coveredMap = new Map<string, Set<number>>();
+    for (const e of exams) {
+      if (!e.quarter_id) continue;
+      const key = `${e.curriculum_subject_id}-${e.quarter_id}`;
+      if (!coveredMap.has(key)) coveredMap.set(key, new Set());
+      for (const a of e.exam_assignments ?? []) {
+        const sid = a.sections?.section_id;
+        if (sid != null) coveredMap.get(key)!.add(sid);
+      }
+    }
+
+    const blocked = new Set<number>();
+    for (const exam of exams) {
+      if (!exam.quarter_id) continue;
+
+      // Determine grade level of this exam's sections via allSections.
+      const firstSid = exam.exam_assignments?.[0]?.sections?.section_id;
+      const gradeLevelId = firstSid != null
+        ? allSections.find(s => s.section_id === firstSid)?.grade_level_id
+        : null;
+      if (!gradeLevelId) continue;
+
+      // Sections of the same grade level this faculty handles (all if admin).
+      const relevantSections = allSections.filter(
+        s => s.grade_level_id === gradeLevelId &&
+          (effectiveFullAccess || teacherSectionIds.has(s.section_id)),
+      );
+      if (relevantSections.length === 0) continue;
+
+      const covered = coveredMap.get(`${exam.curriculum_subject_id}-${exam.quarter_id}`) ?? new Set();
+      if (relevantSections.every(s => covered.has(s.section_id))) {
+        blocked.add(exam.exam_id);
+      }
+    }
+    return blocked;
+  }, [exams, allSections, teacherAssignments, effectiveFullAccess]);
+
   // "sectionId-curriculumSubjectId-quarterId" already taken by an existing exam
   const occupiedCombinations = useMemo(() => {
     const set = new Set<string>();
@@ -350,57 +471,71 @@ export default function ExamPageClient() {
     return set;
   }, [exams]);
 
-  const getCopyBlockReason = (exam: ExamWithRelations): string | null => {
-    if (effectiveFullAccess) return null;
-    if (!effectiveAllowedSectionIds || effectiveAllowedSectionIds.size === 0)
-      return "You are not assigned to any sections.";
-    const examGradeLevel = exam.exam_assignments?.[0]?.sections?.grade_levels?.display_name;
-    if (!examGradeLevel) return null;
-    const sourceSectionIds = new Set(
-      (exam.exam_assignments ?? [])
-        .map((a) => a.sections?.section_id)
-        .filter((id): id is number => id != null),
-    );
-    let hasSubjectMatchSection = false;
-    for (const sid of effectiveAllowedSectionIds) {
-      if (sourceSectionIds.has(sid)) continue;
-      const gl = sectionGradeLevelMap.get(sid);
-      if (!gl) return null; // Unknown grade level — let copy flow handle it
-      if (gl !== examGradeLevel) continue;
-      if (!assignedSectionSubjectPairs.has(`${sid}-${exam.curriculum_subject_id}`)) continue;
-      hasSubjectMatchSection = true;
-      const key = `${sid}-${exam.curriculum_subject_id}-${exam.quarter_id}`;
-      if (!occupiedCombinations.has(key)) return null; // at least one eligible section
-    }
-    if (!hasSubjectMatchSection)
-      return "You don't handle this subject in any of your other sections.";
-    return "All your sections already have this exam for this term.";
-  };
 
 	  const subjectOptions = useMemo(() => {
-	    let filtered = exams;
-	    if (selectedGradeLevel) {
-	      filtered = filtered.filter((e) =>
-	        getVisibleAssignments(e).some(
-	          (a) => a.sections?.grade_levels?.display_name === selectedGradeLevel,
-	        ),
-	      );
+    if (!effectiveFullAccess) {
+      const assignedSubjectIds = new Set(
+        teacherAssignments.map((assignment) => assignment.curriculum_subject_id),
+      );
+      const selectedGradeLevelId = allGradeLevels.find(
+        (grade) => grade.display_name === selectedGradeLevel,
+      )?.grade_level_id;
+
+      return Array.from(
+        new Map(
+          subjectCatalog
+            .filter((subject) =>
+              assignedSubjectIds.has(subject.curriculum_subject_id),
+            )
+            .filter(
+              (subject) =>
+                !selectedGradeLevelId ||
+                subject.grade_level_id === selectedGradeLevelId,
+            )
+            .map((subject) => [subject.name, subject] as const),
+        ).values(),
+      )
+        .map((subject) => subject.name)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     }
+
+    const selectedGradeLevelId = allGradeLevels.find(
+      (grade) => grade.display_name === selectedGradeLevel,
+    )?.grade_level_id;
+    const selectedSectionGradeLevelId = selectedSection
+      ? allSections.find((section) => section.name === selectedSection)?.grade_level_id
+      : null;
+    const activeGradeLevelId = selectedSectionGradeLevelId ?? selectedGradeLevelId;
+
     return Array.from(
-      new Set(
-        filtered
+      new Map(
+        subjectCatalog
           .filter(
-            (e) =>
-              !effectiveAllowedCurriculumSubjectIds ||
-              effectiveAllowedCurriculumSubjectIds.has(e.curriculum_subject_id),
+            (subject) =>
+              !activeGradeLevelId || subject.grade_level_id === activeGradeLevelId,
           )
-          .map((e) => e.curriculum_subjects?.subjects?.name)
-          .filter(Boolean) as string[],
-      ),
+          .map((subject) => [subject.name, subject] as const),
+      ).values(),
     )
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-      .map((name) => ({ value: name, label: name }));
-	  }, [exams, selectedGradeLevel, effectiveAllowedCurriculumSubjectIds, getVisibleAssignments]);
+      .map((subject) => subject.name)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+	  }, [
+      selectedGradeLevel,
+      selectedSection,
+      effectiveFullAccess,
+      teacherAssignments,
+      subjectCatalog,
+      allGradeLevels,
+      allSections,
+    ]);
+
+  const subjectFilterOptions = useMemo(
+    () => [
+      { value: "", label: "All Subjects" },
+      ...subjectOptions.map((name) => ({ value: name, label: name })),
+    ],
+    [subjectOptions],
+  );
 
   useEffect(() => {
     setSelectedSection("");
@@ -474,6 +609,24 @@ export default function ExamPageClient() {
       .filter((g) => !isFiltering || g.exams.length > 0)
       .sort((a, b) => a.levelNumber - b.levelNumber);
 	  }, [filteredExams, allGradeLevels, isFiltering, effectiveFullAccess, getVisibleAssignments]);
+
+  // Initialize once: open all visible groups if there is no restored state.
+  useEffect(() => {
+    if (!accordionStateReady || accordionInitialized) return;
+    if (openGradeGroups.length > 0) {
+      setAccordionInitialized(true);
+      return;
+    }
+    setOpenGradeGroups(groupedExams.map((group) => group.gradeLabel));
+    setAccordionInitialized(true);
+  }, [accordionStateReady, accordionInitialized, openGradeGroups.length, groupedExams]);
+
+  const handleAccordionChange = (value: string[]) => {
+    setOpenGradeGroups(value);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("examOpenGradeGroups", JSON.stringify(value));
+    }
+  };
 
   const handleStatusChange = async (
     exam: ExamWithRelations,
@@ -573,9 +726,8 @@ export default function ExamPageClient() {
             )}
           </h1>
           <div className="hidden sm:block">
-            {loading ? (
-              <Skeleton height={40} width={140} radius="md" />
-            ) : hasActiveSchoolYear && hasActiveTerm && !effectiveFullAccess ? (
+            {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
+            !effectiveFullAccess ? (
               <Tooltip
                 label="You need to be assigned to at least one class before you can create exams."
                 disabled={
@@ -629,9 +781,8 @@ export default function ExamPageClient() {
           ) : (
             <div />
           )}
-          {loading ? (
-            <Skeleton height={40} width={140} radius="md" />
-          ) : hasActiveSchoolYear && hasActiveTerm && !effectiveFullAccess ? (
+          {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
+          !effectiveFullAccess ? (
             <Tooltip
               label="You need to be assigned to at least one class before you can create exams."
               disabled={
@@ -688,8 +839,8 @@ export default function ExamPageClient() {
         <>
       {/* Filters */}
 	      <div>
-	        <Group mb="md" wrap="wrap" align="flex-end" gap="sm">
-	          <SearchBar
+        <Group mb="md" wrap="wrap" align="flex-end" gap="sm">
+          <SearchBar
             id="search-exams"
             placeholder="Search examinations..."
             ariaLabel="Search examinations"
@@ -713,28 +864,33 @@ export default function ExamPageClient() {
           </Tooltip>
         </Group>
 	        <Group mb="md" gap="sm" wrap="wrap">
-	          <Select
+          <Select
             data={[{ value: "", label: "All Grade Levels" }, ...gradeLevelOptions]}
             value={selectedGradeLevel}
             onChange={(v) => setSelectedGradeLevel(v ?? "")}
             leftSection={<IconSchool size={16} />}
-	            w={{ base: "100%", sm: 200 }}
+            clearable
+            w={{ base: "100%", sm: 200 }}
+            disabled={loading}
           />
           <Select
             data={[{ value: "", label: "All Sections" }, ...sectionOptions]}
             value={selectedSection}
             onChange={(v) => setSelectedSection(v ?? "")}
             leftSection={<IconUsers size={16} />}
-	            w={{ base: "100%", sm: 200 }}
-            disabled={sectionOptions.length === 0}
+            clearable
+            w={{ base: "100%", sm: 200 }}
+            disabled={loading || sectionOptions.length === 0}
           />
           <Select
-            data={[{ value: "", label: "All Subjects" }, ...subjectOptions]}
+            data={subjectFilterOptions}
             value={selectedSubject}
             onChange={(v) => setSelectedSubject(v ?? "")}
             leftSection={<IconBook size={16} />}
-	            w={{ base: "100%", sm: 200 }}
-            disabled={subjectOptions.length === 0}
+            clearable
+            w={{ base: "100%", sm: 200 }}
+            disabled={loading}
+            nothingFoundMessage="No subjects available for current filters"
           />
         </Group>
       </div>
@@ -747,11 +903,15 @@ export default function ExamPageClient() {
           ))}
         </Stack>
       ) : dbError ? null : isFiltering && filteredExams.length === 0 ? (
-        <EmptySearchState />
+        <EmptySearchState
+          title="No examination found."
+          description="Try adjusting your search or filters."
+        />
       ) : (
         <Accordion
           multiple
-          defaultValue={groupedExams.map((g) => g.gradeLabel)}
+          value={openGradeGroups}
+          onChange={handleAccordionChange}
           variant="separated"
           styles={{
             control: { backgroundColor: effectiveFullAccess ? "#e2edff" : "#f0f7ee" },
@@ -780,6 +940,9 @@ export default function ExamPageClient() {
                     .map((exam) => {
                       const subjectName =
                         exam.curriculum_subjects?.subjects?.name ?? "";
+                      const creatorName = exam.creator_user
+                        ? `${exam.creator_user.first_name ?? ""} ${exam.creator_user.last_name ?? ""}`.trim()
+                        : "";
                       const sectionNames = getVisibleAssignments(exam)
                         .map((a) => a.sections?.name)
                         .filter(Boolean)
@@ -895,36 +1058,33 @@ export default function ExamPageClient() {
                                     Download Answer Sheet
                                   </Menu.Item>
                                   <Menu.Item
-                                    leftSection={<IconKey size={14} />}
+                                    leftSection={<IconBinoculars size={14} />}
                                     onClick={() => {
                                       setSelectedExam(exam);
-                                      setIsAnswerKeyModalOpen(true);
+                                      setIsViewDetailsOpen(true);
                                     }}
                                   >
-                                    Edit Answer Key
+                                    View Exam Details
                                   </Menu.Item>
-                                  {(() => {
-                                    const copyBlockReason = getCopyBlockReason(exam);
-                                    return (
-                                      <Tooltip
-                                        label={copyBlockReason ?? ""}
-                                        disabled={!copyBlockReason}
-                                        withArrow
-                                        multiline
-                                        w={240}
+                                  <Tooltip
+                                    label="All sections already have an exam for this subject"
+                                    disabled={!blockedCopyExamIds.has(exam.exam_id)}
+                                    withArrow
+                                    position="left"
+                                  >
+                                    <span style={{ display: 'block' }}>
+                                      <Menu.Item
+                                        leftSection={<IconCopy size={14} />}
+                                        disabled={blockedCopyExamIds.has(exam.exam_id)}
+                                        onClick={() => {
+                                          setSelectedExam(exam);
+                                          setIsCopyExamOpen(true);
+                                        }}
                                       >
-                                        <div>
-                                          <Menu.Item
-                                            leftSection={<IconPlus size={14} />}
-                                            disabled={!!copyBlockReason}
-                                            onClick={() => router.push(`/exam/copy/${exam.exam_id}`)}
-                                          >
-                                            Copy Exam
-                                          </Menu.Item>
-                                        </div>
-                                      </Tooltip>
-                                    );
-                                  })()}
+                                        Copy Exam
+                                      </Menu.Item>
+                                    </span>
+                                  </Tooltip>
                                   {canDeleteExam(exam) && (
                                     <>
                                       <Menu.Divider />
@@ -961,6 +1121,14 @@ export default function ExamPageClient() {
                               <Text size="sm">{sectionNames}</Text>
                             </Group>
                           )}
+                          {effectiveFullAccess && (
+                            <Group mb="xs" gap="xs">
+                              <IconUser size={16} color="gray" />
+                              <Text size="sm">
+                                {creatorName || "Unknown Teacher"}
+                              </Text>
+                            </Group>
+                          )}
                         </Card>
                       );
                     })}
@@ -983,7 +1151,7 @@ export default function ExamPageClient() {
                 {group.exams.length === 0 && (
                   <EmptySearchState
                     title="No examinations found."
-                    description="Create your first examination to get started."
+                    description="No examinations are currently available."
                   />
                 )}
               </Accordion.Panel>
@@ -994,16 +1162,35 @@ export default function ExamPageClient() {
         </>
       )}
 
-      {isAnswerKeyModalOpen && selectedExam && (
-        <CreateAnswerKeyModal
-          exam={selectedExam}
-          onClose={() => {
-            setIsAnswerKeyModalOpen(false);
-            setSelectedExam(null);
-          }}
-          onSuccess={fetchExams}
-        />
-      )}
+      <ViewExamDetailsModal
+        exam={selectedExam}
+        opened={isViewDetailsOpen}
+        onClose={() => {
+          setIsViewDetailsOpen(false);
+          setSelectedExam(null);
+        }}
+      />
+
+      <CopyExamModal
+        exam={selectedExam}
+        opened={isCopyExamOpen}
+        onClose={() => {
+          setIsCopyExamOpen(false);
+          setSelectedExam(null);
+        }}
+        onCopied={(examIds) => {
+          void refetchExams();
+          const HIGHLIGHT_MS = 10_000;
+          const FADE_BEFORE_MS = 4_000;
+          setNewlyCreatedExamIds(new Set(examIds));
+          setHighlightExpiring(false);
+          setTimeout(() => setHighlightExpiring(true), HIGHLIGHT_MS - FADE_BEFORE_MS);
+          setTimeout(() => {
+            setNewlyCreatedExamIds(new Set());
+            setHighlightExpiring(false);
+          }, HIGHLIGHT_MS);
+        }}
+      />
 
       <Modal
         opened={deleteOpened}
@@ -1070,14 +1257,6 @@ export default function ExamPageClient() {
         (() => {
           const el = document.getElementById("exam-header-actions");
           if (!el) return null;
-          if (authLoading || loading) {
-            return createPortal(
-              <div className="hidden sm:block">
-                <Skeleton height={36} width={180} radius="md" />
-              </div>,
-              el,
-            );
-          }
           if (!showViewToggleVisible) return null;
           return createPortal(
             <div className="hidden sm:block">

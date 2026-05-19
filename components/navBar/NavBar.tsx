@@ -130,8 +130,8 @@ const navigationData: NavigationLink[] = [
   },
   {
     icon: IconFileText,
-    label: "Reports",
-    href: "/reports",
+    label: "Assessment Reports",
+    href: "/assessment-reports",
     requiredPermissions: [
       "reports.view_all",
       "reports.view_assigned",
@@ -583,7 +583,9 @@ export default function Navbar() {
                 </UnstyledButton>
               )}
             </div>
-            <div className={classes.drawerContent}>{drawerLinks}</div>
+            <div className={classes.drawerContent}>
+              {drawerLinks}
+            </div>
           </div>
         )}
       </nav>

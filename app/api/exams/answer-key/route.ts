@@ -32,7 +32,10 @@ const _POST = async function(request: Request) {
 
   const { data, error } = await adminClient
     .from("exams")
-    .update({ answer_key: answerKey })
+    .update({
+      answer_key: answerKey,
+      total_items: answerKey.total_questions,
+    })
     .eq("exam_id", examId)
     .select("exam_id");
 

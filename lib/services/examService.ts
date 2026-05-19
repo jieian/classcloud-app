@@ -117,6 +117,7 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
       exam_id, title, total_items, exam_date, is_locked,
       creator_teacher_id, quarter_id, curriculum_subject_id, created_at,
       answer_key, objectives,
+      creator_user:users!creator_teacher_id ( first_name, last_name ),
       curriculum_subjects ( subject_id, subjects ( name, code ) ),
       quarters ( name ),
       exam_assignments (
@@ -183,6 +184,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
     .from('exams')
     .select(`
       *,
+      creator_user:users!creator_teacher_id ( first_name, last_name ),
       curriculum_subjects ( subject_id, subjects ( name, code ) ),
       quarters ( name ),
       exam_assignments (
@@ -206,6 +208,43 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
 }
 
 // ─── Duplicate check ──────────────────────────────────────────────────────────
+
+export async function checkOccupiedSubjects(
+  sectionIds: number[],
+  quarterId: number,
+): Promise<Set<number>> {
+  if (sectionIds.length === 0) return new Set();
+  const { data, error } = await supabase
+    .from('exam_assignments')
+    .select('exams!inner(curriculum_subject_id, quarter_id, deleted_at)')
+    .in('section_id', sectionIds)
+    .eq('exams.quarter_id', quarterId)
+    .is('exams.deleted_at', null);
+  if (error) return new Set();
+  return new Set(
+    (data ?? []).map((row: unknown) => (row as { exams: { curriculum_subject_id: number } }).exams.curriculum_subject_id)
+  );
+}
+
+export async function fetchOccupiedSectionSubjectPairs(
+  quarterId: number,
+): Promise<Map<number, Set<number>>> {
+  const { data, error } = await supabase
+    .from('exam_assignments')
+    .select('section_id, exams!inner(curriculum_subject_id, quarter_id, deleted_at)')
+    .eq('exams.quarter_id', quarterId)
+    .is('exams.deleted_at', null);
+
+  if (error) return new Map();
+
+  const result = new Map<number, Set<number>>();
+  for (const row of (data ?? [])) {
+    const r = row as { section_id: number; exams: { curriculum_subject_id: number } };
+    if (!result.has(r.section_id)) result.set(r.section_id, new Set());
+    result.get(r.section_id)!.add(r.exams.curriculum_subject_id);
+  }
+  return result;
+}
 
 export async function checkExamDuplicates(
   sectionIds: number[],

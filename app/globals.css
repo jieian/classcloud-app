@@ -13,6 +13,13 @@
 }
 
 
+/* Locked/occupied options in Mantine Select/MultiSelect dropdowns */
+[data-combobox-disabled] {
+  opacity: 1 !important;
+  cursor: default !important;
+  color: #111827 !important;
+}
+
 html,
 body {
   margin: 0;

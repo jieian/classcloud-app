@@ -1,6 +1,7 @@
 import ProtectedRoute from "@/components/ProtectedRoute";
+import AssessmentReportsBrowser from "./_components/AssessmentReportsBrowser";
 
-export default function Reports() {
+export default function AssessmentReports() {
   return (
     <ProtectedRoute
       match="any"
@@ -12,7 +13,10 @@ export default function Reports() {
         "reports.approve",
       ]}
     >
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Reports</h1>
+      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
+        Assessment Reports
+      </h1>
+      <AssessmentReportsBrowser />
     </ProtectedRoute>
   );
 }

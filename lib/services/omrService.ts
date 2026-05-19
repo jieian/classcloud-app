@@ -30,6 +30,8 @@ export interface DetectionResult {
   corners:             [Point, Point, Point, Point];
   debugDataUrl:        string;
   detectedExamId:      number | null;
+  detectedTotalItems:  number | null;
+  detectedNumChoices:  number | null;
 }
 
 export type CornerSet = [Point, Point, Point, Point];
@@ -84,12 +86,39 @@ function scaleCanvas(src: HTMLCanvasElement, maxPx: number): HTMLCanvasElement {
 
 // ─── 3. QR reader ────────────────────────────────────────────────────────────
 
-function parseExamQr(raw: string): number | null {
-  const match = raw.match(/^EXAM:(\d+)$/);
-  return match ? parseInt(match[1]) : null;
+interface ParsedExamQr {
+  examId: number | null;
+  totalItems: number | null;
+  numChoices: number | null;
 }
 
-export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<number | null> {
+function parseExamQr(raw: string): ParsedExamQr | null {
+  const text = raw.trim();
+
+  // Legacy payload format: EXAM:<id>
+  const legacyMatch = text.match(/^EXAM:(\d+)$/);
+  if (legacyMatch) {
+    return {
+      examId: Number.parseInt(legacyMatch[1], 10),
+      totalItems: null,
+      numChoices: null,
+    };
+  }
+
+  // Extended payload format: EXAM:<id>|ITEMS:<n>|CHOICES:<n>
+  const extendedMatch = text.match(/^EXAM:(\d+)\|ITEMS:(\d+)\|CHOICES:(\d+)$/);
+  if (extendedMatch) {
+    return {
+      examId: Number.parseInt(extendedMatch[1], 10),
+      totalItems: Number.parseInt(extendedMatch[2], 10),
+      numChoices: Number.parseInt(extendedMatch[3], 10),
+    };
+  }
+
+  return null;
+}
+
+export async function readExamMetadataFromQr(canvas: HTMLCanvasElement): Promise<ParsedExamQr> {
   // Primary: jsqr — pure JS, works in all browsers
   try {
     const jsQR = (await import('jsqr')).default;
@@ -97,8 +126,8 @@ export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<numbe
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const result = jsQR(imageData.data, canvas.width, canvas.height);
     if (result) {
-      const id = parseExamQr(result.data);
-      if (id !== null) return id;
+      const payload = parseExamQr(result.data);
+      if (payload) return payload;
     }
   } catch { /* jsqr unavailable */ }
 
@@ -110,13 +139,22 @@ export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<numbe
       const detector = new BD({ formats: ['qr_code'] });
       const barcodes = await detector.detect(canvas);
       for (const b of barcodes) {
-        const id = parseExamQr(b.rawValue as string);
-        if (id !== null) return id;
+        const payload = parseExamQr(b.rawValue as string);
+        if (payload) return payload;
       }
     }
   } catch { /* not supported */ }
 
-  return null;
+  return {
+    examId: null,
+    totalItems: null,
+    numChoices: null,
+  };
+}
+
+export async function readExamIdFromQr(canvas: HTMLCanvasElement): Promise<number | null> {
+  const payload = await readExamMetadataFromQr(canvas);
+  return payload.examId;
 }
 
 // ─── 4. Debug overlay ─────────────────────────────────────────────────────────
@@ -189,7 +227,7 @@ export async function processAnswerSheet(
   const buffer = imageData.data.buffer.slice(0);
 
   // Read QR code from full-resolution canvas before scaling (better QR detection quality)
-  const detectedExamId = await readExamIdFromQr(rawCanvas);
+  const qrPayload = await readExamMetadataFromQr(rawCanvas);
 
   // Scale manual corners to match the down-sampled canvas
   const scaledCorners = manualCorners
@@ -224,7 +262,9 @@ export async function processAnswerSheet(
           corners,
           cornersAutoDetected,
           debugDataUrl,
-          detectedExamId,
+          detectedExamId: qrPayload.examId,
+          detectedTotalItems: qrPayload.totalItems,
+          detectedNumChoices: qrPayload.numChoices,
         });
 
       } else if (type === 'error') {

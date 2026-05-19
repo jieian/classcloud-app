@@ -159,7 +159,7 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   pdf.rect(CM_BR.x, CM_BR.y, CM_SIZE, CM_SIZE, 'F');
 
   // ── QR Code ───────────────────────────────────────────────────────────────
-  const qrData = `EXAM:${exam.exam_id}`;
+  const qrData = `EXAM:${exam.exam_id}|ITEMS:${totalItems}|CHOICES:${numChoices}`;
   try {
     const qrUrl = await generateQrDataUrl(qrData, 150);
     pdf.addImage(qrUrl, 'PNG', OMR.QR_X, OMR.QR_Y, OMR.QR_SIZE, OMR.QR_SIZE);

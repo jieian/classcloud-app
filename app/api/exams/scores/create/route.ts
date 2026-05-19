@@ -9,6 +9,27 @@ type CreateScoreBody = {
   calculated_score?: number;
 };
 
+type AssignmentExamJoinRow = {
+  exam_id: number | null;
+  exams:
+    | {
+        is_locked: boolean | null;
+        total_items: number | null;
+      }
+    | {
+        is_locked: boolean | null;
+        total_items: number | null;
+      }[]
+    | null;
+};
+
+function asExamJoin(
+  join: AssignmentExamJoinRow["exams"],
+): { is_locked: boolean | null; total_items: number | null } | null {
+  if (Array.isArray(join)) return join[0] ?? null;
+  return join ?? null;
+}
+
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -32,6 +53,45 @@ const _POST = async function(request: Request) {
     );
   }
 
+  const { data: assignmentExamData, error: assignmentExamError } =
+    await adminClient
+      .from("exam_assignments")
+      .select("exam_id, exams!inner(is_locked, total_items, deleted_at)")
+      .eq("id", examAssignmentId)
+      .is("exams.deleted_at", null)
+      .maybeSingle();
+
+  if (assignmentExamError) {
+    console.error(
+      "[api/exams/scores/create] assignment exam lookup error:",
+      assignmentExamError.message,
+    );
+    return Response.json({ error: "Internal server error." }, { status: 500 });
+  }
+
+  if (!assignmentExamData) {
+    return Response.json(
+      { error: "Invalid exam assignment." },
+      { status: 400 },
+    );
+  }
+
+  const assignmentExam = assignmentExamData as AssignmentExamJoinRow;
+  const examJoin = asExamJoin(assignmentExam.exams);
+  if (!examJoin) {
+    return Response.json(
+      { error: "Invalid exam assignment." },
+      { status: 400 },
+    );
+  }
+
+  if (examJoin.is_locked) {
+    return Response.json(
+      { error: "Exam is finalized and cannot accept new scans." },
+      { status: 409 },
+    );
+  }
+
   const gradedAt = new Date().toISOString();
   const { data, error } = await adminClient.rpc("create_score", {
     p_enrollment_id: enrollmentId,
@@ -51,12 +111,7 @@ const _POST = async function(request: Request) {
 
     if (uniqueViolation) {
       // Compute mpl and proficiency_level for the update path
-      const { data: examData } = await adminClient
-        .from("exam_assignments")
-        .select("exams(total_items)")
-        .eq("id", examAssignmentId)
-        .single();
-      const totalItems = (examData?.exams as any)?.total_items ?? 0;
+      const totalItems = examJoin.total_items ?? 0;
       const mpl = totalItems > 0 ? Math.round((calculatedScore / totalItems) * 100) : 0;
       const proficiencyLevel =
         mpl >= 90 ? "Highly Proficient" :
