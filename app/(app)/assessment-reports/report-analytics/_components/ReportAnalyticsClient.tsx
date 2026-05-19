@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  Accordion,
   Card,
-  Collapse,
-  Divider,
   Group,
   Select,
   SegmentedControl,
@@ -18,7 +17,6 @@ import {
   TableThead,
   TableTr,
   Text,
-  UnstyledButton,
 } from "@mantine/core";
 import { IconBook, IconChevronDown } from "@tabler/icons-react";
 import { useSearchParams } from "next/navigation";
@@ -42,47 +40,22 @@ interface ReportAnalyticsClientProps {
   initialExamId?: number | null;
 }
 
-function ReportsCollapsible({
-  title,
-  subtitle,
-  children,
-  opened,
-  onToggle,
-}: {
-  title: string;
-  subtitle: string;
-  children?: ReactNode;
-  opened: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div>
-      <Divider mb="xs" />
-      <UnstyledButton onClick={onToggle} w="100%">
-        <Group justify="space-between" align="center">
-          <h2 className="text-2xl font-bold leading-tight">{title}</h2>
-          <IconChevronDown
-            size={22}
-            style={{
-              transform: opened ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 200ms ease",
-              color: "#808898",
-            }}
-          />
-        </Group>
-      </UnstyledButton>
-      <Collapse in={opened}>
-        <p className="mb-2 text-sm text-[#808898]">{subtitle}</p>
-        {children ?? (
-          <Text size="sm" c="dimmed">
-            No Data available.
-          </Text>
-        )}
-      </Collapse>
-      <Divider mt="xs" />
-    </div>
-  );
-}
+const COLLAPSIBLE_KEYS = ["details", "proficiency", "mpl", "itemAnalysis", "proficiencyLevel", "laempl"] as const;
+type CollapsibleKey = typeof COLLAPSIBLE_KEYS[number];
+
+const TAB_COLLAPSIBLE_KEYS: Record<string, readonly CollapsibleKey[]> = {
+  exam_results: ["details", "proficiency", "mpl"],
+  item_analysis: ["itemAnalysis"],
+  proficiency_mpl: ["proficiencyLevel", "laempl"],
+};
+
+const ACCORDION_STYLES = {
+  item: { border: "none", borderTop: "1px solid var(--mantine-color-gray-3)", borderBottom: "1px solid var(--mantine-color-gray-3)" },
+  control: { padding: "8px 0", paddingRight: 0, background: "transparent", "&:hover": { background: "transparent" } },
+  label: { padding: 0 },
+  chevron: { color: "#808898" },
+  content: { paddingLeft: 0, paddingRight: 0, paddingBottom: 8 },
+} as const;
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
@@ -144,7 +117,6 @@ export default function ReportAnalyticsClient({
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
   const [subjectHydrated, setSubjectHydrated] = useState(false);
   const [subjectClearedByUser, setSubjectClearedByUser] = useState(false);
-  const isFirstSectionLoadRef = useRef(true);
   const [sectionSubjectOptions, setSectionSubjectOptions] = useState<
     { value: string; label: string }[]
   >([]);
@@ -162,14 +134,7 @@ export default function ReportAnalyticsClient({
     topMostLearned: [],
     topLeastLearned: [],
   });
-  // All start closed to avoid flash before sessionStorage is read (same as exam accordion).
-  const [detailsOpened, setDetailsOpened] = useState(false);
-  const [itemAnalysisOpened, setItemAnalysisOpened] = useState(false);
-  const [proficiencyOpened, setProficiencyOpened] = useState(false);
-  const [proficiencyLevelTableOpened, setProficiencyLevelTableOpened] = useState(false);
-  const [laemplTableOpened, setLaemplTableOpened] = useState(false);
-  const [mplOpened, setMplOpened] = useState(false);
-  const [collapsibleStateReady, setCollapsibleStateReady] = useState(false);
+  const [openCollapsibles, setOpenCollapsibles] = useState<string[]>([]);
   const [collapsibleInitialized, setCollapsibleInitialized] = useState(false);
   const SUBJECT_CLEARED_SENTINEL = "__CLEARED__";
   const subjectStorageKey = useMemo(
@@ -182,7 +147,7 @@ export default function ReportAnalyticsClient({
   const collapsibleStorageKey = useMemo(
     () =>
       selectedSectionId != null
-        ? `assessment-reports:collapsible-state:section:${selectedSectionId}`
+        ? `assessment-reports:analytics-open:section:${selectedSectionId}`
         : null,
     [selectedSectionId],
   );
@@ -262,18 +227,37 @@ export default function ReportAnalyticsClient({
       setSelectedSectionId(null);
       return;
     }
+
     const hasCurrent =
       selectedSectionId != null &&
       sectionOptions.some((option) => Number(option.value) === selectedSectionId);
     if (hasCurrent) return;
 
+    // Dynamic route section has highest priority in this page.
+    const routeMatch =
+      Number.isFinite(initialSectionId) &&
+      sectionOptions.some((option) => Number(option.value) === Number(initialSectionId))
+        ? Number(initialSectionId)
+        : null;
+    if (routeMatch != null) {
+      setSelectedSectionId(routeMatch);
+      return;
+    }
+
+    // URL param fallback.
     const queryMatch =
       Number.isFinite(sectionParam) &&
       sectionOptions.some((option) => Number(option.value) === sectionParam)
         ? sectionParam
         : null;
-    setSelectedSectionId(queryMatch ?? Number(sectionOptions[0].value));
-  }, [sectionOptions, selectedSectionId, sectionParam]);
+    if (queryMatch != null) {
+      setSelectedSectionId(queryMatch);
+      return;
+    }
+
+    // Last fallback: first available section under current grade scope.
+    setSelectedSectionId(Number(sectionOptions[0]?.value ?? null));
+  }, [initialSectionId, sectionOptions, selectedSectionId, sectionParam]);
 
   useEffect(() => {
     let mounted = true;
@@ -355,7 +339,7 @@ export default function ReportAnalyticsClient({
       return;
     }
 
-    if (subjectStorageKey && typeof window !== "undefined" && !isFirstSectionLoadRef.current) {
+    if (subjectStorageKey && typeof window !== "undefined") {
       const stored = window.sessionStorage.getItem(subjectStorageKey);
       if (stored === SUBJECT_CLEARED_SENTINEL) {
         setSelectedSubject(null);
@@ -370,7 +354,6 @@ export default function ReportAnalyticsClient({
         return;
       }
     }
-    isFirstSectionLoadRef.current = false;
 
     const examSubjectFromQuery =
       Number.isFinite(examParam) && selectedSectionId != null
@@ -415,79 +398,29 @@ export default function ReportAnalyticsClient({
     }
     window.sessionStorage.setItem(subjectStorageKey, selectedSubject);
   }, [selectedSubject, subjectStorageKey, subjectHydrated, subjectClearedByUser, SUBJECT_CLEARED_SENTINEL]);
-
-  // Phase 1: restore from sessionStorage when section changes (resets to closed first).
+  // Reset accordion state when section changes.
   useEffect(() => {
-    setCollapsibleStateReady(false);
     setCollapsibleInitialized(false);
-    setDetailsOpened(false);
-    setProficiencyOpened(false);
-    setMplOpened(false);
-    setItemAnalysisOpened(false);
-    setProficiencyLevelTableOpened(false);
-    setLaemplTableOpened(false);
-
-    if (!collapsibleStorageKey || typeof window === "undefined") {
-      setCollapsibleStateReady(true);
-      return;
-    }
-    try {
-      const raw = window.sessionStorage.getItem(collapsibleStorageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Record<string, string>;
-        setDetailsOpened(parsed.details === "1");
-        setProficiencyOpened(parsed.proficiency === "1");
-        setMplOpened(parsed.mpl === "1");
-        setItemAnalysisOpened(parsed.itemAnalysis === "1");
-        setProficiencyLevelTableOpened(parsed.proficiencyLevel === "1");
-        setLaemplTableOpened(parsed.laempl === "1");
-      }
-    } catch { /* ignore malformed */ }
-    setCollapsibleStateReady(true);
+    setOpenCollapsibles([...COLLAPSIBLE_KEYS]);
+    setCollapsibleInitialized(true);
   }, [collapsibleStorageKey]);
 
-  // Phase 2: open all on first visit (no stored state for this section).
-  useEffect(() => {
-    if (!collapsibleStateReady || collapsibleInitialized) return;
-    const hasStored =
-      collapsibleStorageKey != null &&
-      typeof window !== "undefined" &&
-      window.sessionStorage.getItem(collapsibleStorageKey) !== null;
-    if (!hasStored) {
-      setDetailsOpened(true);
-      setProficiencyOpened(true);
-      setMplOpened(true);
-      setItemAnalysisOpened(true);
-      setProficiencyLevelTableOpened(true);
-      setLaemplTableOpened(true);
-    }
-    setCollapsibleInitialized(true);
-  }, [collapsibleStateReady, collapsibleInitialized, collapsibleStorageKey]);
-
-  // Save all states to sessionStorage after initialization.
+  // Persist accordion state per section in-session.
   useEffect(() => {
     if (!collapsibleInitialized || !collapsibleStorageKey || typeof window === "undefined") return;
-    window.sessionStorage.setItem(
-      collapsibleStorageKey,
-      JSON.stringify({
-        details: detailsOpened ? "1" : "0",
-        proficiency: proficiencyOpened ? "1" : "0",
-        mpl: mplOpened ? "1" : "0",
-        itemAnalysis: itemAnalysisOpened ? "1" : "0",
-        proficiencyLevel: proficiencyLevelTableOpened ? "1" : "0",
-        laempl: laemplTableOpened ? "1" : "0",
-      }),
-    );
-  }, [
-    collapsibleInitialized,
-    collapsibleStorageKey,
-    detailsOpened,
-    proficiencyOpened,
-    mplOpened,
-    itemAnalysisOpened,
-    proficiencyLevelTableOpened,
-    laemplTableOpened,
-  ]);
+    window.sessionStorage.setItem(collapsibleStorageKey, JSON.stringify(openCollapsibles));
+  }, [collapsibleInitialized, collapsibleStorageKey, openCollapsibles]);
+
+  // On tab switch, force open target tab's accordions (keep others unchanged).
+  useEffect(() => {
+    const tabKeys = TAB_COLLAPSIBLE_KEYS[activeTab] ?? [];
+    if (tabKeys.length === 0) return;
+    setOpenCollapsibles((prev) => {
+      const merged = new Set(prev);
+      tabKeys.forEach((k) => merged.add(k));
+      return Array.from(merged);
+    });
+  }, [activeTab]);
 
   const examOptions = useMemo(() => {
     return availableExamCards.map((card) => ({
@@ -600,11 +533,6 @@ export default function ReportAnalyticsClient({
     };
   }, [selectedCard, selectedSubject]);
 
-  useEffect(() => {
-    if (activeTab === "item_analysis") {
-      setItemAnalysisOpened(true);
-    }
-  }, [activeTab]);
 
   if (loading) {
     return (
@@ -705,15 +633,24 @@ export default function ReportAnalyticsClient({
           }}
         />
 
+        <Accordion
+          multiple
+          value={openCollapsibles}
+          onChange={setOpenCollapsibles}
+          chevronPosition="right"
+          chevron={<IconChevronDown size={22} />}
+          styles={ACCORDION_STYLES}
+          className="rounded-b-2xl rounded-tr-xl p-4 bg-white -mt-[1px]"
+        >
         {activeTab === "exam_results" && (
-          <div className="space-y-5 rounded-b-2xl rounded-tr-xl p-4 bg-white -mt-[1px]">
-            <ReportsCollapsible
-              title="Details"
-              subtitle="An examination summary shows the key result metrics for the selected grade, section, and examination."
-              opened={detailsOpened}
-              onToggle={() => setDetailsOpened((prev) => !prev)}
-            >
-              {summaryLoading ? (
+          <>
+            <Accordion.Item value="details">
+              <Accordion.Control>
+                <h2 className="text-2xl font-bold leading-tight">Details</h2>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <p className="mb-2 text-sm text-[#808898]">An examination summary shows the key result metrics for the selected grade, section, and examination.</p>
+                {summaryLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {Array.from({ length: 8 }).map((_, idx) => (
                     <Skeleton key={idx} height={82} radius="sm" />
@@ -766,208 +703,160 @@ export default function ReportAnalyticsClient({
                   )}
                 </Stack>
               )}
-            </ReportsCollapsible>
+              </Accordion.Panel>
+            </Accordion.Item>
 
-            <ReportsCollapsible
-              title="Proficiency Level Obtained"
-              subtitle="A proficiency summary shows the level distribution for the selected grade, section, and subject."
-              opened={proficiencyOpened}
-              onToggle={() => setProficiencyOpened((prev) => !prev)}
-            >
-              {!selectedSubject ? (
-                <SectionEmptyState message="Select a subject to view proficiency results." />
-              ) : !selectedCard ? (
-                <SectionEmptyState message="No Data available." />
-              ) : !selectedCard.isFinalized ? (
-                <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
-              ) : proficiencyLoading ? (
-                <Stack gap="xs">
-                  <Skeleton height={38} radius="sm" />
-                  {Array.from({ length: 4 }).map((_, idx) => (
-                    <Skeleton key={idx} height={34} radius="sm" />
-                  ))}
-                </Stack>
-              ) : proficiencyRows.length === 0 ? (
-                <SectionEmptyState message="No Data available." />
-              ) : (
-                <TableScrollContainer minWidth={640} type="native">
-                  <Table
-                    verticalSpacing="sm"
-                    striped={false}
-                    highlightOnHover
-                    style={{ width: "max-content", minWidth: 640 }}
-                  >
-                    <TableThead>
-                      <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                        <TableTh w={80} ta="center" style={{ color: "#ffffff" }}>
-                          No.
-                        </TableTh>
-                        <TableTh style={{ color: "#ffffff" }}>Name</TableTh>
-                        <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                          Test Score
-                        </TableTh>
-                        <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                          MPL
-                        </TableTh>
-                        <TableTh w={240} ta="center" style={{ color: "#ffffff" }}>
-                          Proficiency Level Obtained
-                        </TableTh>
-                      </TableTr>
-                    </TableThead>
-                    <TableTbody>
-                      {maleProficiencyRows.length > 0 && (
-                        <TableTr>
-                          <TableTd colSpan={5} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
-                            Male ({maleProficiencyRows.length})
-                          </TableTd>
+            <Accordion.Item value="proficiency">
+              <Accordion.Control>
+                <h2 className="text-2xl font-bold leading-tight">Proficiency Level Obtained</h2>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <p className="mb-2 text-sm text-[#808898]">A proficiency summary shows the level distribution for the selected grade, section, and subject.</p>
+                {!selectedSubject ? (
+                  <SectionEmptyState message="Select a subject to view proficiency results." />
+                ) : !selectedCard ? (
+                  <SectionEmptyState message="No Data available." />
+                ) : !selectedCard.isFinalized ? (
+                  <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
+                ) : proficiencyLoading ? (
+                  <Stack gap="xs">
+                    <Skeleton height={38} radius="sm" />
+                    {Array.from({ length: 4 }).map((_, idx) => (
+                      <Skeleton key={idx} height={34} radius="sm" />
+                    ))}
+                  </Stack>
+                ) : proficiencyRows.length === 0 ? (
+                  <SectionEmptyState message="No Data available." />
+                ) : (
+                  <TableScrollContainer minWidth={640} type="native">
+                    <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 640 }}>
+                      <TableThead>
+                        <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                          <TableTh w={80} ta="center" style={{ color: "#ffffff" }}>No.</TableTh>
+                          <TableTh style={{ color: "#ffffff" }}>Name</TableTh>
+                          <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Test Score</TableTh>
+                          <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>MPL</TableTh>
+                          <TableTh w={240} ta="center" style={{ color: "#ffffff" }}>Proficiency Level Obtained</TableTh>
                         </TableTr>
-                      )}
-                      {maleProficiencyRows.map((row, idx) => (
-                        <TableTr key={`male-${row.enrollmentId}`}>
-                          <TableTd ta="center">{idx + 1}</TableTd>
-                          <TableTd>{row.pupilName}</TableTd>
-                          <TableTd ta="center">{`${row.testScore}/${row.totalItems}`}</TableTd>
-                          <TableTd ta="center">{`${row.mpl.toFixed(2)}%`}</TableTd>
-                          <TableTd ta="center">{row.proficiencyLevel}</TableTd>
-                        </TableTr>
-                      ))}
-
-                      {femaleProficiencyRows.length > 0 && (
-                        <TableTr>
-                          <TableTd colSpan={5} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
-                            Female ({femaleProficiencyRows.length})
-                          </TableTd>
-                        </TableTr>
-                      )}
-                      {femaleProficiencyRows.map((row, idx) => (
-                        <TableTr key={`female-${row.enrollmentId}`}>
-                          <TableTd ta="center">{idx + 1}</TableTd>
-                          <TableTd>{row.pupilName}</TableTd>
-                          <TableTd ta="center">{`${row.testScore}/${row.totalItems}`}</TableTd>
-                          <TableTd ta="center">{`${row.mpl.toFixed(2)}%`}</TableTd>
-                          <TableTd ta="center">{row.proficiencyLevel}</TableTd>
-                        </TableTr>
-                      ))}
-
-                    </TableTbody>
-                  </Table>
-                </TableScrollContainer>
-              )}
-            </ReportsCollapsible>
-
-            <ReportsCollapsible
-              title="MPL Results"
-              subtitle="An MPL summary shows the minimum proficiency level results for the selected grade, section, and subject."
-              opened={mplOpened}
-              onToggle={() => setMplOpened((prev) => !prev)}
-            >
-              {!selectedSubject ? (
-                <SectionEmptyState message="Select a subject to view proficiency results." />
-              ) : !selectedCard ? (
-                <SectionEmptyState message="No Data available." />
-              ) : !selectedCard.isFinalized ? (
-                <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div>
-                    <Text size="xl" fw={700} mb={10} c="#111827">
-                      Exceeded MPL (60%)
-                    </Text>
-                    <TableScrollContainer minWidth={520} type="native">
-                    <Table
-                      verticalSpacing="sm"
-                      striped={false}
-                        highlightOnHover
-                        style={{ width: "max-content", minWidth: 520 }}
-                      >
-                        <TableThead>
-                          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                            <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                              Group
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Test Taker
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Achieved
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Percentage
-                            </TableTh>
+                      </TableThead>
+                      <TableTbody>
+                        {maleProficiencyRows.length > 0 && (
+                          <TableTr>
+                            <TableTd colSpan={5} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                              Male ({maleProficiencyRows.length})
+                            </TableTd>
                           </TableTr>
-                        </TableThead>
-                        <TableTbody>
-                          {["Male", "Female", "Total"].map((group) => (
-                            <TableTr key={`ach-${group}`}>
-                              <TableTd ta="center" fw={700}>
-                                {group}
-                              </TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
-                            </TableTr>
-                          ))}
-                        </TableTbody>
-                      </Table>
-                    </TableScrollContainer>
-                  </div>
-
-                  <div>
-                    <Text size="xl" fw={700} mb={10} c="#111827">
-                      Failed MPL (30%)
-                    </Text>
-                    <TableScrollContainer minWidth={520} type="native">
-                      <Table
-                        verticalSpacing="sm"
-                        striped={false}
-                        highlightOnHover
-                        style={{ width: "max-content", minWidth: 520 }}
-                      >
-                        <TableThead>
-                          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                            <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                              Group
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Test Taker
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Failed
-                            </TableTh>
-                            <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>
-                              Percentage
-                            </TableTh>
+                        )}
+                        {maleProficiencyRows.map((row, idx) => (
+                          <TableTr key={`male-${row.enrollmentId}`}>
+                            <TableTd ta="center">{idx + 1}</TableTd>
+                            <TableTd>{row.pupilName}</TableTd>
+                            <TableTd ta="center">{`${row.testScore}/${row.totalItems}`}</TableTd>
+                            <TableTd ta="center">{`${row.mpl.toFixed(2)}%`}</TableTd>
+                            <TableTd ta="center">{row.proficiencyLevel}</TableTd>
                           </TableTr>
-                        </TableThead>
-                        <TableTbody>
-                          {["Male", "Female", "Total"].map((group) => (
-                            <TableTr key={`fail-${group}`}>
-                              <TableTd ta="center" fw={700}>
-                                {group}
-                              </TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
-                              <TableTd ta="center">No Data available</TableTd>
+                        ))}
+                        {femaleProficiencyRows.length > 0 && (
+                          <TableTr>
+                            <TableTd colSpan={5} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                              Female ({femaleProficiencyRows.length})
+                            </TableTd>
+                          </TableTr>
+                        )}
+                        {femaleProficiencyRows.map((row, idx) => (
+                          <TableTr key={`female-${row.enrollmentId}`}>
+                            <TableTd ta="center">{idx + 1}</TableTd>
+                            <TableTd>{row.pupilName}</TableTd>
+                            <TableTd ta="center">{`${row.testScore}/${row.totalItems}`}</TableTd>
+                            <TableTd ta="center">{`${row.mpl.toFixed(2)}%`}</TableTd>
+                            <TableTd ta="center">{row.proficiencyLevel}</TableTd>
+                          </TableTr>
+                        ))}
+                      </TableTbody>
+                    </Table>
+                  </TableScrollContainer>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
+
+            <Accordion.Item value="mpl">
+              <Accordion.Control>
+                <h2 className="text-2xl font-bold leading-tight">MPL Results</h2>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <p className="mb-2 text-sm text-[#808898]">An MPL summary shows the minimum proficiency level results for the selected grade, section, and subject.</p>
+                {!selectedSubject ? (
+                  <SectionEmptyState message="Select a subject to view proficiency results." />
+                ) : !selectedCard ? (
+                  <SectionEmptyState message="No Data available." />
+                ) : !selectedCard.isFinalized ? (
+                  <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                      <Text size="xl" fw={700} mb={10} c="#111827">Exceeded MPL (60%)</Text>
+                      <TableScrollContainer minWidth={520} type="native">
+                        <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 520 }}>
+                          <TableThead>
+                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                              <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Group</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Test Taker</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Achieved</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Percentage</TableTh>
                             </TableTr>
-                          ))}
-                        </TableTbody>
-                      </Table>
-                    </TableScrollContainer>
+                          </TableThead>
+                          <TableTbody>
+                            {["Male", "Female", "Total"].map((group) => (
+                              <TableTr key={`ach-${group}`}>
+                                <TableTd ta="center" fw={700}>{group}</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                              </TableTr>
+                            ))}
+                          </TableTbody>
+                        </Table>
+                      </TableScrollContainer>
+                    </div>
+                    <div>
+                      <Text size="xl" fw={700} mb={10} c="#111827">Failed MPL (30%)</Text>
+                      <TableScrollContainer minWidth={520} type="native">
+                        <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 520 }}>
+                          <TableThead>
+                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                              <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Group</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Test Taker</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Failed</TableTh>
+                              <TableTh w={140} ta="center" style={{ color: "#ffffff" }}>Percentage</TableTh>
+                            </TableTr>
+                          </TableThead>
+                          <TableTbody>
+                            {["Male", "Female", "Total"].map((group) => (
+                              <TableTr key={`fail-${group}`}>
+                                <TableTd ta="center" fw={700}>{group}</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                                <TableTd ta="center">No Data available</TableTd>
+                              </TableTr>
+                            ))}
+                          </TableTbody>
+                        </Table>
+                      </TableScrollContainer>
+                    </div>
                   </div>
-                </div>
-              )}
-            </ReportsCollapsible>
-          </div>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
+          </>
         )}
 
         {activeTab === "item_analysis" && (
-          <div className="rounded-b-2xl rounded-tr-xl p-4 bg-white -mt-[1px]">
-            <ReportsCollapsible
-              title="Item Analysis"
-              subtitle="An item analysis summary shows the most learned and least learned items for the selected grade, section, and subject."
-              opened={itemAnalysisOpened}
-              onToggle={() => setItemAnalysisOpened((prev) => !prev)}
-            >
+          <Accordion.Item value="itemAnalysis">
+            <Accordion.Control>
+              <h2 className="text-2xl font-bold leading-tight">Item Analysis</h2>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <p className="mb-2 text-sm text-[#808898]">An item analysis summary shows the most learned and least learned items for the selected grade, section, and subject.</p>
               {!selectedSubject ? (
                 <SectionEmptyState message="Select a subject to view proficiency results." />
               ) : !selectedCard ? (
@@ -977,40 +866,19 @@ export default function ReportAnalyticsClient({
               ) : (
                 <Stack gap="md">
                   <TableScrollContainer minWidth={640} type="native">
-                    <Table
-                      verticalSpacing="sm"
-                      striped={false}
-                      highlightOnHover
-                      style={{ width: "max-content", minWidth: 640 }}
-                    >
+                    <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 640 }}>
                       <TableThead>
                         <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                          <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                            Item No.
-                          </TableTh>
-                          <TableTh w={220} ta="center" style={{ color: "#ffffff" }}>
-                            Correct Responses
-                          </TableTh>
-                          <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                            Rank
-                          </TableTh>
+                          <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Item No.</TableTh>
+                          <TableTh w={220} ta="center" style={{ color: "#ffffff" }}>Correct Responses</TableTh>
+                          <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Rank</TableTh>
                         </TableTr>
                       </TableThead>
                       <TableTbody>
                         {itemAnalysisLoading ? (
-                          <TableTr>
-                            <TableTd colSpan={3}>
-                              <Skeleton height={28} radius="sm" />
-                            </TableTd>
-                          </TableTr>
+                          <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
                         ) : itemAnalysis.rows.length === 0 ? (
-                          <TableTr>
-                            <TableTd colSpan={3} ta="center">
-                              <Text size="sm" c="dimmed">
-                                No Data available.
-                              </Text>
-                            </TableTd>
-                          </TableTr>
+                          <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
                         ) : (
                           itemAnalysis.rows.map((row) => (
                             <TableTr key={`row-${row.itemNo}`}>
@@ -1023,260 +891,166 @@ export default function ReportAnalyticsClient({
                       </TableTbody>
                     </Table>
                   </TableScrollContainer>
-
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     <div>
-                      <Text size="sm" fw={700} mb={6}>
-                        Top 5 Most Learned
-                      </Text>
+                      <Text size="sm" fw={700} mb={6}>Top 5 Most Learned</Text>
                       <TableScrollContainer minWidth={420} type="native">
-                      <Table
-                        verticalSpacing="sm"
-                        striped={false}
-                        highlightOnHover
-                        style={{ width: "max-content", minWidth: 420 }}
-                      >
-                        <TableThead>
-                          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                            <TableTh w={90} ta="center" style={{ color: "#ffffff" }}>
-                              Rank
-                            </TableTh>
-                            <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                              Item No.
-                            </TableTh>
-                            <TableTh style={{ color: "#ffffff" }}>Objectives</TableTh>
-                          </TableTr>
-                        </TableThead>
-                        <TableTbody>
-                          {itemAnalysisLoading ? (
-                            <TableTr>
-                              <TableTd colSpan={3}>
-                                <Skeleton height={28} radius="sm" />
-                              </TableTd>
+                        <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 420 }}>
+                          <TableThead>
+                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                              <TableTh w={90} ta="center" style={{ color: "#ffffff" }}>Rank</TableTh>
+                              <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Item No.</TableTh>
+                              <TableTh style={{ color: "#ffffff" }}>Objectives</TableTh>
                             </TableTr>
-                          ) : itemAnalysis.topMostLearned.length === 0 ? (
-                            <TableTr>
-                              <TableTd colSpan={3} ta="center">
-                                <Text size="sm" c="dimmed">
-                                  No Data available.
-                                </Text>
-                              </TableTd>
-                            </TableTr>
-                          ) : (
-                            itemAnalysis.topMostLearned.map((row) => (
-                              <TableTr key={`most-${row.itemNo}`}>
-                                <TableTd ta="center">{row.rank}</TableTd>
-                                <TableTd ta="center">{row.itemNo}</TableTd>
-                                <TableTd>{row.objective}</TableTd>
-                              </TableTr>
-                            ))
-                          )}
-                        </TableTbody>
-                      </Table>
+                          </TableThead>
+                          <TableTbody>
+                            {itemAnalysisLoading ? (
+                              <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
+                            ) : itemAnalysis.topMostLearned.length === 0 ? (
+                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
+                            ) : (
+                              itemAnalysis.topMostLearned.map((row) => (
+                                <TableTr key={`most-${row.itemNo}`}>
+                                  <TableTd ta="center">{row.rank}</TableTd>
+                                  <TableTd ta="center">{row.itemNo}</TableTd>
+                                  <TableTd>{row.objective}</TableTd>
+                                </TableTr>
+                              ))
+                            )}
+                          </TableTbody>
+                        </Table>
                       </TableScrollContainer>
                     </div>
-
                     <div>
-                      <Text size="sm" fw={700} mb={6}>
-                        Top 5 Least Learned
-                      </Text>
+                      <Text size="sm" fw={700} mb={6}>Top 5 Least Learned</Text>
                       <TableScrollContainer minWidth={420} type="native">
-                      <Table
-                        verticalSpacing="sm"
-                        striped={false}
-                        highlightOnHover
-                        style={{ width: "max-content", minWidth: 420 }}
-                      >
-                        <TableThead>
-                          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                            <TableTh w={90} ta="center" style={{ color: "#ffffff" }}>
-                              Rank
-                            </TableTh>
-                            <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>
-                              Item No.
-                            </TableTh>
-                            <TableTh style={{ color: "#ffffff" }}>Objectives</TableTh>
-                          </TableTr>
-                        </TableThead>
-                        <TableTbody>
-                          {itemAnalysisLoading ? (
-                            <TableTr>
-                              <TableTd colSpan={3}>
-                                <Skeleton height={28} radius="sm" />
-                              </TableTd>
+                        <Table verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "max-content", minWidth: 420 }}>
+                          <TableThead>
+                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                              <TableTh w={90} ta="center" style={{ color: "#ffffff" }}>Rank</TableTh>
+                              <TableTh w={120} ta="center" style={{ color: "#ffffff" }}>Item No.</TableTh>
+                              <TableTh style={{ color: "#ffffff" }}>Objectives</TableTh>
                             </TableTr>
-                          ) : itemAnalysis.topLeastLearned.length === 0 ? (
-                            <TableTr>
-                              <TableTd colSpan={3} ta="center">
-                                <Text size="sm" c="dimmed">
-                                  No Data available.
-                                </Text>
-                              </TableTd>
-                            </TableTr>
-                          ) : (
-                            itemAnalysis.topLeastLearned.map((row) => (
-                              <TableTr key={`least-${row.itemNo}`}>
-                                <TableTd ta="center">{row.rank}</TableTd>
-                                <TableTd ta="center">{row.itemNo}</TableTd>
-                                <TableTd>{row.objective}</TableTd>
-                              </TableTr>
-                            ))
-                          )}
-                        </TableTbody>
-                      </Table>
+                          </TableThead>
+                          <TableTbody>
+                            {itemAnalysisLoading ? (
+                              <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
+                            ) : itemAnalysis.topLeastLearned.length === 0 ? (
+                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
+                            ) : (
+                              itemAnalysis.topLeastLearned.map((row) => (
+                                <TableTr key={`least-${row.itemNo}`}>
+                                  <TableTd ta="center">{row.rank}</TableTd>
+                                  <TableTd ta="center">{row.itemNo}</TableTd>
+                                  <TableTd>{row.objective}</TableTd>
+                                </TableTr>
+                              ))
+                            )}
+                          </TableTbody>
+                        </Table>
                       </TableScrollContainer>
                     </div>
                   </div>
                 </Stack>
               )}
-            </ReportsCollapsible>
-          </div>
+            </Accordion.Panel>
+          </Accordion.Item>
         )}
 
         {activeTab === "proficiency_mpl" && (
-          <div className="rounded-b-2xl rounded-tr-xl p-4 bg-white -mt-[1px] space-y-6">
-            <ReportsCollapsible
-              title="Proficiency Level"
-              subtitle="This section shows the proficiency level matrix."
-              opened={proficiencyLevelTableOpened}
-              onToggle={() => setProficiencyLevelTableOpened((prev) => !prev)}
-            >
-              {!selectedSubject ? (
-                <SectionEmptyState message="Select a subject to view proficiency results." />
-              ) : !selectedCard ? (
-                <SectionEmptyState message="No Data available." />
-              ) : !selectedCard.isFinalized ? (
-                <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
-              ) : (
-                <TableScrollContainer minWidth={920} type="native">
-                  <Table
-                    verticalSpacing={0}
-                    striped={false}
-                    style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}
-                  >
-                    <TableThead>
-                      <TableTr style={{ backgroundColor: "#E8E7CE" }}>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Highly Proficient Learners
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Proficient Learners
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Nearly Proficient Learners
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Low Proficient Learners
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Not Proficient Learners
-                        </TableTh>
-                        <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          OVER ALL
-                        </TableTh>
-                      </TableTr>
-                      <TableTr style={{ backgroundColor: "#F2F2F2" }}>
-                        {Array.from({ length: 5 }).flatMap((_, i) => [
-                          <TableTh key={`m-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Male
-                          </TableTh>,
-                          <TableTh key={`f-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Female
-                          </TableTh>,
-                          <TableTh key={`t-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Total
-                          </TableTh>,
-                        ])}
-                      </TableTr>
-                    </TableThead>
-                    <TableTbody>
-                      <TableTr>
-                        <TableTd
-                          colSpan={16}
-                          ta="center"
-                          style={{ border: "1px solid #b5b8be", color: "#6B7280", padding: "10px 8px" }}
-                        >
-                          No Data available
-                        </TableTd>
-                      </TableTr>
-                    </TableTbody>
-                  </Table>
-                </TableScrollContainer>
-              )}
-            </ReportsCollapsible>
+          <>
+            <Accordion.Item value="proficiencyLevel">
+              <Accordion.Control>
+                <h2 className="text-2xl font-bold leading-tight">Proficiency Level</h2>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <p className="mb-2 text-sm text-[#808898]">This section shows the proficiency level matrix.</p>
+                {!selectedSubject ? (
+                  <SectionEmptyState message="Select a subject to view proficiency results." />
+                ) : !selectedCard ? (
+                  <SectionEmptyState message="No Data available." />
+                ) : !selectedCard.isFinalized ? (
+                  <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
+                ) : (
+                  <TableScrollContainer minWidth={920} type="native">
+                    <Table verticalSpacing={0} striped={false} style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
+                      <TableThead>
+                        <TableTr style={{ backgroundColor: "#E8E7CE" }}>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Highly Proficient Learners</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Proficient Learners</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Nearly Proficient Learners</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Low Proficient Learners</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Not Proficient Learners</TableTh>
+                          <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>OVER ALL</TableTh>
+                        </TableTr>
+                        <TableTr style={{ backgroundColor: "#F2F2F2" }}>
+                          {Array.from({ length: 5 }).flatMap((_, i) => [
+                            <TableTh key={`m-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Male</TableTh>,
+                            <TableTh key={`f-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Female</TableTh>,
+                            <TableTh key={`t-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Total</TableTh>,
+                          ])}
+                        </TableTr>
+                      </TableThead>
+                      <TableTbody>
+                        <TableTr>
+                          <TableTd colSpan={16} ta="center" style={{ border: "1px solid #b5b8be", color: "#6B7280", padding: "10px 8px" }}>
+                            No Data available
+                          </TableTd>
+                        </TableTr>
+                      </TableTbody>
+                    </Table>
+                  </TableScrollContainer>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
 
-            <ReportsCollapsible
-              title="Learners Who Attained or Exceeded"
-              subtitle="This section shows the LAEMPL matrix."
-              opened={laemplTableOpened}
-              onToggle={() => setLaemplTableOpened((prev) => !prev)}
-            >
-              {!selectedSubject ? (
-                <SectionEmptyState message="Select a subject to view proficiency results." />
-              ) : !selectedCard ? (
-                <SectionEmptyState message="No Data available." />
-              ) : !selectedCard.isFinalized ? (
-                <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
-              ) : (
-                <TableScrollContainer minWidth={920} type="native">
-                  <Table
-                    verticalSpacing={0}
-                    striped={false}
-                    style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}
-                  >
-                    <TableThead>
-                      <TableTr style={{ backgroundColor: "#E8E7CE" }}>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Enrolled Learners
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Test Takers
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Number of Learners who attained or exceeded the Minimum Proficiency
-                          Level (60%)
-                        </TableTh>
-                        <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          Percentage of LAEMPL
-                        </TableTh>
-                        <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          MEAN
-                        </TableTh>
-                        <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                          MPS
-                        </TableTh>
-                      </TableTr>
-                      <TableTr style={{ backgroundColor: "#F2F2F2" }}>
-                        {Array.from({ length: 4 }).flatMap((_, i) => [
-                          <TableTh key={`laempl-m-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Male
-                          </TableTh>,
-                          <TableTh key={`laempl-f-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Female
-                          </TableTh>,
-                          <TableTh key={`laempl-t-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>
-                            Total
-                          </TableTh>,
-                        ])}
-                      </TableTr>
-                    </TableThead>
-                    <TableTbody>
-                      <TableTr>
-                        <TableTd
-                          colSpan={14}
-                          ta="center"
-                          style={{ border: "1px solid #b5b8be", color: "#6B7280", padding: "10px 8px" }}
-                        >
-                          No Data available
-                        </TableTd>
-                      </TableTr>
-                    </TableTbody>
-                  </Table>
-                </TableScrollContainer>
-              )}
-            </ReportsCollapsible>
-          </div>
+            <Accordion.Item value="laempl">
+              <Accordion.Control>
+                <h2 className="text-2xl font-bold leading-tight">Learners Who Attained or Exceeded</h2>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <p className="mb-2 text-sm text-[#808898]">This section shows the LAEMPL matrix.</p>
+                {!selectedSubject ? (
+                  <SectionEmptyState message="Select a subject to view proficiency results." />
+                ) : !selectedCard ? (
+                  <SectionEmptyState message="No Data available." />
+                ) : !selectedCard.isFinalized ? (
+                  <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
+                ) : (
+                  <TableScrollContainer minWidth={920} type="native">
+                    <Table verticalSpacing={0} striped={false} style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
+                      <TableThead>
+                        <TableTr style={{ backgroundColor: "#E8E7CE" }}>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Enrolled Learners</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Test Takers</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Number of Learners who attained or exceeded the Minimum Proficiency Level (60%)</TableTh>
+                          <TableTh colSpan={3} ta="center" style={{ border: "1px solid #b5b8be" }}>Percentage of LAEMPL</TableTh>
+                          <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>MEAN</TableTh>
+                          <TableTh rowSpan={2} ta="center" style={{ border: "1px solid #b5b8be" }}>MPS</TableTh>
+                        </TableTr>
+                        <TableTr style={{ backgroundColor: "#F2F2F2" }}>
+                          {Array.from({ length: 4 }).flatMap((_, i) => [
+                            <TableTh key={`laempl-m-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Male</TableTh>,
+                            <TableTh key={`laempl-f-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Female</TableTh>,
+                            <TableTh key={`laempl-t-${i}`} ta="center" style={{ border: "1px solid #b5b8be" }}>Total</TableTh>,
+                          ])}
+                        </TableTr>
+                      </TableThead>
+                      <TableTbody>
+                        <TableTr>
+                          <TableTd colSpan={14} ta="center" style={{ border: "1px solid #b5b8be", color: "#6B7280", padding: "10px 8px" }}>
+                            No Data available
+                          </TableTd>
+                        </TableTr>
+                      </TableTbody>
+                    </Table>
+                  </TableScrollContainer>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
+          </>
         )}
+        </Accordion>
       </div>
     </div>
   );

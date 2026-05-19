@@ -1,5 +1,22 @@
 import { supabase } from "@/lib/exam-supabase";
 
+// ─── In-memory session cache ──────────────────────────────────────────────────
+// Keyed by a string derived from function arguments. Cleared on full page reload.
+const _cache = new Map<string, unknown>();
+
+function cacheGet<T>(key: string): T | undefined {
+  return _cache.has(key) ? (_cache.get(key) as T) : undefined;
+}
+function cacheSet<T>(key: string, value: T): T {
+  _cache.set(key, value);
+  return value;
+}
+
+/** Call after exam finalization so stale report data is not served. */
+export function invalidateReportsCache(): void {
+  _cache.clear();
+}
+
 export type ReportExamOption = {
   examId: number;
   title: string;
@@ -404,6 +421,8 @@ export async function fetchReportExamsForSection(
 }
 
 export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
+  const cached = cacheGet<ReportExamCard[]>("examCards");
+  if (cached) return cached;
   const maxAttempts = 3;
   let data: RawAssignmentRow[] | null = null;
   let finalError: { message: string } | null = null;
@@ -476,7 +495,7 @@ export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
     });
   }
 
-  return Array.from(grouped.values()).sort((a, b) => {
+  return cacheSet("examCards", Array.from(grouped.values()).sort((a, b) => {
     const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     if (ga !== gb) return ga - gb;
@@ -486,10 +505,12 @@ export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
     if (tb !== ta) return tb - ta;
 
     return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-  });
+  }));
 }
 
 export async function fetchReportSectionCards(): Promise<ReportSectionCard[]> {
+  const cached = cacheGet<ReportSectionCard[]>("sectionCards");
+  if (cached) return cached;
   const examCards = await fetchReportExamCards();
   const activeSections = await fetchActiveSectionsForReports();
   const grouped = new Map<number, ReportSectionCard>();
@@ -562,19 +583,22 @@ export async function fetchReportSectionCards(): Promise<ReportSectionCard[]> {
     isFinalized: card.totalExams > 0 && card.finalizedExams === card.totalExams,
   }));
 
-  return cards.sort((a, b) => {
+  return cacheSet("sectionCards", cards.sort((a, b) => {
     const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     if (ga !== gb) return ga - gb;
     return a.sectionName.localeCompare(b.sectionName, undefined, {
       sensitivity: "base",
     });
-  });
+  }));
 }
 
 export async function fetchReportSectionOverview(
   sectionId: number,
 ): Promise<ReportSectionOverview | null> {
+  const cacheKey = `sectionOverview:${sectionId}`;
+  const cached = cacheGet<ReportSectionOverview | null>(cacheKey);
+  if (cached !== undefined) return cached;
   const sectionCards = await fetchReportSectionCards();
   const sectionCard = sectionCards.find((card) => card.sectionId === sectionId) ?? null;
 
@@ -681,7 +705,7 @@ export async function fetchReportSectionOverview(
   const finalizedExams = sectionCard?.finalizedExams ?? 0;
   const isFinalized = totalExams > 0 && finalizedExams === totalExams;
 
-  return {
+  const result: ReportSectionOverview = {
     sectionId: sectionOnly.section_id,
     sectionName: sectionOnly.name,
     gradeLevelId: sectionOnly.grade_level_id,
@@ -699,12 +723,16 @@ export async function fetchReportSectionOverview(
       }),
     ),
   };
+  return cacheSet(cacheKey, result);
 }
 
 export async function fetchLatestScoresForAssignments(
   assignmentIds: number[],
 ): Promise<number[]> {
   if (assignmentIds.length === 0) return [];
+  const cacheKey = `scores:${[...assignmentIds].sort().join(",")}`;
+  const cached = cacheGet<number[]>(cacheKey);
+  if (cached) return cached;
 
   const { data, error } = await supabase
     .from("scores")
@@ -727,7 +755,7 @@ export async function fetchLatestScoresForAssignments(
     latestByEnrollment.set(row.enrollment_id, row.calculated_score ?? 0);
   }
 
-  return Array.from(latestByEnrollment.values());
+  return cacheSet(cacheKey, Array.from(latestByEnrollment.values()));
 }
 
 export function computeExamDetailsSummary(
@@ -789,6 +817,9 @@ export async function fetchItemAnalysisSummary(
     topLeastLearned: [],
   };
   if (!Number.isFinite(examId)) return empty;
+  const cacheKey = `itemAnalysis:${examId}:${[...assignmentIds].sort().join(",")}`;
+  const cached = cacheGet<ItemAnalysisSummary>(cacheKey);
+  if (cached) return cached;
 
   const { data: examData, error: examError } = await supabase
     .from("exams")
@@ -894,11 +925,11 @@ export async function fetchItemAnalysisSummary(
     .slice(0, 5)
     .map((row, idx) => ({ ...row, rank: idx + 1 }));
 
-  return {
+  return cacheSet(cacheKey, {
     rows: rowsWithRank,
     topMostLearned,
     topLeastLearned,
-  };
+  });
 }
 
 export async function fetchProficiencyRowsForAssignments(
@@ -906,6 +937,10 @@ export async function fetchProficiencyRowsForAssignments(
   totalItems: number,
 ): Promise<ProficiencyRow[]> {
   if (assignmentIds.length === 0 || totalItems <= 0) return [];
+
+  const cacheKey = `proficiency:${[...assignmentIds].sort((a, b) => a - b).join(',')}:${totalItems}`;
+  const cached = cacheGet<ProficiencyRow[]>(cacheKey);
+  if (cached) return cached;
 
   const { data, error } = await supabase
     .from("scores")
@@ -946,7 +981,8 @@ export async function fetchProficiencyRowsForAssignments(
     });
   }
 
-  return Array.from(latestByEnrollment.values()).sort((a, b) =>
+  const result = Array.from(latestByEnrollment.values()).sort((a, b) =>
     a.pupilName.localeCompare(b.pupilName, undefined, { sensitivity: "base" }),
   );
+  return cacheSet(cacheKey, result);
 }

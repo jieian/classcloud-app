@@ -45,10 +45,9 @@ interface AssessmentReportsBrowserProps {
 export default function AssessmentReportsBrowser({
   initialGradeLevelId = null,
 }: AssessmentReportsBrowserProps) {
-  const OPEN_GROUPS_STORAGE_KEY = "assessment-reports:open-grade-groups";
+  const OPEN_GROUPS_STORAGE_KEY = "assessment-reports:open-grade-groups:v2";
   const GRADE_FILTER_STORAGE_KEY = "assessment-reports:grade-filter";
   const SEARCH_STORAGE_KEY = "assessment-reports:search-query";
-  const LAST_GRADE_FOCUS_STORAGE_KEY = "assessment-reports:last-grade-focus";
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryGrade = Number(searchParams.get("gradeLevelId"));
@@ -63,7 +62,6 @@ export default function AssessmentReportsBrowser({
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
   const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
   const [restoredFromSession, setRestoredFromSession] = useState(false);
-  const [hasStoredOpenGroups, setHasStoredOpenGroups] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -115,7 +113,6 @@ export default function AssessmentReportsBrowser({
           );
           const hasNewFormat = values.some((value) => value.startsWith("grade-"));
           if (hasNewFormat) {
-            setHasStoredOpenGroups(true);
             setOpenGradeGroups(values);
           }
         }
@@ -184,13 +181,6 @@ export default function AssessmentReportsBrowser({
     return openGradeGroups.filter((value) => validGroupValues.has(value));
   }, [groupedCards, openGradeGroups]);
 
-  useEffect(() => {
-    if (!restoredFromSession) return;
-    if (hasStoredOpenGroups) return;
-    if (groupedCards.length === 0) return;
-    if (openGradeGroups.length > 0) return;
-    setOpenGradeGroups(groupedCards.map((group) => group.accordionValue));
-  }, [groupedCards, hasStoredOpenGroups, openGradeGroups.length, restoredFromSession]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !restoredFromSession) return;
@@ -211,30 +201,6 @@ export default function AssessmentReportsBrowser({
     window.sessionStorage.setItem(OPEN_GROUPS_STORAGE_KEY, JSON.stringify(openGradeGroups));
   }, [openGradeGroups, restoredFromSession]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !restoredFromSession) return;
-    if (openGradeGroups.length === 0) return;
-    const lastOpened = openGradeGroups[openGradeGroups.length - 1];
-    if (lastOpened) {
-      window.sessionStorage.setItem(LAST_GRADE_FOCUS_STORAGE_KEY, lastOpened);
-    }
-  }, [openGradeGroups, restoredFromSession]);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !restoredFromSession) return;
-    if (groupedCards.length === 0) return;
-    const lastGradeValue = window.sessionStorage.getItem(LAST_GRADE_FOCUS_STORAGE_KEY);
-    if (!lastGradeValue) return;
-
-    const exists = groupedCards.some((group) => group.accordionValue === lastGradeValue);
-    if (!exists) {
-      return;
-    }
-
-    setOpenGradeGroups((prev) =>
-      prev.includes(lastGradeValue) ? prev : [...prev, lastGradeValue],
-    );
-  }, [groupedCards, restoredFromSession]);
 
   const totalVisibleCards = groupedCards.reduce((sum, group) => sum + group.cards.length, 0);
 
@@ -346,12 +312,6 @@ export default function AssessmentReportsBrowser({
                         radius="md"
                         withBorder
                         onClick={() => {
-                          if (typeof window !== "undefined") {
-                            window.sessionStorage.setItem(
-                              LAST_GRADE_FOCUS_STORAGE_KEY,
-                              group.accordionValue,
-                            );
-                          }
                           router.push(
                             `/assessment-reports/report-details/${card.gradeLevelId}/${card.sectionId}`,
                           );

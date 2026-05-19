@@ -1,7 +1,8 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-
+import { revalidateTag } from "next/cache";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (!levelNumber) return 30;
   if (levelNumber <= 2) return 30;
@@ -165,6 +166,7 @@ const _POST = async function(request: Request) {
     createdExamIds.push(examRow.exam_id);
   }
 
+  revalidateTag(EXAMS_CACHE_TAG, "minutes");
   return Response.json({
     exam_ids: createdExamIds,
     skipped_sections: skippedSectionIds.length > 0 ? skippedSectionIds : undefined,

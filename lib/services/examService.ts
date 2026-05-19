@@ -135,23 +135,9 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
     .order('created_at', { ascending: false });
 
   if (sectionIds !== undefined && sectionIds.length > 0) {
-    // Resolve exam IDs that have at least one assignment in the teacher's sections.
-    const { data: assignmentRows, error: assignmentError } = await supabase
-      .from('exam_assignments')
-      .select('exam_id')
-      .in('section_id', sectionIds);
-
-    if (assignmentError) {
-      console.error('[examService] exam_assignments lookup error:', assignmentError.message);
-      return [];
-    }
-
-    const examIds = [
-      ...new Set((assignmentRows ?? []).map((r: { exam_id: number }) => r.exam_id)),
-    ];
-    if (examIds.length === 0) return [];
-
-    query = query.in('exam_id', examIds);
+    // Push the section filter into the join so Supabase resolves it in a single query
+    // instead of a pre-fetch of exam IDs followed by a second round-trip.
+    query = query.in('exam_assignments.section_id', sectionIds);
   }
 
   const { data, error } = await query;

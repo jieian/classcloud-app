@@ -49,19 +49,14 @@ import {
 } from "@/lib/services/examService";
 import type { ExamWithRelations, GradeLevel, Section } from "@/lib/exam-supabase";
 import { useAuth } from "@/context/AuthContext";
-import { fetchTeacherClassAssignments, fetchSchoolYears } from "@/lib/services/classService";
-import { fetchGradeLevels } from "@/lib/services/gradeLevelService";
-import { fetchActiveQuarters } from "@/lib/services/quarterService";
-import { fetchActiveSections } from "@/lib/services/sectionService";
-import {
-  fetchSubjectsWithGradeLevels,
-  type SubjectWithGradeLevel,
-} from "@/lib/services/subjectService";
+import { fetchTeacherClassAssignments } from "@/lib/services/classService";
+import type { SubjectWithGradeLevel } from "@/lib/services/subjectService";
+import type { ExamInitialData } from "@/app/(app)/exam/_lib/examServerService";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 import EmptySearchState from "@/components/EmptySearchState";
 
-export default function ExamPageClient() {
+export default function ExamPageClient({ initialData }: { initialData: ExamInitialData | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, permissions, loading: authLoading, firstName, lastName } =
@@ -174,8 +169,8 @@ export default function ExamPageClient() {
   const [teacherAssignments, setTeacherAssignments] = useState<
     { section_id: number; curriculum_subject_id: number; subject_id: number }[]
   >([]);
-  const [subjectCatalog, setSubjectCatalog] = useState<SubjectWithGradeLevel[]>(
-    [],
+  const [subjectCatalog] = useState<SubjectWithGradeLevel[]>(
+    initialData?.subjects ?? [],
   );
 
   // Admin with teaching load can switch between views; others stay in their natural view.
@@ -187,10 +182,10 @@ export default function ExamPageClient() {
   // In admin view: no section/subject filter (see all). In faculty view: restrict to assigned.
   const effectiveAllowedSectionIds = effectiveFullAccess ? null : allowedSectionIds;
 
-	  const [allGradeLevels, setAllGradeLevels] = useState<GradeLevel[]>([]);
-  const [allSections, setAllSections] = useState<Section[]>([]);
-	  const [hasActiveSchoolYear, setHasActiveSchoolYear] = useState(false);
-	  const [hasActiveTerm, setHasActiveTerm] = useState(false);
+  const [allGradeLevels] = useState<GradeLevel[]>(initialData?.gradeLevels ?? []);
+  const [allSections] = useState<Section[]>(initialData?.sections ?? []);
+  const [hasActiveSchoolYear] = useState(initialData?.activeSyId != null);
+  const [hasActiveTerm] = useState(initialData?.activeQuarterId != null);
 	  const showViewToggleVisible = showViewToggle && hasActiveSchoolYear && hasActiveTerm;
 
 	  const getVisibleAssignments = useCallback((exam: ExamWithRelations) => {
@@ -228,20 +223,9 @@ export default function ExamPageClient() {
     setDbError(null);
 
     const init = async () => {
-      const [years, quarters, assignments, gradeLevels, subjects, sections] = await Promise.all([
-        fetchSchoolYears(),
-        fetchActiveQuarters(),
-        user?.id ? fetchTeacherClassAssignments(user.id) : Promise.resolve([]),
-        fetchGradeLevels(),
-        fetchSubjectsWithGradeLevels(),
-        fetchActiveSections(),
-      ]);
-
-      setHasActiveSchoolYear(years.some((y) => y.is_active));
-      setHasActiveTerm(quarters.some((q) => q.is_active));
-      setAllGradeLevels(gradeLevels);
-      setSubjectCatalog(subjects);
-      setAllSections(sections);
+      const assignments = user?.id
+        ? await fetchTeacherClassAssignments(user.id)
+        : [];
 
       if (user?.id) {
         setTeacherAssignments(assignments);

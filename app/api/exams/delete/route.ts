@@ -1,7 +1,8 @@
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
-
+import { revalidateTag } from "next/cache";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 const _DELETE = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -95,6 +96,7 @@ const _DELETE = async function(request: Request) {
     );
   }
 
+  revalidateTag(EXAMS_CACHE_TAG, "minutes");
   return Response.json({ success: true }, { status: 200 });
 }
 
