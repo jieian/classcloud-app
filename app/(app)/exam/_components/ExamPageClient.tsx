@@ -22,6 +22,8 @@ import {
   Modal,
   TextInput,
   Pagination,
+  Center,
+  ThemeIcon,
 } from "@mantine/core";
 import {
   IconDownload,
@@ -36,6 +38,7 @@ import {
   IconBinoculars,
   IconUser,
   IconCopy,
+  IconClipboardOff,
 } from "@tabler/icons-react";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import ViewExamDetailsModal from "@/components/ViewExamDetailsModal";
@@ -59,7 +62,7 @@ import EmptySearchState from "@/components/EmptySearchState";
 export default function ExamPageClient({ initialData }: { initialData: ExamInitialData | null }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { user, permissions, loading: authLoading, firstName, lastName } =
+  const { user, roles, permissions, loading: authLoading, firstName, lastName } =
     useAuth();
   const [exams, setExams] = useState<ExamWithRelations[]>([]);
   const [filteredExams, setFilteredExams] = useState<ExamWithRelations[]>([]);
@@ -160,6 +163,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
   }, []);
 
   const hasFullAccess = permissions.includes("exams.full_access");
+  const isAdministrator = roles.some((r) => r.name === "Administrator");
 
   // Allowed section/subject IDs for teachers with partial access (null = no filter)
   const [allowedSectionIds, setAllowedSectionIds] =
@@ -176,7 +180,10 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
   // Admin with teaching load can switch between views; others stay in their natural view.
   // effectiveFullAccess is false when an admin opts into Faculty View.
   const showViewToggle =
-    hasFullAccess && allowedSectionIds !== null && allowedSectionIds.size > 0;
+    isAdministrator &&
+    allowedSectionIds !== null &&
+    allowedSectionIds.size > 0 &&
+    assignedSectionSubjectPairs.size > 0;
   const effectiveFullAccess = hasFullAccess && viewMode === "admin";
 
   // In admin view: no section/subject filter (see all). In faculty view: restrict to assigned.
@@ -193,9 +200,12 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 	    if (!effectiveAllowedSectionIds) return assignments;
 	    return assignments.filter((a) => {
 	      const sectionId = a.sections?.section_id;
-	      return sectionId != null && effectiveAllowedSectionIds.has(sectionId);
+	      if (sectionId == null) return false;
+	      if (!effectiveAllowedSectionIds.has(sectionId)) return false;
+	      const pair = `${sectionId}-${exam.curriculum_subject_id}`;
+	      return assignedSectionSubjectPairs.has(pair);
 	    });
-	  }, [effectiveAllowedSectionIds]);
+	  }, [effectiveAllowedSectionIds, assignedSectionSubjectPairs]);
 
   const fetchExams = async (sectionIds?: number[]) => {
     fetchSectionIdsRef.current = sectionIds;
@@ -700,33 +710,38 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   return (
     <>
-      <div className="relative mb-3">
-        <h1 className="text-3xl font-bold text-[#597D37]">
-          Examinations{" "}
-          {!loading && hasActiveSchoolYear && hasActiveTerm && (
-            <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
-          )}
-        </h1>
-        <p className="text-sm text-[#808898]">
-          Manage and track all examinations
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2">
+        <div>
+          <h1 className="text-3xl font-bold text-[#597D37]">
+            Examinations{" "}
+            {!loading && hasActiveSchoolYear && hasActiveTerm && (
+              <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
+            )}
+          </h1>
+          <p className="text-sm text-[#808898]">
+            Manage and track all examinations
+          </p>
+        </div>
 
-        {/* Absolutely positioned so buttons don't add height to this block */}
-        <Stack gap="xs" align="flex-end" style={{ position: "absolute", top: 0, right: 0 }}>
+        {/* Buttons — row on mobile (balanced), column on desktop (right-aligned) */}
+        <div className="flex flex-row sm:flex-col gap-2 sm:items-end sm:shrink-0">
           {showViewToggleVisible && !loading && !authLoading && (
-            <Button
-              variant="outline"
-              color={viewMode === "admin" ? "#298925" : "#4A72AE"}
-              radius="md"
-              leftSection={<IconBinoculars size={16} stroke={1.5} />}
-              onClick={() =>
-                setViewMode(viewMode === "admin" ? "faculty" : "admin")
-              }
-            >
-              {viewMode === "admin"
-                ? "Switch to Faculty View"
-                : "Switch to Admin View"}
-            </Button>
+            <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
+              <Button
+                fullWidth
+                variant="outline"
+                color={viewMode === "admin" ? "#298925" : "#4A72AE"}
+                radius="md"
+                leftSection={<IconBinoculars size={16} stroke={1.5} />}
+                onClick={() =>
+                  setViewMode(viewMode === "admin" ? "faculty" : "admin")
+                }
+              >
+                {viewMode === "admin"
+                  ? "Switch to Faculty View"
+                  : "Switch to Admin View"}
+              </Button>
+            </div>
           )}
           {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
           !effectiveFullAccess ? (
@@ -741,8 +756,9 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
               multiline
               w={240}
             >
-              <div style={{ display: "inline-block" }}>
+              <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
                 <Button
+                  fullWidth
                   color="#4EAE4A"
                   radius="md"
                   onClick={() => router.push("/exam/create")}
@@ -757,7 +773,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
               </div>
             </Tooltip>
           ) : null}
-        </Stack>
+        </div>
       </div>
 
       {/* Error */}
@@ -885,6 +901,37 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           title="No examination found."
           description="Try adjusting your search or filters."
         />
+      ) : !isFiltering && groupedExams.length === 0 ? (
+        <Center
+          py={36}
+          px="md"
+          style={{
+            border: "1px solid var(--mantine-color-gray-3)",
+            borderRadius: "8px",
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Stack gap={10} align="center">
+            <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled" mb="sm">
+              <IconClipboardOff size={28} stroke={1.5} color="#3D4147" />
+            </ThemeIcon>
+            <Stack gap={4} align="center">
+              <Text size="md" fw={700} c="#111827" mb="sm">
+                No examination found.
+              </Text>
+            </Stack>
+            {!effectiveFullAccess && (
+              <Button
+                color="#4EAE4A"
+                radius="md"
+                size="sm"
+                onClick={() => router.push("/exam/create")}
+              >
+                Create Examination
+              </Button>
+            )}
+          </Stack>
+        </Center>
       ) : (
         <Accordion
           multiple

@@ -24,6 +24,7 @@ import {
   ThemeIcon,
   Title,
   Stack,
+  Tooltip,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
@@ -161,6 +162,7 @@ export default function ScanPapersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [exportingCsv, setExportingCsv] = useState(false);
   const [finalizingReports, setFinalizingReports] = useState(false);
+  const [duplicateImageError, setDuplicateImageError] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
@@ -177,6 +179,7 @@ export default function ScanPapersPage() {
   const [manuallyReviewedItems, setManuallyReviewedItems] = useState<Set<number>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const previousFileRef = useRef<File | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -468,6 +471,12 @@ export default function ScanPapersPage() {
 
   // â"€â"€ File handling â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleFileSelected = (file: File) => {
+    const prev = previousFileRef.current;
+    if (prev && file.name === prev.name && file.size === prev.size && file.lastModified === prev.lastModified) {
+      setDuplicateImageError(true);
+      return;
+    }
+    setDuplicateImageError(false);
     setCapturedFile(file);
     setPreviewUrl(URL.createObjectURL(file));
   };
@@ -587,12 +596,13 @@ export default function ScanPapersPage() {
   );
   const needsAttentionCount = needsAttentionItems.length;
 
-  const filteredReviewItems = allReviewItems.filter((item) => {
-    if (reviewFilter === 'detected') return Boolean(detectedAnswers[item]);
-    if (reviewFilter === 'undetected') return !detectedAnswers[item];
-    if (reviewFilter === 'needs_attention') return needsAttentionItems.includes(item);
-    return true;
-  });
+  const getRowHighlight = (item: number): string => {
+    if (reviewFilter === 'all') return '';
+    if (reviewFilter === 'detected' && Boolean(detectedAnswers[item])) return 'bg-gray-200';
+    if (reviewFilter === 'undetected' && !detectedAnswers[item]) return 'bg-gray-200';
+    if (reviewFilter === 'needs_attention' && needsAttentionItems.includes(item)) return 'bg-gray-200';
+    return '';
+  };
 
   const hasManualReviewChanges = allReviewItems.some(
     (item) => (detectedAnswers[item] ?? null) !== (initialDetectedAnswers[item] ?? null),
@@ -758,7 +768,7 @@ export default function ScanPapersPage() {
         </Text>
       ),
       labels: { confirm: 'Save Anyway', cancel: 'Review Answers' },
-      confirmProps: { color: 'orange' },
+      confirmProps: { color: '#4EAE4A' },
       onConfirm: () => {
         void handleSubmit();
       },
@@ -810,12 +820,15 @@ export default function ScanPapersPage() {
 
   // â"€â"€ Answer bubble color â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const confColor = (item: number, ch: string) => {
-    if (answerKey[item] === ch) return 'bg-[#eef8e9] border-[#4EAE4A] text-[#2f5f2d]';
-    if (detectedAnswers[item] === ch) return 'bg-gray-200 border-gray-400 text-gray-900';
+    const isAnswerKey = answerKey[item] === ch;
+    const isDetected = detectedAnswers[item] === ch;
+    if (isDetected && isAnswerKey) return 'bg-green-600 border-green-600 text-white';
+    if (isDetected && !isAnswerKey) return 'bg-[#fef2f2] border-[#f87171] text-[#991b1b]';
+    if (isAnswerKey) return 'bg-[#eef8e9] border-[#4EAE4A] text-[#2f5f2d]';
     return 'bg-white border-gray-200 text-gray-500 hover:border-[#4EAE4A] hover:bg-[#f7fbf4]';
   };
 
-  const handleProceedToReports = async () => {
+  const doFinalizeReports = async () => {
     if (!exam) return;
     setFinalizingReports(true);
     try {
@@ -867,6 +880,22 @@ export default function ScanPapersPage() {
     }
   };
 
+  const handleProceedToReports = () => {
+    if (!exam) return;
+    modals.openConfirmModal({
+      title: 'Proceed to Reports?',
+      children: (
+        <Text size="sm">
+          Are you sure you want to proceed? This will finalize the examination and generate reports.
+        </Text>
+      ),
+      labels: { confirm: 'Proceed', cancel: 'Stay' },
+      confirmProps: { color: '#4EAE4A' },
+      onConfirm: () => { void doFinalizeReports(); },
+      ...mobileConfirmModalProps,
+    });
+  };
+
   const getStatusChip = (studentAnswer: string | null, correctAnswer: string | null) => {
     if (!studentAnswer) {
       return { label: 'Blank', className: 'bg-gray-100 text-gray-600' };
@@ -877,7 +906,7 @@ export default function ScanPapersPage() {
     if (studentAnswer === correctAnswer) {
       return { label: 'Correct', className: 'bg-[#eef8e9] text-[#2f5f2d]' };
     }
-    return { label: 'Wrong', className: 'bg-gray-200 text-gray-800' };
+    return { label: 'Wrong', className: 'bg-[#fef2f2] text-[#991b1b]' };
   };
   const STATUS_CHIP_CLASS = 'inline-flex w-[64px] items-center justify-center text-[10px] font-medium px-1.5 py-0.5 rounded';
 
@@ -1012,17 +1041,17 @@ export default function ScanPapersPage() {
               Download Results
             </Button>
             {exam.is_locked ? (
-              <Button
-                variant="filled"
-                size="sm"
-                w={isMobile ? '100%' : 180}
-                styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
-                onClick={handleProceedToReports}
-                loading={finalizingReports}
-                disabled={finalizingReports}
-              >
-                Proceed to Reports
-              </Button>
+              <Tooltip label="This examination has already been proceeded." withArrow>
+                <Button
+                  variant="outline"
+                  color="gray"
+                  size="sm"
+                  w={isMobile ? '100%' : 180}
+                  disabled
+                >
+                  Proceed to Reports
+                </Button>
+              </Tooltip>
             ) : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
               <Button
                 variant="filled"
@@ -1155,15 +1184,21 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 {!isAdminView && (
                                   <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                    <Button
-                                      size="xs"
-                                      radius="md"
-                                      color={hasScanned ? "yellow" : "#4EAE4A"}
-                                      onClick={() => handleScanStudent(student)}
-                                      disabled={exam.is_locked}
+                                    <Tooltip
+                                      label="This examination has already been proceeded."
+                                      disabled={!exam.is_locked}
+                                      withArrow
                                     >
-                                      {hasScanned ? 'Rescan' : 'Scan'}
-                                    </Button>
+                                      <Button
+                                        size="xs"
+                                        radius="md"
+                                        color={hasScanned ? "yellow" : "#4EAE4A"}
+                                        onClick={() => handleScanStudent(student)}
+                                        disabled={exam.is_locked}
+                                      >
+                                        {hasScanned ? 'Rescan' : 'Scan'}
+                                      </Button>
+                                    </Tooltip>
                                   </TableTd>
                                 )}
                               </TableTr>
@@ -1209,15 +1244,21 @@ export default function ScanPapersPage() {
                                 </TableTd>
                                 {!isAdminView && (
                                   <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                    <Button
-                                      size="xs"
-                                      radius="md"
-                                      color={hasScanned ? "yellow" : "#4EAE4A"}
-                                      onClick={() => handleScanStudent(student)}
-                                      disabled={exam.is_locked}
+                                    <Tooltip
+                                      label="This examination has already been proceeded."
+                                      disabled={!exam.is_locked}
+                                      withArrow
                                     >
-                                      {hasScanned ? 'Rescan' : 'Scan'}
-                                    </Button>
+                                      <Button
+                                        size="xs"
+                                        radius="md"
+                                        color={hasScanned ? "yellow" : "#4EAE4A"}
+                                        onClick={() => handleScanStudent(student)}
+                                        disabled={exam.is_locked}
+                                      >
+                                        {hasScanned ? 'Rescan' : 'Scan'}
+                                      </Button>
+                                    </Tooltip>
                                   </TableTd>
                                 )}
                               </TableTr>
@@ -1326,6 +1367,26 @@ export default function ScanPapersPage() {
                   <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
                     <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Upload Answer Sheet</Text>
 
+                    {duplicateImageError && (
+                      <Alert
+                        variant="filled"
+                        radius="md"
+                        mb="md"
+                        styles={{
+                          root: { backgroundColor: '#FF6666' },
+                          icon: { alignSelf: 'center', marginTop: 0 },
+                        }}
+                        icon={
+                          <ThemeIcon color="white" variant="transparent" size="md">
+                            <IconAlertTriangle size={20} />
+                          </ThemeIcon>
+                        }
+                      >
+                        <Text fw={700} size="sm">Duplicate Image</Text>
+                        <Text size="sm" fs="italic">You already uploaded this image. Please select a different one.</Text>
+                      </Alert>
+                    )}
+
                     {processingError && (
                       <Alert
                         variant="filled"
@@ -1366,6 +1427,8 @@ export default function ScanPapersPage() {
                           <Button
                             variant="default"
                             onClick={() => {
+                              previousFileRef.current = capturedFile;
+                              setDuplicateImageError(false);
                               setPreviewModalOpened(false);
                               setProcessingError(null);
                               setPreviewUrl(null);
@@ -1569,12 +1632,23 @@ export default function ScanPapersPage() {
                       </Text>
                     </Group>
 
-                    <p className="text-xs text-gray-500 text-center">
-                      Student answer is gray. Correct answer key is light green. Click any bubble to correct.
-                    </p>
+                    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border bg-[#eef8e9] border-[#4EAE4A] text-[#2f5f2d] text-[10px] font-bold">A</span>
+                        <span>Answer Key</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border bg-green-600 border-green-600 text-white text-[10px] font-bold">A</span>
+                        <span>Correct</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full border bg-[#fef2f2] border-[#f87171] text-[#991b1b] text-[10px] font-bold">A</span>
+                        <span>Wrong Answer</span>
+                      </div>
+                    </div>
 
                     {/* Bubble columns */}
-                    {filteredReviewItems.length === 0 ? (
+                    {allReviewItems.length === 0 ? (
                       <div className="w-full rounded-xl border border-gray-200 bg-white p-5 text-center">
                         <Text size="sm" fw={700} c="dark">No items found for this filter</Text>
                         <Text size="xs" c="dimmed" mt={4}>
@@ -1591,47 +1665,61 @@ export default function ScanPapersPage() {
                         </Group>
                       </div>
                     ) : (
-                      <div className="flex justify-center gap-6 w-full">
-                      {[1, 2].map(col => {
-                        const splitIndex = Math.ceil(filteredReviewItems.length / 2);
-                        const columnItems = col === 1
-                          ? filteredReviewItems.slice(0, splitIndex)
-                          : filteredReviewItems.slice(splitIndex);
-                        if (columnItems.length === 0) return null;
-                        return (
-                          <div key={col} className="space-y-0.5">
-                            <div className="flex items-center justify-center gap-1.5 py-1 border-b border-[#3f8f3b] bg-[#4EAE4A] rounded-md min-h-[26px] px-1.5 mb-0.5">
-                              <span className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-7 text-center">No.</span>
-                              {choices.map(ch => <span key={ch} className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-8 text-center">{ch}</span>)}
-                              <span className="inline-flex h-6 items-center justify-center text-xs font-semibold text-white w-[64px] text-center">Status</span>
-                            </div>
-                            {columnItems.map(item => {
-                              const correct = answerKey[item];
-                              const detected = detectedAnswers[item];
-                              const statusChip = getStatusChip(detected, correct);
-                              return (
-                                <div key={item} className={`flex items-center justify-center gap-1.5 py-1 px-1 border-b border-gray-100 last:border-b-0 transition-colors ${!detected ? 'bg-gray-50' : ''}`}>
-                                  <span className="text-xs font-semibold w-7 text-center text-gray-600">{item}</span>
-                                  {choices.map(ch => (
-                                    <button
-                                      key={ch}
-                                      type="button"
-                                      onClick={() => toggleAnswer(item, ch)}
-                                      className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition duration-75 hover:scale-105 ${confColor(item, ch)}`}
-                                    >
-                                      {ch}
-                                    </button>
-                                  ))}
-                                  <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
-                                    {statusChip.label}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        );
-                      })}
-                    </div>
+                      <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: 'fit-content', margin: '0 auto' }}>
+                        <div className="flex flex-col md:flex-row justify-center items-start md:divide-x md:divide-gray-100">
+                          {[1, 2].map(col => {
+                            const splitIndex = Math.ceil(allReviewItems.length / 2);
+                            const columnItems = col === 1
+                              ? allReviewItems.slice(0, splitIndex)
+                              : allReviewItems.slice(splitIndex);
+                            if (columnItems.length === 0) return null;
+                            return (
+                              <div key={col} className="overflow-x-auto">
+                                <table className="w-auto border-collapse text-sm">
+                                  <thead>
+                                    <tr className="bg-[#4EAE4A]">
+                                      <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                                      {choices.map(ch => (
+                                        <th key={ch} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">{ch}</th>
+                                      ))}
+                                      <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-100">
+                                    {columnItems.map(item => {
+                                      const correct = answerKey[item];
+                                      const detected = detectedAnswers[item];
+                                      const statusChip = getStatusChip(detected, correct);
+                                      const rowHighlight = getRowHighlight(item);
+                                      return (
+                                        <tr key={item} className={`transition-colors duration-300 ${rowHighlight || (!detected && reviewFilter === 'all' ? 'bg-gray-50' : '')}`}>
+                                          <td className="py-1 px-1 text-center text-xs font-semibold text-gray-600">{item}</td>
+                                          {choices.map(ch => (
+                                            <td key={ch} className="py-1 px-1 text-center">
+                                              <button
+                                                type="button"
+                                                onClick={() => toggleAnswer(item, ch)}
+                                                className={`w-8 h-8 rounded-full border flex items-center justify-center font-bold text-xs transition duration-75 hover:scale-105 ${confColor(item, ch)}`}
+                                              >
+                                                {ch}
+                                              </button>
+                                            </td>
+                                          ))}
+                                          <td className="py-1 px-2 text-center">
+                                            <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                              {statusChip.label}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Paper>
                     )}
 
                   </div>
@@ -1694,44 +1782,46 @@ export default function ScanPapersPage() {
                     {!hasAnswerKey && <p className="text-xs text-amber-600 mt-1">Set answer key to score correctness</p>}
                   </div>
 
-                  {/* Two tables in one shared border */}
-                  <div className="mx-auto w-fit flex gap-4">
-                    {[1, 2].map((col, idx) => {
-                      const itemsInCol1 = Math.ceil(itemResults.length / 2);
-                      const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
-                      return (
-                        <table key={col} className="text-xs border-collapse rounded-md overflow-hidden">
-                          <thead>
-                            <tr className="text-left text-white bg-[#4EAE4A] border-b border-[#3f8f3b]">
-                              <th className="px-4 py-2 font-semibold">Item</th>
-                              <th className="px-4 py-2 font-semibold">Student</th>
-                              <th className="px-4 py-2 font-semibold">Correct</th>
-                              <th className="px-4 py-2 font-semibold">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {colItems.map(r => (
-                              <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
-                                <td className="px-4 py-1.5 font-semibold text-gray-600">{r.item}</td>
-                                <td className="px-4 py-1.5 text-center">{r.student ?? '-'}</td>
-                                <td className="px-4 py-1.5 text-center">{r.correct ?? '-'}</td>
-                                <td className="px-4 py-1.5 text-center">
-                                  {(() => {
-                                    const statusChip = getStatusChip(r.student, r.correct);
-                                    return (
-                                      <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
-                                        {statusChip.label}
-                                      </span>
-                                    );
-                                  })()}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      );
-                    })}
-                  </div>
+                  <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: 'fit-content', margin: '0 auto' }}>
+                    <div className="flex flex-col md:flex-row justify-center items-start md:divide-x md:divide-gray-100">
+                      {[1, 2].map(col => {
+                        const itemsInCol1 = Math.ceil(itemResults.length / 2);
+                        const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
+                        if (colItems.length === 0) return null;
+                        return (
+                          <div key={col} className="overflow-x-auto">
+                            <table className="w-auto border-collapse text-sm">
+                              <thead>
+                                <tr className="bg-[#4EAE4A]">
+                                  <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">Item</th>
+                                  <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Student</th>
+                                  <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Correct</th>
+                                  <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {colItems.map(r => {
+                                  const statusChip = getStatusChip(r.student, r.correct);
+                                  return (
+                                    <tr key={`submit-${r.item}`}>
+                                      <td className="py-1 px-1 text-center text-xs font-semibold text-gray-600">{r.item}</td>
+                                      <td className="py-1 px-2 text-center text-xs text-gray-800">{r.student ?? '-'}</td>
+                                      <td className="py-1 px-2 text-center text-xs text-gray-800">{r.correct ?? '-'}</td>
+                                      <td className="py-1 px-2 text-center">
+                                        <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                          {statusChip.label}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Paper>
                 </Paper>
 
             </Stack>
