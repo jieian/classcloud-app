@@ -301,17 +301,17 @@ export default function SettingsClient() {
       });
       const json = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(json.error ?? "Failed to change password.");
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: "Password changed successfully.",
-        color: "green",
       });
       handleClosePasswordModal();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to change password.",
-        color: "red",
       });
     } finally {
       setSavingPassword(false);
