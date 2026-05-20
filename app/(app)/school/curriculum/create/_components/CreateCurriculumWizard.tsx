@@ -6,7 +6,7 @@ import { Container, rem, Stepper, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { getSupabase } from "@/lib/supabase/client";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import StepCurriculumNameDesc from "./StepCurriculumNameDesc";
@@ -162,10 +162,10 @@ export default function CreateCurriculumWizard() {
           }
           verifiedNameRef.current = trimmed;
         } catch {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message: "Failed to verify curriculum name. Please try again.",
-            color: "red",
           });
           return;
         } finally {
@@ -183,10 +183,10 @@ export default function CreateCurriculumWizard() {
       const allGlIds = Array.from(gradeLevelNames.keys());
       const missing = allGlIds.filter((id) => !coveredGlIds.has(id));
       if (form.values.subjects.length === 0) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "No Subjects",
           message: "Add at least one subject before proceeding.",
-          color: "red",
         });
         return;
       }
@@ -194,10 +194,10 @@ export default function CreateCurriculumWizard() {
         const names = missing
           .map((id) => gradeLevelNames.get(id) ?? `Grade ${id}`)
           .join(", ");
-        notifications.show({
+        notify({
+          type: "error",
           title: "Missing Subjects",
           message: `Every grade level needs at least one subject. Missing: ${names}`,
-          color: "red",
           autoClose: 7000,
         });
         return;
@@ -206,10 +206,10 @@ export default function CreateCurriculumWizard() {
 
     if (form.values.activeStep === 2) {
       if (form.values.subject_groups.length === 0) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "No Subject Groups",
           message: "Create at least one subject group before proceeding.",
-          color: "red",
         });
         return;
       }
@@ -220,10 +220,10 @@ export default function CreateCurriculumWizard() {
         (s) => !occupiedTempIds.has(s.tempId),
       );
       if (unassigned.length > 0) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Unassigned Subjects",
           message: `All subjects must be in a group. ${unassigned.length} subject(s) still unassigned.`,
-          color: "red",
           autoClose: 6000,
         });
         return;
@@ -296,18 +296,18 @@ export default function CreateCurriculumWizard() {
       });
       const data = await res.json();
       if (!res.ok) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: data.error ?? "Failed to create curriculum.",
-          color: "red",
           autoClose: false,
         });
         return;
       }
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: `"${form.values.name.trim()}" has been created.`,
-        color: "green",
       });
       // Notify any open School Year wizard tab that a new curriculum is ready
       try {
@@ -323,10 +323,10 @@ export default function CreateCurriculumWizard() {
       router.replace("/school/curriculum");
       router.refresh();
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Network error. Please try again.",
-        color: "red",
       });
     } finally {
       setLoading(false);

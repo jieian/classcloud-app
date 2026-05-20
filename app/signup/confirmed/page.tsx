@@ -11,7 +11,7 @@ import {
   TextInput,
   ThemeIcon,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconAlertCircle, IconCheck, IconMailForward } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
@@ -107,10 +107,10 @@ export default function SignUpConfirmedPage() {
   const handleResend = async () => {
     const email = (confirmedEmail || resendEmail).trim().toLowerCase();
     if (!email || !EMAIL_REGEX.test(email)) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Invalid Email",
         message: "Please enter a valid email address.",
-        color: "red",
       });
       return;
     }
@@ -126,7 +126,8 @@ export default function SignUpConfirmedPage() {
 
       if (!res.ok) {
         if (data?.code === "MAX_RESENDS_EXCEEDED") {
-          notifications.show({
+          notify({
+            type: "warning",
             title: "Maximum Resends Reached",
             message: "You've reached the limit. Please sign up again.",
             color: "orange",
@@ -136,7 +137,8 @@ export default function SignUpConfirmedPage() {
           return;
         }
         if (data?.code === "NOT_FOUND" || data?.code === "EXPIRED") {
-          notifications.show({
+          notify({
+            type: "warning",
             title: "Link Expired",
             message: "Your signup has expired. Please sign up again.",
             color: "orange",
@@ -144,10 +146,10 @@ export default function SignUpConfirmedPage() {
           setPageState("not_found");
           return;
         }
-        notifications.show({
+        notify({
+          type: data?.code === "EMAIL_DELIVERY_FAILED" ? "warning" : "error",
           title: "Resend Failed",
           message: data?.error ?? "Something went wrong. Please try again.",
-          color: data?.code === "EMAIL_DELIVERY_FAILED" ? "yellow" : "red",
           autoClose: data?.code === "EMAIL_DELIVERY_FAILED" ? false : 5000,
         });
         return;
@@ -156,10 +158,10 @@ export default function SignUpConfirmedPage() {
       setResendSent(true);
       startCooldown();
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Resend Failed",
         message: "Something went wrong. Please try again.",
-        color: "red",
       });
     } finally {
       setResendLoading(false);

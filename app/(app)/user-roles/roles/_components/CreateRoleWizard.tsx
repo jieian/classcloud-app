@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Button, Group, Text } from "@mantine/core";
+import { Container, Text } from "@mantine/core";
+import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import StepRoleInfo from "./StepRoleInfo";
 import StepAssignPerms from "./StepAssignPerms";
@@ -54,10 +55,10 @@ export default function CreateRoleWizard() {
         error instanceof Error
           ? error.message
           : "Failed to load permissions. Please try again.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error Loading Permissions",
         message: errorMessage,
-        color: "red",
         autoClose: 10000,
       });
     } finally {
@@ -130,10 +131,10 @@ export default function CreateRoleWizard() {
       const step1HasErrors = validation.errors.name;
 
       if (step1HasErrors) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please fix all errors before proceeding.",
-          color: "red",
         });
         return;
       }
@@ -147,21 +148,21 @@ export default function CreateRoleWizard() {
           const nameTaken = await checkRoleNameExists(trimmedName);
           if (nameTaken) {
             form.setFieldError("name", "Role name already exists");
-            notifications.show({
+            notify({
+              type: "error",
               title: "Role Name Taken",
               message:
                 "Role name already exists. Please use a different role name.",
-              color: "red",
             });
             return;
           }
           // Cache verified name so going back + forward skips the check
           verifiedNameRef.current = trimmedName;
         } catch (error) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message: "Failed to verify role name. Please try again.",
-            color: "red",
           });
           return;
         } finally {
@@ -173,10 +174,10 @@ export default function CreateRoleWizard() {
       // Validate Step 2 — at least one permission
       const validation = form.validate();
       if (validation.errors.permission_ids) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please select at least one permission.",
-          color: "red",
         });
         return;
       }
@@ -243,10 +244,10 @@ export default function CreateRoleWizard() {
         form.values.permission_ids,
       );
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: `Role "${form.values.name.trim()}" created successfully.`,
-        color: "green",
       });
 
       form.reset();
@@ -258,10 +259,10 @@ export default function CreateRoleWizard() {
         error instanceof Error
           ? error.message
           : "Failed to create role. Please try again.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message,
-        color: "red",
         autoClose: false,
       });
     } finally {
@@ -349,38 +350,15 @@ export default function CreateRoleWizard() {
         {activeContent}
       </VerticalWizardLayout>
 
-      <Group justify="flex-end" mt="xl">
-        <Button variant="default" onClick={handleCancel}>
-          Cancel
-        </Button>
-
-        {form.values.activeStep > 0 && (
-          <Button variant="outline" onClick={prevStep}>
-            Previous
-          </Button>
-        )}
-
-        {form.values.activeStep < 2 ? (
-          <Button
-            onClick={nextStep}
-            disabled={isNextDisabled}
-            loading={checkingName}
-            style={
-              isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
-            }
-          >
-            Next
-          </Button>
-        ) : (
-          <Button
-            onClick={handleCreateRole}
-            loading={loading}
-            style={{ backgroundColor: "#4EAE4A" }}
-          >
-            Create Role
-          </Button>
-        )}
-      </Group>
+      <WizardNavigationButtons
+        onCancel={handleCancel}
+        showPrevious={form.values.activeStep > 0}
+        onPrevious={prevStep}
+        onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateRole}
+        primaryLabel={form.values.activeStep < 2 ? "Next" : "Create Role"}
+        primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
+        primaryLoading={form.values.activeStep < 2 ? checkingName : loading}
+      />
     </Container>
   );
 }

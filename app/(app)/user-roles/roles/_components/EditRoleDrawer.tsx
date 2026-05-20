@@ -17,7 +17,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { IconInfoCircle, IconLock } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import type { RoleWithPermissions, Permission } from "../../users/_lib";
 import {
   fetchAllPermissions,
@@ -146,10 +146,10 @@ export default function EditRoleDrawer({
         error instanceof Error
           ? error.message
           : "Failed to load permissions. Please check console for details.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error Loading Permissions",
         message: errorMessage,
-        color: "red",
         autoClose: 10000,
       });
     } finally {
@@ -183,10 +183,10 @@ export default function EditRoleDrawer({
   const handleSave = () => {
     const validation = form.validate();
     if (validation.hasErrors) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Validation Error",
         message: "Please fix all errors before saving",
-        color: "red",
       });
       return;
     }
@@ -218,10 +218,10 @@ export default function EditRoleDrawer({
         const nameTaken = await checkRoleNameExists(trimmedName, role.role_id);
         if (nameTaken) {
           form.setFieldError("name", "This role name is already in use");
-          notifications.show({
+          notify({
+            type: "error",
             title: "Role Name Already In Use",
             message: "Please use a different role name.",
-            color: "red",
           });
           return;
         }
@@ -235,10 +235,10 @@ export default function EditRoleDrawer({
         form.values.permission_ids.map((id) => parseInt(id)),
       );
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: "Role updated successfully",
-        color: "green",
       });
 
       form.reset();
@@ -249,10 +249,10 @@ export default function EditRoleDrawer({
         error instanceof Error
           ? error.message
           : "Failed to update role. Please try again.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message,
-        color: "red",
       });
     } finally {
       setLoading(false);

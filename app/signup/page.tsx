@@ -20,7 +20,7 @@ import {
   TextInput,
   ThemeIcon,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconCheck, IconMailCheck, IconMailForward, IconX } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
@@ -192,7 +192,8 @@ export default function SignUpPage() {
 
       if (!res.ok) {
         if (data?.code === "MAX_RESENDS_EXCEEDED") {
-          notifications.show({
+          notify({
+            type: "warning",
             title: "Maximum Resends Reached",
             message: "You've reached the resend limit. Please sign up again.",
             color: "orange",
@@ -206,7 +207,8 @@ export default function SignUpPage() {
           return;
         }
         if (data?.code === "NOT_FOUND" || data?.code === "EXPIRED") {
-          notifications.show({
+          notify({
+            type: "warning",
             title: "Session Expired",
             message: "Your previous signup expired. Please sign up again.",
             color: "orange",
@@ -215,10 +217,10 @@ export default function SignUpPage() {
           checkedEmailRef.current = null;
           return;
         }
-        notifications.show({
+        notify({
+          type: data?.code === "EMAIL_DELIVERY_FAILED" ? "warning" : "error",
           title: "Resend Failed",
           message: data?.error ?? "Something went wrong. Please try again.",
-          color: data?.code === "EMAIL_DELIVERY_FAILED" ? "yellow" : "red",
           autoClose: data?.code === "EMAIL_DELIVERY_FAILED" ? false : 5000,
         });
         return;
@@ -227,10 +229,10 @@ export default function SignUpPage() {
       setResendSent(true);
       startCooldown();
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Resend Failed",
         message: "Something went wrong. Please try again.",
-        color: "red",
       });
     } finally {
       setResendLoading(false);
@@ -278,10 +280,10 @@ export default function SignUpPage() {
       .then((res) => res.json())
       .then((data) => setRoles(data.data ?? []))
       .catch(() => {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error Loading Roles",
           message: "Failed to load available roles. Please refresh the page.",
-          color: "red",
         });
       })
       .finally(() => setLoadingRoles(false));
@@ -300,10 +302,10 @@ export default function SignUpPage() {
       const data = await res.json();
       if (!res.ok) {
         if (data?.error) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Email Check Failed",
             message: data.error,
-            color: "red",
           });
         }
         setEmailCheckStatus("idle");
@@ -362,10 +364,10 @@ export default function SignUpPage() {
     }
     if (!allPasswordMet) {
       triggerShake();
-      notifications.show({
+      notify({
+        type: "error",
         title: "Weak Password",
         message: "Please meet all password requirements before proceeding.",
-        color: "red",
       });
       return;
     }
@@ -382,10 +384,10 @@ export default function SignUpPage() {
     }
 
     if (status === "idle") {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Failed to verify email. Please try again.",
-        color: "red",
       });
       return;
     }
@@ -458,10 +460,10 @@ export default function SignUpPage() {
         setTurnstileToken(null);
         turnstileRef.current?.reset();
         triggerShake();
-        notifications.show({
+        notify({
+          type: data.code === "EMAIL_DELIVERY_FAILED" ? "warning" : "error",
           title: "Sign Up Failed",
           message: data.error ?? "Something went wrong. Please try again.",
-          color: data.code === "EMAIL_DELIVERY_FAILED" ? "yellow" : "red",
           autoClose: data.code === "EMAIL_DELIVERY_FAILED" ? false : 5000,
         });
         return;
@@ -473,10 +475,10 @@ export default function SignUpPage() {
       setTurnstileToken(null);
       turnstileRef.current?.reset();
       triggerShake();
-      notifications.show({
+      notify({
+        type: "error",
         title: "Sign Up Failed",
         message: "Something went wrong. Please try again.",
-        color: "red",
       });
     } finally {
       setLoading(false);

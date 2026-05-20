@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   checkSectionNameExists,
   renameSectionName,
@@ -81,10 +81,10 @@ export default function EditSectionNameModal({
         return;
       }
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Could not verify class name. Please try again.",
-        color: "red",
       });
       return;
     } finally {
@@ -109,18 +109,18 @@ export default function EditSectionNameModal({
     setSaving(true);
     try {
       await renameSectionName(sectionId, name);
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: `Class renamed to "${name}".`,
-        color: "green",
       });
       onRenamed();
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to rename class.",
-        color: "red",
       });
     } finally {
       setSaving(false);

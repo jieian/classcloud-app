@@ -18,7 +18,7 @@ import {
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconDots, IconPencil, IconSend, IconX } from "@tabler/icons-react";
 import type { PendingUser, Role } from "../_lib";
 import { cancelInvite, resendInvite, editInvite } from "../_lib";
@@ -105,19 +105,19 @@ export default function AdminInviteTableActions({
         password: password || undefined,
         role_ids: selectedRoles.map(Number),
       });
-      notifications.show({
+      notify({
+        type: "success",
         title: "Invitation Updated",
         message: "A new invitation link has been sent to the updated email.",
-        color: "green",
       });
       closeEdit();
       onUpdate();
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           err instanceof Error ? err.message : "Failed to update invitation.",
-        color: "red",
       });
     } finally {
       setSaving(false);
@@ -170,20 +170,20 @@ export default function AdminInviteTableActions({
         try {
           setResending(true);
           await resendInvite(user.uid);
-          notifications.show({
+          notify({
+            type: "success",
             title: "Invitation Resent",
             message: `A new invitation has been sent to ${user.email}.`,
-            color: "green",
           });
           onUpdate();
         } catch (err) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message:
               err instanceof Error
                 ? err.message
                 : "Failed to resend invitation.",
-            color: "red",
           });
         } finally {
           setResending(false);
@@ -211,20 +211,20 @@ export default function AdminInviteTableActions({
         try {
           setCancelling(true);
           await cancelInvite(user.uid);
-          notifications.show({
+          notify({
+            type: "success",
             title: "Invitation Cancelled",
             message: `The invitation for ${fullName} has been cancelled.`,
-            color: "green",
           });
           onUpdate();
         } catch (err) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message:
               err instanceof Error
                 ? err.message
                 : "Failed to cancel invitation.",
-            color: "red",
           });
         } finally {
           setCancelling(false);

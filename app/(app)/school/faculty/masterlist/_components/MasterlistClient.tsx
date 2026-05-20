@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Group, Stack, Text, ThemeIcon } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import BackButton from "@/components/BackButton";
 import { notify } from "@/components/notificationIcon/notificationIcon";
@@ -97,8 +96,8 @@ export default function MasterlistClient() {
         syncValidationVisibility(d);
       })
       .catch((err) => {
-        notifications.show({
-          color: "red",
+        notify({
+          type: "error",
           title: "Failed to load masterlist",
           message: err instanceof Error ? err.message : "Something went wrong.",
         });
@@ -412,8 +411,8 @@ export default function MasterlistClient() {
       // Save committed — clear draft immediately and show success
       setDraft(new Map());
       setShowValidation(false);
-      notifications.show({
-        color: "green",
+      notify({
+        type: "success",
         title: "Saved",
         message: "Teaching load masterlist updated successfully.",
       });
@@ -425,8 +424,8 @@ export default function MasterlistClient() {
           syncValidationVisibility(fresh);
         })
         .catch(() => {
-          notifications.show({
-            color: "yellow",
+          notify({
+            type: "warning",
             title: "Saved, but refresh failed",
             message: "Your changes were saved. Reload the page to see the latest data.",
           });
@@ -436,8 +435,8 @@ export default function MasterlistClient() {
       // 409 = stale data (SY changed/deactivated) — prompt user to reload
       const isSyConflict =
         message.includes("school year changed") || message.includes("No active school year");
-      notifications.show({
-        color: "red",
+      notify({
+        type: "error",
         title: isSyConflict ? "School year changed" : "Save failed",
         message: isSyConflict
           ? `${message} Your draft has been preserved.`

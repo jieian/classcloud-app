@@ -1,11 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Alert,
   Collapse,
   Group,
+  Paper,
   Text,
   ThemeIcon,
   Tooltip,
@@ -22,15 +23,56 @@ import SubjectCoordinatorsTableWrapper, {
   type SubjectCoordinatorsTableWrapperRef,
 } from "./SubjectCoordinatorsTableWrapper";
 
-export default function SubjectCoordinatorsSection() {
-  const [opened, { toggle }] = useDisclosure(false);
+interface SubjectCoordinatorsSectionProps {
+  defaultOpen?: boolean;
+  glowOnMount?: boolean;
+}
+
+export default function SubjectCoordinatorsSection({
+  defaultOpen = false,
+  glowOnMount = false,
+}: SubjectCoordinatorsSectionProps) {
+  const [opened, { toggle }] = useDisclosure(defaultOpen);
+  const [glowing, setGlowing] = useState(glowOnMount);
   const [search, setSearch] = useState("");
   const [coordinatorCount, setCoordinatorCount] = useState<number | null>(null);
   const [hasIncompleteAssignments, setHasIncompleteAssignments] = useState(false);
   const tableRef = useRef<SubjectCoordinatorsTableWrapperRef>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!glowOnMount) return;
+
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = 520; // gentle mid tone
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.08, ctx.currentTime + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.45);
+    } catch {
+      // AudioContext not available
+    }
+
+    const timer = setTimeout(() => setGlowing(false), 3000);
+    return () => clearTimeout(timer);
+  }, [glowOnMount]);
+
+  const glowStyle: CSSProperties = {
+    borderRadius: 8,
+    padding: glowing ? 16 : 0,
+    boxShadow: glowing ? "0 0 0 3px #4EAE4A, 0 4px 16px rgba(78,174,74,0.20)" : undefined,
+    transition: "box-shadow 1.2s ease, padding 0.3s ease",
+  };
 
   return (
-    <>
+    <div ref={wrapperRef} style={glowStyle}>
       <UnstyledButton onClick={toggle} w="100%">
         <Group justify="space-between" align="center">
           <h2
@@ -132,6 +174,6 @@ export default function SubjectCoordinatorsSection() {
           onIncompleteChange={setHasIncompleteAssignments}
         />
       </Collapse>
-    </>
+    </div>
   );
 }

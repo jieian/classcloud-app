@@ -12,7 +12,7 @@ import {
   Progress,
   Text,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconCheck, IconX } from "@tabler/icons-react";
 import { getSupabase } from "@/lib/supabase/client";
 import {
@@ -134,18 +134,18 @@ export default function MustChangePasswordModal() {
     try {
       setSaving(true);
       await changePasswordForced(newPassword);
-      notifications.show({
+      notify({
+        type: "success",
         title: "Password Changed",
         message: "Your password has been updated successfully.",
-        color: "green",
       });
       setOpened(false);
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           err instanceof Error ? err.message : "Failed to change password.",
-        color: "red",
       });
     } finally {
       setSaving(false);

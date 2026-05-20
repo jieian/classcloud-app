@@ -22,7 +22,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconArrowRight,
@@ -751,10 +751,10 @@ export default function TransferRequestsClient() {
 
     try {
       await approveTransferRequest(item.request_id);
-      notifications.show({
+      notify({
+        type: "success",
         title: "Transfer Approved",
         message: `${item.student_full_name.toUpperCase()} has been moved to ${item.to_grade_level_display} – ${item.to_section_name}.`,
-        color: "green",
       });
     } catch (e) {
       setIncoming((prev) =>
@@ -762,17 +762,17 @@ export default function TransferRequestsClient() {
       );
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("REQUEST_NOT_PENDING")) {
-        notifications.show({
+        notify({
+          type: "warning",
           title: "Already actioned",
           message: "This request was already approved or rejected. Refreshing…",
-          color: "orange",
         });
         refresh();
       } else {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Approval failed",
           message: "Could not approve the transfer. Please try again.",
-          color: "red",
         });
       }
     } finally {
@@ -811,10 +811,10 @@ export default function TransferRequestsClient() {
 
     try {
       await rejectTransferRequest(item.request_id, trimmedNotes || undefined);
-      notifications.show({
+      notify({
+        type: "warning",
         title: "Transfer Rejected",
         message: `The transfer request for ${item.student_full_name.toUpperCase()} has been rejected.`,
-        color: "orange",
       });
     } catch (e) {
       setIncoming((prev) =>
@@ -822,17 +822,17 @@ export default function TransferRequestsClient() {
       );
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("REQUEST_NOT_PENDING")) {
-        notifications.show({
+        notify({
+          type: "warning",
           title: "Already actioned",
           message: "This request is no longer pending. Refreshing…",
-          color: "orange",
         });
         refresh();
       } else {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Rejection failed",
           message: "Could not reject the transfer. Please try again.",
-          color: "red",
         });
       }
     } finally {
@@ -878,10 +878,10 @@ export default function TransferRequestsClient() {
 
     try {
       await cancelTransferRequest(item.request_id);
-      notifications.show({
+      notify({
+        type: "info",
         title: "Request Cancelled",
         message: `Transfer request for ${item.student_full_name.toUpperCase()} has been cancelled.`,
-        color: "gray",
       });
     } catch (e) {
       setOutgoing((prev) =>
@@ -889,17 +889,17 @@ export default function TransferRequestsClient() {
       );
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("REQUEST_NOT_PENDING")) {
-        notifications.show({
+        notify({
+          type: "warning",
           title: "Already actioned",
           message: "This request is no longer pending. Refreshing…",
-          color: "orange",
         });
         refresh();
       } else {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Cancellation failed",
           message: "Could not cancel the request. Please try again.",
-          color: "red",
         });
       }
     } finally {

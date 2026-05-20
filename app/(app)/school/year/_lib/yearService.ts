@@ -15,13 +15,12 @@ export interface SchoolYear {
   is_active: boolean;
   deleted_at: string | null;
   quarters: Quarter[];
+  hasExams: boolean;
 }
 
-/*
- * Fetches all school years with their quarters in a single query.
- */
 export async function getSchoolYears(): Promise<SchoolYear[]> {
   const supabase = getSupabase();
+
   const { data, error } = await supabase
     .from("school_years")
     .select("sy_id, year_range, start_year, end_year, is_active, deleted_at, quarters(quarter_id, name, is_active, sy_id)")
@@ -30,62 +29,58 @@ export async function getSchoolYears(): Promise<SchoolYear[]> {
 
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((sy: any) => ({
+  const schoolYears = (data ?? []).map((sy: any) => ({
     ...sy,
     quarters: (Array.isArray(sy.quarters) ? sy.quarters : []).sort(
       (a: Quarter, b: Quarter) => a.quarter_id - b.quarter_id,
     ),
-  }));
+    hasExams: false,
+  })) as SchoolYear[];
+
+  // Check which school years have exams via their quarters (single batch query)
+  const allQuarterIds = schoolYears.flatMap((sy) =>
+    sy.quarters.map((q) => q.quarter_id),
+  );
+
+  if (allQuarterIds.length > 0) {
+    const { data: examRows } = await supabase
+      .from("exams")
+      .select("quarter_id")
+      .in("quarter_id", allQuarterIds);
+
+    const quarterIdsWithExams = new Set(
+      (examRows ?? []).map((e: any) => e.quarter_id as number),
+    );
+
+    for (const sy of schoolYears) {
+      sy.hasExams = sy.quarters.some((q) => quarterIdsWithExams.has(q.quarter_id));
+    }
+  }
+
+  return schoolYears;
 }
 
-/*
- * Updates the status of a specific school year.
- */
-export async function updateYearStatus(sy_id: number, newStatus: boolean) {
-  const supabase = getSupabase();
-  const { error } = await supabase
-    .from("school_years")
-    .update({ is_active: newStatus })
-    .eq("sy_id", sy_id);
-
-  if (error) throw new Error(error.message);
-}
-
-/*
- * Fetches all quarters for a given school year.
- */
-export async function getQuartersByYear(sy_id: number): Promise<Quarter[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("quarters")
-    .select("*")
-    .eq("sy_id", sy_id)
-    .order("quarter_id", { ascending: true });
-
-  if (error) throw new Error(error.message);
-  return (data as Quarter[]) ?? [];
-}
-
-/*
- * Updates a school year and its quarters in a single atomic transaction
- * via the secure API route (uses service role + RPC).
- * Throws a DuplicateYearError if another school year with the same range exists.
- */
-/*
- * Soft-deletes a school year and inactivates all its terms atomically
- * via the secure API route (uses service role + RPC).
- */
-export async function deleteSchoolYear(sy_id: number): Promise<void> {
-  const response = await fetch("/api/schoolYear/delete-schoolYear", {
-    method: "DELETE",
+export async function toggleQuarter(
+  quarter_id: number,
+  sy_id: number,
+): Promise<{ success: boolean; code?: string }> {
+  const res = await fetch("/api/schoolYear/toggle-quarter", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sy_id }),
+    body: JSON.stringify({ quarter_id, sy_id }),
   });
+  const json = await res.json();
+  if (!res.ok) return { success: false, code: json.error };
+  return { success: true };
+}
 
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result.error || "Failed to delete school year.");
+export async function hardDeleteSchoolYear(sy_id: number): Promise<void> {
+  const res = await fetch(`/api/schoolYear/hard-delete/${sy_id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const json = await res.json();
+    throw new Error(json.error ?? "Failed to delete school year.");
   }
 }
 
@@ -93,31 +88,5 @@ export class DuplicateYearError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DuplicateYearError";
-  }
-}
-
-export async function updateSchoolYear(
-  sy_id: number,
-  start_year: number,
-  end_year: number,
-  is_active: boolean,
-  quarters: Array<{ quarter_id: number; is_active: boolean }>,
-): Promise<void> {
-  const response = await fetch("/api/schoolYear/update-schoolYear", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sy_id, start_year, end_year, is_active, quarters }),
-  });
-
-  const result = await response.json();
-
-  if (response.status === 409) {
-    throw new DuplicateYearError(
-      result.error || "A school year with this range already exists.",
-    );
-  }
-
-  if (!response.ok) {
-    throw new Error(result.error || "Failed to update school year.");
   }
 }

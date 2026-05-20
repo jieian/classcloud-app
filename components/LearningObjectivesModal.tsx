@@ -17,7 +17,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconPlus, IconTrash, IconAlertCircle, IconBookmark } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+import { notify } from '@/components/notificationIcon/notificationIcon';
 import { saveObjectives } from '@/lib/services/examService';
 import type { ExamWithRelations, LearningObjective } from '@/lib/exam-supabase';
 import CreationFlowStepper from './CreationFlowStepper';
@@ -85,7 +85,7 @@ export default function LearningObjectivesModal({
   const handleSave = async (andContinue = false) => {
     const err = validate();
     if (err) {
-      notifications.show({ title: 'Validation Error', message: err, color: 'red' });
+      notify({ type: 'error', title: 'Validation Error', message: err });
       return;
     }
 
@@ -100,20 +100,19 @@ export default function LearningObjectivesModal({
     setSaving(false);
 
     if (!ok) {
-      notifications.show({
+      notify({
+        type: 'error',
         title: 'Save Failed',
         message: 'Could not save learning objectives. Please try again.',
-        color: 'red',
-        withBorder: true,
       });
       return;
     }
 
-    notifications.show({
+    notify({
+      type: 'success',
       title: 'Objectives Saved',
       message: 'Learning objectives have been saved successfully.',
       color: 'teal',
-      withBorder: true,
       autoClose: 2000,
     });
 

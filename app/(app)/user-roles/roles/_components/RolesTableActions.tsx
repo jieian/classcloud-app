@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { IconAlertTriangle, IconLock, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import type { RoleWithPermissions } from "../../users/_lib";
 import { deleteRole, countUsersAffectedByRoleDeletion } from "../../users/_lib";
 
@@ -47,10 +47,10 @@ export default function RolesTableActions({
       setAffectedCounts(counts);
       openDelete();
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Failed to check role status. Please try again.",
-        color: "red",
       });
     } finally {
       setChecking(false);
@@ -69,19 +69,19 @@ export default function RolesTableActions({
       await deleteRole(role.role_id, role.name);
       handleCloseDelete();
       onUpdate();
-      notifications.show({
+      notify({
+        type: "success",
         title: "Role Deleted",
         message: `${role.name} has been deleted successfully.`,
-        color: "green",
       });
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           err instanceof Error
             ? err.message
             : "An error occurred while deleting the role. Please try again.",
-        color: "red",
       });
     } finally {
       setDeleting(false);

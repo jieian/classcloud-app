@@ -70,7 +70,9 @@ export default function StepReviewCreate({
   })();
 
   const facultyNames = useMemo(() => {
-    const map = new Map(faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]));
+    const map = new Map(
+      faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]),
+    );
     for (const [uid, name] of extraFacultyNames) map.set(uid, name);
     for (const [uid, name] of extraCoordinatorNames) map.set(uid, name);
     return map;
@@ -98,11 +100,7 @@ export default function StepReviewCreate({
         >
           <Text size="sm" c="gray.7" mb="md">
             Please ensure all information is correct. You can still return to
-            previous steps to edit, but{" "}
-            <Text component="span" fw={500} c="red">
-              changes will no longer be possible after you click 'Create School
-              Year'.
-            </Text>{" "}
+            previous steps to edit.
           </Text>
 
           {/* Academic Period */}

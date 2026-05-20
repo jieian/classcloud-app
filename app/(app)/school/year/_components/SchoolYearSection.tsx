@@ -2,7 +2,6 @@
 
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ActionIcon,
@@ -20,22 +19,13 @@ import { IconCalendarOff, IconRefresh } from "@tabler/icons-react";
 import { getSchoolYears, SchoolYear } from "../_lib/yearService";
 import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
-import EditSchoolYearDrawer from "./EditSchoolYearDrawer";
 import EmptySearchState from "@/components/EmptySearchState";
 
 export default function SchoolYearSection() {
-  const router = useRouter();
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedYear, setSelectedYear] = useState<SchoolYear | null>(null);
-  const [drawerOpened, setDrawerOpened] = useState(false);
-
-  const handleManage = (sy: SchoolYear) => {
-    setSelectedYear(sy);
-    setDrawerOpened(true);
-  };
 
   useEffect(() => {
     loadSchoolYears();
@@ -47,7 +37,7 @@ export default function SchoolYearSection() {
       setError(null);
       const data = await getSchoolYears();
       setSchoolYears(data);
-    } catch (err) {
+    } catch {
       setError("Failed to load school years. Please try again later.");
     } finally {
       setLoading(false);
@@ -121,46 +111,43 @@ export default function SchoolYearSection() {
         </Alert>
       )}
 
-      {!loading &&
-        !error &&
-        filteredYears.length === 0 &&
-        schoolYears.length === 0 && (
-          <Center
-            py={36}
-            px="md"
-            style={{
-              border: "1px solid var(--mantine-color-gray-3)",
-              borderRadius: "8px",
-              backgroundColor: "#FFFFFF",
-            }}
-          >
-            <Stack gap={10} align="center">
-              <ThemeIcon
-                size={48}
-                radius="xl"
-                color="gray.2"
-                variant="filled"
-                mb="sm"
-              >
-                <IconCalendarOff size={28} stroke={1.5} color="#3D4147" />
-              </ThemeIcon>
-              <Stack gap={4} align="center">
-                <Text size="md" fw={700} c="#111827" mb="sm">
-                  No School Year yet created.
-                </Text>
-              </Stack>
-              <Button
-                color="#4EAE4A"
-                radius="md"
-                size="sm"
-                component={Link}
-                href="/school/year/create"
-              >
-                Create a School Year
-              </Button>
+      {!loading && !error && filteredYears.length === 0 && schoolYears.length === 0 && (
+        <Center
+          py={36}
+          px="md"
+          style={{
+            border: "1px solid var(--mantine-color-gray-3)",
+            borderRadius: "8px",
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Stack gap={10} align="center">
+            <ThemeIcon
+              size={48}
+              radius="xl"
+              color="gray.2"
+              variant="filled"
+              mb="sm"
+            >
+              <IconCalendarOff size={28} stroke={1.5} color="#3D4147" />
+            </ThemeIcon>
+            <Stack gap={4} align="center">
+              <Text size="md" fw={700} c="#111827" mb="sm">
+                No School Year yet created.
+              </Text>
             </Stack>
-          </Center>
-        )}
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              size="sm"
+              component={Link}
+              href="/school/year/create"
+            >
+              Create a School Year
+            </Button>
+          </Stack>
+        </Center>
+      )}
 
       {!loading && !error && filteredYears.length === 0 && schoolYears.length > 0 && (
         <EmptySearchState />
@@ -171,30 +158,14 @@ export default function SchoolYearSection() {
           {filteredYears.map((sy) => (
             <SchoolYearCard
               key={sy.sy_id}
-              year_range={sy.year_range}
+              sy_id={sy.sy_id}
+              start_year={sy.start_year}
+              end_year={sy.end_year}
               is_active={sy.is_active}
-              onManage={() => handleManage(sy)}
+              hasExams={sy.hasExams}
             />
           ))}
         </SimpleGrid>
-      )}
-
-      {selectedYear && (
-        <EditSchoolYearDrawer
-          opened={drawerOpened}
-          onClose={() => setDrawerOpened(false)}
-          onSuccess={() => {
-            setDrawerOpened(false);
-            loadSchoolYears();
-            router.refresh();
-          }}
-          schoolYear={selectedYear}
-          isOnlyActiveYear={
-            schoolYears.filter((s) => s.is_active).length === 1 &&
-            selectedYear.is_active
-          }
-          allYears={schoolYears}
-        />
       )}
     </>
   );

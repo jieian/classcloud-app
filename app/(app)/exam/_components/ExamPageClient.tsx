@@ -37,7 +37,7 @@ import {
   IconUser,
   IconCopy,
 } from "@tabler/icons-react";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import ViewExamDetailsModal from "@/components/ViewExamDetailsModal";
 import CopyExamModal from "@/components/CopyExamModal";
 
@@ -625,16 +625,16 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           e.exam_id === exam.exam_id ? { ...e, is_locked: isLocked } : e,
         ),
       );
-      notifications.show({
+      notify({
+        type: "success",
         title: "Status updated",
         message: `Exam is now ${newStatus}`,
-        color: "green",
       });
     } else {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Status update failed",
         message: "Could not save exam status. Check permissions and try again.",
-        color: "red",
       });
       await refetchExams();
     }
@@ -656,10 +656,10 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
       generatedBy,
     });
     pdf.save(`${exam.title}_AnswerSheet.pdf`);
-    notifications.show({
+    notify({
+      type: "info",
       title: "Downloaded",
       message: "Answer sheet saved to downloads",
-      color: "blue",
     });
   };
 
@@ -681,18 +681,18 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     setDeleting(true);
     const success = await deleteExamWithAssignments(examToDelete.exam_id);
     if (success) {
-      notifications.show({
+      notify({
+        type: "success",
         title: "Examination Deleted",
         message: `${examToDelete.title} has been deleted successfully.`,
-        color: "green",
       });
       handleCloseDeleteModal();
       await refetchExams();
     } else {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Delete Failed",
         message: "Unable to delete examination. Please try again.",
-        color: "red",
       });
     }
     setDeleting(false);

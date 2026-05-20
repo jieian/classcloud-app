@@ -26,7 +26,7 @@ import {
   IconLock,
 } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import type { UserWithRoles, Role } from "../_lib";
 import { updateUser, fetchAllRoles, checkPrincipalExists } from "../_lib";
 import { sortRoles } from "@/lib/roleUtils";
@@ -251,11 +251,11 @@ export default function EditUserDrawer({
         error instanceof Error
           ? error.message
           : "Failed to load roles. Please check console for details.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error Loading Roles",
         message: errorMessage,
-        color: "red",
-        autoClose: 10000, // Show for 10 seconds so user can read it
+        autoClose: 10000,
       });
     } finally {
       setLoadingRoles(false);
@@ -288,10 +288,10 @@ export default function EditUserDrawer({
   const handleSave = () => {
     const validation = form.validate();
     if (validation.hasErrors) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Validation Error",
         message: "Please fix all errors before saving",
-        color: "red",
       });
       return;
     }
@@ -331,10 +331,10 @@ export default function EditUserDrawer({
 
       await updateUser(formattedData);
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: "User updated successfully",
-        color: "green",
       });
 
       form.reset();
@@ -345,10 +345,10 @@ export default function EditUserDrawer({
         error instanceof Error
           ? error.message
           : "Failed to update user. Please try again.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message,
-        color: "red",
       });
     } finally {
       setLoading(false);

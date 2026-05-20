@@ -42,7 +42,7 @@ export async function getCurriculums(): Promise<Curriculum[]> {
 
 export interface SubjectGroupMember {
   curriculum_subject_id: number;
-  subjects: { code: string; name: string } | null;
+  subjects: { code: string; name: string; subject_type: "BOTH" | "SSES" } | null;
 }
 
 export interface SubjectGroup {
@@ -121,10 +121,10 @@ export async function getCurriculumDetail(curriculumId: number): Promise<Curricu
     : [];
 
   // Build curriculum_subject_id → subject lookup from query 3 (avoids redundant join in query 2)
-  const csMap = new Map<number, { code: string; name: string }>();
+  const csMap = new Map<number, { code: string; name: string; subject_type: "BOTH" | "SSES" }>();
   for (const row of subjectsRes.data ?? []) {
     const r = row as any;
-    csMap.set(r.curriculum_subject_id, { code: r.subjects.code, name: r.subjects.name });
+    csMap.set(r.curriculum_subject_id, { code: r.subjects.code, name: r.subjects.name, subject_type: r.subjects.subject_type });
   }
 
   const subject_groups: SubjectGroup[] = (groupsRes.data ?? []).map((sg: any) => ({

@@ -24,6 +24,37 @@ const colorMap: Record<NotifyType, string> = {
   warning: "yellow",
 };
 
+function playNotifySound(type: NotifyType) {
+  try {
+    const ctx = new AudioContext();
+
+    const sounds: Record<NotifyType, { freqs: number[]; gap: number; vol: number; dur: number }> = {
+      success: { freqs: [520, 660],  gap: 0.13, vol: 0.08, dur: 0.4  },
+      error:   { freqs: [220, 180],  gap: 0.18, vol: 0.12, dur: 0.35 },
+      info:    { freqs: [440],       gap: 0,    vol: 0.07, dur: 0.3  },
+      warning: { freqs: [380, 380],  gap: 0.15, vol: 0.10, dur: 0.3  },
+    };
+
+    const { freqs, gap, vol, dur } = sounds[type];
+    freqs.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = ctx.currentTime + i * gap;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(vol, start + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+      osc.start(start);
+      osc.stop(start + dur);
+    });
+  } catch {
+    // AudioContext not available
+  }
+}
+
 type NotifyOptions = {
   title: string;
   message: string;
@@ -41,6 +72,7 @@ export function notify({
   icon,
   autoClose = 4000,
 }: NotifyOptions) {
+  playNotifySound(type);
   notifications.show({
     title,
     message,

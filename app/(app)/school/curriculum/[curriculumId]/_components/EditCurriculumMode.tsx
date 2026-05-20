@@ -24,7 +24,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconBook,
   IconCalendar,
@@ -620,25 +620,25 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   const validate = async (): Promise<boolean> => {
     const result = form.validate();
     if (result.errors.name || result.errors.description) {
-      notifications.show({ title: "Validation Error", message: "Please fix all errors before saving.", color: "red" });
+      notify({ type: "error", title: "Validation Error", message: "Please fix all errors before saving." });
       return false;
     }
     if (form.values.subjects.length === 0) {
-      notifications.show({ title: "No Subjects", message: "Add at least one subject before saving.", color: "red" });
+      notify({ type: "error", title: "No Subjects", message: "Add at least one subject before saving." });
       return false;
     }
     if (missingGls.length > 0) {
-      notifications.show({ title: "Missing Subjects", message: `Every grade level needs at least one subject. Missing: ${missingGls.map((gl) => gl.display_name).join(", ")}`, color: "red", autoClose: 7000 });
+      notify({ type: "error", title: "Missing Subjects", message: `Every grade level needs at least one subject. Missing: ${missingGls.map((gl) => gl.display_name).join(", ")}`, autoClose: 7000 });
       return false;
     }
     if (form.values.subject_groups.length === 0) {
-      notifications.show({ title: "No Subject Groups", message: "Create at least one subject group before saving.", color: "red" });
+      notify({ type: "error", title: "No Subject Groups", message: "Create at least one subject group before saving." });
       return false;
     }
     const occupiedSet = new Set(form.values.subject_groups.flatMap((g) => g.memberTempIds));
     const unassignedCount = form.values.subjects.filter((s) => !occupiedSet.has(s.tempId)).length;
     if (unassignedCount > 0) {
-      notifications.show({ title: "Unassigned Subjects", message: `All subjects must be in a group. ${unassignedCount} subject(s) still unassigned.`, color: "red" });
+      notify({ type: "error", title: "Unassigned Subjects", message: `All subjects must be in a group. ${unassignedCount} subject(s) still unassigned.` });
       return false;
     }
     const trimmedName = form.values.name.trim();
@@ -651,12 +651,12 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         const data = await res.json();
         if (!data.available) {
           form.setFieldError("name", "A curriculum with this name already exists.");
-          notifications.show({ title: "Name Taken", message: "Please choose a different curriculum name.", color: "red" });
+          notify({ type: "error", title: "Name Taken", message: "Please choose a different curriculum name." });
           return false;
         }
         verifiedNameRef.current = trimmedName;
       } catch {
-        notifications.show({ title: "Error", message: "Failed to verify curriculum name.", color: "red" });
+        notify({ type: "error", title: "Error", message: "Failed to verify curriculum name." });
         return false;
       } finally {
         busyRef.current = false;
@@ -686,11 +686,11 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         body: JSON.stringify({ curriculum_id: curriculum.curriculum_id, name: form.values.name.trim(), description: form.values.description.trim(), subjects: form.values.subjects, subject_groups: form.values.subject_groups }),
       });
       const data = await res.json();
-      if (!res.ok) { notifications.show({ title: "Error", message: data.error ?? "Failed to save changes.", color: "red" }); return; }
-      notifications.show({ title: "Saved", message: "Curriculum updated successfully.", color: "green" });
+      if (!res.ok) { notify({ type: "error", title: "Error", message: data.error ?? "Failed to save changes." }); return; }
+      notify({ type: "success", title: "Saved", message: "Curriculum updated successfully." });
       onSaved();
     } catch {
-      notifications.show({ title: "Error", message: "Network error. Please try again.", color: "red" });
+      notify({ type: "error", title: "Error", message: "Network error. Please try again." });
     } finally {
       setSaving(false);
     }

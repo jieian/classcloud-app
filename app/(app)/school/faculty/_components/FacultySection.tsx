@@ -12,9 +12,10 @@ import {
 
 interface FacultySectionProps {
   isActive: boolean;
+  highlightCoordinators?: boolean;
 }
 
-export function FacultySection({ isActive }: FacultySectionProps) {
+export function FacultySection({ isActive, highlightCoordinators = false }: FacultySectionProps) {
   const [facultyCount, setFacultyCount] = useState<number | null>(null);
   const [drawerOpened, setDrawerOpened] = useState(false);
   const teachingStaffRef = useRef<TeachingStaffSectionRef>(null);
@@ -65,7 +66,10 @@ export function FacultySection({ isActive }: FacultySectionProps) {
       ) : (
         <>
           <Divider my="lg" />
-          <SubjectCoordinatorsSection />
+          <SubjectCoordinatorsSection
+            defaultOpen={highlightCoordinators}
+            glowOnMount={highlightCoordinators}
+          />
 
           <Divider my="lg" />
           <TeachingStaffSection

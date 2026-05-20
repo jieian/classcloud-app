@@ -19,7 +19,7 @@ import {
   TableTr,
   Text,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   assignSubjectTeachers,
   fetchAvailableAdviserCandidates,
@@ -106,19 +106,19 @@ export default function ManageSubjectTeachersModal({
             : (selections[sub.subject_id] ?? null),
       }));
       await assignSubjectTeachers(sectionId, assignments);
-      notifications.show({
+      notify({
+        type: "success",
         title: "Saved",
         message: "Subject teacher assignments updated.",
-        color: "green",
       });
       onSaved();
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           e instanceof Error ? e.message : "Failed to save assignments.",
-        color: "red",
       });
     } finally {
       setSaving(false);

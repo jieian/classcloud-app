@@ -21,7 +21,7 @@ import {
 } from "@mantine/core";
 import { IconCheck, IconLock, IconX } from "@tabler/icons-react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { modals } from "@mantine/modals";
 import type { PendingUser } from "../_lib";
 import { activateUser, rejectPendingUser, checkPrincipalExists } from "../_lib";
@@ -126,19 +126,19 @@ export default function PendingTableActions({
         lastName.trim(),
         roleIds,
       );
-      notifications.show({
+      notify({
+        type: "success",
         title: "User Approved",
         message: `${firstName.trim()} ${lastName.trim()} has been activated successfully.`,
-        color: "green",
       });
       onMarkRead(user.uid);
       closeApprove();
       onUpdate();
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: err instanceof Error ? err.message : "Failed to approve user.",
-        color: "red",
       });
     } finally {
       setApproving(false);
@@ -180,19 +180,19 @@ export default function PendingTableActions({
     try {
       setRejecting(true);
       await rejectPendingUser(user.uid, finalReason, user.first_name);
-      notifications.show({
+      notify({
+        type: "success",
         title: "User Rejected",
         message: `${fullName} has been removed from the system.`,
-        color: "green",
       });
       onMarkRead(user.uid);
       handleCloseReject();
       onUpdate();
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: err instanceof Error ? err.message : "Failed to reject user.",
-        color: "red",
       });
     } finally {
       setRejecting(false);

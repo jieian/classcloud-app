@@ -1,23 +1,30 @@
 "use client";
-import { Card, Divider, Text, Button, Group, Badge } from "@mantine/core";
-import { IconSettings } from "@tabler/icons-react";
+import { Card, Divider, Text, Group, Badge, Button } from "@mantine/core";
+import { IconEye, IconSettings } from "@tabler/icons-react";
+import Link from "next/link";
 
 interface SchoolYearCardProps {
-  year_range: string;
+  sy_id: number;
+  start_year: number;
+  end_year: number;
   is_active: boolean;
-  onManage: () => void;
+  hasExams: boolean;
 }
 
 export default function SchoolYearCard({
-  year_range,
+  sy_id,
+  start_year,
+  end_year,
   is_active,
-  onManage,
+  hasExams,
 }: SchoolYearCardProps) {
+  const canManage = is_active && !hasExams;
+
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder w="100%">
       <Group justify="space-between" mt="md" mb="xs">
         <Text fw={550} size="lg">
-          {year_range}
+          S.Y. {start_year}–{end_year}
         </Text>
 
         <Badge color={is_active ? "#4EAE4A" : "gray"} variant="light" size="md">
@@ -36,10 +43,11 @@ export default function SchoolYearCard({
         color="#4A72AE"
         fullWidth
         radius="md"
-        leftSection={<IconSettings size={16} />}
-        onClick={onManage}
+        leftSection={canManage ? <IconSettings size={16} /> : <IconEye size={16} />}
+        component={Link}
+        href={`/school/year/${sy_id}`}
       >
-        Manage School Year
+        {canManage ? "Manage School Year" : "View School Year"}
       </Button>
     </Card>
   );

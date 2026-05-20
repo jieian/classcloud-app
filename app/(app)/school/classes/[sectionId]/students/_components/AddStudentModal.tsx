@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconCheck,
@@ -387,17 +387,17 @@ export default function AddStudentModal({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("ALREADY_PENDING")) {
-        notifications.show({
+        notify({
+          type: "warning",
           title: "Request already exists",
           message:
             "A pending transfer request for this student already exists. Please wait for it to be resolved.",
-          color: "orange",
         });
       } else {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: "Failed to send transfer request. Please try again.",
-          color: "red",
         });
       }
     } finally {
@@ -536,17 +536,17 @@ export default function AddStudentModal({
     } catch (e) {
       const msg = e instanceof Error ? e.message : "";
       if (msg.includes("ALREADY_PENDING")) {
-        notifications.show({
+        notify({
+          type: "warning",
           title: "Request already exists",
           message:
             "A pending transfer request for this student already exists. Please wait for it to be resolved.",
-          color: "orange",
         });
       } else {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: e instanceof Error ? e.message : "An error occurred.",
-          color: "red",
         });
       }
     } finally {
@@ -559,17 +559,18 @@ export default function AddStudentModal({
     setSaving(true);
     try {
       await addStudentToRoster(sectionId, { action, lrn: studentLrn });
-      notifications.show({
+      notify({
+        type: "success",
         title: isMove ? "Student Moved" : "Student Added",
         message: isMove
           ? "Student has been moved to this class."
           : "Student has been added to the roster.",
-        color: "green",
       });
       onAdded();
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           e instanceof Error
@@ -577,7 +578,6 @@ export default function AddStudentModal({
             : isMove
               ? "Failed to move student."
               : "Failed to add student.",
-        color: "red",
       });
     } finally {
       setSaving(false);
@@ -598,17 +598,18 @@ export default function AddStudentModal({
           : "",
         sex: form.values.sex,
       });
-      notifications.show({
+      notify({
+        type: "success",
         title: isMove ? "Student Moved" : "Student Added",
         message: isMove
           ? "Student has been moved to this class."
           : "Student has been added to the roster.",
-        color: "green",
       });
       onAdded();
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           e instanceof Error
@@ -616,7 +617,6 @@ export default function AddStudentModal({
             : isMove
               ? "Failed to move student."
               : "Failed to add student.",
-        color: "red",
       });
     } finally {
       setSaving(false);

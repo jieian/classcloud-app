@@ -17,7 +17,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { useMediaQuery } from "@mantine/hooks";
 import {
   IconAlertCircle,
@@ -186,10 +186,10 @@ export default function SettingsClient() {
   const handleSave = () => {
     const validation = form.validate();
     if (validation.hasErrors) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Validation Error",
         message: "Please fix all errors before saving.",
-        color: "red",
       });
       return;
     }
@@ -248,19 +248,19 @@ export default function SettingsClient() {
       // Update AuthContext so the NavBar name reflects the change immediately
       await refreshUserName();
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Success",
         message: "Profile updated successfully.",
-        color: "green",
       });
 
       form.reset();
       setIsEditMode(false);
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to save changes.",
-        color: "red",
       });
     } finally {
       setSaving(false);

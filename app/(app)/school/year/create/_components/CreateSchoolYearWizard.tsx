@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Container, Group, rem, Stepper, Text, Tooltip, UnstyledButton } from "@mantine/core";
+import { Container, rem, Stepper, Text, Tooltip } from "@mantine/core";
+import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import StepAcademicPeriod from "./StepAcademicPeriod";
 import StepSelectCurriculum from "./StepSelectCurriculum";
 import StepDefineClasses from "./StepDefineClasses";
@@ -73,8 +74,27 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     form.isDirty() || facultyDraft.size > 0 || coordinatorDraft.size > 0;
 
   // ── Load curriculum detail when curriculum_id changes ──────────────────────
+  const prevCurriculumIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     const id = form.values.curriculum_id;
+
+    // User changed an existing curriculum selection — reset all downstream state
+    if (prevCurriculumIdRef.current !== null && prevCurriculumIdRef.current !== id) {
+      form.setValues({
+        sections: [],
+        step3Mode: initialData.prevSy ? null : "scratch",
+        step4Mode: initialData.prevSy ? null : "scratch",
+        step5Mode: initialData.prevSy ? null : "scratch",
+      });
+      setFacultyDraft(new Map());
+      setExtraFacultyNames(new Map());
+      setCoordinatorDraft(new Map());
+      setExtraCoordinatorNames(new Map());
+    }
+
+    prevCurriculumIdRef.current = id;
+
     if (!id) {
       setCurriculumDetail(null);
       return;
@@ -83,10 +103,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     fetchWizardCurriculumDetail(id)
       .then(setCurriculumDetail)
       .catch(() =>
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: "Failed to load curriculum details.",
-          color: "red",
         })
       )
       .finally(() => setLoadingCurriculum(false));
@@ -99,10 +119,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     try {
       snapshotRef.current = await fetchPreviousSySnapshot(initialData.prevSy.sy_id);
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Failed to load previous school year data.",
-        color: "red",
       });
     } finally {
       setSnapshotLoading(false);
@@ -175,19 +195,19 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     if (step === 0) {
       const sy = form.values.start_year.trim();
       if (!/^\d{4}$/.test(sy)) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Start year must be a 4-digit number.",
-          color: "red",
         });
         return false;
       }
       const yr = parseInt(sy, 10);
       if (yr <= 2025) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Start year must be 2026 or later.",
-          color: "red",
         });
         return false;
       }
@@ -196,18 +216,18 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       try {
         const res = await fetch(`/api/schoolYear/check-year?start_year=${yr}`);
         if (res.status === 409) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Duplicate Year",
             message: `School year ${yr}–${yr + 1} already exists.`,
-            color: "red",
           });
           return false;
         }
       } catch {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: "Failed to verify school year. Please try again.",
-          color: "red",
         });
         return false;
       } finally {
@@ -219,12 +239,12 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     if (step === 1) {
       if (!form.values.curriculum_id) {
         const noCurriculaExist = initialData.curricula.length === 0;
-        notifications.show({
+        notify({
+          type: "error",
           title: noCurriculaExist ? "No Curriculum Created" : "No Curriculum Selected",
           message: noCurriculaExist
             ? "Create a curriculum first before setting up a school year."
             : "Please select a curriculum before proceeding.",
-          color: "red",
         });
         return false;
       }
@@ -233,6 +253,14 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
 
     if (step === 2) {
       if (!curriculumDetail) return false;
+      if (initialData.prevSy && form.values.step3Mode === null) {
+        notify({
+          type: "error",
+          title: "No Setup Mode Selected",
+          message: "Please choose how to set up classes — start fresh or replicate from the previous school year.",
+        });
+        return false;
+      }
       const hasAnySses = curriculumDetail.grade_levels.some((gl) => gl.hasSsesSubjects);
       for (const gl of curriculumDetail.grade_levels) {
         const glSections = form.values.sections.filter(
@@ -240,10 +268,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         );
         const hasRegular = glSections.some((s) => s.section_type === "REGULAR");
         if (!hasRegular) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Missing Regular Section",
             message: `${gl.display_name} must have at least one regular section.`,
-            color: "red",
             autoClose: 6000,
           });
           return false;
@@ -251,10 +279,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         if (hasAnySses) {
           const hasSses = glSections.some((s) => s.section_type === "SSES");
           if (!hasSses) {
-            notifications.show({
+            notify({
+              type: "error",
               title: "Missing SSES Section",
               message: `${gl.display_name} requires at least one SSES section.`,
-              color: "red",
               autoClose: 6000,
             });
             return false;
@@ -266,14 +294,22 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
 
     if (step === 3) {
       if (!curriculumDetail) return false;
+      if (initialData.prevSy && form.values.step4Mode === null) {
+        notify({
+          type: "error",
+          title: "No Setup Mode Selected",
+          message: "Please choose how to assign faculty — start fresh or replicate from the previous school year.",
+        });
+        return false;
+      }
       // Every cell must be filled (adviser + all applicable subjects per section)
       for (const section of form.values.sections) {
         const adviserKey: FacultyCellKey = `adviser:${section.tempId}`;
         if (!facultyDraft.get(adviserKey)) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Incomplete Assignments",
             message: "All adviser cells must be filled before proceeding.",
-            color: "red",
           });
           return false;
         }
@@ -285,10 +321,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           if (sub.subject_type === "SSES" && section.section_type !== "SSES") continue;
           const subKey: FacultyCellKey = `subject:${section.tempId}:${sub.curriculum_subject_id}`;
           if (!facultyDraft.get(subKey)) {
-            notifications.show({
+            notify({
+              type: "error",
               title: "Incomplete Assignments",
               message: "All subject assignment cells must be filled before proceeding.",
-              color: "red",
             });
             return false;
           }
@@ -299,12 +335,20 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
 
     if (step === 4) {
       if (!curriculumDetail) return false;
+      if (initialData.prevSy && form.values.step5Mode === null) {
+        notify({
+          type: "error",
+          title: "No Setup Mode Selected",
+          message: "Please choose how to assign coordinators — start fresh or replicate from the previous school year.",
+        });
+        return false;
+      }
       for (const group of curriculumDetail.subject_groups) {
         if (!coordinatorDraft.get(group.subject_group_id)) {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Incomplete Coordinators",
             message: "All subject groups must have a coordinator assigned.",
-            color: "red",
           });
           return false;
         }
@@ -462,10 +506,10 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         return;
       }
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "School Year Created",
         message: `School year ${startYear}–${startYear + 1} has been created successfully.`,
-        color: "green",
       });
       form.reset();
       setFacultyDraft(new Map());
@@ -561,36 +605,15 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
   const isLastStep = form.values.activeStep === 5;
 
   const navButtons = (
-    <Group justify="flex-end" mt="xl">
-      <UnstyledButton onClick={handleCancel} style={{ color: "#000", cursor: "pointer" }}>
-        <Text size="sm" fw={600}>
-          Cancel
-        </Text>
-      </UnstyledButton>
-      {form.values.activeStep > 0 && (
-        <Button variant="default" onClick={prevStep} disabled={submitting} radius="md">
-          Previous
-        </Button>
-      )}
-      {!isLastStep ? (
-        <Button
-          onClick={nextStep}
-          loading={checkingYear}
-          style={{ backgroundColor: "#4EAE4A" }}
-          radius="md"
-        >
-          Next
-        </Button>
-      ) : (
-        <Button
-          onClick={handleCreate}
-          loading={submitting}
-          style={{ backgroundColor: "#4EAE4A" }}
-        >
-          Create School Year
-        </Button>
-      )}
-    </Group>
+    <WizardNavigationButtons
+      onCancel={handleCancel}
+      showPrevious={form.values.activeStep > 0}
+      onPrevious={prevStep}
+      previousDisabled={submitting}
+      onPrimary={isLastStep ? handleCreate : nextStep}
+      primaryLabel={isLastStep ? "Create School Year" : "Next"}
+      primaryLoading={isLastStep ? submitting : checkingYear}
+    />
   );
 
   const steps = [

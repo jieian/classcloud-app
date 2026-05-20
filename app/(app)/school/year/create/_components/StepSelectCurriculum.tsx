@@ -19,7 +19,7 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconBook,
   IconCalendar,
@@ -78,12 +78,12 @@ export default function StepSelectCurriculum({
             if (e.data.curriculum_id) {
               form.setFieldValue("curriculum_id", e.data.curriculum_id);
             }
-            notifications.show({
+            notify({
+              type: "success",
               title: "Curriculum ready",
               message: e.data.name
                 ? `"${e.data.name}" has been created and selected.`
                 : "New curriculum created and selected.",
-              color: "green",
             });
           })
           .catch(() => {

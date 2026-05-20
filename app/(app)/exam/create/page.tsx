@@ -12,7 +12,7 @@ import {
   IconPlus, IconBookmark, IconAlertCircle,
   IconAlertTriangle, IconMinus, IconX, IconClipboardCheck,
 } from '@tabler/icons-react';
-import { notifications } from '@mantine/notifications';
+import { notify } from '@/components/notificationIcon/notificationIcon';
 import { modals } from '@mantine/modals';
 import { fetchActiveQuarters, abbreviateQuarterName } from '@/lib/services/quarterService';
 import { fetchGradeLevels } from '@/lib/services/gradeLevelService';
@@ -434,15 +434,17 @@ export default function CreateExamPage() {
         await saveAnswerKey(id, answerKeyData);
       }));
 
-      notifications.show({
+      notify({
+        type: "success",
         title: 'Examination Created',
         message: exam_ids.length > 1 ? `${exam_ids.length} examinations were created successfully.` : 'Examination was created successfully.',
-        color: 'teal', withBorder: true, autoClose: 2500,
+        color: 'teal',
+        autoClose: 2500,
       });
       clearDraft();
       router.push(`/exam?newExamIds=${exam_ids.join(',')}`);
     } catch (error) {
-      notifications.show({ title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.', color: 'red', withBorder: true });
+      notify({ type: "error", title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.' });
     } finally {
       setSaving(false);
     }
@@ -1016,13 +1018,7 @@ export default function CreateExamPage() {
   };
 
   const showValidationNotification = (message: string) => {
-    notifications.show({
-      title: 'Please complete required fields',
-      message,
-      color: 'yellow',
-      withBorder: true,
-      icon: <IconAlertTriangle size={16} />,
-    });
+    notify({ type: 'warning', title: 'Please complete required fields', message });
   };
 
   const handleNext = () => {
@@ -1055,10 +1051,7 @@ export default function CreateExamPage() {
     } else if (activeStep === 2) {
       setTriedToSaveObjectives(true);
       const err = validateObjectives();
-      if (err) {
-        showValidationNotification(err);
-        return;
-      }
+      if (err) { notify({ type: "error", title: 'Validation Error', message: err }); return; }
       nextStep();
     } else if (activeStep === 3) {
       if (!isAnswerKeyComplete) {

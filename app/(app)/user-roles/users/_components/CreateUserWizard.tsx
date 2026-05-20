@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Stepper, Button, Group, Text, rem } from "@mantine/core";
+import { Container, Stepper, Text, rem } from "@mantine/core";
+import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import StepUserInfo from "./StepUserInfo";
 import StepAssignRole from "./StepAssignRole";
 import StepReview from "./StepReview";
@@ -64,10 +65,10 @@ export default function CreateUserWizard() {
         error instanceof Error
           ? error.message
           : "Failed to load roles. Please try again.";
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error Loading Roles",
         message: errorMessage,
-        color: "red",
         autoClose: 10000,
       });
     } finally {
@@ -145,10 +146,10 @@ export default function CreateUserWizard() {
         (form.values.passwordType === "manual" && validation.errors.password);
 
       if (step1HasErrors) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please fix all errors before proceeding.",
-          color: "red",
         });
         return;
       }
@@ -163,11 +164,11 @@ export default function CreateUserWizard() {
 
           if (emailStatus.status === "active") {
             form.setFieldError("email", "This email is already in use");
-            notifications.show({
+            notify({
+              type: "error",
               title: "Email Already In Use",
               message:
                 "This email is already registered. Please use a different email.",
-              color: "red",
             });
             return;
           }
@@ -177,7 +178,8 @@ export default function CreateUserWizard() {
               "email",
               "This email already has a pending invitation",
             );
-            notifications.show({
+            notify({
+              type: "warning",
               title: "Pending Invitation",
               message:
                 "This email already has a pending invitation. Check the Pending section.",
@@ -189,10 +191,10 @@ export default function CreateUserWizard() {
           // Cache verified email so going back + forward skips the check
           verifiedEmailRef.current = trimmedEmail;
         } catch {
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message: "Failed to verify email. Please try again.",
-            color: "red",
           });
           return;
         } finally {
@@ -210,10 +212,10 @@ export default function CreateUserWizard() {
       // Validate Step 2 — at least one role
       const validation = form.validate();
       if (validation.errors.role_ids) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Validation Error",
           message: "Please select at least one role.",
-          color: "red",
         });
         return;
       }
@@ -359,10 +361,10 @@ export default function CreateUserWizard() {
 
       await createUser(userData);
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Invitation Sent",
         message: `An invitation email has been sent to ${trimmedEmail}.`,
-        color: "green",
       });
 
       form.reset();
@@ -375,10 +377,10 @@ export default function CreateUserWizard() {
         error instanceof Error
           ? error.message
           : "Failed to create user. Please try again.";
-      notifications.show({
+      notify({
+        type: isEmailFailure ? "warning" : "error",
         title: isEmailFailure ? "Email Could Not Be Delivered" : "Error",
         message,
-        color: isEmailFailure ? "yellow" : "red",
         autoClose: isEmailFailure ? false : 5000,
       });
     } finally {
@@ -444,39 +446,15 @@ export default function CreateUserWizard() {
             </Stepper.Step>
           </Stepper>
 
-          {/* Navigation Buttons */}
-          <Group justify="flex-end" mt="xl">
-            <Button variant="default" onClick={handleCancel}>
-              Cancel
-            </Button>
-
-            {form.values.activeStep > 0 && (
-              <Button variant="outline" onClick={prevStep}>
-                Previous
-              </Button>
-            )}
-
-            {form.values.activeStep < 2 ? (
-              <Button
-                onClick={nextStep}
-                disabled={isNextDisabled}
-                loading={checkingEmail}
-                style={
-                  isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
-                }
-              >
-                Next
-              </Button>
-            ) : (
-              <Button
-                onClick={handleCreateUser}
-                loading={loading}
-                style={{ backgroundColor: "#4EAE4A" }}
-              >
-                Send Invitation
-              </Button>
-            )}
-          </Group>
+          <WizardNavigationButtons
+            onCancel={handleCancel}
+            showPrevious={form.values.activeStep > 0}
+            onPrevious={prevStep}
+            onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateUser}
+            primaryLabel={form.values.activeStep < 2 ? "Next" : "Send Invitation"}
+            primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
+            primaryLoading={form.values.activeStep < 2 ? checkingEmail : loading}
+          />
         </>
       ) : (
         // Desktop: Side-by-side layout
@@ -518,39 +496,15 @@ export default function CreateUserWizard() {
               />
             )}
 
-            {/* Navigation Buttons */}
-            <Group justify="flex-end" mt="xl">
-              <Button variant="default" onClick={handleCancel}>
-                Cancel
-              </Button>
-
-              {form.values.activeStep > 0 && (
-                <Button variant="outline" onClick={prevStep}>
-                  Previous
-                </Button>
-              )}
-
-              {form.values.activeStep < 2 ? (
-                <Button
-                  onClick={nextStep}
-                  disabled={isNextDisabled}
-                  loading={checkingEmail}
-                  style={
-                    isNextDisabled ? undefined : { backgroundColor: "#4EAE4A" }
-                  }
-                >
-                  Next
-                </Button>
-              ) : (
-                <Button
-                  onClick={handleCreateUser}
-                  loading={loading}
-                  style={{ backgroundColor: "#4EAE4A" }}
-                >
-                  Send Invitation
-                </Button>
-              )}
-            </Group>
+            <WizardNavigationButtons
+              onCancel={handleCancel}
+              showPrevious={form.values.activeStep > 0}
+              onPrevious={prevStep}
+              onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateUser}
+              primaryLabel={form.values.activeStep < 2 ? "Next" : "Send Invitation"}
+              primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
+              primaryLoading={form.values.activeStep < 2 ? checkingEmail : loading}
+            />
           </div>
         </div>
       )}

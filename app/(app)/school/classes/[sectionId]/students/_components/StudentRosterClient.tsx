@@ -25,7 +25,7 @@ import {
   Title,
   Tooltip,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconDownload,
@@ -221,18 +221,18 @@ export default function StudentRosterClient({ sectionId }: Props) {
     try {
       setDeleting(true);
       await deleteStudentFromRoster(sectionId, deletingStudent.lrn);
-      notifications.show({
+      notify({
+        type: "success",
         title: "Student Deleted",
         message: `${deletingStudent.full_name} has been deleted.`,
-        color: "green",
       });
       closeDeleteModal();
       await load();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to delete student.",
-        color: "red",
       });
     } finally {
       setDeleting(false);

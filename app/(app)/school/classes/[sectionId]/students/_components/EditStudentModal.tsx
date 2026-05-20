@@ -14,7 +14,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconInfoCircle } from "@tabler/icons-react";
 import {
   checkLrnExists,
@@ -207,10 +207,10 @@ export default function EditStudentModal({
           return;
         }
       } catch {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Error",
           message: "Could not verify LRN. Please try again.",
-          color: "red",
         });
         return;
       } finally {
@@ -251,19 +251,19 @@ export default function EditStudentModal({
           : "",
         sex: form.values.sex,
       });
-      notifications.show({
+      notify({
+        type: "success",
         title: "Saved",
         message: "Student information updated.",
-        color: "green",
       });
       form.reset();
       onSaved();
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to update student.",
-        color: "red",
       });
     } finally {
       setSaving(false);

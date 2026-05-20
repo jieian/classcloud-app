@@ -15,7 +15,7 @@ import {
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconChevronDown, IconInfoCircle } from "@tabler/icons-react";
 import type { GradeLevelRow } from "@/lib/services/classService";
 import { createSection, checkSectionAvailability } from "@/lib/services/classService";
@@ -111,22 +111,22 @@ export default function CreateClassModal({
             check.error ?? "This class name is already taken.",
           );
         }
-        notifications.show({
+        notify({
+          type: "error",
           title:
             check.conflict === "name"
               ? "Class Name Taken"
               : "SSES Already Exists",
           message:
             check.error ?? "Validation failed. Please review your inputs.",
-          color: "red",
         });
         return;
       }
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: "Failed to validate class. Please try again.",
-        color: "red",
       });
       return;
     } finally {
@@ -163,22 +163,22 @@ export default function CreateClassModal({
         section_type: form.values.section_type as "REGULAR" | "SSES",
       });
 
-      notifications.show({
+      notify({
+        type: "success",
         title: "Class Created",
         message: `${toTitleCase(form.values.name)} has been created successfully.`,
-        color: "green",
       });
 
       onSuccess();
       onClose();
     } catch (err) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           err instanceof Error
             ? err.message
             : "Something went wrong. Please try again.",
-        color: "red",
       });
     } finally {
       setSubmitting(false);

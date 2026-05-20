@@ -29,7 +29,7 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconCheck,
@@ -594,11 +594,11 @@ export default function ImportRosterModal({
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message:
           e instanceof Error ? e.message : "Failed to download template.",
-        color: "red",
       });
     } finally {
       setDownloading(false);
@@ -700,10 +700,10 @@ export default function ImportRosterModal({
       const data = await res.json();
 
       if (!res.ok) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Import failed",
           message: data.error ?? "An error occurred.",
-          color: "red",
         });
         setStep("review");
         return;
@@ -712,10 +712,10 @@ export default function ImportRosterModal({
       setResults((data.results as ImportResult[]) ?? []);
       setStep("done");
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Network error",
         message: "Failed to import students. Please try again.",
-        color: "red",
       });
       setStep("review");
     }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
 import { IconSettings, IconTrash } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { useRouter } from "next/navigation";
 import { removeAcademicLoad } from "../_lib/facultyService";
 import type { FacultyMember } from "../_lib/facultyService";
@@ -39,10 +39,10 @@ export default function FacultyTableActions({
         try {
           setRemoving(true);
           await removeAcademicLoad(faculty.uid);
-          notifications.show({
+          notify({
+            type: "success",
             title: "Removed",
             message: `Teaching load for ${facultyName} has been removed.`,
-            color: "green",
           });
           onUpdate();
           router.refresh();
@@ -51,10 +51,10 @@ export default function FacultyTableActions({
             error instanceof Error
               ? error.message
               : "Failed to remove teaching load.";
-          notifications.show({
+          notify({
+            type: "error",
             title: "Error",
             message,
-            color: "red",
             autoClose: false,
           });
         } finally {

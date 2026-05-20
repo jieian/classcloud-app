@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { archiveSection } from "@/lib/services/classService";
 
 interface Props {
@@ -32,17 +32,18 @@ export default function ArchiveClassModal({
     setArchiving(true);
     try {
       await archiveSection(sectionId);
-      notifications.show({
+      notify({
+        type: "warning",
+        color: "orange",
         title: "Class Deleted",
         message: `${sectionName} has been deleted.`,
-        color: "orange",
       });
       onArchived();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Error",
         message: e instanceof Error ? e.message : "Failed to delete class.",
-        color: "red",
       });
     } finally {
       setArchiving(false);

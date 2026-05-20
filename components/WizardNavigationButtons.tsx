@@ -8,6 +8,7 @@ interface WizardNavigationButtonsProps {
   onPrimary: () => void;
   showPrevious?: boolean;
   onPrevious?: () => void;
+  previousDisabled?: boolean;
   cancelLabel?: string;
   previousLabel?: string;
   primaryLabel: string;
@@ -24,6 +25,7 @@ export default function WizardNavigationButtons({
   onPrimary,
   showPrevious = false,
   onPrevious,
+  previousDisabled = false,
   cancelLabel = "Cancel",
   previousLabel = "Previous",
   primaryLabel,
@@ -37,7 +39,7 @@ export default function WizardNavigationButtons({
   const useColor = colorWhenEnabledOnly ? !primaryDisabled : true;
 
   return (
-    <Group justify="flex-end" mt={mt} gap="sm" wrap="wrap">
+    <Group justify="flex-end" mt={mt}>
       {leftExtra && leftExtra}
       <UnstyledButton
         onClick={onCancel}
@@ -49,7 +51,7 @@ export default function WizardNavigationButtons({
       </UnstyledButton>
 
       {showPrevious && onPrevious && (
-        <Button variant="default" onClick={onPrevious} radius="md">
+        <Button variant="default" onClick={onPrevious} disabled={previousDisabled} radius="md">
           {previousLabel}
         </Button>
       )}

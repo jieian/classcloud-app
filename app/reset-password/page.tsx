@@ -13,7 +13,6 @@ import {
   Alert,
   ThemeIcon,
 } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
 import { IconCheck, IconX, IconMailForward, IconAlertCircle } from "@tabler/icons-react";
 import Link from "next/link";
 import CircleBackground from "@/components/circleBackground/circleBackground";
@@ -95,10 +94,10 @@ export default function ResetPasswordPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        notifications.show({
+        notify({
+          type: "error",
           title: "Resend Failed",
           message: data?.error ?? "Something went wrong. Please try again.",
-          color: "red",
         });
         return;
       }
@@ -106,10 +105,10 @@ export default function ResetPasswordPage() {
       setResendSent(true);
       startCooldown();
     } catch {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Resend Failed",
         message: "Something went wrong. Please try again.",
-        color: "red",
       });
     } finally {
       setResendLoading(false);

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, Group, Modal, Text } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconDownload } from "@tabler/icons-react";
 
 interface Props {
@@ -52,11 +52,11 @@ export default function DownloadRosterModal({
 
       onClose();
     } catch (e) {
-      notifications.show({
+      notify({
+        type: "error",
         title: "Download Failed",
         message:
           e instanceof Error ? e.message : "Failed to download the roster.",
-        color: "red",
       });
     } finally {
       setDownloading(false);
