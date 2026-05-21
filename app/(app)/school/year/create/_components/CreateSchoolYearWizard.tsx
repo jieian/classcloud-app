@@ -14,6 +14,7 @@ import StepDefineClasses from "./StepDefineClasses";
 import StepFacultyAssignment from "./StepFacultyAssignment";
 import StepSubjectCoordinators from "./StepSubjectCoordinators";
 import StepReviewCreate from "./StepReviewCreate";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 import type {
   CoordinatorDraftMap,
   CreateSchoolYearForm,
@@ -33,6 +34,14 @@ interface CreateSchoolYearWizardProps {
 export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYearWizardProps) {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
   const busyRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -182,6 +191,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           form.reset();
           router.push(href);
         },
+        ...confirmModalProps,
       });
     };
     document.addEventListener("click", handleClick, true);
@@ -395,6 +405,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           form.reset();
           router.replace("/school/year");
         },
+        ...confirmModalProps,
       });
     } else {
       router.replace("/school/year");
@@ -626,20 +637,15 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
   ];
 
   return (
-    <Container fluid py="xl" h="100%">
+    <Container fluid pt={isMobile ? 0 : "xl"} pb="xl" h="100%">
       {isMobile ? (
         <>
-          <Stepper
-            active={form.values.activeStep}
-            color="#4EAE4A"
-            orientation="vertical"
-          >
-            {steps.map((s, i) => (
-              <Stepper.Step key={i} label={s.label} description={s.description}>
-                {form.values.activeStep === i && stepContent}
-              </Stepper.Step>
-            ))}
-          </Stepper>
+          <MobileStepIndicator
+            activeStep={form.values.activeStep}
+            totalSteps={steps.length}
+            stepDescription={steps[form.values.activeStep].description}
+          />
+          {stepContent}
           {navButtons}
         </>
       ) : (

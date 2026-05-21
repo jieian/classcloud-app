@@ -88,47 +88,25 @@ function SubjectMobileRow({ subject }: { subject: WizardSubject }) {
               {subject.code}
             </Text>
             {subject.subject_type === "SSES" && (
-              <Badge
-                color="blue"
-                variant="filled"
-                size="xs"
-                radius="xl"
-                style={{ cursor: "default" }}
-              >
+              <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                 SSES
               </Badge>
             )}
-            <Text
-              fz="sm"
-              c="dimmed"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {subject.name}
-            </Text>
           </Group>
         </UnstyledButton>
       </div>
       <Collapse in={opened}>
         <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+            Name
+          </Text>
+          <Text fz="sm" c="dimmed" mb="sm">{subject.name}</Text>
           {subject.description && (
             <>
-              <Text
-                size="xs"
-                c="dimmed"
-                fw={600}
-                tt="uppercase"
-                mb={2}
-                style={{ letterSpacing: "0.04em" }}
-              >
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
                 Description
               </Text>
-              <Text fz="sm" c="dimmed" mb="sm">
-                {subject.description}
-              </Text>
+              <Text fz="sm" c="dimmed" mb="sm">{subject.description}</Text>
             </>
           )}
         </Box>
@@ -269,7 +247,7 @@ function GradeLevelTable({ subjects }: { subjects: WizardSubject[] }) {
                         {s.code}
                       </Text>
                       {s.subject_type === "SSES" && (
-                        <Badge color="blue" variant="light" size="xs">
+                        <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                           SSES
                         </Badge>
                       )}
@@ -378,6 +356,14 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
       arr.push(s);
       map.set(s.grade_level_id, arr);
     }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aSSES = a.subject_type === "SSES" ? 0 : 1;
+        const bSSES = b.subject_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.code.localeCompare(b.code);
+      });
+    }
     return map;
   }, [subjects]);
 
@@ -394,6 +380,11 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
     for (const s of subjects) map.set(s.tempId, s);
     return map;
   }, [subjects]);
+
+  const sortedGroups = useMemo(
+    () => [...subject_groups].sort((a, b) => a.name.localeCompare(b.name)),
+    [subject_groups],
+  );
 
   return (
     <Box>
@@ -510,7 +501,7 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
                         </tr>
                       </thead>
                       <tbody>
-                        {subject_groups.map((g) => (
+                        {sortedGroups.map((g) => (
                           <tr
                             key={g.tempId}
                             style={{ borderTop: "1px solid #dee2e6" }}
@@ -549,7 +540,7 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
 
                 {/* Mobile */}
                 <div className="sm:hidden">
-                  {subject_groups.map((g) => (
+                  {sortedGroups.map((g) => (
                     <GroupMobileRow
                       key={g.tempId}
                       name={g.name}

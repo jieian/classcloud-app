@@ -19,8 +19,8 @@ import {
   UnstyledButton,
 } from "@mantine/core";
 import {
-  IconAlertTriangle,
   IconArrowLeft,
+  IconExclamationCircle,
   IconChevronDown,
   IconChevronUp,
   IconInfoCircle,
@@ -399,7 +399,7 @@ function ClassEditor({
                                 variant="transparent"
                                 size="md"
                               >
-                                <IconAlertTriangle size={20} />
+                                <IconExclamationCircle size={20} />
                               </ThemeIcon>
                             }
                           >
@@ -426,7 +426,7 @@ function ClassEditor({
                                 variant="transparent"
                                 size="md"
                               >
-                                <IconAlertTriangle size={20} />
+                                <IconExclamationCircle size={20} />
                               </ThemeIcon>
                             }
                           >
@@ -750,7 +750,7 @@ function GradeLevelSection({
             </Text>
             {missingSSES && errorTooltip && (
               <Tooltip label={errorTooltip} withArrow position="right">
-                <IconAlertTriangle size={16} color="red" />
+                <IconExclamationCircle size={16} color="red" />
               </Tooltip>
             )}
           </Group>

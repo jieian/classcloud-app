@@ -554,9 +554,9 @@ function CoordinatorMobileReviewRow({
       <Collapse in={opened}>
         <Box pb="md" pl={28} pr={4}>
           <Text
-            size="sm"
-            c="#298925"
-            fw={700}
+            size="xs"
+            c="dimmed"
+            fw={600}
             tt="uppercase"
             mb={6}
             style={{ letterSpacing: "0.04em" }}
@@ -584,9 +584,9 @@ function CoordinatorMobileReviewRow({
             </Group>
           )}
           <Text
-            size="sm"
-            c="#298925"
-            fw={700}
+            size="xs"
+            c="dimmed"
+            fw={600}
             tt="uppercase"
             mb={2}
             style={{ letterSpacing: "0.04em" }}
@@ -663,9 +663,9 @@ function SectionMobileReviewRow({
       <Collapse in={opened}>
         <Box pb="md" pl={28} pr={4}>
           <Text
-            size="sm"
-            c="#298925"
-            fw={700}
+            size="xs"
+            c="dimmed"
+            fw={600}
             tt="uppercase"
             mb={2}
             style={{ letterSpacing: "0.04em" }}
@@ -683,9 +683,9 @@ function SectionMobileReviewRow({
           {subjects.map((sub) => (
             <div key={sub.code}>
               <Text
-                size="sm"
-                c="#298925"
-                fw={700}
+                size="xs"
+                c="dimmed"
+                fw={600}
                 tt="uppercase"
                 mb={2}
                 style={{ letterSpacing: "0.04em" }}

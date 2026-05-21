@@ -4,6 +4,8 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Collapse,
+  Divider,
   Group,
   Table,
   TableScrollContainer,
@@ -15,9 +17,9 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
-import { IconInfoCircle, IconPencil, IconPlus, IconX } from "@tabler/icons-react";
+import { IconChevronRight, IconInfoCircle, IconPencil, IconPlus, IconX } from "@tabler/icons-react";
 import { useState } from "react";
 import type {
   MasterlistSection,
@@ -133,22 +135,149 @@ function AssignmentTrigger({
   );
 }
 
-function SectionTypeBadge({ type }: { type: MasterlistSection["section_type"] }) {
-  const isSses = type === "SSES";
-
+function SectionTypeBadge({ type }: { type: string }) {
+  if (type !== "SSES") return null;
   return (
     <Badge
       size="xs"
       radius="xl"
       variant="filled"
-      style={{
-        backgroundColor: isSses ? "#70A2FF" : "#B3B4B4",
-        color: "#FFFFFF",
-        textTransform: "none",
-      }}
+      style={{ backgroundColor: "#70A2FF", color: "#FFFFFF", textTransform: "none" }}
     >
-      {isSses ? "SSES" : "Regular"}
+      SSES
     </Badge>
+  );
+}
+
+function SectionMobileAssignmentRow({
+  section,
+  subjects,
+  getCellValue,
+  isCellDirty,
+  facultyNames,
+  showValidation,
+  onOpenPicker,
+  onClear,
+}: {
+  section: MasterlistSection;
+  subjects: MasterlistSubject[];
+  getCellValue: (key: string) => string | null;
+  isCellDirty: (key: string) => boolean;
+  facultyNames: Map<string, string>;
+  showValidation: boolean;
+  onOpenPicker: (key: string, mode: "adviser" | "subject", assignedUid: string | null, currentAssignedName: string | null, assignmentLabel: string) => void;
+  onClear: (content: React.ReactNode, key: string) => void;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  const adviserKey = `adviser:${section.section_id}`;
+  const adviserValue = getCellValue(adviserKey);
+  const adviserBg = resolveCellBg(!adviserValue, isCellDirty(adviserKey), showValidation);
+
+  const applicableSubjects = subjects.filter(
+    (sub) => sub.subject_type === "BOTH" || section.section_type === "SSES",
+  );
+
+  return (
+    <>
+      <div onClick={toggle} style={{ cursor: "pointer", padding: "12px 4px" }}>
+        <Group gap="xs" wrap="nowrap">
+          <IconChevronRight
+            size={16}
+            style={{
+              transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 200ms ease",
+              flexShrink: 0,
+              color: "#808898",
+            }}
+          />
+          <Text
+            fw={500}
+            fz="md"
+            style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {section.name}
+          </Text>
+        </Group>
+      </div>
+
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={4} style={{ letterSpacing: "0.04em" }}>
+            Adviser
+          </Text>
+          <Box mb="sm">
+            <AssignmentTrigger
+              value={adviserValue}
+              displayName={adviserValue ? (facultyNames.get(adviserValue) ?? null) : null}
+              bg={adviserBg}
+              onOpen={() =>
+                onOpenPicker(
+                  adviserKey,
+                  "adviser",
+                  adviserValue,
+                  adviserValue ? (facultyNames.get(adviserValue) ?? "Assigned faculty") : null,
+                  `Class: ${section.name}`,
+                )
+              }
+              onClear={() =>
+                onClear(
+                  <>
+                    Are you sure you want to remove the assigned adviser for{" "}
+                    <Text span fw={700}>{section.name}</Text>?
+                  </>,
+                  adviserKey,
+                )
+              }
+            />
+          </Box>
+
+          {applicableSubjects.map((sub) => {
+            const subKey = `subject:${section.section_id}:${sub.curriculum_subject_id}`;
+            const subValue = getCellValue(subKey);
+            const subBg = resolveCellBg(!subValue, isCellDirty(subKey), showValidation);
+            return (
+              <div key={sub.curriculum_subject_id}>
+                <Group gap={4} wrap="nowrap" align="center" mb={4}>
+                  <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+                    {sub.code}
+                  </Text>
+                  <Tooltip label={sub.name} withArrow multiline maw={220} events={{ hover: false, focus: false, touch: true }}>
+                    <IconInfoCircle size={13} color="#808898" style={{ cursor: "pointer", flexShrink: 0 }} />
+                  </Tooltip>
+                  <SectionTypeBadge type={sub.subject_type} />
+                </Group>
+                <Box mb="sm">
+                  <AssignmentTrigger
+                    value={subValue}
+                    displayName={subValue ? (facultyNames.get(subValue) ?? null) : null}
+                    bg={subBg}
+                    onOpen={() =>
+                      onOpenPicker(
+                        subKey,
+                        "subject",
+                        subValue,
+                        subValue ? (facultyNames.get(subValue) ?? "Assigned faculty") : null,
+                        `Class: ${section.name} - Subject: ${sub.code}`,
+                      )
+                    }
+                    onClear={() =>
+                      onClear(
+                        <>
+                          Are you sure you want to remove the assigned subject teacher for{" "}
+                          <Text span fw={700}>{section.name} - {sub.name} ({sub.code})</Text>?
+                        </>,
+                        subKey,
+                      )
+                    }
+                  />
+                </Box>
+              </div>
+            );
+          })}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
   );
 }
 
@@ -203,8 +332,20 @@ export default function MasterlistTable({
     );
   }
 
+  function openPicker(
+    key: string,
+    mode: "adviser" | "subject",
+    assignedUid: string | null,
+    currentAssignedName: string | null,
+    assignmentLabel: string,
+  ) {
+    setPickerState({ key, mode, assignedUid, currentAssignedName, assignmentLabel });
+  }
+
   return (
     <>
+      {/* Desktop table */}
+      <div className="hidden sm:block">
       <TableScrollContainer minWidth={600} type="native">
         <Table
           verticalSpacing="sm"
@@ -225,28 +366,14 @@ export default function MasterlistTable({
                     <Text size="sm" fw={600} span>
                       {subject.code}
                     </Text>
-                    <Tooltip
-                      label={
-                        subject.subject_type === "SSES" ? (
-                          <Box>
-                            <Text size="sm">{subject.name}</Text>
-                            <Text size="sm" fs="italic">
-                              SSES-exclusive
-                            </Text>
-                          </Box>
-                        ) : (
-                          subject.name
-                        )
-                      }
-                      withArrow
-                      maw={220}
-                    >
+                    <Tooltip label={subject.name} withArrow multiline maw={220}>
                       <IconInfoCircle
                         size={14}
                         color="#808898"
                         style={{ cursor: "help", flexShrink: 0 }}
                       />
                     </Tooltip>
+                    <SectionTypeBadge type={subject.subject_type} />
                   </Group>
                 </TableTh>
               ))}
@@ -262,12 +389,9 @@ export default function MasterlistTable({
               return (
                 <TableTr key={section.section_id}>
                   <TableTd>
-                    <Group gap={6} wrap="nowrap" align="center">
-                      <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
-                        {section.name}
-                      </Text>
-                      <SectionTypeBadge type={section.section_type} />
-                    </Group>
+                    <Text size="sm" fw={500} style={{ whiteSpace: "nowrap" }}>
+                      {section.name}
+                    </Text>
                   </TableTd>
 
                   <TableTd>
@@ -276,24 +400,17 @@ export default function MasterlistTable({
                       displayName={adviserValue ? (facultyNames.get(adviserValue) ?? null) : null}
                       bg={adviserBg}
                       onOpen={() =>
-                        setPickerState({
-                          key: adviserKey,
-                          mode: "adviser",
-                          assignedUid: adviserValue,
-                          currentAssignedName: adviserValue
-                            ? (facultyNames.get(adviserValue) ?? "Assigned faculty")
-                            : null,
-                          assignmentLabel: `Class: ${section.name}`,
-                        })
+                        openPicker(
+                          adviserKey, "adviser", adviserValue,
+                          adviserValue ? (facultyNames.get(adviserValue) ?? "Assigned faculty") : null,
+                          `Class: ${section.name}`,
+                        )
                       }
                       onClear={() =>
                         confirmClearAssignment(
                           <>
                             Are you sure you want to remove the assigned adviser for{" "}
-                            <Text span fw={700}>
-                              {section.name}
-                            </Text>
-                            ?
+                            <Text span fw={700}>{section.name}</Text>?
                           </>,
                           adviserKey,
                         )
@@ -321,15 +438,11 @@ export default function MasterlistTable({
                           displayName={subjectValue ? (facultyNames.get(subjectValue) ?? null) : null}
                           bg={subjectBg}
                           onOpen={() =>
-                            setPickerState({
-                              key: subjectKey,
-                              mode: "subject",
-                              assignedUid: subjectValue,
-                              currentAssignedName: subjectValue
-                                ? (facultyNames.get(subjectValue) ?? "Assigned faculty")
-                                : null,
-                              assignmentLabel: `Class: ${section.name} - Subject: ${subject.code}`,
-                            })
+                            openPicker(
+                              subjectKey, "subject", subjectValue,
+                              subjectValue ? (facultyNames.get(subjectValue) ?? "Assigned faculty") : null,
+                              `Class: ${section.name} - Subject: ${subject.code}`,
+                            )
                           }
                           onClear={() =>
                             confirmClearAssignment(
@@ -337,8 +450,7 @@ export default function MasterlistTable({
                                 Are you sure you want to remove the assigned subject teacher for{" "}
                                 <Text span fw={700}>
                                   {section.name} - {subject.name} ({subject.code})
-                                </Text>
-                                ?
+                                </Text>?
                               </>,
                               subjectKey,
                             )
@@ -353,6 +465,25 @@ export default function MasterlistTable({
           </TableTbody>
         </Table>
       </TableScrollContainer>
+      </div>
+
+      {/* Mobile accordion list */}
+      <div className="sm:hidden">
+        <Divider />
+        {sections.map((section) => (
+          <SectionMobileAssignmentRow
+            key={section.section_id}
+            section={section}
+            subjects={subjects}
+            getCellValue={getCellValue}
+            isCellDirty={isCellDirty}
+            facultyNames={facultyNames}
+            showValidation={showValidation}
+            onOpenPicker={openPicker}
+            onClear={confirmClearAssignment}
+          />
+        ))}
+      </div>
 
       <MasterlistAssignmentModal
         opened={pickerState !== null}

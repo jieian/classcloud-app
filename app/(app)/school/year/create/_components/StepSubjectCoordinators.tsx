@@ -26,7 +26,7 @@ import {
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import {
-  IconAlertTriangle,
+  IconExclamationCircle,
   IconArrowLeft,
   IconBinoculars,
   IconChevronRight,
@@ -328,7 +328,7 @@ function CoordinatorTable({
             }}
             icon={
               <ThemeIcon color="white" variant="transparent" size="md">
-                <IconAlertTriangle size={20} />
+                <IconExclamationCircle size={20} />
               </ThemeIcon>
             }
           >
@@ -372,7 +372,7 @@ function CoordinatorTable({
                               withArrow
                               position="top"
                             >
-                              <IconAlertTriangle
+                              <IconExclamationCircle
                                 size={14}
                                 color="#EF4444"
                                 style={{ flexShrink: 0 }}
@@ -558,7 +558,7 @@ function CoordinatorMobileRow({
               </Text>
               {isEmpty && (
                 <Tooltip label="No coordinator assigned" withArrow position="top">
-                  <IconAlertTriangle
+                  <IconExclamationCircle
                     size={14}
                     color="#EF4444"
                     style={{ flexShrink: 0 }}

@@ -90,3 +90,78 @@ export class DuplicateYearError extends Error {
     this.name = "DuplicateYearError";
   }
 }
+
+export interface CanCreateResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+export async function checkCanCreateSchoolYear(): Promise<CanCreateResult> {
+  const supabase = getSupabase();
+
+  const { data: prevSY } = await supabase
+    .from("school_years")
+    .select("sy_id, year_range")
+    .is("deleted_at", null)
+    .order("start_year", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!prevSY) return { allowed: true };
+
+  const { data: quarters } = await supabase
+    .from("quarters")
+    .select("quarter_id")
+    .eq("sy_id", (prevSY as any).sy_id);
+
+  const quarterIds = ((quarters ?? []) as any[]).map((q) => q.quarter_id as number);
+  if (quarterIds.length === 0)
+    return {
+      allowed: false,
+      reason: `Reports for the previous school year (${(prevSY as any).year_range}) must be accomplished first before creating a new one.`,
+    };
+
+  const { data: exams } = await supabase
+    .from("exams")
+    .select("exam_id")
+    .in("quarter_id", quarterIds)
+    .is("deleted_at", null);
+
+  const examIds = ((exams ?? []) as any[]).map((e) => e.exam_id as number);
+  if (examIds.length === 0)
+    return {
+      allowed: false,
+      reason: `Reports for the previous school year (${(prevSY as any).year_range}) must be accomplished first before creating a new one.`,
+    };
+
+  const { data: assignments } = await supabase
+    .from("exam_assignments")
+    .select("exam_id, section_id")
+    .in("exam_id", examIds);
+
+  if (!assignments || (assignments as any[]).length === 0)
+    return {
+      allowed: false,
+      reason: `Reports for the previous school year (${(prevSY as any).year_range}) must be accomplished first before creating a new one.`,
+    };
+
+  const { data: reports } = await supabase
+    .from("exam_results_reports")
+    .select("exam_id, section_id")
+    .eq("sy_id", (prevSY as any).sy_id);
+
+  const reportedSet = new Set(
+    ((reports ?? []) as any[]).map((r) => `${r.exam_id}:${r.section_id}`),
+  );
+
+  const allReported = (assignments as any[]).every((a) =>
+    reportedSet.has(`${a.exam_id}:${a.section_id}`),
+  );
+
+  if (allReported) return { allowed: true };
+
+  return {
+    allowed: false,
+    reason: `The previous school year (${(prevSY as any).year_range}) still has pending exam reports. All reports must be submitted before creating a new school year.`,
+  };
+}

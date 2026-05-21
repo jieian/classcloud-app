@@ -23,8 +23,8 @@ import {
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import {
-  IconAlertTriangle,
   IconCheck,
+  IconExclamationCircle,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -174,7 +174,7 @@ function MemberBlock({
                       {s.name}
                     </Text>
                     {s.subject_type === "SSES" && (
-                      <Badge color="blue" variant="light" size="xs">
+                      <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                         SSES
                       </Badge>
                     )}
@@ -354,8 +354,19 @@ function GroupModal({
       arr.push(s);
       map.set(s.grade_level_id, arr);
     }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aOccupied = occupiedMap.has(a.tempId) ? 1 : 0;
+        const bOccupied = occupiedMap.has(b.tempId) ? 1 : 0;
+        if (aOccupied !== bOccupied) return aOccupied - bOccupied;
+        const aSSES = a.subject_type === "SSES" ? 0 : 1;
+        const bSSES = b.subject_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.code.localeCompare(b.code);
+      });
+    }
     return map;
-  }, [allSubjects]);
+  }, [allSubjects, occupiedMap]);
 
   // Sort grade levels numerically by the number in their display name (Grade 1 → Grade 6)
   const sortedGlEntries = useMemo(() => {
@@ -544,6 +555,11 @@ export default function StepCurriculumSubjectGroups({
     return map;
   }, [subjects]);
 
+  const sortedGroups = useMemo(
+    () => [...groups].sort((a, b) => a.name.localeCompare(b.name)),
+    [groups],
+  );
+
   const handleSaveGroup = (group: WizardSubjectGroup) => {
     if (editingGroup) {
       form.setFieldValue(
@@ -662,7 +678,7 @@ export default function StepCurriculumSubjectGroups({
             }}
             icon={
               <ThemeIcon color="white" variant="transparent" size="md">
-                <IconAlertTriangle size={20} />
+                <IconExclamationCircle size={20} />
               </ThemeIcon>
             }
           >
@@ -834,7 +850,7 @@ export default function StepCurriculumSubjectGroups({
                 </tr>
               </thead>
               <tbody>
-                {groups.map((g) => (
+                {sortedGroups.map((g) => (
                   <tr key={g.tempId} style={{ borderTop: "1px solid #dee2e6" }}>
                     <td style={{ padding: "8px 12px" }}>
                       <Text size="sm" fw={500}>
@@ -895,7 +911,7 @@ export default function StepCurriculumSubjectGroups({
           <div className="sm:hidden">
             {groups.length > 0 && (
               <Box px="xs">
-                {groups.map((g) => (
+                {sortedGroups.map((g) => (
                   <GroupMobileCard
                     key={g.tempId}
                     g={g}

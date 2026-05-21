@@ -9,6 +9,7 @@ import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { getSupabase } from "@/lib/supabase/client";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 import StepCurriculumNameDesc from "./StepCurriculumNameDesc";
 import StepCurriculumSubjects from "./StepCurriculumSubjects";
 import StepCurriculumSubjectGroups from "./StepCurriculumSubjectGroups";
@@ -24,6 +25,25 @@ function EnterToConfirm({ onEnter }: { onEnter: () => void }) {
     return () => window.removeEventListener("keydown", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
+}
+
+// ── Notification title helpers ─────────────────────────────────────────────────
+function nameErrorTitle(err: string): string {
+  if (err.includes("required")) return "Name Required";
+  if (err.includes("at least")) return "Name Too Short";
+  if (err.includes("or less")) return "Name Too Long";
+  if (err.includes("only numbers") || err.includes("only dots")) return "Invalid Name Format";
+  if (err.includes("Only letters")) return "Invalid Characters in Name";
+  if (err.includes("already exists")) return "Name Already Taken";
+  return "Invalid Name";
+}
+
+function descErrorTitle(err: string): string {
+  if (err.includes("required")) return "Description Required";
+  if (err.includes("at least")) return "Description Too Short";
+  if (err.includes("or less")) return "Description Too Long";
+  if (err.includes("only numbers") || err.includes("only dots")) return "Invalid Description Format";
+  return "Invalid Description";
 }
 
 // ── Name validation ────────────────────────────────────────────────────────────
@@ -143,7 +163,16 @@ export default function CreateCurriculumWizard() {
 
     if (form.values.activeStep === 0) {
       const result = form.validate();
-      if (result.errors.name || result.errors.description) return;
+      if (result.errors.name || result.errors.description) {
+        const nameErr = result.errors.name as string | undefined;
+        const descErr = result.errors.description as string | undefined;
+        if (nameErr) {
+          notify({ type: "error", title: nameErrorTitle(nameErr), message: nameErr });
+        } else {
+          notify({ type: "error", title: descErrorTitle(descErr!), message: descErr! });
+        }
+        return;
+      }
       // Async name uniqueness check
       const trimmed = form.values.name.trim();
       if (verifiedNameRef.current !== trimmed) {
@@ -157,14 +186,16 @@ export default function CreateCurriculumWizard() {
           });
           const data = await res.json();
           if (!data.available) {
-            form.setFieldError("name", "A curriculum with this name already exists.");
+            const takenMsg = "A curriculum with this name already exists.";
+            form.setFieldError("name", takenMsg);
+            notify({ type: "error", title: "Name Already Taken", message: takenMsg });
             return;
           }
           verifiedNameRef.current = trimmed;
         } catch {
           notify({
             type: "error",
-            title: "Error",
+            title: "Name Check Failed",
             message: "Failed to verify curriculum name. Please try again.",
           });
           return;
@@ -379,17 +410,12 @@ export default function CreateCurriculumWizard() {
     <Container fluid py="xl" h="100%">
       {isMobile ? (
         <>
-          <Stepper
-            active={form.values.activeStep}
-            color="#4EAE4A"
-            orientation="vertical"
-          >
-            {steps.map((s, i) => (
-              <Stepper.Step key={i} label={s.label} description={s.description}>
-                {form.values.activeStep === i && stepContent}
-              </Stepper.Step>
-            ))}
-          </Stepper>
+          <MobileStepIndicator
+            activeStep={form.values.activeStep}
+            totalSteps={steps.length}
+            stepDescription={steps[form.values.activeStep].description}
+          />
+          {stepContent}
           {navButtons}
         </>
       ) : (

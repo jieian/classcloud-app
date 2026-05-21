@@ -8,7 +8,9 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
-import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
+import VerticalWizardLayout, {
+  type VerticalWizardStep,
+} from "@/components/VerticalWizardLayout";
 import StepRoleInfo from "./StepRoleInfo";
 import StepAssignPerms from "./StepAssignPerms";
 import StepReview from "./StepReview";
@@ -299,12 +301,12 @@ export default function CreateRoleWizard() {
   const wizardSteps: VerticalWizardStep[] = [
     {
       label: "Step 1",
-      description: "Specify role information and configuration",
+      description: "Specify Role Information and Configuration",
       content: <StepRoleInfo form={form} />,
     },
     {
       label: "Step 2",
-      description: "Assign permissions",
+      description: "Assign Permissions",
       content: (
         <StepAssignPerms
           form={form}
@@ -317,10 +319,7 @@ export default function CreateRoleWizard() {
       label: "Step 3",
       description: "Review and Create Role",
       content: (
-        <StepReview
-          form={form}
-          availablePermissions={availablePermissions}
-        />
+        <StepReview form={form} availablePermissions={availablePermissions} />
       ),
     },
   ];
@@ -337,10 +336,7 @@ export default function CreateRoleWizard() {
       );
     }
     return (
-      <StepReview
-        form={form}
-        availablePermissions={availablePermissions}
-      />
+      <StepReview form={form} availablePermissions={availablePermissions} />
     );
   })();
 

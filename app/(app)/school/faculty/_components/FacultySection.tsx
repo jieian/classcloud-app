@@ -46,18 +46,14 @@ export function FacultySection({ isActive, highlightCoordinators = false }: Facu
           </p>
         </div>
         {isActive && (
-          <Group gap="sm" className="self-start">
-            <Button variant="outline" color="#4EAE4A" radius="md">
-              Teaching Load Requests
-            </Button>
-            <Button
-              color="#4EAE4A"
-              radius="md"
-              onClick={() => setDrawerOpened(true)}
-            >
-              Add a Faculty
-            </Button>
-          </Group>
+          <Button
+            color="#4EAE4A"
+            radius="md"
+            className="self-start"
+            onClick={() => setDrawerOpened(true)}
+          >
+            Add a Faculty
+          </Button>
         )}
       </div>
 

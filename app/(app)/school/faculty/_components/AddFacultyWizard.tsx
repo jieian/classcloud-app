@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Container,
@@ -23,6 +23,7 @@ import StepAssignSubject from "./StepAssignSubject";
 import StepAssignCoordinator from "./StepAssignCoordinator";
 import StepReview from "./StepReview";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 import WizardBlocker from "@/components/WizardBlocker";
 import {
   assignAcademicLoad,
@@ -77,6 +78,48 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     },
   });
 
+  const isDirty = form.isDirty();
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (!isDirty) return;
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const handleClick = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest("a[href]");
+      if (!anchor) return;
+      const href = anchor.getAttribute("href")!;
+      if (/^(https?:|#|mailto:|tel:)/.test(href)) return;
+      if (anchor.getAttribute("target") === "_blank") return;
+      e.preventDefault();
+      e.stopPropagation();
+      modals.openConfirmModal({
+        title: "Discard changes?",
+        children: (
+          <Text size="sm">
+            You have unsaved changes. Leaving will discard all progress.
+          </Text>
+        ),
+        labels: { confirm: "Discard", cancel: "Stay" },
+        confirmProps: { color: "red" },
+        onConfirm: () => {
+          form.reset();
+          router.push(href);
+        },
+        ...confirmModalProps,
+      });
+    };
+    document.addEventListener("click", handleClick, true);
+    return () => document.removeEventListener("click", handleClick, true);
+  }, [isDirty]);
+
   // Sync subject_assignments when selected_sections changes (add/remove rows)
   function syncSubjectAssignments(selectedSections: number[]) {
     const current = form.values.subject_assignments;
@@ -95,8 +138,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
       if (form.values.selected_sections.length === 0) {
         notify({
           type: "error",
-          title: "Validation Error",
-          message: "Please select at least one section.",
+          title: "No Section Selected",
+          message: "Please select at least one section to continue.",
         });
         return;
       }
@@ -105,15 +148,24 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     }
 
     if (step === 2) {
-      // Require at least one subject per section
-      const missingSubjects = form.values.subject_assignments.some(
+      const missingSections = form.values.subject_assignments.filter(
         (a) => a.subject_ids.length === 0,
       );
-      if (missingSubjects) {
+      if (missingSections.length > 0) {
+        const sectionNames = missingSections
+          .map((a) => {
+            const sec = initialData.sections.find((s) => s.section_id === a.section_id);
+            const gl = sec
+              ? initialData.grade_levels.find((g) => g.grade_level_id === sec.grade_level_id)
+              : null;
+            return gl ? `${gl.display_name} • ${sec!.name}` : sec?.name ?? `Section ${a.section_id}`;
+          })
+          .join(", ");
         notify({
           type: "error",
-          title: "Validation Error",
-          message: "Please select at least one subject for each section.",
+          title: "Missing Subject Assignment",
+          message: `Please assign at least one subject for: ${sectionNames}.`,
+          autoClose: 6000,
         });
         return;
       }
@@ -259,18 +311,6 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     }
   };
 
-  const isNextDisabled = (() => {
-    if (form.values.activeStep === 1) {
-      return form.values.selected_sections.length === 0;
-    }
-    if (form.values.activeStep === 2) {
-      return form.values.subject_assignments.some(
-        (a) => a.subject_ids.length === 0,
-      );
-    }
-    return false;
-  })();
-
   const goBack = () => {
     router.replace("/school/faculty");
     router.refresh();
@@ -384,6 +424,14 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     }
   })();
 
+  const mobileSteps = [
+    { description: "Advisory Class" },
+    { description: "Grade & Section" },
+    { description: "Assign Subjects" },
+    ...(isAddMode ? [{ description: "Subject Coordinator" }] : []),
+    { description: isAddMode ? "Review & Confirm" : "Review & Save" },
+  ];
+
   const isFinalStep = form.values.activeStep === TOTAL_STEPS - 1;
   const navButtons = (
     <WizardNavigationButtons
@@ -391,8 +439,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
       showPrevious={form.values.activeStep > 0}
       onPrevious={prevStep}
       onPrimary={isFinalStep ? handleAssign : nextStep}
-      primaryLabel={isFinalStep ? "Assign Academic Load" : "Next"}
-      primaryDisabled={isFinalStep ? !initialData.active_sy_id : isNextDisabled}
+      primaryLabel={isFinalStep ? "Assign Teaching Load" : "Next"}
+      primaryDisabled={isFinalStep ? !initialData.active_sy_id : false}
       primaryLoading={isFinalStep ? submitting : false}
     />
   );
@@ -401,59 +449,12 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     <Container fluid py="xl" h="100%">
       {isMobile ? (
         <>
-          <Stepper
-            active={form.values.activeStep}
-            color="#4EAE4A"
-            orientation="vertical"
-          >
-            <Stepper.Step label="Step 1" description="Advisory Class">
-              <StepAssignAdvisory
-                form={form}
-                gradeLevels={initialData.grade_levels}
-                sections={initialData.sections}
-                facultyUid={facultyUid}
-              />
-            </Stepper.Step>
-            <Stepper.Step label="Step 2" description="Grade & Section">
-              <StepAssignGradeSection
-                form={form}
-                gradeLevels={initialData.grade_levels}
-                sections={initialData.sections}
-                subjectsByGradeLevel={initialData.subjects_by_grade_level}
-                allAssignments={initialData.all_assignments}
-                facultyUid={facultyUid}
-              />
-            </Stepper.Step>
-            <Stepper.Step label="Step 3" description="Assign Subjects">
-              <StepAssignSubject
-                form={form}
-                gradeLevels={initialData.grade_levels}
-                sections={initialData.sections}
-                subjectsByGradeLevel={initialData.subjects_by_grade_level}
-                allAssignments={initialData.all_assignments}
-                facultyUid={facultyUid}
-              />
-            </Stepper.Step>
-            {isAddMode && (
-              <Stepper.Step label="Step 4" description="Subject Coordinator Role">
-                <StepAssignCoordinator
-                  form={form}
-                  coordinatorGroups={initialData.coordinator_groups}
-                  facultyUid={facultyUid}
-                />
-              </Stepper.Step>
-            )}
-            <Stepper.Step
-              label={isAddMode ? "Step 5" : "Step 4"}
-              description={isAddMode ? "Review & Confirm" : "Review & Save"}
-            >
-              <StepReview
-                {...reviewProps}
-                isAddMode={isAddMode}
-                coordinatorGroups={initialData.coordinator_groups}
-              />
-            </Stepper.Step>
-          </Stepper>
+          <MobileStepIndicator
+            activeStep={form.values.activeStep}
+            totalSteps={TOTAL_STEPS}
+            stepDescription={mobileSteps[form.values.activeStep]?.description ?? ""}
+          />
+          {stepContent}
           {navButtons}
         </>
       ) : (
@@ -469,7 +470,7 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
               <Stepper.Step label="Step 2" description="Grade & Section" />
               <Stepper.Step label="Step 3" description="Assign Subjects" />
               {isAddMode && (
-                <Stepper.Step label="Step 4" description="Subject Coordinator Role" />
+                <Stepper.Step label="Step 4" description="Subject Coordinator" />
               )}
               <Stepper.Step
                 label={isAddMode ? "Step 5" : "Step 4"}

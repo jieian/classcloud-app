@@ -1,16 +1,24 @@
 "use client";
 
 import {
+  Alert,
   Box,
   Collapse,
   Group,
-  Radio,
+  Paper,
   Text,
+  ThemeIcon,
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import { useState } from "react";
-import { IconChevronDown, IconUser } from "@tabler/icons-react";
+import { useEffect, useMemo, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
+import {
+  IconChevronDown,
+  IconChevronUp,
+  IconInfoCircle,
+  IconUser,
+} from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
 import type {
   AddFacultyForm,
@@ -28,56 +36,112 @@ interface GroupCardProps {
   group: SubjectCoordinatorGroup;
   isSelected: boolean;
   isTakenByOther: boolean;
+  onSelect: () => void;
 }
 
-function GroupCard({ group, isSelected, isTakenByOther }: GroupCardProps) {
+function GroupCard({ group, isSelected, isTakenByOther, onSelect }: GroupCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
+  const showSubjects = isSelected || expanded;
 
   return (
-    <Box
+    <Paper
+      withBorder
+      radius="md"
       mb="xs"
       style={{
-        border: `1px solid ${isSelected ? "#4EAE4A" : "#e9ecef"}`,
-        borderRadius: 8,
-        backgroundColor: isSelected ? "#f0faf0" : "#fafafa",
-        transition: "all 150ms ease",
         overflow: "hidden",
+        borderColor: isSelected ? "#4EAE4A" : isTakenByOther ? "#e9ecef" : undefined,
+        borderWidth: isSelected ? 2 : 1,
+        backgroundColor: isSelected ? "#f6fbf6" : isTakenByOther ? "#f8f9fa" : undefined,
+        transition: "border-color 150ms ease, background-color 150ms ease",
       }}
     >
-      <Box px="md" py="xs">
-        <Group justify="space-between" wrap="nowrap" align="flex-start">
-          <Group
-            wrap="nowrap"
-            align="flex-start"
-            gap="xs"
-            style={{ flex: 1, minWidth: 0 }}
-          >
-            <Radio
-              value={group.subject_group_id.toString()}
-              disabled={isTakenByOther}
-              mt={2}
-            />
+      {/* Header row */}
+      <UnstyledButton
+        component="div"
+        onClick={isTakenByOther ? undefined : onSelect}
+        style={{
+          width: "100%",
+          padding: "12px 16px",
+          cursor: isTakenByOther ? "not-allowed" : "pointer",
+        }}
+      >
+        <Group justify="space-between" wrap="nowrap" align="center">
+          <Group gap="sm" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
+            {/* Custom radio indicator */}
+            <Box
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                border: `2px solid ${isSelected ? "#4EAE4A" : "#ced4da"}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                transition: "border-color 150ms ease",
+              }}
+            >
+              {isSelected && (
+                <Box
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "#4EAE4A",
+                  }}
+                />
+              )}
+            </Box>
+
             <Box style={{ flex: 1, minWidth: 0 }}>
               <Group gap="xs" wrap="nowrap" align="center">
-                <Text size="sm" fw={600}>
+                <Text
+                  fw={isSelected ? 700 : 500}
+                  size="sm"
+                  c={isTakenByOther ? "#adb5bd" : isSelected ? "#298925" : "inherit"}
+                >
                   {group.name}
                 </Text>
+                {isTakenByOther && (
+                  <Text
+                    size="xs"
+                    fw={500}
+                    style={{
+                      backgroundColor: "#e9ecef",
+                      color: "#868e96",
+                      padding: "1px 6px",
+                      borderRadius: 4,
+                      flexShrink: 0,
+                    }}
+                  >
+                    Assigned
+                  </Text>
+                )}
                 {isTakenByOther && group.coordinator && (
                   <Tooltip
                     label={`Coordinator: ${group.coordinator.first_name} ${group.coordinator.last_name}`}
                     position="right"
                     withArrow
+                    opened={isMobile ? tooltipOpen : undefined}
                   >
                     <IconUser
                       size={14}
-                      color="#aaa"
-                      style={{ cursor: "help" }}
+                      color="#adb5bd"
+                      style={{ cursor: isMobile ? "pointer" : "help" }}
+                      onClick={isMobile ? (e) => {
+                        e.stopPropagation();
+                        setTooltipOpen((v) => !v);
+                      } : undefined}
                     />
                   </Tooltip>
                 )}
               </Group>
               {group.description && (
-                <Text size="xs" c="dimmed" mt={2}>
+                <Text size="xs" c={isTakenByOther ? "#ced4da" : "dimmed"} mt={2}>
                   {group.description}
                 </Text>
               )}
@@ -86,25 +150,27 @@ function GroupCard({ group, isSelected, isTakenByOther }: GroupCardProps) {
 
           {group.members.length > 0 && (
             <UnstyledButton
-              onClick={() => setExpanded((v) => !v)}
-              style={{ flexShrink: 0 }}
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpanded((v) => !v);
+              }}
+              style={{ flexShrink: 0, padding: "2px 4px" }}
               aria-label={expanded ? "Hide subjects" : "Show subjects"}
             >
-              <IconChevronDown
-                size={14}
-                color="#888"
-                style={{
-                  transform: expanded ? "rotate(180deg)" : undefined,
-                  transition: "transform 200ms ease",
-                }}
-              />
+              {showSubjects ? (
+                <IconChevronUp size={14} color="#808898" />
+              ) : (
+                <IconChevronDown size={14} color="#808898" />
+              )}
             </UnstyledButton>
           )}
         </Group>
+      </UnstyledButton>
 
-        {/* Subject badges — always visible when selected, expandable otherwise */}
-        {(isSelected || expanded) && group.members.length > 0 && (
-          <Group gap={4} mt="xs" wrap="wrap" pl={28}>
+      {/* Subject badges */}
+      <Collapse in={showSubjects && group.members.length > 0}>
+        <div style={{ borderTop: "1px solid #e9ecef", padding: "10px 16px" }}>
+          <Group gap={4} wrap="wrap">
             {group.members.map((m) => (
               <SubjectBadge
                 key={m.curriculum_subject_id}
@@ -115,15 +181,9 @@ function GroupCard({ group, isSelected, isTakenByOther }: GroupCardProps) {
               />
             ))}
           </Group>
-        )}
-
-        <Collapse in={!isSelected && expanded && group.members.length === 0}>
-          <Text size="xs" c="dimmed" pl={28} mt="xs">
-            No subjects in this group.
-          </Text>
-        </Collapse>
-      </Box>
-    </Box>
+        </div>
+      </Collapse>
+    </Paper>
   );
 }
 
@@ -132,56 +192,151 @@ export default function StepAssignCoordinator({
   coordinatorGroups,
   facultyUid,
 }: StepAssignCoordinatorProps) {
-  const selectedValue =
-    form.values.subject_group_id !== null
-      ? form.values.subject_group_id.toString()
-      : "none";
+  const selectedGroupId = form.values.subject_group_id;
 
-  const handleChange = (value: string) => {
-    form.setFieldValue(
-      "subject_group_id",
-      value === "none" ? null : parseInt(value, 10),
-    );
+  const sortedGroups = useMemo(
+    () => [...coordinatorGroups].sort((a, b) => a.name.localeCompare(b.name)),
+    [coordinatorGroups],
+  );
+
+  const allTaken = useMemo(
+    () =>
+      sortedGroups.length > 0 &&
+      sortedGroups.every(
+        (g) => g.coordinator !== null && g.coordinator.uid !== facultyUid,
+      ),
+    [sortedGroups, facultyUid],
+  );
+
+  // Auto-select "none" when all groups are taken
+  useEffect(() => {
+    if (allTaken) {
+      form.setFieldValue("subject_group_id", null);
+    }
+  }, [allTaken]);
+
+  const handleSelect = (groupId: number | null) => {
+    form.setFieldValue("subject_group_id", groupId);
   };
+
+  const noneSelected = selectedGroupId === null;
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
-        Subject Coordinator Role
-      </Text>
-      <Text size="sm" c="dimmed" mb="lg">
-        Subject Coordinator assignment is optional. They oversee a specific
-        subject across all grade levels, ensuring all teachers in the group
-        submit their academic reports on time.
+      <Text size="xl" fw={700} mb="md" c="#298925">
+        Subject Coordinator
       </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
+      <Box p="lg" style={{ border: "1px solid #B8B8B8", borderRadius: "8px" }}>
+        <Text size="lg" fw={700} mb="xs" c="#298925">
+          Subject Coordinator
+        </Text>
+        <Text size="sm" mb="lg" c="dimmed">
+          <Text span fw={700} size="sm">
+            Optional.
+          </Text>{" "}
+          Subject coordinators oversee a specific subject group across all grade
+          levels, ensuring teachers submit their academic reports on time.
+        </Text>
+
         {coordinatorGroups.length === 0 ? (
           <Text size="sm" c="dimmed">
             No subject groups have been configured for the active curriculum.
             You can skip this step.
           </Text>
         ) : (
-          <Radio.Group value={selectedValue} onChange={handleChange}>
-            <Radio value="none" label="No Subject Coordinator Role" mb="md" />
+          <>
+            {/* "None" option */}
+            <UnstyledButton
+              onClick={allTaken ? undefined : () => handleSelect(null)}
+              mb="md"
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: `2px solid ${noneSelected ? "#adb5bd" : "#dee2e6"}`,
+                backgroundColor: "#f1f3f5",
+                cursor: allTaken ? "default" : "pointer",
+                transition: "border-color 150ms ease",
+              }}
+            >
+              <Group gap="sm" align="center">
+                <Box
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    border: `2px solid ${noneSelected ? "#adb5bd" : "#ced4da"}`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    transition: "border-color 150ms ease",
+                  }}
+                >
+                  {noneSelected && (
+                    <Box
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        backgroundColor: "#adb5bd",
+                      }}
+                    />
+                  )}
+                </Box>
+                <Text
+                  fw={noneSelected ? 600 : 500}
+                  size="sm"
+                  c={noneSelected ? "#495057" : "#868e96"}
+                >
+                  No Subject Coordinator Role
+                </Text>
+              </Group>
+            </UnstyledButton>
 
-            {coordinatorGroups.map((group) => {
-              const isTakenByOther =
-                group.coordinator !== null &&
-                group.coordinator.uid !== facultyUid;
-              const isSelected =
-                form.values.subject_group_id === group.subject_group_id;
+            {allTaken ? (
+              <Alert
+                variant="filled"
+                color="blue"
+                radius="md"
+                styles={{
+                  icon: { alignSelf: "center", marginTop: 0 },
+                }}
+                icon={
+                  <ThemeIcon color="white" variant="transparent" size="md">
+                    <IconInfoCircle size={20} />
+                  </ThemeIcon>
+                }
+              >
+                <Text fw={700} size="sm">
+                  All Subject Groups Are Already Assigned
+                </Text>
+                <Text size="sm" fs="italic">
+                  Every subject group already has a coordinator. This faculty
+                  will not be assigned a subject coordinator role.
+                </Text>
+              </Alert>
+            ) : (
+              sortedGroups.map((group) => {
+                const isTakenByOther =
+                  group.coordinator !== null &&
+                  group.coordinator.uid !== facultyUid;
+                const isSelected = selectedGroupId === group.subject_group_id;
 
-              return (
-                <GroupCard
-                  key={group.subject_group_id}
-                  group={group}
-                  isSelected={isSelected}
-                  isTakenByOther={isTakenByOther}
-                />
-              );
-            })}
-          </Radio.Group>
+                return (
+                  <GroupCard
+                    key={group.subject_group_id}
+                    group={group}
+                    isSelected={isSelected}
+                    isTakenByOther={isTakenByOther}
+                    onSelect={() => handleSelect(group.subject_group_id)}
+                  />
+                );
+              })
+            )}
+          </>
         )}
       </Box>
     </Box>

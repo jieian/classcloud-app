@@ -2,7 +2,7 @@ import { notifications } from "@mantine/notifications";
 
 import {
   IconCheck,
-  IconX,
+  IconExclamationCircle,
   IconInfoCircle,
   IconAlertTriangle,
 } from "@tabler/icons-react";
@@ -12,7 +12,7 @@ type NotifyType = "success" | "error" | "info" | "warning";
 
 const iconMap: Record<NotifyType, ReactNode> = {
   success: <IconCheck size={20} />,
-  error: <IconX size={20} />,
+  error: <IconExclamationCircle size={20} />,
   info: <IconInfoCircle size={20} />,
   warning: <IconAlertTriangle size={20} />,
 };

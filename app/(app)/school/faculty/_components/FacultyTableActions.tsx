@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ActionIcon, Group, Text, Tooltip } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconSettings, IconTrash } from "@tabler/icons-react";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
@@ -20,6 +21,15 @@ export default function FacultyTableActions({
 }: FacultyTableActionsProps) {
   const router = useRouter();
   const [removing, setRemoving] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const handleRemove = () => {
     const facultyName = `${faculty.first_name} ${faculty.last_name}`;
@@ -35,6 +45,7 @@ export default function FacultyTableActions({
       ),
       labels: { confirm: "Remove", cancel: "Cancel" },
       confirmProps: { color: "red" },
+      ...confirmModalProps,
       onConfirm: async () => {
         try {
           setRemoving(true);

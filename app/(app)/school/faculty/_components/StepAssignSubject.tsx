@@ -9,9 +9,11 @@ import {
   Collapse,
   Tooltip,
   UnstyledButton,
+  Paper,
 } from "@mantine/core";
 import { useState, useMemo } from "react";
-import { IconChevronDown, IconUser } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
+import { IconChevronDown, IconChevronUp, IconUser } from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
 import type {
   AddFacultyForm,
@@ -40,31 +42,31 @@ function SectionBlock({ label, selectedCount, children }: SectionBlockProps) {
   const [opened, setOpened] = useState(true);
 
   return (
-    <Box mb="xs">
+    <Paper withBorder radius="md" mb="xs" style={{ overflow: "hidden" }}>
       <UnstyledButton
         onClick={() => setOpened((o) => !o)}
-        style={{ width: "100%", backgroundColor: "#f8f9fa", padding: "10px 16px", borderRadius: 8 }}
+        style={{ width: "100%", padding: "12px 16px" }}
       >
         <Group justify="space-between">
-          <Text fw={600} size="sm">
-            {label}
-            {selectedCount > 0 && (
-              <Text span c="#4EAE4A" fw={700}>
-                {" "}({selectedCount})
-              </Text>
-            )}
+          <Text fw={700} size="sm">
+            {label}{" "}
+            <Text span c={selectedCount > 0 ? "#4EAE4A" : "dimmed"} fw={selectedCount > 0 ? 700 : 400}>
+              ({selectedCount})
+            </Text>
           </Text>
-          <IconChevronDown
-            size={16}
-            color="#555"
-            style={{ transform: opened ? "rotate(180deg)" : undefined, transition: "transform 200ms ease" }}
-          />
+          {opened ? (
+            <IconChevronUp size={16} color="#808898" />
+          ) : (
+            <IconChevronDown size={16} color="#808898" />
+          )}
         </Group>
       </UnstyledButton>
       <Collapse in={opened}>
-        <Box pl="md" py="sm">{children}</Box>
+        <div style={{ borderTop: "1px solid #ced4da", padding: "16px 20px" }}>
+          {children}
+        </div>
       </Collapse>
-    </Box>
+    </Paper>
   );
 }
 
@@ -107,11 +109,15 @@ export default function StepAssignSubject({
   // Selected sections sorted by grade level then name (independent of click order)
   const sortedSelectedSections = useMemo(() => {
     const sectionMap = new Map(sections.map((s) => [s.section_id, s]));
-    const glOrder = new Map(gradeLevels.map((gl) => [gl.grade_level_id, gl.level_number]));
+    const glOrder = new Map(
+      gradeLevels.map((gl) => [gl.grade_level_id, gl.level_number]),
+    );
     return [...form.values.selected_sections].sort((a, b) => {
       const sa = sectionMap.get(a);
       const sb = sectionMap.get(b);
-      const glDiff = (glOrder.get(sa?.grade_level_id ?? 0) ?? 0) - (glOrder.get(sb?.grade_level_id ?? 0) ?? 0);
+      const glDiff =
+        (glOrder.get(sa?.grade_level_id ?? 0) ?? 0) -
+        (glOrder.get(sb?.grade_level_id ?? 0) ?? 0);
       if (glDiff !== 0) return glDiff;
       return (sa?.name ?? "").localeCompare(sb?.name ?? "");
     });
@@ -131,6 +137,9 @@ export default function StepAssignSubject({
   const takenByOther = (sectionId: number, subjectId: number): string | null =>
     takenByMap.get(`${sectionId}-${subjectId}`) ?? null;
 
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const [openTooltipKey, setOpenTooltipKey] = useState<string | null>(null);
+
   if (form.values.selected_sections.length === 0) {
     return (
       <Box>
@@ -146,14 +155,21 @@ export default function StepAssignSubject({
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Assign Subjects
       </Text>
-      <Text size="sm" c="dimmed" mb="lg">
-        Assign subjects per section. At least one subject per section is required.
-      </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
+      <Box p="lg" style={{ border: "1px solid #B8B8B8", borderRadius: "8px" }}>
+        <Text size="lg" fw={700} mb="xs" c="#298925">
+          Assign Subjects
+        </Text>
+        <Text size="sm" mb="lg" c="dimmed">
+          Assign subjects per section.{" "}
+          <Text span fw={700} size="sm">
+            At least one subject per section
+          </Text>{" "}
+          is required.
+        </Text>
         {sortedSelectedSections.map((sectionId) => {
           const section = sections.find((s) => s.section_id === sectionId);
           if (!section) return null;
@@ -166,10 +182,15 @@ export default function StepAssignSubject({
             : section.name;
 
           const subjectsForGl = (subjectsByGl.get(section.grade_level_id) ?? [])
-            .filter((s) => s.subject_type === "BOTH" || section.section_type === "SSES")
+            .filter(
+              (s) =>
+                s.subject_type === "BOTH" || section.section_type === "SSES",
+            )
             .sort((a, b) => a.name.localeCompare(b.name));
 
-          const assignment = subjectAssignments.find((a) => a.section_id === sectionId);
+          const assignment = subjectAssignments.find(
+            (a) => a.section_id === sectionId,
+          );
           const selectedCount = assignment?.subject_ids.length ?? 0;
 
           const availableSubjectIds = subjectsForGl
@@ -184,15 +205,29 @@ export default function StepAssignSubject({
             const updated = subjectAssignments.map((a) => {
               if (a.section_id !== sectionId) return a;
               if (allAvailableSelected) {
-                return { ...a, subject_ids: a.subject_ids.filter((id) => !availableSubjectIds.includes(id)) };
+                return {
+                  ...a,
+                  subject_ids: a.subject_ids.filter(
+                    (id) => !availableSubjectIds.includes(id),
+                  ),
+                };
               }
-              return { ...a, subject_ids: [...new Set([...a.subject_ids, ...availableSubjectIds])] };
+              return {
+                ...a,
+                subject_ids: [
+                  ...new Set([...a.subject_ids, ...availableSubjectIds]),
+                ],
+              };
             });
             form.setFieldValue("subject_assignments", updated);
           };
 
           return (
-            <SectionBlock key={sectionId} label={label} selectedCount={selectedCount}>
+            <SectionBlock
+              key={sectionId}
+              label={label}
+              selectedCount={selectedCount}
+            >
               {subjectsForGl.length === 0 ? (
                 <Text size="sm" c="dimmed">
                   No subjects defined for this grade level.
@@ -203,7 +238,12 @@ export default function StepAssignSubject({
                     <>
                       <Checkbox
                         checked={allAvailableSelected}
-                        indeterminate={!allAvailableSelected && availableSubjectIds.some((id) => currentSelectedIds.includes(id))}
+                        indeterminate={
+                          !allAvailableSelected &&
+                          availableSubjectIds.some((id) =>
+                            currentSelectedIds.includes(id),
+                          )
+                        }
                         onChange={handleSelectAll}
                         label="Select All"
                         fw={500}
@@ -214,13 +254,23 @@ export default function StepAssignSubject({
                   )}
                   {subjectsForGl.map((subject) => {
                     const teacher = takenByOther(sectionId, subject.subject_id);
-                    const isChecked = assignment?.subject_ids.includes(subject.subject_id) ?? false;
+                    const isChecked =
+                      assignment?.subject_ids.includes(subject.subject_id) ??
+                      false;
 
                     return (
-                      <Group key={subject.subject_id} mb="xs" gap="xs" align="center">
+                      <Group
+                        key={subject.subject_id}
+                        mb="xs"
+                        gap="xs"
+                        align="center"
+                      >
                         <Checkbox
                           checked={isChecked}
-                          onChange={() => !teacher && toggleSubject(sectionId, subject.subject_id)}
+                          onChange={() =>
+                            !teacher &&
+                            toggleSubject(sectionId, subject.subject_id)
+                          }
                           disabled={!!teacher}
                           label={`(${subject.code}) ${subject.name}`}
                         />
@@ -229,8 +279,17 @@ export default function StepAssignSubject({
                             label={`Assigned to: ${teacher}`}
                             position="right"
                             withArrow
+                            opened={isMobile ? openTooltipKey === `${sectionId}-${subject.subject_id}` : undefined}
                           >
-                            <IconUser size={14} color="#aaa" style={{ cursor: "help" }} />
+                            <IconUser
+                              size={14}
+                              color="#aaa"
+                              style={{ cursor: isMobile ? "pointer" : "help" }}
+                              onClick={isMobile ? () => {
+                                const key = `${sectionId}-${subject.subject_id}`;
+                                setOpenTooltipKey(openTooltipKey === key ? null : key);
+                              } : undefined}
+                            />
                           </Tooltip>
                         )}
                       </Group>

@@ -39,7 +39,7 @@ export default function WizardNavigationButtons({
   const useColor = colorWhenEnabledOnly ? !primaryDisabled : true;
 
   return (
-    <Group justify="flex-end" mt={mt}>
+    <Group justify="flex-end" mt={mt} wrap="nowrap">
       {leftExtra && leftExtra}
       <UnstyledButton
         onClick={onCancel}

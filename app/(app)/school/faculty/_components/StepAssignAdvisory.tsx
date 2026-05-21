@@ -9,11 +9,17 @@ import {
   Collapse,
   Tooltip,
   UnstyledButton,
+  Paper,
 } from "@mantine/core";
 import { useState, useMemo } from "react";
-import { IconChevronDown, IconUser } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
+import { IconChevronDown, IconChevronUp, IconUser } from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
-import type { AddFacultyForm, GradeLevel, SectionWithAdviser } from "../_lib/teachingLoadService";
+import type {
+  AddFacultyForm,
+  GradeLevel,
+  SectionWithAdviser,
+} from "../_lib/teachingLoadService";
 
 interface StepAssignAdvisoryProps {
   form: UseFormReturnType<AddFacultyForm>;
@@ -38,37 +44,32 @@ function GradeLevelBar({
   const [opened, setOpened] = useState(defaultOpen);
 
   return (
-    <Box mb="xs">
+    <Paper withBorder radius="md" mb="xs" style={{ overflow: "hidden" }}>
       <UnstyledButton
         onClick={() => setOpened((o) => !o)}
         style={{
           width: "100%",
-          backgroundColor: isHighlighted ? "#4EAE4A" : "#f8f9fa",
-          padding: "10px 16px",
-          borderRadius: 8,
-          transition: "background-color 200ms ease",
+          padding: "12px 16px",
+          backgroundColor: isHighlighted ? "#4EAE4A" : undefined,
         }}
       >
         <Group justify="space-between">
-          <Text fw={600} size="sm" c={isHighlighted ? "white" : "inherit"}>
+          <Text fw={700} size="sm" c={isHighlighted ? "white" : "inherit"}>
             {gradeLevel.display_name}
           </Text>
-          <IconChevronDown
-            size={16}
-            color={isHighlighted ? "white" : "#555"}
-            style={{
-              transform: opened ? "rotate(180deg)" : undefined,
-              transition: "transform 200ms ease",
-            }}
-          />
+          {opened ? (
+            <IconChevronUp size={16} color={isHighlighted ? "white" : "#808898"} />
+          ) : (
+            <IconChevronDown size={16} color={isHighlighted ? "white" : "#808898"} />
+          )}
         </Group>
       </UnstyledButton>
       <Collapse in={opened}>
-        <Box pl="md" py="sm">
+        <div style={{ borderTop: "1px solid #ced4da", padding: "16px 20px" }}>
           {children}
-        </Box>
+        </div>
       </Collapse>
-    </Box>
+    </Paper>
   );
 }
 
@@ -79,6 +80,8 @@ export default function StepAssignAdvisory({
   facultyUid,
 }: StepAssignAdvisoryProps) {
   const selectedSectionId = form.values.advisory_section_id;
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const [openTooltipId, setOpenTooltipId] = useState<number | null>(null);
 
   const handleChange = (value: string) => {
     form.setFieldValue(
@@ -97,7 +100,8 @@ export default function StepAssignAdvisory({
     }
     for (const list of map.values()) {
       list.sort((a, b) => {
-        if (a.section_type === b.section_type) return a.name.localeCompare(b.name);
+        if (a.section_type === b.section_type)
+          return a.name.localeCompare(b.name);
         return a.section_type === "SSES" ? -1 : 1;
       });
     }
@@ -108,27 +112,86 @@ export default function StepAssignAdvisory({
   const selectedGlId = useMemo(
     () =>
       selectedSectionId !== null
-        ? (sections.find((s) => s.section_id === selectedSectionId)?.grade_level_id ?? null)
+        ? (sections.find((s) => s.section_id === selectedSectionId)
+            ?.grade_level_id ?? null)
         : null,
     [selectedSectionId, sections],
   );
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Advisory Class
       </Text>
-      <Text size="sm" c="dimmed" mb="lg">
-        Optional. Assigns this faculty as the homeroom adviser for a section.
-      </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
+      <Box p="lg" style={{ border: "1px solid #B8B8B8", borderRadius: "8px" }}>
+        <Text size="lg" fw={700} mb="xs" c="#298925">
+          Advisory Class
+        </Text>
+        <Text size="sm" mb="lg" c="dimmed">
+          <Text span fw={700} size="sm">
+            Optional.
+          </Text>{" "}
+          Assign an advisory class to designate this faculty member as the
+          section's homeroom adviser.
+        </Text>
+
+        {/* "No Advisory Class" — modern card-style selector */}
+        <UnstyledButton
+          onClick={() => handleChange("none")}
+          mb="md"
+          style={{
+            display: "block",
+            width: "100%",
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: `2px solid ${selectedSectionId === null ? "#adb5bd" : "#dee2e6"}`,
+            backgroundColor: selectedSectionId === null ? "#f1f3f5" : "#f1f3f5",
+            cursor: "pointer",
+            transition: "border-color 150ms ease, background-color 150ms ease",
+          }}
+        >
+          <Group gap="sm" align="center">
+            <Box
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: "50%",
+                border: `2px solid ${selectedSectionId === null ? "#adb5bd" : "#ced4da"}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                transition: "border-color 150ms ease",
+              }}
+            >
+              {selectedSectionId === null && (
+                <Box
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "#adb5bd",
+                  }}
+                />
+              )}
+            </Box>
+            <Text
+              fw={selectedSectionId === null ? 600 : 500}
+              size="sm"
+              c={selectedSectionId === null ? "#495057" : "#868e96"}
+            >
+              No Advisory Class
+            </Text>
+          </Group>
+        </UnstyledButton>
+
         <Radio.Group
-          value={selectedSectionId !== null ? selectedSectionId.toString() : "none"}
+          value={
+            selectedSectionId !== null ? selectedSectionId.toString() : "none"
+          }
           onChange={handleChange}
         >
-          <Radio value="none" label="No Advisory Class" mb="md" />
-
           {gradeLevels.map((gl) => {
             const glSections = sectionsByGl.get(gl.grade_level_id);
             if (!glSections || glSections.length === 0) return null;
@@ -143,10 +206,16 @@ export default function StepAssignAdvisory({
               >
                 {glSections.map((section) => {
                   const isTakenByOther =
-                    section.adviser_id !== null && section.adviser_id !== facultyUid;
+                    section.adviser_id !== null &&
+                    section.adviser_id !== facultyUid;
 
                   return (
-                    <Group key={section.section_id} mb="xs" gap="xs" align="center">
+                    <Group
+                      key={section.section_id}
+                      mb="xs"
+                      gap="xs"
+                      align="center"
+                    >
                       <Radio
                         value={section.section_id.toString()}
                         label={section.name}
@@ -157,7 +226,10 @@ export default function StepAssignAdvisory({
                         variant="filled"
                         radius="xl"
                         style={{
-                          backgroundColor: section.section_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                          backgroundColor:
+                            section.section_type === "SSES"
+                              ? "#70A2FF"
+                              : "#B3B4B4",
                           color: "#fff",
                         }}
                       >
@@ -168,8 +240,19 @@ export default function StepAssignAdvisory({
                           label={`Adviser: ${section.adviser_name}`}
                           position="right"
                           withArrow
+                          opened={isMobile ? openTooltipId === section.section_id : undefined}
                         >
-                          <IconUser size={14} color="#aaa" style={{ cursor: "help" }} />
+                          <IconUser
+                            size={14}
+                            color="#aaa"
+                            style={{ cursor: isMobile ? "pointer" : "help" }}
+                            onClick={isMobile ? () =>
+                              setOpenTooltipId(
+                                openTooltipId === section.section_id
+                                  ? null
+                                  : section.section_id,
+                              ) : undefined}
+                          />
                         </Tooltip>
                       )}
                     </Group>

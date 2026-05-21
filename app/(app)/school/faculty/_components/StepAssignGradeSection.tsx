@@ -9,9 +9,11 @@ import {
   Collapse,
   Tooltip,
   UnstyledButton,
+  Paper,
 } from "@mantine/core";
 import { useState, useMemo } from "react";
-import { IconChevronDown, IconLock } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
+import { IconChevronDown, IconChevronUp, IconLock } from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
 import type {
   AddFacultyForm,
@@ -40,31 +42,31 @@ function GradeLevelBar({ gradeLevel, count, children }: GradeLevelBarProps) {
   const [opened, setOpened] = useState(false);
 
   return (
-    <Box mb="xs">
+    <Paper withBorder radius="md" mb="xs" style={{ overflow: "hidden" }}>
       <UnstyledButton
         onClick={() => setOpened((o) => !o)}
-        style={{ width: "100%", backgroundColor: "#f8f9fa", padding: "10px 16px", borderRadius: 8 }}
+        style={{ width: "100%", padding: "12px 16px" }}
       >
         <Group justify="space-between">
-          <Text fw={600} size="sm">
-            {gradeLevel.display_name}
-            {count > 0 && (
-              <Text span c="#4EAE4A" fw={700}>
-                {" "}({count})
-              </Text>
-            )}
+          <Text fw={700} size="sm">
+            {gradeLevel.display_name}{" "}
+            <Text span c={count > 0 ? "#4EAE4A" : "dimmed"} fw={count > 0 ? 700 : 400}>
+              ({count})
+            </Text>
           </Text>
-          <IconChevronDown
-            size={16}
-            color="#555"
-            style={{ transform: opened ? "rotate(180deg)" : undefined, transition: "transform 200ms ease" }}
-          />
+          {opened ? (
+            <IconChevronUp size={16} color="#808898" />
+          ) : (
+            <IconChevronDown size={16} color="#808898" />
+          )}
         </Group>
       </UnstyledButton>
       <Collapse in={opened}>
-        <Box pl="md" py="sm">{children}</Box>
+        <div style={{ borderTop: "1px solid #ced4da", padding: "16px 20px" }}>
+          {children}
+        </div>
       </Collapse>
-    </Box>
+    </Paper>
   );
 }
 
@@ -81,7 +83,10 @@ export default function StepAssignGradeSection({
 
   const toggleSection = (sectionId: number) => {
     if (selectedSections.includes(sectionId)) {
-      form.setFieldValue("selected_sections", selectedSections.filter((id) => id !== sectionId));
+      form.setFieldValue(
+        "selected_sections",
+        selectedSections.filter((id) => id !== sectionId),
+      );
     } else {
       form.setFieldValue("selected_sections", [...selectedSections, sectionId]);
     }
@@ -130,10 +135,13 @@ export default function StepAssignGradeSection({
   // O(1) lookup: is every applicable subject in this section taken by someone else?
   // BOTH subjects apply to all sections; SSES subjects only apply to SSES sections
   const isAllSubjectsTaken = (section: SectionWithAdviser): boolean => {
-    const subjects = (subjectsByGl.get(section.grade_level_id) ?? [])
-      .filter((s) => s.subject_type === "BOTH" || section.section_type === "SSES");
+    const subjects = (subjectsByGl.get(section.grade_level_id) ?? []).filter(
+      (s) => s.subject_type === "BOTH" || section.section_type === "SSES",
+    );
     if (subjects.length === 0) return false;
-    return subjects.every((s) => takenKeys.has(`${section.section_id}-${s.subject_id}`));
+    return subjects.every((s) =>
+      takenKeys.has(`${section.section_id}-${s.subject_id}`),
+    );
   };
 
   // O(1) lookup: how many selected sections belong to this grade level?
@@ -142,22 +150,38 @@ export default function StepAssignGradeSection({
       (sid) => sectionGradeLevelMap.get(sid) === gradeLevelId,
     ).length;
 
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const [openLockTooltip, setOpenLockTooltip] = useState<number | null>(null);
+
   return (
     <Box>
-      <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Grade &amp; Section
       </Text>
-      <Text size="sm" c="dimmed" mb="lg">
-        Select the sections this faculty will teach. At least one section is required.
-      </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
+      <Box p="lg" style={{ border: "1px solid #B8B8B8", borderRadius: "8px" }}>
+        <Text size="lg" fw={700} mb="xs" c="#298925">
+          Grade &amp; Section
+        </Text>
+        <Text size="sm" mb="lg" c="dimmed">
+          Select the sections this faculty will teach.{" "}
+          <Text span fw={700} size="sm">
+            At least one section
+          </Text>{" "}
+          is required.
+        </Text>
         {gradeLevels.map((gl) => {
-          const glSections = sortedSections.filter((s) => s.grade_level_id === gl.grade_level_id);
+          const glSections = sortedSections.filter(
+            (s) => s.grade_level_id === gl.grade_level_id,
+          );
           if (glSections.length === 0) return null;
 
           return (
-            <GradeLevelBar key={gl.grade_level_id} gradeLevel={gl} count={selectedCountForGl(gl.grade_level_id)}>
+            <GradeLevelBar
+              key={gl.grade_level_id}
+              gradeLevel={gl}
+              count={selectedCountForGl(gl.grade_level_id)}
+            >
               {glSections.map((section) => {
                 const allTaken = isAllSubjectsTaken(section);
                 const isChecked = selectedSections.includes(section.section_id);
@@ -165,10 +189,17 @@ export default function StepAssignGradeSection({
                 const isAdvisory = section.section_id === advisorySectionId;
 
                 return (
-                  <Group key={section.section_id} mb="xs" gap="xs" align="center">
+                  <Group
+                    key={section.section_id}
+                    mb="xs"
+                    gap="xs"
+                    align="center"
+                  >
                     <Checkbox
                       checked={isChecked}
-                      onChange={() => !allTaken && toggleSection(section.section_id)}
+                      onChange={() =>
+                        !allTaken && toggleSection(section.section_id)
+                      }
                       disabled={allTaken}
                       label={section.name}
                     />
@@ -177,14 +208,21 @@ export default function StepAssignGradeSection({
                       variant="filled"
                       radius="xl"
                       style={{
-                        backgroundColor: section.section_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                        backgroundColor:
+                          section.section_type === "SSES"
+                            ? "#70A2FF"
+                            : "#B3B4B4",
                         color: "#fff",
                       }}
                     >
                       {section.section_type === "SSES" ? "SSES" : "Regular"}
                     </Badge>
                     {isAdvisory && (
-                      <Badge size="xs" variant="filled" style={{ backgroundColor: "#4EAE4A" }}>
+                      <Badge
+                        size="xs"
+                        variant="filled"
+                        style={{ backgroundColor: "#4EAE4A" }}
+                      >
                         Advisory
                       </Badge>
                     )}
@@ -195,8 +233,19 @@ export default function StepAssignGradeSection({
                         withArrow
                         multiline
                         maw={220}
+                        opened={isMobile ? openLockTooltip === section.section_id : undefined}
                       >
-                        <IconLock size={14} color="#aaa" style={{ cursor: "help" }} />
+                        <IconLock
+                          size={14}
+                          color="#aaa"
+                          style={{ cursor: isMobile ? "pointer" : "help" }}
+                          onClick={isMobile ? () =>
+                            setOpenLockTooltip(
+                              openLockTooltip === section.section_id
+                                ? null
+                                : section.section_id,
+                            ) : undefined}
+                        />
                       </Tooltip>
                     )}
                   </Group>

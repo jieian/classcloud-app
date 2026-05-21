@@ -3,6 +3,7 @@
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ActionIcon,
   Alert,
@@ -16,16 +17,18 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { IconCalendarOff, IconRefresh } from "@tabler/icons-react";
-import { getSchoolYears, SchoolYear } from "../_lib/yearService";
+import { getSchoolYears, SchoolYear, checkCanCreateSchoolYear, CanCreateResult } from "../_lib/yearService";
 import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
 import EmptySearchState from "@/components/EmptySearchState";
 
 export default function SchoolYearSection() {
+  const router = useRouter();
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [canCreate, setCanCreate] = useState<CanCreateResult>({ allowed: true });
 
   useEffect(() => {
     loadSchoolYears();
@@ -35,8 +38,12 @@ export default function SchoolYearSection() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getSchoolYears();
+      const [data, createCheck] = await Promise.all([
+        getSchoolYears(),
+        checkCanCreateSchoolYear(),
+      ]);
       setSchoolYears(data);
+      setCanCreate(createCheck);
     } catch {
       setError("Failed to load school years. Please try again later.");
     } finally {
@@ -63,15 +70,24 @@ export default function SchoolYearSection() {
             <span className="text-[#808898]">({schoolYears.length})</span>
           )}
         </h1>
-        <Button
-          color="#4EAE4A"
-          radius="md"
-          mr="md"
-          component={Link}
-          href="/school/year/create"
+        <Tooltip
+          label={canCreate.reason}
+          withArrow
+          position="bottom"
+          multiline
+          w={280}
+          disabled={canCreate.allowed}
         >
-          Create a School Year
-        </Button>
+          <Button
+            color="#4EAE4A"
+            radius="md"
+            mr="md"
+            disabled={!canCreate.allowed}
+            onClick={() => router.push("/school/year/create")}
+          >
+            Create a School Year
+          </Button>
+        </Tooltip>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
         A school year is a period of time that defines the academic calendar for

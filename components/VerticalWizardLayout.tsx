@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { rem, Stepper } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 
 export interface VerticalWizardStep {
   label: string;
@@ -30,17 +31,12 @@ export default function VerticalWizardLayout({
   if (isMobile) {
     return (
       <div style={{ width: "100%", minWidth: 0 }}>
-        <Stepper active={active} color={color} orientation="vertical">
-          {steps.map((step) => (
-            <Stepper.Step
-              key={`${step.label}-${step.description}`}
-              label={step.label}
-              description={step.description}
-            >
-              {step.content}
-            </Stepper.Step>
-          ))}
-        </Stepper>
+        <MobileStepIndicator
+          activeStep={active}
+          totalSteps={steps.length}
+          stepDescription={steps[active]?.description ?? ""}
+        />
+        {steps[active]?.content}
         {children && <div style={{ marginTop: rem(20), minWidth: 0 }}>{children}</div>}
       </div>
     );

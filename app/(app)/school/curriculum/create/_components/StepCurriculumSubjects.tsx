@@ -30,7 +30,7 @@ import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { useForm } from "@mantine/form";
 import {
-  IconAlertTriangle,
+  IconExclamationCircle,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -173,13 +173,23 @@ function FlowExisting({
   }, [selectedCurriculumId, gradeLevelId]);
 
   const filtered = useMemo(() => {
+    const addedSet = new Set(existingSubjectIds);
     const q = search.toLowerCase().trim();
-    if (!q) return sourceSubjects;
-    return sourceSubjects.filter(
-      (s) =>
-        s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
-    );
-  }, [sourceSubjects, search]);
+    const base = q
+      ? sourceSubjects.filter(
+          (s) => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q),
+        )
+      : [...sourceSubjects];
+    return base.sort((a, b) => {
+      const aAdded = addedSet.has(a.subject_id) ? 0 : 1;
+      const bAdded = addedSet.has(b.subject_id) ? 0 : 1;
+      if (aAdded !== bAdded) return aAdded - bAdded;
+      const aSSES = a.subject_type === "SSES" ? 0 : 1;
+      const bSSES = b.subject_type === "SSES" ? 0 : 1;
+      if (aSSES !== bSSES) return aSSES - bSSES;
+      return a.code.localeCompare(b.code);
+    });
+  }, [sourceSubjects, search, existingSubjectIds]);
 
   const totalPages = Math.max(
     1,
@@ -292,7 +302,7 @@ function FlowExisting({
                             {s.name}
                           </Text>
                           {s.subject_type === "SSES" && (
-                            <Badge color="blue" variant="light" size="xs">
+                            <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                               SSES
                             </Badge>
                           )}
@@ -549,16 +559,16 @@ function FlowNew({
         {conflictSubject && (
           <Box
             style={{
-              border: "1px solid rgba(245, 159, 0, 0.45)",
-              borderLeftWidth: 4,
-              borderLeftColor: "#f59f00",
+              border: "1px solid rgba(34, 139, 230, 0.45)",
+              borderLeftWidth: 6,
+              borderLeftColor: "#228be6",
               borderRadius: 6,
               padding: "12px 14px",
               backgroundColor: "#fff",
             }}
           >
             <Group gap="xs" mb={8} align="center">
-              <IconAlertTriangle size={14} color="#f59f00" style={{ flexShrink: 0 }} />
+              <IconInfoCircle size={14} color="#228be6" style={{ flexShrink: 0 }} />
               <Text size="sm" fw={700}>
                 Subject code already registered
               </Text>
@@ -573,7 +583,7 @@ function FlowNew({
                   {conflictSubject.code}
                 </Text>
                 {conflictSubject.subject_type === "SSES" && (
-                  <Badge color="blue" variant="filled" size="xs" radius="xl" style={{ cursor: "default" }}>
+                  <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                     SSES
                   </Badge>
                 )}
@@ -901,6 +911,17 @@ function SuggestionGroup({
               <IconChevronDown size={14} color="#808898" />
             )}
           </UnstyledButton>
+          <Tooltip label="Dismiss group" withArrow position="top">
+            <ActionIcon
+              size="sm"
+              variant="subtle"
+              color="gray"
+              disabled={anyChecking}
+              onClick={() => candidates.forEach((c) => onDismiss(c.key))}
+            >
+              <IconX size={12} />
+            </ActionIcon>
+          </Tooltip>
         </Group>
       </Group>
 
@@ -954,7 +975,9 @@ function SuggestionGroup({
                       <Group gap={4} wrap="nowrap">
                         <Text size="xs" c="dimmed">{c.gradeLevelName}</Text>
                         {c.subject_type === "SSES" && (
-                          <Badge color="blue" variant="light" size="xs">SSES</Badge>
+                          <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
+                            SSES
+                          </Badge>
                         )}
                       </Group>
                       {isChecking && (
@@ -1238,27 +1261,10 @@ function SubjectMobileRow({
                 {s.code}
               </Text>
               {s.subject_type === "SSES" && (
-                <Badge
-                  color="blue"
-                  variant="filled"
-                  size="xs"
-                  radius="xl"
-                  style={{ cursor: "default" }}
-                >
+                <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                   SSES
                 </Badge>
               )}
-              <Text
-                fz="sm"
-                c="dimmed"
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {s.name}
-              </Text>
             </Group>
           </UnstyledButton>
           <Group gap={4} wrap="nowrap">
@@ -1285,21 +1291,16 @@ function SubjectMobileRow({
       </div>
       <Collapse in={opened}>
         <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+            Name
+          </Text>
+          <Text fz="sm" c="dimmed" mb="sm">{s.name}</Text>
           {s.description && (
             <>
-              <Text
-                size="xs"
-                c="dimmed"
-                fw={600}
-                tt="uppercase"
-                mb={2}
-                style={{ letterSpacing: "0.04em" }}
-              >
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
                 Description
               </Text>
-              <Text fz="sm" c="dimmed" mb="sm">
-                {s.description}
-              </Text>
+              <Text fz="sm" c="dimmed" mb="sm">{s.description}</Text>
             </>
           )}
         </Box>
@@ -1430,13 +1431,7 @@ function GradeLevelBlock({
                                 {s.code}
                               </Text>
                               {s.subject_type === "SSES" && (
-                                <Badge
-                                  color="blue"
-                                  variant="filled"
-                                  size="xs"
-                                  radius="xl"
-                                  style={{ cursor: "default" }}
-                                >
+                                <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
                                   SSES
                                 </Badge>
                               )}
@@ -1707,6 +1702,16 @@ export default function StepCurriculumSubjects({
       arr.push(s);
       map.set(s.grade_level_id, arr);
     }
+    // Sort each grade level in-place: SSES first, then A-Z by code.
+    // In-place sort avoids allocating a new array per grade level.
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aSSES = a.subject_type === "SSES" ? 0 : 1;
+        const bSSES = b.subject_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.code.localeCompare(b.code);
+      });
+    }
     return map;
   }, [form.values.subjects]);
 
@@ -1838,7 +1843,7 @@ export default function StepCurriculumSubjects({
               }}
               icon={
                 <ThemeIcon color="white" variant="transparent" size="md">
-                  <IconAlertTriangle size={20} />
+                  <IconExclamationCircle size={20} />
                 </ThemeIcon>
               }
             >

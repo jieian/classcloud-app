@@ -1,7 +1,25 @@
 "use client";
 
-import { Box, Text, Table, Group, Pagination } from "@mantine/core";
-import { useState, useMemo, useEffect } from "react";
+import { useMemo, useState } from "react";
+import {
+  Badge,
+  Box,
+  Collapse,
+  Divider,
+  Group,
+  Paper,
+  Stack,
+  Table,
+  TableScrollContainer,
+  Text,
+  UnstyledButton,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconChevronUp,
+} from "@tabler/icons-react";
 import type { UseFormReturnType } from "@mantine/form";
 import type {
   AddFacultyForm,
@@ -10,6 +28,8 @@ import type {
   SubjectCoordinatorGroup,
   SubjectForGradeLevel,
 } from "../_lib/teachingLoadService";
+import SubjectBadge from "./SubjectBadge";
+import SubjectOverflowCard from "./SubjectOverflowCard";
 
 interface StepReviewProps {
   form: UseFormReturnType<AddFacultyForm>;
@@ -21,16 +41,243 @@ interface StepReviewProps {
   coordinatorGroups: SubjectCoordinatorGroup[];
 }
 
-const PAGE_SIZE = 3;
+const MAX_VISIBLE_SUBJECTS = 3;
 
-function formatSubjects(names: string[]): string {
-  if (names.length === 0) return "—";
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} & ${names[1]}`;
-  const last = names[names.length - 1];
-  const rest = names.slice(0, -1).join(", ");
-  return `${rest}, & ${last}`;
+const reviewTh: React.CSSProperties = {
+  backgroundColor: "#4EAE4A",
+  color: "#fff",
+  fontWeight: 600,
+  padding: "6px 12px",
+};
+
+// ── Grade level collapsible ────────────────────────────────────────────────────
+
+function GradeLevelCollapsible({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
+      <UnstyledButton
+        onClick={() => setOpen((v) => !v)}
+        style={{ width: "100%", padding: "12px 16px" }}
+      >
+        <Group justify="space-between">
+          <Text fw={700} size="sm">
+            {title}
+          </Text>
+          {open ? (
+            <IconChevronUp size={16} color="#808898" />
+          ) : (
+            <IconChevronDown size={16} color="#808898" />
+          )}
+        </Group>
+      </UnstyledButton>
+      <Collapse in={open}>
+        <div style={{ borderTop: "1px solid #ced4da", padding: "16px 20px" }}>
+          {children}
+        </div>
+      </Collapse>
+    </Paper>
+  );
 }
+
+// ── Section mobile review row ──────────────────────────────────────────────────
+
+function SectionMobileReviewRow({
+  sectionName,
+  subjects,
+}: {
+  sectionName: string;
+  subjects: { code: string; name: string; subject_type: "BOTH" | "SSES" }[];
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  return (
+    <>
+      <div onClick={toggle} style={{ cursor: "pointer", padding: "12px 4px" }}>
+        <Group gap="xs" wrap="nowrap">
+          <IconChevronRight
+            size={16}
+            style={{
+              transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 200ms ease",
+              flexShrink: 0,
+              color: "#808898",
+            }}
+          />
+          <Group
+            gap={6}
+            wrap="nowrap"
+            align="center"
+            style={{ flex: 1, minWidth: 0 }}
+          >
+            <Text
+              fw={500}
+              fz="sm"
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {sectionName}
+            </Text>
+          </Group>
+        </Group>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            tt="uppercase"
+            mb={2}
+            style={{ letterSpacing: "0.04em" }}
+          >
+            Subjects
+          </Text>
+          {subjects.length === 0 ? (
+            <Text fz="sm" c="dimmed" fs="italic">
+              None
+            </Text>
+          ) : (
+            <Stack gap={6}>
+              {subjects.map((s) => (
+                <Group key={s.code} gap={8} wrap="nowrap" align="flex-start">
+                  <Badge
+                    variant="filled"
+                    radius="xl"
+                    size="sm"
+                    style={{
+                      cursor: "default",
+                      backgroundColor: s.subject_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                      color: "#fff",
+                      minWidth: 48,
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      marginTop: 2,
+                    }}
+                  >
+                    {s.code}
+                  </Badge>
+                  <Text fz="sm" style={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                    {s.name}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ── Coordinator mobile review row ─────────────────────────────────────────────
+
+function CoordinatorMobileRow({
+  name,
+  description,
+  members,
+}: {
+  name: string;
+  description: string | null;
+  members: SubjectCoordinatorGroup["members"];
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  const visible = members.slice(0, MAX_VISIBLE_SUBJECTS);
+  const overflow = members.slice(MAX_VISIBLE_SUBJECTS);
+  return (
+    <>
+      <div onClick={toggle} style={{ cursor: "pointer", padding: "12px 4px" }}>
+        <Group gap="xs" wrap="nowrap">
+          <IconChevronRight
+            size={16}
+            style={{
+              transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 200ms ease",
+              flexShrink: 0,
+              color: "#808898",
+            }}
+          />
+          <Text
+            fw={500}
+            fz="sm"
+            style={{
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            {name}
+          </Text>
+        </Group>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          {description && (
+            <>
+              <Text
+                size="xs"
+                c="dimmed"
+                fw={600}
+                tt="uppercase"
+                mb={2}
+                style={{ letterSpacing: "0.04em" }}
+              >
+                Description
+              </Text>
+              <Text fz="sm" mb="sm">
+                {description}
+              </Text>
+            </>
+          )}
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            tt="uppercase"
+            mb={6}
+            style={{ letterSpacing: "0.04em" }}
+          >
+            Subjects
+          </Text>
+          {members.length === 0 ? (
+            <Text fz="sm" c="dimmed" fs="italic">
+              None
+            </Text>
+          ) : (
+            <Group gap={6} wrap="wrap">
+              {visible.map((m) => (
+                <SubjectBadge
+                  key={m.curriculum_subject_id}
+                  code={m.code}
+                  subject_type={m.subject_type}
+                  subjectName={m.name}
+                  palette="coordinator"
+                />
+              ))}
+              {overflow.length > 0 && (
+                <SubjectOverflowCard subjects={overflow} />
+              )}
+            </Group>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 
 export default function StepReview({
   form,
@@ -41,10 +288,7 @@ export default function StepReview({
   isAddMode,
   coordinatorGroups,
 }: StepReviewProps) {
-  const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [form.values.subject_assignments]);
-
-  // O(1) lookup maps built once from static props
+  // O(1) lookup maps
   const sectionMap = useMemo(
     () => new Map(sections.map((s) => [s.section_id, s])),
     [sections],
@@ -58,158 +302,314 @@ export default function StepReview({
     [subjectsByGradeLevel],
   );
 
+  // Advisory class
   const advisorySection =
     form.values.advisory_section_id !== null
-      ? sectionMap.get(form.values.advisory_section_id) ?? null
+      ? (sectionMap.get(form.values.advisory_section_id) ?? null)
       : null;
   const advisoryGradeLevel = advisorySection
-    ? gradeLevelMap.get(advisorySection.grade_level_id) ?? null
+    ? (gradeLevelMap.get(advisorySection.grade_level_id) ?? null)
     : null;
+  const advisoryLabel =
+    advisorySection && advisoryGradeLevel
+      ? `${advisoryGradeLevel.display_name} • ${advisorySection.name}`
+      : null;
 
-  const academicLoadRows = useMemo(() => {
-    return [...form.values.subject_assignments]
-      .sort((a, b) => {
-        const sa = sectionMap.get(a.section_id);
-        const sb = sectionMap.get(b.section_id);
-        const glA = sa ? (gradeLevelMap.get(sa.grade_level_id)?.level_number ?? 0) : 0;
-        const glB = sb ? (gradeLevelMap.get(sb.grade_level_id)?.level_number ?? 0) : 0;
-        if (glA !== glB) return glA - glB;
-        return (sa?.name ?? "").localeCompare(sb?.name ?? "");
-      })
-      .map((assignment) => {
-        const section = sectionMap.get(assignment.section_id);
-        const gradeLevel = section ? gradeLevelMap.get(section.grade_level_id) : null;
-        const subjectNames = assignment.subject_ids.map((sid) => {
-          const subj = subjectMap.get(sid);
-          return subj ? subj.name : `Subject ${sid}`;
-        });
-        return {
-          key: assignment.section_id,
-          grade_level: gradeLevel?.display_name ?? "—",
-          section_name: section?.name ?? "—",
-          subjects: formatSubjects(subjectNames),
-        };
-      });
-  }, [form.values.subject_assignments, sectionMap, gradeLevelMap, subjectMap]);
+  // Subject assignments grouped by grade level, sorted by GL then section name
+  const assignmentsByGl = useMemo(() => {
+    const map = new Map<
+      number,
+      {
+        section: SectionWithAdviser;
+        subjectNames: { code: string; name: string; subject_type: "BOTH" | "SSES" }[];
+      }[]
+    >();
+    for (const assignment of form.values.subject_assignments) {
+      const section = sectionMap.get(assignment.section_id);
+      if (!section) continue;
+      const glId = section.grade_level_id;
+      const subjectNames = assignment.subject_ids
+        .map((sid) => subjectMap.get(sid))
+        .filter(Boolean)
+        .map((s) => ({ code: s!.code, name: s!.name, subject_type: s!.subject_type }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      if (!map.has(glId)) map.set(glId, []);
+      map.get(glId)!.push({ section, subjectNames });
+    }
+    // Sort sections within each GL
+    for (const rows of map.values()) {
+      rows.sort((a, b) => a.section.name.localeCompare(b.section.name));
+    }
+    return map;
+  }, [form.values.subject_assignments, sectionMap, subjectMap]);
 
-  const totalPages = Math.max(1, Math.ceil(academicLoadRows.length / PAGE_SIZE));
-  const paginatedRows = academicLoadRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Selected coordinator group
+  const selectedGroup = useMemo(
+    () =>
+      form.values.subject_group_id !== null
+        ? (coordinatorGroups.find(
+            (g) => g.subject_group_id === form.values.subject_group_id,
+          ) ?? null)
+        : null,
+    [form.values.subject_group_id, coordinatorGroups],
+  );
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="xs" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         {isAddMode ? "Review & Confirm" : "Review & Save"}
       </Text>
-      <Text size="sm" c="dimmed" mb="lg">
-        {isAddMode
-          ? <>Review the academic load and coordinator role for <strong>{facultyName}</strong> before adding them as faculty.</>
-          : <>Review the updated academic load for <strong>{facultyName}</strong> before saving.</>
-        }
-      </Text>
 
-      <Box p="lg" style={{ border: "1px solid #e0e0e0", borderRadius: "8px" }}>
+      <Box p="lg" style={{ border: "1px solid #B8B8B8", borderRadius: "8px" }}>
+        <Text size="sm" c="gray.7" mb="md">
+          {isAddMode ? (
+            <>
+              Review the teaching load and coordinator role for{" "}
+              <strong>{facultyName}</strong> before adding them as faculty.
+            </>
+          ) : (
+            <>
+              Review the updated teaching load for{" "}
+              <strong>{facultyName}</strong> before saving.
+            </>
+          )}
+        </Text>
+
         {/* Advisory Class */}
-        <Box mb="lg">
-          <Text size="sm" fw={600} mb="xs">
+        <Box
+          p="lg"
+          mb="md"
+          style={{ border: "1px solid #B8B8B8", borderRadius: "10px" }}
+        >
+          <Text size="lg" fw={700} mb="md" c="#298925">
             Advisory Class
           </Text>
-          {advisorySection && advisoryGradeLevel ? (
-            <Table withTableBorder withColumnBorders>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Grade Level</Table.Th>
-                  <Table.Th>Section</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                <Table.Tr>
-                  <Table.Td>{advisoryGradeLevel.display_name}</Table.Td>
-                  <Table.Td>{advisorySection.name}</Table.Td>
-                </Table.Tr>
-              </Table.Tbody>
-            </Table>
+          <Text size="sm" fw={700} c="gray.7" mb={2}>
+            Advisory Class
+          </Text>
+          {advisoryLabel ? (
+            <Text size="sm">{advisoryLabel}</Text>
           ) : (
-            <Text size="sm" c="dimmed">
+            <Text size="sm" c="dimmed" fs="italic">
               No advisory class selected.
             </Text>
           )}
         </Box>
 
-        {/* Academic Load */}
-        <Box mb={isAddMode ? "lg" : undefined}>
-          <Text size="sm" fw={600} mb="xs">
-            Academic Load
-          </Text>
-          {academicLoadRows.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              No subject assignments.
-            </Text>
-          ) : (
-            <>
-              <Table withTableBorder withColumnBorders>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Grade Level</Table.Th>
-                    <Table.Th>Section</Table.Th>
-                    <Table.Th>Subject(s)</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {paginatedRows.map((row) => (
-                    <Table.Tr key={row.key}>
-                      <Table.Td>{row.grade_level}</Table.Td>
-                      <Table.Td>{row.section_name}</Table.Td>
-                      <Table.Td>{row.subjects}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-              {totalPages > 1 && (
-                <Group justify="center" mt="sm">
-                  <Pagination value={page} onChange={setPage} total={totalPages} size="sm" />
-                </Group>
-              )}
-            </>
-          )}
-        </Box>
-
-        {/* Subject Coordinator Role — add mode only */}
+        {/* Subject Coordinator — add mode only */}
         {isAddMode && (
-          <Box mt="lg">
-            <Text size="sm" fw={600} mb="xs">
-              Subject Coordinator Role
+          <Box
+            p="lg"
+            mb="md"
+            style={{ border: "1px solid #B8B8B8", borderRadius: "10px" }}
+          >
+            <Text size="lg" fw={700} mb="md" c="#298925">
+              Subject Coordinator
             </Text>
-            {(() => {
-              if (form.values.subject_group_id === null) {
-                return (
-                  <Text size="sm" c="dimmed">
-                    No subject coordinator role selected.
-                  </Text>
-                );
-              }
-              const group = coordinatorGroups.find(
-                (g) => g.subject_group_id === form.values.subject_group_id,
-              );
-              if (!group) return null;
-              return (
-                <Table withTableBorder withColumnBorders>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Subject Group</Table.Th>
-                      <Table.Th>Description</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    <Table.Tr>
-                      <Table.Td>{group.name}</Table.Td>
-                      <Table.Td>{group.description ?? "—"}</Table.Td>
-                    </Table.Tr>
-                  </Table.Tbody>
-                </Table>
-              );
-            })()}
+
+            {selectedGroup === null ? (
+              <Text size="sm" c="dimmed" fs="italic">
+                No Subject Coordinator Role assigned.
+              </Text>
+            ) : (
+              <>
+                {/* Desktop */}
+                <div className="hidden sm:block">
+                  <TableScrollContainer minWidth={400}>
+                    <Table
+                      withColumnBorders
+                      withTableBorder
+                      fz="0.9375rem"
+                      style={
+                        {
+                          "--table-border-color": "#ced4da",
+                        } as React.CSSProperties
+                      }
+                    >
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th style={reviewTh}>Subject Group</Table.Th>
+                          <Table.Th style={reviewTh}>Subjects</Table.Th>
+                          <Table.Th style={reviewTh}>Description</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        <Table.Tr>
+                          <Table.Td>
+                            <Text size="sm" fw={500}>
+                              {selectedGroup.name}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            {selectedGroup.members.length === 0 ? (
+                              <Text size="sm" c="dimmed">
+                                —
+                              </Text>
+                            ) : (
+                              <Group gap={6} wrap="nowrap">
+                                {selectedGroup.members
+                                  .slice(0, MAX_VISIBLE_SUBJECTS)
+                                  .map((m) => (
+                                    <SubjectBadge
+                                      key={m.curriculum_subject_id}
+                                      code={m.code}
+                                      subject_type={m.subject_type}
+                                      subjectName={m.name}
+                                      palette="coordinator"
+                                    />
+                                  ))}
+                                {selectedGroup.members.length >
+                                  MAX_VISIBLE_SUBJECTS && (
+                                  <SubjectOverflowCard
+                                    subjects={selectedGroup.members.slice(
+                                      MAX_VISIBLE_SUBJECTS,
+                                    )}
+                                  />
+                                )}
+                              </Group>
+                            )}
+                          </Table.Td>
+                          <Table.Td>
+                            <Text
+                              size="sm"
+                              c={
+                                selectedGroup.description ? undefined : "dimmed"
+                              }
+                              fs={
+                                selectedGroup.description ? undefined : "italic"
+                              }
+                            >
+                              {selectedGroup.description ?? "—"}
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      </Table.Tbody>
+                    </Table>
+                  </TableScrollContainer>
+                </div>
+
+                {/* Mobile */}
+                <div className="sm:hidden">
+                  <CoordinatorMobileRow
+                    name={selectedGroup.name}
+                    description={selectedGroup.description ?? null}
+                    members={selectedGroup.members}
+                  />
+                </div>
+              </>
+            )}
           </Box>
         )}
+
+        {/* Teaching Load */}
+        <Box
+          p="lg"
+          style={{ border: "1px solid #B8B8B8", borderRadius: "10px" }}
+        >
+          <Text size="lg" fw={700} mb="md" c="#298925">
+            Teaching Load
+          </Text>
+
+          {/* Grade level collapsibles */}
+          {form.values.selected_sections.length === 0 ? (
+            <Text size="sm" c="dimmed" fs="italic">
+              No sections assigned.
+            </Text>
+          ) : (
+            <Stack gap="sm">
+              {gradeLevels.map((gl) => {
+                const rows = assignmentsByGl.get(gl.grade_level_id);
+                if (!rows || rows.length === 0) return null;
+                return (
+                  <GradeLevelCollapsible
+                    key={gl.grade_level_id}
+                    title={gl.display_name}
+                  >
+                    {/* Desktop */}
+                    <div className="hidden sm:block">
+                      <TableScrollContainer minWidth={400}>
+                        <Table
+                          withColumnBorders
+                          withTableBorder
+                          fz="0.9375rem"
+                          style={
+                            {
+                              "--table-border-color": "#ced4da",
+                            } as React.CSSProperties
+                          }
+                        >
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th style={{ ...reviewTh, minWidth: 160 }}>
+                                Class
+                              </Table.Th>
+                              <Table.Th style={{ ...reviewTh, minWidth: 260 }}>
+                                Subjects
+                              </Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {rows.map(({ section, subjectNames }) => (
+                              <Table.Tr key={section.section_id}>
+                                <Table.Td>
+                                  <Text size="sm">{section.name}</Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  {subjectNames.length === 0 ? (
+                                    <Text size="sm" c="dimmed" fs="italic">
+                                      —
+                                    </Text>
+                                  ) : (
+                                    <Stack gap={6}>
+                                      {subjectNames.map((s) => (
+                                        <Group key={s.code} gap={8} wrap="nowrap" align="flex-start">
+                                          <Badge
+                                            variant="filled"
+                                            radius="xl"
+                                            size="sm"
+                                            style={{
+                                              cursor: "default",
+                                              backgroundColor: s.subject_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+                                              color: "#fff",
+                                              minWidth: 48,
+                                              justifyContent: "center",
+                                              flexShrink: 0,
+                                              marginTop: 2,
+                                            }}
+                                          >
+                                            {s.code}
+                                          </Badge>
+                                          <Text size="sm" style={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
+                                            {s.name}
+                                          </Text>
+                                        </Group>
+                                      ))}
+                                    </Stack>
+                                  )}
+                                </Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </Table.Tbody>
+                        </Table>
+                      </TableScrollContainer>
+                    </div>
+
+                    {/* Mobile */}
+                    <div className="sm:hidden">
+                      {rows.map(({ section, subjectNames }) => (
+                        <SectionMobileReviewRow
+                          key={section.section_id}
+                          sectionName={section.name}
+                          subjects={subjectNames}
+                        />
+                      ))}
+                    </div>
+                  </GradeLevelCollapsible>
+                );
+              })}
+            </Stack>
+          )}
+        </Box>
       </Box>
     </Box>
   );

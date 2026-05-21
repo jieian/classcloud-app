@@ -8,6 +8,7 @@ import {
   Button,
   Checkbox,
   Collapse,
+  Divider,
   Group,
   Modal,
   Pagination,
@@ -22,6 +23,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
@@ -30,6 +32,7 @@ import {
   IconCalendar,
   IconCheck,
   IconChevronDown,
+  IconChevronRight,
   IconChevronUp,
   IconFileDescription,
   IconInfoCircle,
@@ -41,6 +44,8 @@ import {
 import { useRouter } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import { getSupabase } from "@/lib/supabase/client";
+import { SearchBar } from "@/components/searchBar/SearchBar";
+import EmptySearchState from "@/components/EmptySearchState";
 import { generateSuggestions } from "../../_lib/subjectGroupSuggestions";
 import type { CreateCurriculumForm, GradeLevel, WizardSubject, WizardSubjectGroup } from "../../create/_lib/types";
 import type { CurriculumDetail } from "../../_lib/curriculumService";
@@ -111,29 +116,61 @@ function toTitleCase(str: string) {
   return str.trim().toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const greenTh: React.CSSProperties = { backgroundColor: "#4EAE4A", color: "#fff", fontWeight: 600, padding: "10px 16px" };
+const greenTh: React.CSSProperties = {
+  backgroundColor: "#4EAE4A",
+  color: "#fff",
+  fontWeight: 600,
+  padding: "8px 12px",
+  textAlign: "left",
+  fontSize: 13,
+};
 
-// ── CollapsibleSection (mirrors CurriculumDetailClient) ────────────────────────
+// ── Shared UI helpers ──────────────────────────────────────────────────────────
+function SubjectCodeBadge({ code, name, subject_type }: { code: string; name: string; subject_type: "BOTH" | "SSES" }) {
+  return (
+    <Tooltip label={name} withArrow position="top" maw={220}>
+      <Badge
+        variant="filled"
+        radius="xl"
+        style={{
+          cursor: "default",
+          backgroundColor: subject_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+          color: "#FFFFFF",
+          minWidth: 48,
+          justifyContent: "center",
+        }}
+      >
+        {code}
+      </Badge>
+    </Tooltip>
+  );
+}
+
+function EnterToConfirm({ onEnter }: { onEnter: () => void }) {
+  useEffect(() => {
+    function handler(e: KeyboardEvent) { if (e.key === "Enter") onEnter(); }
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+// ── CollapsibleSection ─────────────────────────────────────────────────────────
 function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
-  headerBg,
 }: {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
-  headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
-      <UnstyledButton
-        onClick={() => setOpen((v) => !v)}
-        style={{ width: "100%", padding: "14px 20px", backgroundColor: headerBg }}
-      >
+      <UnstyledButton onClick={() => setOpen((v) => !v)} style={{ width: "100%", padding: "12px 16px" }}>
         <Group justify="space-between">
-          <Text fw={700} size="md">{title}</Text>
+          <Text fw={700} size="sm">{title}</Text>
           {open ? <IconChevronUp size={16} color="#808898" /> : <IconChevronDown size={16} color="#808898" />}
         </Group>
       </UnstyledButton>
@@ -144,7 +181,141 @@ function CollapsibleSection({
   );
 }
 
-// ── Flow A ─────────────────────────────────────────────────────────────────────
+// ── Mobile subject row (edit mode) ─────────────────────────────────────────────
+function SubjectMobileRow({
+  s,
+  locked,
+  onEdit,
+  onRemove,
+}: {
+  s: WizardSubject;
+  locked: boolean;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  const lockedTooltip = "This subject has records (exams or teacher assignments) and cannot be modified or removed.";
+  return (
+    <>
+      <div style={{ padding: "10px 4px" }}>
+        <Group justify="space-between" wrap="nowrap">
+          <UnstyledButton onClick={toggle} style={{ flex: 1, minWidth: 0 }}>
+            <Group gap="xs" wrap="nowrap">
+              <IconChevronRight
+                size={16}
+                style={{
+                  transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+                  transition: "transform 200ms ease",
+                  flexShrink: 0,
+                  color: "#808898",
+                }}
+              />
+              <Text fw={500} fz="sm" ff="monospace" style={{ flexShrink: 0 }}>{s.code}</Text>
+              {s.subject_type === "SSES" && (
+                <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
+                  SSES
+                </Badge>
+              )}
+            </Group>
+          </UnstyledButton>
+          <Group gap={4} wrap="nowrap">
+            {s.source !== "existing" && (
+              <Tooltip label={locked ? lockedTooltip : "Edit"} withArrow multiline w={220} disabled={!locked}>
+                <ActionIcon size="sm" variant="subtle" color="gray" disabled={locked} onClick={onEdit}>
+                  <IconPencil size={14} />
+                </ActionIcon>
+              </Tooltip>
+            )}
+            <Tooltip label={locked ? lockedTooltip : "Remove"} withArrow multiline w={220} disabled={!locked}>
+              <ActionIcon size="sm" variant="subtle" color="red" disabled={locked} onClick={onRemove}>
+                <IconTrash size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
+        </Group>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>Name</Text>
+          <Text fz="sm" c="dimmed" mb="sm">{s.name}</Text>
+          {s.description && (
+            <>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>Description</Text>
+              <Text fz="sm" c="dimmed" mb="sm">{s.description}</Text>
+            </>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ── Mobile group card (edit mode) ──────────────────────────────────────────────
+function GroupMobileCard({
+  g,
+  subjectByTempId,
+  onEdit,
+  onRemove,
+}: {
+  g: WizardSubjectGroup;
+  subjectByTempId: Map<string, WizardSubject>;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  return (
+    <>
+      <div style={{ padding: "10px 4px" }}>
+        <Group justify="space-between" wrap="nowrap">
+          <UnstyledButton onClick={toggle} style={{ flex: 1, minWidth: 0 }}>
+            <Group gap="xs" wrap="nowrap">
+              <IconChevronRight
+                size={16}
+                style={{
+                  transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+                  transition: "transform 200ms ease",
+                  flexShrink: 0,
+                  color: "#808898",
+                }}
+              />
+              <Text fw={600} fz="sm" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {g.name}
+              </Text>
+              <Text fz="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                {g.memberTempIds.length} member{g.memberTempIds.length !== 1 ? "s" : ""}
+              </Text>
+            </Group>
+          </UnstyledButton>
+          <Group gap={4} wrap="nowrap">
+            <ActionIcon size="sm" variant="subtle" color="gray" onClick={onEdit}><IconPencil size={14} /></ActionIcon>
+            <ActionIcon size="sm" variant="subtle" color="red" onClick={onRemove}><IconTrash size={14} /></ActionIcon>
+          </Group>
+        </Group>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="sm" pl={28} pr={4}>
+          {g.description && (
+            <>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>Description</Text>
+              <Text fz="sm" c="dimmed" mb="xs">{g.description}</Text>
+            </>
+          )}
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={4} style={{ letterSpacing: "0.04em" }}>Members</Text>
+          <Group gap={4} wrap="wrap">
+            {g.memberTempIds.map((tid) => {
+              const s = subjectByTempId.get(tid);
+              return s ? <SubjectCodeBadge key={tid} code={s.code} name={s.name} subject_type={s.subject_type} /> : null;
+            })}
+          </Group>
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ── Flow A: pick from another curriculum ──────────────────────────────────────
 function FlowExisting({ gradeLevelId, gradeLevelName, existingSubjectIds, curricula, loadingCurricula, onAdd, onBack }: {
   gradeLevelId: number; gradeLevelName: string; existingSubjectIds: number[];
   curricula: CurriculumOption[]; loadingCurricula: boolean;
@@ -174,9 +345,21 @@ function FlowExisting({ gradeLevelId, gradeLevelName, existingSubjectIds, curric
   }, [selectedCurriculumId, gradeLevelId]);
 
   const filtered = useMemo(() => {
+    const addedSet = new Set(existingSubjectIds);
     const q = search.toLowerCase().trim();
-    return q ? sourceSubjects.filter((s) => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)) : sourceSubjects;
-  }, [sourceSubjects, search]);
+    const base = q
+      ? sourceSubjects.filter((s) => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q))
+      : [...sourceSubjects];
+    return base.sort((a, b) => {
+      const aAdded = addedSet.has(a.subject_id) ? 0 : 1;
+      const bAdded = addedSet.has(b.subject_id) ? 0 : 1;
+      if (aAdded !== bAdded) return aAdded - bAdded;
+      const aSSES = a.subject_type === "SSES" ? 0 : 1;
+      const bSSES = b.subject_type === "SSES" ? 0 : 1;
+      if (aSSES !== bSSES) return aSSES - bSSES;
+      return a.code.localeCompare(b.code);
+    });
+  }, [sourceSubjects, search, existingSubjectIds]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / SUBJECTS_PER_PAGE));
   const paginated = filtered.slice((page - 1) * SUBJECTS_PER_PAGE, page * SUBJECTS_PER_PAGE);
@@ -184,37 +367,94 @@ function FlowExisting({ gradeLevelId, gradeLevelName, existingSubjectIds, curric
   return (
     <Stack gap="md">
       <BackButton onClick={onBack} mb={4}>Back</BackButton>
-      <Text size="sm" c="dimmed">Importing into <strong>{gradeLevelName}</strong>. Select a curriculum below, then choose the subjects to add.</Text>
+      <Text size="sm" c="dimmed">
+        Importing into <strong>{gradeLevelName}</strong>. Select a curriculum, then choose the subjects to add.
+      </Text>
       {loadingCurricula ? <Skeleton height={36} radius="sm" /> : (
         <Select label="Curriculum" placeholder="Select a curriculum..." data={curricula} value={selectedCurriculumId} onChange={setSelectedCurriculumId} searchable />
       )}
       {selectedCurriculumId && (
         <>
-          <TextInput placeholder="Search by code or name..." value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} size="sm" />
-          {loadingSubjects ? <Stack gap="xs">{[1, 2, 3].map((i) => <Skeleton key={i} height={32} radius="sm" />)}</Stack>
-            : filtered.length === 0 ? <Text size="sm" c="dimmed">No subjects found for {gradeLevelName} in this curriculum.</Text>
-            : (
-              <>
-                <Stack gap={6}>
-                  {paginated.map((s) => {
-                    const alreadyAdded = existingSubjectIds.includes(s.subject_id);
-                    return (
-                      <Tooltip key={s.subject_id} label="Already added" disabled={!alreadyAdded} position="right" withArrow>
-                        <Group gap="sm" style={{ border: "1px solid #e9ecef", borderRadius: 6, padding: "8px 12px", opacity: alreadyAdded ? 0.5 : 1, backgroundColor: "#fafafa" }}>
-                          <Checkbox checked={checked.includes(s.subject_id)} onChange={() => !alreadyAdded && setChecked((p) => p.includes(s.subject_id) ? p.filter((id) => id !== s.subject_id) : [...p, s.subject_id])} disabled={alreadyAdded} />
-                          <Text size="sm" fw={500} ff="monospace">{s.code}</Text>
-                          <Text size="sm">{s.name}</Text>
-                          {s.subject_type === "SSES" && <Badge color="blue" variant="light" size="xs">SSES</Badge>}
+          <SearchBar
+            placeholder="Search by code or name..."
+            value={search}
+            onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
+          />
+          {loadingSubjects ? (
+            <Stack gap="xs">{[1, 2, 3].map((i) => <Skeleton key={i} height={44} radius="sm" />)}</Stack>
+          ) : sourceSubjects.length === 0 ? (
+            <Text size="sm" c="dimmed">No subjects found for {gradeLevelName} in this curriculum.</Text>
+          ) : filtered.length === 0 ? (
+            <EmptySearchState />
+          ) : (
+            <>
+              <Stack gap={4}>
+                {paginated.map((s, i) => {
+                  const alreadyAdded = existingSubjectIds.includes(s.subject_id);
+                  const isChecked = checked.includes(s.subject_id);
+                  const toggle = () => {
+                    if (alreadyAdded) return;
+                    setChecked((p) => p.includes(s.subject_id) ? p.filter((id) => id !== s.subject_id) : [...p, s.subject_id]);
+                  };
+                  return (
+                    <Tooltip key={s.subject_id} label="Already added to this grade level" disabled={!alreadyAdded} position="right" withArrow>
+                      <Box
+                        component="label"
+                        htmlFor={`sub-${s.subject_id}`}
+                        style={{
+                          display: "block",
+                          border: "1px solid",
+                          borderColor: isChecked ? "#4EAE4A" : "#e9ecef",
+                          borderRadius: 6,
+                          padding: "10px 12px",
+                          opacity: alreadyAdded ? 0.5 : 1,
+                          backgroundColor: isChecked ? "#f0f7ee" : i % 2 === 0 ? "#fff" : "#fafafa",
+                          cursor: alreadyAdded ? "not-allowed" : "pointer",
+                          transition: "border-color 0.15s, background-color 0.15s",
+                        }}
+                      >
+                        <Group gap="sm" wrap="nowrap">
+                          <Checkbox
+                            id={`sub-${s.subject_id}`}
+                            checked={isChecked}
+                            onChange={toggle}
+                            disabled={alreadyAdded}
+                            color="#4EAE4A"
+                            style={{ pointerEvents: "none" }}
+                          />
+                          <Text size="xs" fw={600} ff="monospace" c="gray.6" style={{ flexShrink: 0 }}>{s.code}</Text>
+                          <Text size="sm" style={{ flex: 1 }}>{s.name}</Text>
+                          {s.subject_type === "SSES" && (
+                            <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>SSES</Badge>
+                          )}
                         </Group>
-                      </Tooltip>
-                    );
-                  })}
-                </Stack>
-                {totalPages > 1 && <Group justify="center"><Pagination value={page} onChange={setPage} total={totalPages} size="sm" /></Group>}
-              </>
-            )}
+                      </Box>
+                    </Tooltip>
+                  );
+                })}
+              </Stack>
+              {totalPages > 1 && (
+                <Group justify="center">
+                  <Pagination value={page} onChange={setPage} total={totalPages} size="sm" color="#4EAE4A" />
+                </Group>
+              )}
+            </>
+          )}
           <Group justify="flex-end">
-            <Button color="#4EAE4A" disabled={checked.length === 0} onClick={() => onAdd(sourceSubjects.filter((s) => checked.includes(s.subject_id)).map((s) => ({ source: "existing" as const, subject_id: s.subject_id, code: s.code, name: s.name, description: s.description, subject_type: s.subject_type })))}>
+            <Button
+              color="#4EAE4A"
+              disabled={checked.length === 0}
+              onClick={() => {
+                onAdd(sourceSubjects.filter((s) => checked.includes(s.subject_id)).map((s) => ({
+                  source: "existing" as const,
+                  subject_id: s.subject_id,
+                  code: s.code,
+                  name: s.name,
+                  description: s.description,
+                  subject_type: s.subject_type,
+                })));
+              }}
+            >
               Add Selected ({checked.length})
             </Button>
           </Group>
@@ -224,7 +464,7 @@ function FlowExisting({ gradeLevelId, gradeLevelName, existingSubjectIds, curric
   );
 }
 
-// ── Flow B ─────────────────────────────────────────────────────────────────────
+// ── Flow B: new subject form ───────────────────────────────────────────────────
 function FlowNew({ gradeLevelName, initial, onAdd, onAddExisting, onBack }: {
   gradeLevelName: string;
   initial?: { code: string; name: string; description: string; subject_type: "BOTH" | "SSES" };
@@ -236,20 +476,44 @@ function FlowNew({ gradeLevelName, initial, onAdd, onAddExisting, onBack }: {
   const [conflictSubject, setConflictSubject] = useState<ConflictSubject | null>(null);
 
   const form = useForm({
-    initialValues: { code: initial?.code ?? "", name: initial?.name ?? "", description: initial?.description ?? "", isSses: initial?.subject_type === "SSES" },
+    initialValues: {
+      code: initial?.code ?? "",
+      name: initial?.name ?? "",
+      description: initial?.description ?? "",
+      isSses: initial?.subject_type === "SSES",
+    },
     validate: {
-      code: (v) => { if (!v.trim()) return "Subject code is required."; if (!/^[A-Za-z0-9]+$/.test(v.trim())) return "Code must be letters and numbers only."; return null; },
-      name: (v) => { if (!v.trim()) return "Name is required."; if (v.trim().length < 3) return "Must be at least 3 characters."; if (v.trim().length > 100) return "Must be 100 characters or less."; if (!/^[A-Za-z0-9\s]+$/.test(v.trim())) return "Name must not contain symbols."; return null; },
-      description: (v) => { if (!v.trim()) return "Description is required."; if (v.trim().length < 10) return "Must be at least 10 characters."; if (v.trim().length > 300) return "Must be 300 characters or less."; return null; },
+      code: (v) => {
+        if (!v.trim()) return "Subject code is required.";
+        if (!/^[A-Za-z0-9 ]+$/.test(v.trim())) return "Only letters, numbers, and spaces are allowed.";
+        return null;
+      },
+      name: (v) => {
+        if (!v.trim()) return "Name is required.";
+        if (v.trim().length < 3) return "Must be at least 3 characters.";
+        if (v.trim().length > 100) return "Must be 100 characters or less.";
+        if (!/^[A-Za-z0-9\s,]+$/.test(v.trim())) return "Name must not contain symbols.";
+        return null;
+      },
+      description: (v) => {
+        if (!v.trim()) return "Description is required.";
+        if (v.trim().length < 10) return "Must be at least 10 characters.";
+        if (v.trim().length > 300) return "Must be 300 characters or less.";
+        return null;
+      },
     },
   });
 
   async function handleSubmit() {
     if (form.validate().hasErrors) return;
-    const code = form.values.code.trim().toUpperCase();
-    if (!initial || initial.code !== code) {
+    const code = form.values.code.trim().toUpperCase().replace(/\s+/g, " ").replace(/\s/g, "");
+    if (!initial || initial.code.replace(/\s/g, "") !== code) {
       setCheckingCode(true);
-      const res = await fetch("/api/curriculum/check-subject-code", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code, section_type: form.values.isSses ? "SSES" : "REGULAR" }) });
+      const res = await fetch("/api/curriculum/check-subject-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, section_type: form.values.isSses ? "SSES" : "REGULAR" }),
+      });
       setCheckingCode(false);
       if (res.status === 409) { const data = await res.json(); setConflictSubject(data.existingSubject ?? null); return; }
       if (!res.ok) { form.setFieldError("code", "Failed to verify subject code. Please try again."); return; }
@@ -258,29 +522,86 @@ function FlowNew({ gradeLevelName, initial, onAdd, onAddExisting, onBack }: {
   }
 
   return (
-    <Stack gap="md">
-      <BackButton onClick={onBack} mb={4}>Back</BackButton>
-      <Text size="sm" c="dimmed">{initial ? "Edit subject" : "Create a subject"} for <strong>{gradeLevelName}</strong>.</Text>
-      <TextInput label="Subject Code" placeholder="e.g. MATH1" required {...form.getInputProps("code")} onChange={(e) => { setConflictSubject(null); form.getInputProps("code").onChange(e); }} />
-      {conflictSubject && (
-        <Box style={{ border: "1px solid #fab005", borderRadius: 6, padding: "12px 14px", backgroundColor: "#fffbea" }}>
-          <Text size="sm" fw={600} mb={4}>This code is already registered</Text>
-          <Text size="sm" mb={2}><Text span fw={500} ff="monospace">{conflictSubject.code}</Text> — {conflictSubject.name}</Text>
-          {conflictSubject.description && <Text size="sm" c="dimmed" mb="xs">{conflictSubject.description}</Text>}
-          <Text size="sm" c="dimmed" mb="sm">Were you trying to add this subject? You can import it as an existing subject instead.</Text>
-          <Group gap="sm">
-            <Button size="xs" color="#4EAE4A" onClick={() => onAddExisting(conflictSubject)}>Use existing subject</Button>
-            <Button size="xs" variant="default" onClick={() => setConflictSubject(null)}>Cancel</Button>
-          </Group>
-        </Box>
-      )}
-      <TextInput label="Name" placeholder="e.g. Mathematics 1" required {...form.getInputProps("name")} onBlur={() => { if (form.values.name.trim()) form.setFieldValue("name", toTitleCase(form.values.name)); }} />
-      <Textarea label="Description" placeholder="Briefly describe the subject" required autosize minRows={3} {...form.getInputProps("description")} />
-      <Checkbox label="SSES Exclusive" description="Check if this subject is only for SSES sections" checked={form.values.isSses} onChange={(e) => form.setFieldValue("isSses", e.currentTarget.checked)} />
-      <Group justify="flex-end">
-        <Button color="#4EAE4A" loading={checkingCode} onClick={handleSubmit}>{initial ? "Save Changes" : "Create Subject"}</Button>
-      </Group>
-    </Stack>
+    <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}>
+      <Stack gap="md">
+        <BackButton onClick={onBack} mb={4}>Back</BackButton>
+        <Text size="sm" c="dimmed">
+          {initial ? "Edit subject" : "Create a subject"} for <strong>{gradeLevelName}</strong>.
+        </Text>
+        <TextInput
+          label="Subject Code"
+          placeholder="e.g. MATH1"
+          required
+          {...form.getInputProps("code")}
+          onChange={(e) => { setConflictSubject(null); form.getInputProps("code").onChange(e); }}
+        />
+        {conflictSubject && (
+          <Box
+            style={{
+              border: "1px solid rgba(34, 139, 230, 0.45)",
+              borderLeftWidth: 6,
+              borderLeftColor: "#228be6",
+              borderRadius: 6,
+              padding: "12px 14px",
+              backgroundColor: "#fff",
+            }}
+          >
+            <Group gap="xs" mb={8} align="center">
+              <IconInfoCircle size={14} color="#228be6" style={{ flexShrink: 0 }} />
+              <Text size="sm" fw={700}>Subject code already registered</Text>
+            </Group>
+            <Box mb={10} p="xs" style={{ backgroundColor: "#f8f9fa", borderRadius: 4, border: "1px solid #e9ecef" }}>
+              <Group gap="xs" mb={conflictSubject.name ? 2 : 0}>
+                <Text size="sm" fw={600} ff="monospace">{conflictSubject.code}</Text>
+                {conflictSubject.subject_type === "SSES" && (
+                  <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>SSES</Badge>
+                )}
+              </Group>
+              {conflictSubject.name && <Text size="sm" c="dimmed">{conflictSubject.name}</Text>}
+            </Box>
+            <Group gap="sm">
+              <Button size="xs" color="#4EAE4A" onClick={() => onAddExisting(conflictSubject)}>Use existing subject</Button>
+              <Button size="xs" variant="default" onClick={() => setConflictSubject(null)}>Dismiss</Button>
+            </Group>
+          </Box>
+        )}
+        <TextInput
+          label="Name"
+          placeholder="e.g. Mathematics 1"
+          required
+          {...form.getInputProps("name")}
+          onBlur={() => { if (form.values.name.trim()) form.setFieldValue("name", toTitleCase(form.values.name)); }}
+        />
+        <Textarea label="Description" placeholder="Briefly describe the subject" required autosize minRows={3} {...form.getInputProps("description")} />
+        <Checkbox
+          label={
+            <Group gap={4} align="center">
+              <span>SSES Exclusive</span>
+              <Tooltip label="Check this if the subject is exclusive to SSES sections only." withArrow position="right" multiline w={240}>
+                <IconInfoCircle size={14} color="#808898" style={{ cursor: "help", display: "block" }} />
+              </Tooltip>
+            </Group>
+          }
+          checked={form.values.isSses}
+          onChange={(e) => form.setFieldValue("isSses", e.currentTarget.checked)}
+        />
+        <Group justify="flex-end">
+          <Tooltip
+            label="This subject code is already registered. Use the existing subject below or change the code above."
+            disabled={!conflictSubject}
+            withArrow
+            multiline
+            w={260}
+          >
+            <span>
+              <Button type="submit" color="#4EAE4A" loading={checkingCode} disabled={!!conflictSubject}>
+                {initial ? "Save Changes" : "Create Subject"}
+              </Button>
+            </span>
+          </Tooltip>
+        </Group>
+      </Stack>
+    </form>
   );
 }
 
@@ -296,7 +617,8 @@ function SubjectModal({ opened, onClose, gradeLevelId, gradeLevelName, existingS
   onReplaceWithExisting: (tempId: string, s: ConflictSubject) => void;
 }) {
   const [screen, setScreen] = useState<ModalScreen>("choice");
-  useEffect(() => { if (opened) setScreen(editingSubject ? "new" : "choice"); }, [opened, editingSubject]);
+  const skipChoice = !loadingCurricula && curricula.length === 0;
+  useEffect(() => { if (opened) setScreen(editingSubject || skipChoice ? "new" : "choice"); }, [opened, editingSubject, skipChoice]);
 
   const addExisting = (s: ConflictSubject) => {
     if (editingSubject) { onReplaceWithExisting(editingSubject.tempId, s); }
@@ -320,16 +642,31 @@ function SubjectModal({ opened, onClose, gradeLevelId, gradeLevelName, existingS
         </Stack>
       )}
       {screen === "existing" && (
-        <FlowExisting gradeLevelId={gradeLevelId} gradeLevelName={gradeLevelName} existingSubjectIds={existingSubjectIds} curricula={curricula} loadingCurricula={loadingCurricula}
-          onAdd={(subjects) => { onAddSubjects(subjects.map((s) => ({ ...s, tempId: crypto.randomUUID(), grade_level_id: gradeLevelId }) as WizardSubject)); onClose(); }}
-          onBack={() => setScreen("choice")} />
+        <FlowExisting
+          gradeLevelId={gradeLevelId}
+          gradeLevelName={gradeLevelName}
+          existingSubjectIds={existingSubjectIds}
+          curricula={curricula}
+          loadingCurricula={loadingCurricula}
+          onAdd={(subjects) => {
+            onAddSubjects(subjects.map((s) => ({ ...s, tempId: crypto.randomUUID(), grade_level_id: gradeLevelId }) as WizardSubject));
+            onClose();
+          }}
+          onBack={() => setScreen("choice")}
+        />
       )}
       {screen === "new" && (
-        <FlowNew gradeLevelName={gradeLevelName}
+        <FlowNew
+          gradeLevelName={gradeLevelName}
           initial={editingSubject ? { code: editingSubject.code, name: editingSubject.name, description: editingSubject.description, subject_type: editingSubject.subject_type } : undefined}
-          onAdd={(s) => { if (editingSubject) { onEditSubject(editingSubject.tempId, s); } else { onAddSubjects([{ ...s, source: "new", tempId: crypto.randomUUID(), grade_level_id: gradeLevelId }]); } onClose(); }}
+          onAdd={(s) => {
+            if (editingSubject) { onEditSubject(editingSubject.tempId, s); }
+            else { onAddSubjects([{ ...s, source: "new", tempId: crypto.randomUUID(), grade_level_id: gradeLevelId }]); }
+            onClose();
+          }}
           onAddExisting={addExisting}
-          onBack={editingSubject ? onClose : () => setScreen("choice")} />
+          onBack={editingSubject || skipChoice ? onClose : () => setScreen("choice")}
+        />
       )}
     </Modal>
   );
@@ -340,25 +677,56 @@ function MemberBlock({ label, subjects, checkedTempIds, occupiedMap, onToggle }:
   label: string; subjects: WizardSubject[]; checkedTempIds: string[];
   occupiedMap: Map<string, string>; onToggle: (tempId: string) => void;
 }) {
-  const [opened, setOpened] = useState(true);
+  const [opened, setOpened] = useState(false);
   return (
     <Box mb="xs">
-      <UnstyledButton onClick={() => setOpened((o) => !o)} style={{ width: "100%", backgroundColor: "#f8f9fa", padding: "7px 12px", borderRadius: 5 }}>
+      <UnstyledButton
+        onClick={() => setOpened((o) => !o)}
+        style={{ width: "100%", backgroundColor: "#f0f7ee", padding: "7px 12px", borderRadius: 4 }}
+      >
         <Group justify="space-between">
-          <Text fw={600} size="sm">{label}</Text>
-          {opened ? <IconChevronUp size={13} /> : <IconChevronDown size={13} />}
+          <Text fw={600} size="sm" c="gray.7">{label}</Text>
+          {opened ? <IconChevronUp size={13} color="#808898" /> : <IconChevronDown size={13} color="#808898" />}
         </Group>
       </UnstyledButton>
       <Collapse in={opened}>
-        <Box pl="sm" py="xs">
-          {subjects.map((s) => {
+        <Box py="xs">
+          {subjects.map((s, i) => {
             const inGroup = occupiedMap.get(s.tempId);
+            const isChecked = checkedTempIds.includes(s.tempId);
             return (
               <Tooltip key={s.tempId} label={inGroup ? `Already in: ${inGroup}` : undefined} disabled={!inGroup} position="right" withArrow>
-                <Group gap="sm" mb={5}>
-                  <Checkbox checked={checkedTempIds.includes(s.tempId)} disabled={!!inGroup} onChange={() => !inGroup && onToggle(s.tempId)}
-                    label={<Text size="sm"><Text span fw={500} ff="monospace">{s.code}</Text> — {s.name}{s.subject_type === "SSES" && <Badge ml={6} color="blue" variant="light" size="xs">SSES</Badge>}</Text>} />
-                </Group>
+                <Box
+                  component="label"
+                  htmlFor={`member-${s.tempId}`}
+                  style={{
+                    display: "block",
+                    border: "1px solid",
+                    borderColor: isChecked ? "#4EAE4A" : "#e9ecef",
+                    borderRadius: 6,
+                    padding: "10px 12px",
+                    opacity: inGroup ? 0.5 : 1,
+                    backgroundColor: isChecked ? "#f0f7ee" : i % 2 === 0 ? "#fff" : "#fafafa",
+                    cursor: inGroup ? "not-allowed" : "pointer",
+                    transition: "border-color 0.15s, background-color 0.15s",
+                  }}
+                >
+                  <Group gap="sm" wrap="nowrap">
+                    <Checkbox
+                      id={`member-${s.tempId}`}
+                      checked={isChecked}
+                      disabled={!!inGroup}
+                      onChange={() => !inGroup && onToggle(s.tempId)}
+                      color="#4EAE4A"
+                      style={{ pointerEvents: "none" }}
+                    />
+                    <Text size="xs" fw={600} ff="monospace" c="gray.6" style={{ flexShrink: 0 }}>{s.code}</Text>
+                    <Text size="sm" style={{ flex: 1 }}>{s.name}</Text>
+                    {s.subject_type === "SSES" && (
+                      <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>SSES</Badge>
+                    )}
+                  </Group>
+                </Box>
               </Tooltip>
             );
           })}
@@ -377,10 +745,30 @@ function GroupModal({ opened, onClose, initial, prefill, existingGroupNames, all
   onSave: (group: WizardSubjectGroup) => void;
 }) {
   const form = useForm({
-    initialValues: { name: initial?.name ?? prefill?.name ?? "", description: initial?.description ?? "", memberTempIds: initial?.memberTempIds ?? prefill?.memberTempIds ?? [] },
+    initialValues: {
+      name: initial?.name ?? prefill?.name ?? "",
+      description: initial?.description ?? "",
+      memberTempIds: initial?.memberTempIds ?? prefill?.memberTempIds ?? [],
+    },
     validate: {
-      name: (v) => { if (!v.trim()) return "Group name is required."; if (v.trim().length < 3) return "Must be at least 3 characters."; if (v.trim().length > 50) return "Must be 50 characters or less."; const lower = v.trim().toLowerCase(); const dup = existingGroupNames.filter((n) => n.toLowerCase() !== (initial?.name ?? "").toLowerCase()).some((n) => n.toLowerCase() === lower); if (dup) return "A group with this name already exists."; return null; },
-      description: (v) => { if (!v.trim()) return "Description is required."; if (/^\d+$/.test(v.trim())) return "Description can't be only numbers."; if (/^\.+$/.test(v.trim())) return "Description can't be only dots."; if (v.trim().length > 300) return "Must be 300 characters or less."; return null; },
+      name: (v) => {
+        if (!v.trim()) return "Group name is required.";
+        if (v.trim().length < 3) return "Must be at least 3 characters.";
+        if (v.trim().length > 50) return "Must be 50 characters or less.";
+        const lower = v.trim().toLowerCase();
+        const dup = existingGroupNames
+          .filter((n) => n.toLowerCase() !== (initial?.name ?? "").toLowerCase())
+          .some((n) => n.toLowerCase() === lower);
+        if (dup) return "A group with this name already exists.";
+        return null;
+      },
+      description: (v) => {
+        if (!v.trim()) return "Description is required.";
+        if (/^\d+$/.test(v.trim())) return "Description can't be only numbers.";
+        if (/^\.+$/.test(v.trim())) return "Description can't be only dots.";
+        if (v.trim().length > 300) return "Must be 300 characters or less.";
+        return null;
+      },
       memberTempIds: (v) => (v.length === 0 ? "Select at least one member." : null),
     },
   });
@@ -388,8 +776,29 @@ function GroupModal({ opened, onClose, initial, prefill, existingGroupNames, all
   const subjectsByGl = useMemo(() => {
     const map = new Map<number, WizardSubject[]>();
     for (const s of allSubjects) { const arr = map.get(s.grade_level_id) ?? []; arr.push(s); map.set(s.grade_level_id, arr); }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aOccupied = occupiedMap.has(a.tempId) ? 1 : 0;
+        const bOccupied = occupiedMap.has(b.tempId) ? 1 : 0;
+        if (aOccupied !== bOccupied) return aOccupied - bOccupied;
+        const aSSES = a.subject_type === "SSES" ? 0 : 1;
+        const bSSES = b.subject_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.code.localeCompare(b.code);
+      });
+    }
     return map;
-  }, [allSubjects]);
+  }, [allSubjects, occupiedMap]);
+
+  const sortedGlEntries = useMemo(() => {
+    return Array.from(subjectsByGl.entries()).sort(([aId], [bId]) => {
+      const aName = gradeLevelNames.get(aId) ?? "";
+      const bName = gradeLevelNames.get(bId) ?? "";
+      const aNum = parseInt(aName.replace(/\D/g, ""), 10) || 0;
+      const bNum = parseInt(bName.replace(/\D/g, ""), 10) || 0;
+      return aNum - bNum;
+    });
+  }, [subjectsByGl, gradeLevelNames]);
 
   const handleToggle = (tempId: string) => {
     const cur = form.values.memberTempIds;
@@ -402,17 +811,33 @@ function GroupModal({ opened, onClose, initial, prefill, existingGroupNames, all
         <TextInput label="Subject Group Name" placeholder="e.g. Mathematics" required maxLength={50} description={`${form.values.name.length}/50 characters`} {...form.getInputProps("name")} />
         <Textarea label="Description" placeholder="Describe what this group represents" required autosize minRows={3} maxLength={300} {...form.getInputProps("description")} />
         <Box>
-          <Group gap={4} mb={4}><Text size="sm" fw={500}>Members <Text span c="red">*</Text></Text></Group>
+          <Group gap={4} mb={4}>
+            <Text size="sm" fw={500}>Members <Text span c="red">*</Text></Text>
+          </Group>
           {form.errors.memberTempIds && <Text size="xs" c="red" mb={4}>{form.errors.memberTempIds}</Text>}
           <Box style={{ border: "1px solid #dee2e6", borderRadius: 6, padding: "6px 0", maxHeight: 260, overflowY: "auto" }}>
-            {Array.from(subjectsByGl.entries()).map(([glId, subjects]) => (
-              <MemberBlock key={glId} label={gradeLevelNames.get(glId) ?? `Grade Level ${glId}`} subjects={subjects} checkedTempIds={form.values.memberTempIds} occupiedMap={occupiedMap} onToggle={handleToggle} />
+            {sortedGlEntries.map(([glId, subjects]) => (
+              <MemberBlock
+                key={glId}
+                label={gradeLevelNames.get(glId) ?? `Grade Level ${glId}`}
+                subjects={subjects}
+                checkedTempIds={form.values.memberTempIds}
+                occupiedMap={occupiedMap}
+                onToggle={handleToggle}
+              />
             ))}
           </Box>
         </Box>
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button color="#4EAE4A" onClick={() => { if (form.validate().hasErrors) return; onSave({ tempId: initial?.tempId ?? crypto.randomUUID(), name: form.values.name.trim(), description: form.values.description.trim(), memberTempIds: form.values.memberTempIds }); onClose(); }}>
+          <Button
+            color="#4EAE4A"
+            onClick={() => {
+              if (form.validate().hasErrors) return;
+              onSave({ tempId: initial?.tempId ?? crypto.randomUUID(), name: form.values.name.trim(), description: form.values.description.trim(), memberTempIds: form.values.memberTempIds });
+              onClose();
+            }}
+          >
             {initial ? "Save Changes" : "Create Group"}
           </Button>
         </Group>
@@ -447,6 +872,16 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
 
   const yearCreated = new Date(curriculum.created_at).getFullYear();
 
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
+
   // Warn before browser close/refresh when dirty
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -472,11 +907,12 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         labels: { confirm: "Discard", cancel: "Stay" },
         confirmProps: { color: "red" },
         onConfirm: () => router.push(href),
+        ...confirmModalProps,
       });
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [form.isDirty()]);
+  }, [form.isDirty(), isMobile]);
 
   const gradeLevelNames = useMemo(() => {
     const map = new Map<number, string>();
@@ -504,12 +940,20 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   const subjectsByGl = useMemo(() => {
     const map = new Map<number, WizardSubject[]>();
     for (const s of form.values.subjects) { const arr = map.get(s.grade_level_id) ?? []; arr.push(s); map.set(s.grade_level_id, arr); }
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aSSES = a.subject_type === "SSES" ? 0 : 1;
+        const bSSES = b.subject_type === "SSES" ? 0 : 1;
+        if (aSSES !== bSSES) return aSSES - bSSES;
+        return a.code.localeCompare(b.code);
+      });
+    }
     return map;
   }, [form.values.subjects]);
 
   const missingGls = useMemo(
     () => gradeLevels.filter((gl) => !subjectsByGl.has(gl.grade_level_id)),
-    [gradeLevels, subjectsByGl]
+    [gradeLevels, subjectsByGl],
   );
 
   const subjectByTempId = useMemo(() => {
@@ -526,10 +970,15 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
 
   const unassigned = useMemo(
     () => form.values.subjects.filter((s) => !occupiedTempIds.has(s.tempId)),
-    [form.values.subjects, occupiedTempIds]
+    [form.values.subjects, occupiedTempIds],
   );
 
   const allSuggestions = useMemo(() => generateSuggestions(form.values.subjects), [form.values.subjects]);
+
+  const sortedGroups = useMemo(
+    () => [...form.values.subject_groups].sort((a, b) => a.name.localeCompare(b.name)),
+    [form.values.subject_groups],
+  );
 
   // ── Subject modal state ───────────────────────────────────────────────────
   const [activeGl, setActiveGl] = useState<GradeLevel | null>(null);
@@ -537,6 +986,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
 
   // ── Group modal state ─────────────────────────────────────────────────────
   const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [groupModalKey, setGroupModalKey] = useState(0);
   const [editingGroup, setEditingGroup] = useState<WizardSubjectGroup | null>(null);
   const [suggestionPrefill, setSuggestionPrefill] = useState<{ name: string; memberTempIds: string[] } | null>(null);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(new Set());
@@ -544,7 +994,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   const activeSuggestions = allSuggestions.filter(
     (s) =>
       !dismissedSuggestions.has(s.tempId) &&
-      s.memberTempIds.every((tid) => form.values.subjects.some((sub) => sub.tempId === tid) && !occupiedTempIds.has(tid))
+      s.memberTempIds.every((tid) => form.values.subjects.some((sub) => sub.tempId === tid) && !occupiedTempIds.has(tid)),
   );
 
   const occupiedForModal = useMemo(() => {
@@ -567,7 +1017,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
     form.setFieldValue("subjects", form.values.subjects.map((sub) =>
       sub.tempId === tempId
         ? { source: "existing" as const, tempId, subject_id: s.subject_id, code: s.code, name: s.name, description: s.description, subject_type: s.subject_type, grade_level_id: sub.grade_level_id }
-        : sub
+        : sub,
     ));
 
   const handleRemoveSubject = (tempId: string) => {
@@ -576,17 +1026,22 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   };
 
   const confirmRemoveSubject = (s: WizardSubject, glName: string) => {
-    modals.openConfirmModal({
+    let modalId!: string;
+    modalId = modals.openConfirmModal({
       title: "Remove subject?",
       children: (
-        <Text size="sm">
-          Remove <strong>{s.name}</strong> (<Text span ff="monospace">{s.code}</Text>) from {glName}?
-          {s.source === "existing" ? " This will also unassign it from any subject group." : " Any unsaved changes will be lost."}
-        </Text>
+        <>
+          <EnterToConfirm onEnter={() => { handleRemoveSubject(s.tempId); modals.close(modalId); }} />
+          <Text size="sm">
+            Remove <strong>{s.name}</strong> (<Text span ff="monospace">{s.code}</Text>) from {glName}?
+            {s.source === "existing" ? " This will also unassign it from any subject group." : " Any unsaved changes will be lost."}
+          </Text>
+        </>
       ),
       labels: { confirm: "Remove", cancel: "Cancel" },
       confirmProps: { color: "red" },
       onConfirm: () => handleRemoveSubject(s.tempId),
+      ...confirmModalProps,
     });
   };
 
@@ -594,20 +1049,36 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   const handleSaveGroup = (group: WizardSubjectGroup) => {
     if (editingGroup) {
       form.setFieldValue("subject_groups", form.values.subject_groups.map((g) => (g.tempId === editingGroup.tempId ? group : g)));
+      notify({ type: "success", title: "Group Updated", message: `${group.name} has been updated.` });
     } else {
       form.setFieldValue("subject_groups", [...form.values.subject_groups, group]);
+      notify({ type: "success", title: "Group Created", message: `${group.name} has been created.` });
     }
     setEditingGroup(null);
     setSuggestionPrefill(null);
   };
 
   const confirmRemoveGroup = (g: WizardSubjectGroup) => {
-    modals.openConfirmModal({
+    let modalId!: string;
+    modalId = modals.openConfirmModal({
       title: "Remove subject group?",
-      children: <Text size="sm">Remove <strong>{g.name}</strong>? Subjects in this group will become unassigned.</Text>,
+      children: (
+        <>
+          <EnterToConfirm onEnter={() => {
+            form.setFieldValue("subject_groups", form.values.subject_groups.filter((x) => x.tempId !== g.tempId));
+            notify({ type: "success", title: "Group Removed", message: `${g.name} has been removed.` });
+            modals.close(modalId);
+          }} />
+          <Text size="sm">Remove <strong>{g.name}</strong>? Subjects in this group will become unassigned.</Text>
+        </>
+      ),
       labels: { confirm: "Remove", cancel: "Cancel" },
       confirmProps: { color: "red" },
-      onConfirm: () => form.setFieldValue("subject_groups", form.values.subject_groups.filter((x) => x.tempId !== g.tempId)),
+      onConfirm: () => {
+        form.setFieldValue("subject_groups", form.values.subject_groups.filter((x) => x.tempId !== g.tempId));
+        notify({ type: "success", title: "Group Removed", message: `${g.name} has been removed.` });
+      },
+      ...confirmModalProps,
     });
   };
 
@@ -674,6 +1145,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
       labels: { confirm: "Save Changes", cancel: "Cancel" },
       confirmProps: { style: { backgroundColor: "#4EAE4A" } },
       onConfirm: submitSave,
+      ...confirmModalProps,
     });
   };
 
@@ -702,11 +1174,8 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
       children: <Text size="sm">All unsaved changes will be lost and the form will return to its original state.</Text>,
       labels: { confirm: "Revert", cancel: "Cancel" },
       confirmProps: { color: "red" },
-      onConfirm: () => {
-        form.setValues(initialValues);
-        form.resetDirty(initialValues);
-        verifiedNameRef.current = curriculum.name.trim();
-      },
+      onConfirm: () => { form.setValues(initialValues); form.resetDirty(initialValues); verifiedNameRef.current = curriculum.name.trim(); },
+      ...confirmModalProps,
     });
   };
 
@@ -718,6 +1187,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         labels: { confirm: "Discard", cancel: "Stay" },
         confirmProps: { color: "red" },
         onConfirm: onCancel,
+        ...confirmModalProps,
       });
     } else {
       onCancel();
@@ -727,7 +1197,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   return (
     <Stack gap="md">
 
-      {/* About — mirrors the detail view About card, but editable */}
+      {/* About — editable */}
       <Paper withBorder p="md" radius="md" w={{ base: "100%", md: "50%" }}>
         <Text fw={700} size="md" mb="sm">About</Text>
         <Stack gap="xs">
@@ -735,13 +1205,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
             <IconBook size={16} color="#808898" style={{ flexShrink: 0, marginTop: 8 }} />
             <Text size="sm" style={{ flexShrink: 0, marginTop: 8 }}>Name:</Text>
             <Stack gap={2} style={{ flex: 1 }}>
-              <TextInput
-                size="sm"
-                required
-                maxLength={50}
-                {...form.getInputProps("name")}
-                onChange={(e) => { verifiedNameRef.current = ""; form.getInputProps("name").onChange(e); }}
-              />
+              <TextInput size="sm" required maxLength={50} {...form.getInputProps("name")} onChange={(e) => { verifiedNameRef.current = ""; form.getInputProps("name").onChange(e); }} />
               <Text size="xs" c="dimmed">{form.values.name.length}/50 characters</Text>
             </Stack>
             {curriculum.is_active && (
@@ -752,14 +1216,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
             <IconFileDescription size={16} color="#808898" style={{ flexShrink: 0, marginTop: 8 }} />
             <Text size="sm" style={{ flexShrink: 0, marginTop: 8 }}>Description:</Text>
             <Stack gap={2} style={{ flex: 1 }}>
-              <Textarea
-                size="sm"
-                required
-                autosize
-                minRows={2}
-                maxLength={500}
-                {...form.getInputProps("description")}
-              />
+              <Textarea size="sm" required autosize minRows={2} maxLength={500} {...form.getInputProps("description")} />
               <Text size="xs" c="dimmed">{form.values.description.length}/500 characters</Text>
             </Stack>
           </div>
@@ -770,61 +1227,84 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         </Stack>
       </Paper>
 
-      {/* Missing GL warning */}
-      {missingGls.length > 0 && (
-        <Box style={{ background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 6, padding: "8px 14px" }}>
-          <Text size="sm" c="orange" fw={500}>
-            No subjects assigned for: {missingGls.map((gl) => gl.display_name).join(", ")}
-          </Text>
-        </Box>
-      )}
+      {/* Subject Groups */}
+      <CollapsibleSection title="Subject Groups" defaultOpen>
 
-      {/* Subject Groups — same CollapsibleSection as detail view */}
-      <CollapsibleSection title="Subject Groups" defaultOpen headerBg="#F5F5F5">
-
-        {/* Unassigned subjects panel */}
-        <Box mb="md" style={{ border: `1px solid ${unassigned.length > 0 ? "#e03131" : "#4EAE4A"}`, borderRadius: 6, padding: "8px 14px", backgroundColor: unassigned.length > 0 ? "#fff5f5" : "#f6fff6" }}>
-          <Group gap="xs" mb={unassigned.length > 0 ? "xs" : 0}>
-            {unassigned.length > 0 ? (
-              <>
-                <Badge color="red" variant="light" size="sm">{unassigned.length}</Badge>
-                <Text size="sm" fw={600} c="red">{unassigned.length} subject{unassigned.length > 1 ? "s" : ""} not yet assigned to a group</Text>
-              </>
-            ) : (
-              <>
-                <IconCheck size={15} color="#4EAE4A" />
-                <Text size="sm" fw={600} c="#4EAE4A">All subjects assigned</Text>
-              </>
-            )}
-          </Group>
-          {unassigned.length > 0 && (
-            <Group gap={5} wrap="wrap">
-              {unassigned.map((s) => <Badge key={s.tempId} color="gray" variant="outline" size="xs">{s.code}</Badge>)}
+        {/* Unassigned / all-assigned banner */}
+        {unassigned.length > 0 ? (
+          <Box
+            mb="md"
+            style={{ border: "1px solid #e03131", borderRadius: 6, padding: "8px 14px", backgroundColor: "#fff5f5" }}
+          >
+            <Group gap="xs" mb="xs">
+              <Badge color="red" variant="light" size="sm">{unassigned.length}</Badge>
+              <Text size="sm" fw={600} c="red">{unassigned.length} subject{unassigned.length > 1 ? "s" : ""} not yet assigned to a group</Text>
             </Group>
-          )}
-        </Box>
+            <Group gap={5} wrap="wrap">
+              {unassigned.map((s) => (
+                <SubjectCodeBadge key={s.tempId} code={s.code} name={s.name} subject_type={s.subject_type} />
+              ))}
+            </Group>
+          </Box>
+        ) : (
+          <Box mb="md" style={{ border: "1px solid #4EAE4A", borderRadius: 6, padding: "8px 14px", backgroundColor: "#f6fff6" }}>
+            <Group gap="xs">
+              <IconCheck size={15} color="#4EAE4A" />
+              <Text size="sm" fw={600} c="#4EAE4A">All subjects assigned</Text>
+            </Group>
+          </Box>
+        )}
 
         {/* Suggestions */}
         {activeSuggestions.length > 0 && (
-          <Box mb="md">
-            <Group gap="xs" mb="sm">
-              <Text size="sm" fw={700}>Suggested Groups</Text>
-              <Tooltip label="Based on naming patterns in your subjects." position="right" withArrow multiline w={240}>
-                <IconInfoCircle size={15} color="#808898" style={{ cursor: "help" }} />
+          <Box
+            mb="md"
+            p="md"
+            style={{ border: "1px solid #d0e4cc", borderRadius: "8px", backgroundColor: "#f7fbf7" }}
+          >
+            <Group gap="xs" mb="sm" align="center">
+              <Text size="sm" fw={600} c="gray.7">Suggested Groups</Text>
+              <Tooltip label="Based on naming patterns in your subjects." position="right" withArrow multiline w={260}>
+                <IconInfoCircle size={14} color="#808898" style={{ cursor: "help" }} />
               </Tooltip>
             </Group>
-            <Stack gap="sm">
+            <Stack gap="xs">
               {activeSuggestions.map((sug) => (
-                <Box key={sug.tempId} style={{ border: "1px dashed #adb5bd", borderRadius: 6, padding: "10px 14px", opacity: 0.7 }}>
-                  <Group justify="space-between" mb="xs">
-                    <Text size="sm" fw={600}>{sug.name}</Text>
-                    <Group gap="xs">
-                      <Button size="xs" color="#4EAE4A" onClick={() => { setEditingGroup(null); setSuggestionPrefill({ name: sug.name, memberTempIds: sug.memberTempIds }); setDismissedSuggestions((p) => new Set([...p, sug.tempId])); setGroupModalOpen(true); }}>Accept</Button>
-                      <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setDismissedSuggestions((p) => new Set([...p, sug.tempId]))}><IconX size={13} /></ActionIcon>
+                <Box
+                  key={sug.tempId}
+                  style={{ border: "1px solid #d0e4cc", borderLeft: "3px solid #4EAE4A", borderRadius: 6, overflow: "hidden", backgroundColor: "#fff" }}
+                >
+                  <Group justify="space-between" wrap="nowrap" gap="sm" px="md" py="sm" style={{ backgroundColor: "#f0f7ee" }}>
+                    <Text size="sm" fw={600} c="gray.8" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>
+                      {sug.name}
+                    </Text>
+                    <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                      <Button
+                        size="xs"
+                        variant="filled"
+                        color="#4EAE4A"
+                        onClick={() => {
+                          setEditingGroup(null);
+                          setSuggestionPrefill({ name: sug.name, memberTempIds: sug.memberTempIds });
+                          setDismissedSuggestions((p) => new Set([...p, sug.tempId]));
+                          setGroupModalKey((k) => k + 1);
+                          setGroupModalOpen(true);
+                        }}
+                      >
+                        Accept
+                      </Button>
+                      <Tooltip label="Dismiss suggestion" withArrow position="top">
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => setDismissedSuggestions((p) => new Set([...p, sug.tempId]))}>
+                          <IconX size={12} />
+                        </ActionIcon>
+                      </Tooltip>
                     </Group>
                   </Group>
-                  <Group gap={5} wrap="wrap">
-                    {sug.memberTempIds.map((tid) => { const s = subjectByTempId.get(tid); return s ? <Badge key={tid} color="blue" variant="light" size="sm">{s.code}</Badge> : null; })}
+                  <Group px="md" py="sm" gap={5} wrap="wrap">
+                    {sug.memberTempIds.map((tid) => {
+                      const s = subjectByTempId.get(tid);
+                      return s ? <SubjectCodeBadge key={tid} code={s.code} name={s.name} subject_type={s.subject_type} /> : null;
+                    })}
                   </Group>
                 </Box>
               ))}
@@ -832,71 +1312,103 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
           </Box>
         )}
 
-        {/* Subject groups table — same structure as detail view */}
-        {form.values.subject_groups.length === 0 ? (
-          <Text c="dimmed" size="sm" mb="sm">No subject groups defined yet.</Text>
-        ) : (
-          <Table withColumnBorders withTableBorder fz="sm" style={{ "--table-border-color": "#ced4da" } as React.CSSProperties} mb="sm">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th style={{ ...greenTh, width: 200 }}>Subject Group Name</Table.Th>
-                <Table.Th style={{ ...greenTh, width: 300 }}>Description</Table.Th>
-                <Table.Th style={greenTh}>Members</Table.Th>
-                <Table.Th style={{ ...greenTh, width: 80 }}></Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {form.values.subject_groups.map((g) => (
-                <Table.Tr key={g.tempId}>
-                  <Table.Td><Text size="sm" fw={500}>{g.name}</Text></Table.Td>
-                  <Table.Td><Text size="sm" c="dimmed">{g.description || "—"}</Text></Table.Td>
-                  <Table.Td>
-                    <Group gap={6} wrap="wrap">
-                      {g.memberTempIds.length === 0 ? (
-                        <Text size="xs" c="dimmed">No members</Text>
-                      ) : (
-                        g.memberTempIds.map((tid) => {
-                          const s = subjectByTempId.get(tid);
-                          return s ? (
-                            <Tooltip key={tid} label={s.name} withArrow position="top">
-                              <Badge color="blue" variant="filled" size="sm" radius="xl" style={{ cursor: "default" }}>{s.code}</Badge>
-                            </Tooltip>
-                          ) : null;
-                        })
-                      )}
-                    </Group>
-                  </Table.Td>
-                  <Table.Td>
-                    <Group gap={4} wrap="nowrap">
-                      <Tooltip label="Edit" withArrow>
-                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setEditingGroup(g); setSuggestionPrefill(null); setGroupModalOpen(true); }}>
-                          <IconPencil size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                      <Tooltip label="Remove" withArrow>
-                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => confirmRemoveGroup(g)}>
-                          <IconTrash size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+        {/* Groups table */}
+        {sortedGroups.length > 0 && (
+          <Box style={{ border: "1px solid #dee2e6", borderRadius: 6, overflow: "hidden" }} mb="sm">
+            {/* Desktop */}
+            <div className="hidden sm:block">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={{ ...greenTh, width: 200 }}>Subject Group Name</th>
+                    <th style={{ ...greenTh, width: 240 }}>Description</th>
+                    <th style={greenTh}>Members</th>
+                    <th style={{ ...greenTh, width: 70 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedGroups.map((g) => (
+                    <tr key={g.tempId} style={{ borderTop: "1px solid #dee2e6" }}>
+                      <td style={{ padding: "8px 12px" }}><Text size="sm" fw={500}>{g.name}</Text></td>
+                      <td style={{ padding: "8px 12px" }}><Text size="sm" c="dimmed">{g.description || "—"}</Text></td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <Group gap={5} wrap="wrap">
+                          {g.memberTempIds.length === 0 ? (
+                            <Text size="xs" c="dimmed">No members</Text>
+                          ) : (
+                            g.memberTempIds.map((tid) => {
+                              const s = subjectByTempId.get(tid);
+                              return s ? <SubjectCodeBadge key={tid} code={s.code} name={s.name} subject_type={s.subject_type} /> : null;
+                            })
+                          )}
+                        </Group>
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        <Group gap={4} wrap="nowrap">
+                          <Tooltip label="Edit" withArrow>
+                            <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setEditingGroup(g); setSuggestionPrefill(null); setGroupModalOpen(true); }}>
+                              <IconPencil size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Remove" withArrow>
+                            <ActionIcon size="sm" variant="subtle" color="red" onClick={() => confirmRemoveGroup(g)}>
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Group>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile */}
+            <div className="sm:hidden">
+              <Box px="xs">
+                {sortedGroups.map((g) => (
+                  <GroupMobileCard
+                    key={g.tempId}
+                    g={g}
+                    subjectByTempId={subjectByTempId}
+                    onEdit={() => { setEditingGroup(g); setSuggestionPrefill(null); setGroupModalOpen(true); }}
+                    onRemove={() => confirmRemoveGroup(g)}
+                  />
+                ))}
+              </Box>
+            </div>
+          </Box>
         )}
 
-        <Group justify="center">
-          <Button variant="subtle" color="#4EAE4A" size="sm" leftSection={<IconPlus size={14} />}
-            onClick={() => { setEditingGroup(null); setSuggestionPrefill(null); setGroupModalOpen(true); }}>
+        {/* Add button */}
+        <Box style={{ border: "1px solid #4EAE4A", borderRadius: "6px" }}>
+          <Button
+            variant="subtle"
+            color="#4EAE4A"
+            size="sm"
+            fullWidth
+            leftSection={<IconPlus size={14} />}
+            onClick={() => { setEditingGroup(null); setSuggestionPrefill(null); setGroupModalKey((k) => k + 1); setGroupModalOpen(true); }}
+          >
             Add a subject group
           </Button>
-        </Group>
+        </Box>
 
         <GroupModal
-          key={editingGroup?.tempId ?? (suggestionPrefill ? `prefill-${suggestionPrefill.name}` : "new")}
+          key={editingGroup?.tempId ?? (suggestionPrefill ? `prefill-${groupModalKey}` : `new-${groupModalKey}`)}
           opened={groupModalOpen}
-          onClose={() => { setGroupModalOpen(false); setEditingGroup(null); setSuggestionPrefill(null); }}
+          onClose={() => {
+            if (suggestionPrefill) {
+              setDismissedSuggestions((p) => {
+                const next = new Set(p);
+                const sug = activeSuggestions.find((s) => s.name === suggestionPrefill.name);
+                if (sug) next.delete(sug.tempId);
+                return next;
+              });
+            }
+            setGroupModalOpen(false);
+            setEditingGroup(null);
+            setSuggestionPrefill(null);
+          }}
           initial={editingGroup}
           prefill={suggestionPrefill ?? undefined}
           existingGroupNames={form.values.subject_groups.map((g) => g.name)}
@@ -907,86 +1419,98 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         />
       </CollapsibleSection>
 
-      {/* Grade level sections — same CollapsibleSection as detail view */}
+      {/* Grade level sections */}
       {gradeLevels.map((gl) => {
         const glSubjects = subjectsByGl.get(gl.grade_level_id) ?? [];
         return (
           <CollapsibleSection key={gl.grade_level_id} title={gl.display_name}>
-            {glSubjects.length === 0 ? (
-              <Group justify="center">
-                <Button variant="subtle" color="#4EAE4A" size="sm" leftSection={<IconPlus size={14} />}
-                  onClick={() => { setEditingSubject(null); setActiveGl(gl); }}>
-                  Add a subject
-                </Button>
-              </Group>
-            ) : (
-              <>
-                <Table withColumnBorders withTableBorder fz="sm" style={{ "--table-border-color": "#ced4da" } as React.CSSProperties}>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th style={{ ...greenTh, width: 140 }}>Subject Code</Table.Th>
-                      <Table.Th style={{ ...greenTh, width: 240 }}>Title</Table.Th>
-                      <Table.Th style={greenTh}>Description</Table.Th>
-                      <Table.Th style={{ ...greenTh, width: 120 }}>Notes</Table.Th>
-                      <Table.Th style={{ ...greenTh, width: 80 }}></Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
+            <Stack gap="sm">
+              {glSubjects.length > 0 && (
+                <>
+                  {/* Desktop */}
+                  <div className="hidden sm:block">
+                    <Table withColumnBorders withTableBorder fz="sm" style={{ "--table-border-color": "#ced4da" } as React.CSSProperties}>
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th style={{ ...greenTh, width: 130 }}>Subject Code</Table.Th>
+                          <Table.Th style={{ ...greenTh, width: 210 }}>Title</Table.Th>
+                          <Table.Th style={greenTh}>Description</Table.Th>
+                          <Table.Th style={{ ...greenTh, width: 80 }}></Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {glSubjects.map((s) => {
+                          const locked = s.source === "existing" && lockedSubjectIds.includes(s.subject_id);
+                          const lockedTooltip = "This subject has records (exams or teacher assignments) and cannot be modified or removed.";
+                          return (
+                            <Table.Tr key={s.tempId}>
+                              <Table.Td>
+                                <Group gap={4}>
+                                  <Text size="sm" fw={500} ff="monospace">{s.code}</Text>
+                                  {s.subject_type === "SSES" && (
+                                    <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>SSES</Badge>
+                                  )}
+                                </Group>
+                              </Table.Td>
+                              <Table.Td><Text size="sm">{s.name}</Text></Table.Td>
+                              <Table.Td><Text size="sm" c="dimmed">{s.description ?? ""}</Text></Table.Td>
+                              <Table.Td>
+                                <Group gap={4} wrap="nowrap" justify="flex-end">
+                                  <Tooltip label={locked ? lockedTooltip : s.source === "existing" ? "Imported subjects cannot be edited" : "Edit"} withArrow multiline w={220}>
+                                    <ActionIcon
+                                      size="sm" variant="subtle" color="gray"
+                                      disabled={locked || s.source === "existing"}
+                                      onClick={() => {
+                                        if (!locked && s.source === "new") {
+                                          setEditingSubject(s as Extract<WizardSubject, { source: "new" }>);
+                                          setActiveGl(gl);
+                                        }
+                                      }}
+                                    >
+                                      <IconPencil size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label={locked ? lockedTooltip : "Remove"} withArrow multiline w={220}>
+                                    <ActionIcon size="sm" variant="subtle" color="red" disabled={locked} onClick={() => !locked && confirmRemoveSubject(s, gl.display_name)}>
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                </Group>
+                              </Table.Td>
+                            </Table.Tr>
+                          );
+                        })}
+                      </Table.Tbody>
+                    </Table>
+                  </div>
+                  {/* Mobile */}
+                  <div className="sm:hidden">
                     {glSubjects.map((s) => {
                       const locked = s.source === "existing" && lockedSubjectIds.includes(s.subject_id);
-                      const lockedTooltip = "This subject has records (exams or teacher assignments) and cannot be modified or removed.";
                       return (
-                        <Table.Tr key={s.tempId}>
-                          <Table.Td>
-                            <Text size="sm" fw={500} ff="monospace">{s.code}</Text>
-                          </Table.Td>
-                          <Table.Td><Text size="sm">{s.name}</Text></Table.Td>
-                          <Table.Td><Text size="sm" c="dimmed">{s.description ?? ""}</Text></Table.Td>
-                          <Table.Td>
-                            {s.subject_type === "SSES" && (
-                              <Badge color="blue" variant="light" size="sm">SSES Only</Badge>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            <Group gap={4} wrap="nowrap" justify="flex-end">
-                              <Tooltip label={locked ? lockedTooltip : "Edit"} withArrow multiline w={220}>
-                                <ActionIcon
-                                  size="sm" variant="subtle" color="gray"
-                                  disabled={locked}
-                                  onClick={() => {
-                                    if (!locked) {
-                                      if (s.source === "new") {
-                                        setEditingSubject(s as Extract<WizardSubject, { source: "new" }>);
-                                      } else {
-                                        setEditingSubject({ ...s, source: "new" } as Extract<WizardSubject, { source: "new" }>);
-                                      }
-                                      setActiveGl(gl);
-                                    }
-                                  }}
-                                >
-                                  <IconPencil size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label={locked ? lockedTooltip : "Remove"} withArrow multiline w={220}>
-                                <ActionIcon size="sm" variant="subtle" color="red" disabled={locked} onClick={() => !locked && confirmRemoveSubject(s, gl.display_name)}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        </Table.Tr>
+                        <SubjectMobileRow
+                          key={s.tempId}
+                          s={s}
+                          locked={locked}
+                          onEdit={() => {
+                            if (!locked && s.source === "new") {
+                              setEditingSubject(s as Extract<WizardSubject, { source: "new" }>);
+                              setActiveGl(gl);
+                            }
+                          }}
+                          onRemove={() => !locked && confirmRemoveSubject(s, gl.display_name)}
+                        />
                       );
                     })}
-                  </Table.Tbody>
-                </Table>
-                <Group justify="center" mt="sm">
-                  <Button variant="subtle" color="#4EAE4A" size="sm" leftSection={<IconPlus size={14} />}
-                    onClick={() => { setEditingSubject(null); setActiveGl(gl); }}>
-                    Add a subject
-                  </Button>
-                </Group>
-              </>
-            )}
+                  </div>
+                </>
+              )}
+              <Box style={{ border: "1px solid #4EAE4A", borderRadius: "6px" }}>
+                <Button variant="subtle" color="#4EAE4A" size="sm" fullWidth onClick={() => { setEditingSubject(null); setActiveGl(gl); }}>
+                  + Add a subject
+                </Button>
+              </Box>
+            </Stack>
           </CollapsibleSection>
         );
       })}

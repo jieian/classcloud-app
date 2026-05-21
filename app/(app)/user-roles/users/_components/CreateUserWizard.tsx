@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Container, Stepper, Text, rem } from "@mantine/core";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
@@ -223,8 +224,7 @@ export default function CreateUserWizard() {
       // Principal check — soft warning only, does not block
       const selectedRoleNames = form.values.role_ids
         .map(
-          (id) =>
-            availableRoles.find((r) => r.role_id.toString() === id)?.name,
+          (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name,
         )
         .filter(Boolean);
 
@@ -415,45 +415,58 @@ export default function CreateUserWizard() {
 
   const isMobile = useMediaQuery("(max-width: 768px)");
 
+  const steps = [
+    { description: "Specify User information" },
+    { description: "Assign Role" },
+    { description: "Review and Create User" },
+  ];
+
   return (
     <Container fluid py="xl" h="100%">
       {isMobile ? (
-        // Mobile: Stacked layout
+        // Mobile: Compact step indicator
         <>
-          <Stepper
-            active={form.values.activeStep}
-            color="#4EAE4A"
-            orientation="vertical"
-          >
-            <Stepper.Step label="Step 1" description="Specify user information">
-              <StepUserInfo form={form} checkingEmail={checkingEmail} onEmailBlur={handleEmailBlur} />
-            </Stepper.Step>
-
-            <Stepper.Step label="Step 2" description="Assign Role">
-              <StepAssignRole
-                form={form}
-                availableRoles={availableRoles}
-                loadingRoles={loadingRoles}
-              />
-            </Stepper.Step>
-
-            <Stepper.Step label="Step 3" description="Review and Create User">
-              <StepReview
-                form={form}
-                availableRoles={availableRoles}
-                principalWarning={principalWarning}
-              />
-            </Stepper.Step>
-          </Stepper>
+          <MobileStepIndicator
+            activeStep={form.values.activeStep}
+            totalSteps={steps.length}
+            stepDescription={steps[form.values.activeStep].description}
+          />
+          {form.values.activeStep === 0 && (
+            <StepUserInfo
+              form={form}
+              checkingEmail={checkingEmail}
+              onEmailBlur={handleEmailBlur}
+            />
+          )}
+          {form.values.activeStep === 1 && (
+            <StepAssignRole
+              form={form}
+              availableRoles={availableRoles}
+              loadingRoles={loadingRoles}
+            />
+          )}
+          {form.values.activeStep === 2 && (
+            <StepReview
+              form={form}
+              availableRoles={availableRoles}
+              principalWarning={principalWarning}
+            />
+          )}
 
           <WizardNavigationButtons
             onCancel={handleCancel}
             showPrevious={form.values.activeStep > 0}
             onPrevious={prevStep}
             onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateUser}
-            primaryLabel={form.values.activeStep < 2 ? "Next" : "Send Invitation"}
-            primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
-            primaryLoading={form.values.activeStep < 2 ? checkingEmail : loading}
+            primaryLabel={
+              form.values.activeStep < 2 ? "Next" : "Send Invitation"
+            }
+            primaryDisabled={
+              form.values.activeStep < 2 ? isNextDisabled : false
+            }
+            primaryLoading={
+              form.values.activeStep < 2 ? checkingEmail : loading
+            }
           />
         </>
       ) : (
@@ -480,7 +493,13 @@ export default function CreateUserWizard() {
 
           {/* Right side: Content */}
           <div style={{ flex: 1, width: "70%" }}>
-            {form.values.activeStep === 0 && <StepUserInfo form={form} checkingEmail={checkingEmail} onEmailBlur={handleEmailBlur} />}
+            {form.values.activeStep === 0 && (
+              <StepUserInfo
+                form={form}
+                checkingEmail={checkingEmail}
+                onEmailBlur={handleEmailBlur}
+              />
+            )}
             {form.values.activeStep === 1 && (
               <StepAssignRole
                 form={form}
@@ -500,10 +519,18 @@ export default function CreateUserWizard() {
               onCancel={handleCancel}
               showPrevious={form.values.activeStep > 0}
               onPrevious={prevStep}
-              onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateUser}
-              primaryLabel={form.values.activeStep < 2 ? "Next" : "Send Invitation"}
-              primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
-              primaryLoading={form.values.activeStep < 2 ? checkingEmail : loading}
+              onPrimary={
+                form.values.activeStep < 2 ? nextStep : handleCreateUser
+              }
+              primaryLabel={
+                form.values.activeStep < 2 ? "Next" : "Send Invitation"
+              }
+              primaryDisabled={
+                form.values.activeStep < 2 ? isNextDisabled : false
+              }
+              primaryLoading={
+                form.values.activeStep < 2 ? checkingEmail : loading
+              }
             />
           </div>
         </div>

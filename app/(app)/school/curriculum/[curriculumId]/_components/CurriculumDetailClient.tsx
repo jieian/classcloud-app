@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import {
   Badge,
+  Box,
   Button,
   Collapse,
   Divider,
@@ -18,11 +19,12 @@ import {
   Tooltip,
   UnstyledButton,
 } from "@mantine/core";
-import SubjectBadge from "@/app/(app)/school/faculty/_components/SubjectBadge";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import {
   IconBook,
   IconCalendar,
   IconChevronDown,
+  IconChevronRight,
   IconChevronUp,
   IconFileDescription,
   IconPencil,
@@ -50,29 +52,57 @@ const greenTh: React.CSSProperties = {
   backgroundColor: "#4EAE4A",
   color: "#fff",
   fontWeight: 600,
-  padding: "10px 16px",
+  padding: "8px 12px",
+  textAlign: "left",
+  fontSize: 13,
 };
+
+function SubjectCodeBadge({
+  code,
+  name,
+  subject_type,
+}: {
+  code: string;
+  name: string;
+  subject_type: "BOTH" | "SSES";
+}) {
+  return (
+    <Tooltip label={name} withArrow position="top" maw={220}>
+      <Badge
+        variant="filled"
+        radius="xl"
+        style={{
+          cursor: "default",
+          backgroundColor: subject_type === "SSES" ? "#70A2FF" : "#B3B4B4",
+          color: "#FFFFFF",
+          minWidth: 48,
+          justifyContent: "center",
+        }}
+      >
+        {code}
+      </Badge>
+    </Tooltip>
+  );
+}
 
 function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
-  headerBg,
 }: {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
-  headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
       <UnstyledButton
         onClick={() => setOpen((v) => !v)}
-        style={{ width: "100%", padding: "14px 20px", backgroundColor: headerBg }}
+        style={{ width: "100%", padding: "12px 16px" }}
       >
         <Group justify="space-between">
-          <Text fw={700} size="md">{title}</Text>
+          <Text fw={700} size="sm">{title}</Text>
           {open ? <IconChevronUp size={16} color="#808898" /> : <IconChevronDown size={16} color="#808898" />}
         </Group>
       </UnstyledButton>
@@ -83,10 +113,138 @@ function CollapsibleSection({
   );
 }
 
+function SubjectMobileRow({ s }: { s: CurriculumSubject }) {
+  const [opened, { toggle }] = useDisclosure(false);
+  return (
+    <>
+      <div style={{ padding: "10px 4px" }}>
+        <UnstyledButton onClick={toggle} style={{ width: "100%" }}>
+          <Group gap="xs" wrap="nowrap">
+            <IconChevronRight
+              size={16}
+              style={{
+                transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 200ms ease",
+                flexShrink: 0,
+                color: "#808898",
+              }}
+            />
+            <Text fw={500} fz="sm" ff="monospace" style={{ flexShrink: 0 }}>
+              {s.code}
+            </Text>
+            {s.subject_type === "SSES" && (
+              <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
+                SSES
+              </Badge>
+            )}
+          </Group>
+        </UnstyledButton>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+            Name
+          </Text>
+          <Text fz="sm" c="dimmed" mb="sm">{s.name}</Text>
+          {s.description && (
+            <>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+                Description
+              </Text>
+              <Text fz="sm" c="dimmed" mb="sm">{s.description}</Text>
+            </>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+type SubjectGroupMember = CurriculumDetail["subject_groups"][number]["members"][number];
+
+function GroupMobileRow({
+  name,
+  description,
+  members,
+}: {
+  name: string;
+  description: string | null;
+  members: SubjectGroupMember[];
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  return (
+    <>
+      <div style={{ padding: "10px 4px" }}>
+        <UnstyledButton onClick={toggle} style={{ width: "100%" }}>
+          <Group gap="xs" wrap="nowrap">
+            <IconChevronRight
+              size={16}
+              style={{
+                transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 200ms ease",
+                flexShrink: 0,
+                color: "#808898",
+              }}
+            />
+            <Text
+              fw={500}
+              fz="sm"
+              style={{
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {name}
+            </Text>
+          </Group>
+        </UnstyledButton>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          {description && (
+            <>
+              <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+                Description
+              </Text>
+              <Text fz="sm" c="dimmed" mb="sm">{description}</Text>
+            </>
+          )}
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={4} style={{ letterSpacing: "0.04em" }}>
+            Members
+          </Text>
+          {members.length === 0 ? (
+            <Text fz="sm" c="dimmed" fs="italic">None</Text>
+          ) : (
+            <Group gap={6} wrap="wrap">
+              {members.map((m) => (
+                <SubjectCodeBadge
+                  key={m.curriculum_subject_id}
+                  code={m.subjects?.code ?? `#${m.curriculum_subject_id}`}
+                  subject_type={m.subjects?.subject_type ?? "BOTH"}
+                  name={m.subjects?.name ?? `#${m.curriculum_subject_id}`}
+                />
+              ))}
+            </Group>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
 function GradeLevelTable({ subjects }: { subjects: CurriculumSubject[] }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? subjects : subjects.slice(0, SUBJECTS_DEFAULT_SHOW);
-  const hasMore = subjects.length > SUBJECTS_DEFAULT_SHOW;
+  const sorted = useMemo(() => [...subjects].sort((a, b) => {
+    const aSSES = a.subject_type === "SSES" ? 0 : 1;
+    const bSSES = b.subject_type === "SSES" ? 0 : 1;
+    if (aSSES !== bSSES) return aSSES - bSSES;
+    return a.code.localeCompare(b.code);
+  }), [subjects]);
+  const visible = expanded ? sorted : sorted.slice(0, SUBJECTS_DEFAULT_SHOW);
+  const hasMore = sorted.length > SUBJECTS_DEFAULT_SHOW;
 
   return (
     <>
@@ -99,28 +257,23 @@ function GradeLevelTable({ subjects }: { subjects: CurriculumSubject[] }) {
                 <Table.Th style={{ ...greenTh, width: 140 }}>Subject Code</Table.Th>
                 <Table.Th style={{ ...greenTh, width: 240 }}>Title</Table.Th>
                 <Table.Th style={greenTh}>Description</Table.Th>
-                <Table.Th style={{ ...greenTh, width: 120 }}>Notes</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {visible.map((s) => (
                 <Table.Tr key={s.curriculum_subject_id}>
-                  <Table.Td><Text size="sm" fw={500} ff="monospace">{s.code}</Text></Table.Td>
+                  <Table.Td>
+                    <Group gap={4}>
+                      <Text size="sm" fw={500} ff="monospace">{s.code}</Text>
+                      {s.subject_type === "SSES" && (
+                        <Badge variant="filled" size="xs" radius="xl" style={{ backgroundColor: "#70A2FF", color: "#fff", cursor: "default" }}>
+                          SSES
+                        </Badge>
+                      )}
+                    </Group>
+                  </Table.Td>
                   <Table.Td><Text size="sm">{s.name}</Text></Table.Td>
                   <Table.Td><Text size="sm" c="dimmed">{s.description ?? ""}</Text></Table.Td>
-                  <Table.Td>
-                    {s.subject_type === "SSES" && (
-                      <Badge
-                        color="blue"
-                        variant="filled"
-                        size="sm"
-                        radius="xl"
-                        style={{ backgroundColor: "#70A2FF", color: "#fff" }}
-                      >
-                        SSES Only
-                      </Badge>
-                    )}
-                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -129,7 +282,7 @@ function GradeLevelTable({ subjects }: { subjects: CurriculumSubject[] }) {
         {hasMore && (
           <Group justify="center" mt="sm">
             <UnstyledButton onClick={() => setExpanded((v) => !v)}>
-              <Text size="sm" c="dimmed">{expanded ? "See less" : "See more"}</Text>
+              <Text size="sm" c="dimmed">{expanded ? "See Less" : "See More"}</Text>
             </UnstyledButton>
           </Group>
         )}
@@ -137,25 +290,13 @@ function GradeLevelTable({ subjects }: { subjects: CurriculumSubject[] }) {
 
       {/* Mobile */}
       <div className="sm:hidden">
-        {visible.map((s, i) => (
-          <div key={s.curriculum_subject_id}>
-            {i > 0 && <Divider />}
-            <div style={{ padding: "12px 0" }}>
-              <SubjectBadge
-                code={s.code}
-                subject_type={s.subject_type}
-                subjectName={s.name}
-                palette="coordinator"
-              />
-              <Text fz="md" fw={500} mt={6}>{s.name}</Text>
-              {s.description && <Text fz="sm" c="dimmed" mt={2}>{s.description}</Text>}
-            </div>
-          </div>
+        {visible.map((s) => (
+          <SubjectMobileRow key={s.curriculum_subject_id} s={s} />
         ))}
         {hasMore && (
           <Group justify="center" mt="xs">
             <UnstyledButton onClick={() => setExpanded((v) => !v)}>
-              <Text size="sm" c="dimmed">{expanded ? "See less" : "See more"}</Text>
+              <Text size="sm" c="dimmed">{expanded ? "See Less" : "See More"}</Text>
             </UnstyledButton>
           </Group>
         )}
@@ -176,6 +317,24 @@ export default function CurriculumDetailClient({ initialData: curriculum, canDel
   const [isEditing, setIsEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const yearCreated = new Date(curriculum.created_at).getFullYear();
+  const sortedGroups = useMemo(
+    () => [...curriculum.subject_groups].sort((a, b) => a.name.localeCompare(b.name)),
+    [curriculum.subject_groups],
+  );
+
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: {
+            width: "100%",
+            maxWidth: "100%",
+            borderRadius: "12px 12px 0 0",
+          },
+        },
+      }
+    : {};
 
   const handleDelete = () => {
     modals.openConfirmModal({
@@ -210,6 +369,7 @@ export default function CurriculumDetailClient({ initialData: curriculum, canDel
           setDeleting(false);
         }
       },
+      ...confirmModalProps,
     });
   };
 
@@ -293,79 +453,63 @@ export default function CurriculumDetailClient({ initialData: curriculum, canDel
             </Paper>
           )}
 
-          <CollapsibleSection title="Subject Groups" defaultOpen={false} headerBg="#F5F5F5">
-            {curriculum.subject_groups.length === 0 ? (
+          <CollapsibleSection title="Subject Groups" defaultOpen={false}>
+            {sortedGroups.length === 0 ? (
               <Text c="dimmed" size="sm">No subject groups defined for this curriculum.</Text>
             ) : (
               <>
                 {/* Desktop */}
                 <div className="hidden sm:block">
-                  <TableScrollContainer minWidth={500}>
-                    <Table withColumnBorders withTableBorder fz="sm" style={{ "--table-border-color": "#ced4da" } as React.CSSProperties}>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th style={{ ...greenTh, width: 200 }}>Subject Group Name</Table.Th>
-                          <Table.Th style={{ ...greenTh, width: 300 }}>Description</Table.Th>
-                          <Table.Th style={greenTh}>Members</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {curriculum.subject_groups.map((sg) => (
-                          <Table.Tr key={sg.subject_group_id}>
-                            <Table.Td><Text size="sm" fw={500}>{sg.name}</Text></Table.Td>
-                            <Table.Td><Text size="sm" c="dimmed">{sg.description ?? "—"}</Text></Table.Td>
-                            <Table.Td>
-                              <Group gap={6} wrap="wrap">
+                  <Box style={{ border: "1px solid #dee2e6", borderRadius: 6, overflow: "hidden" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                      <thead>
+                        <tr>
+                          <th style={{ ...greenTh, width: 200 }}>Subject Group Name</th>
+                          <th style={{ ...greenTh, width: 260 }}>Description</th>
+                          <th style={greenTh}>Members</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sortedGroups.map((sg) => (
+                          <tr key={sg.subject_group_id} style={{ borderTop: "1px solid #dee2e6" }}>
+                            <td style={{ padding: "8px 12px" }}>
+                              <Text size="sm" fw={500}>{sg.name}</Text>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <Text size="sm" c="dimmed">{sg.description ?? "—"}</Text>
+                            </td>
+                            <td style={{ padding: "8px 12px" }}>
+                              <Group gap={5} wrap="wrap">
                                 {sg.members.length === 0 ? (
                                   <Text size="xs" c="dimmed">No members</Text>
                                 ) : (
                                   sg.members.map((m) => (
-                                    <SubjectBadge
+                                    <SubjectCodeBadge
                                       key={m.curriculum_subject_id}
                                       code={m.subjects?.code ?? `#${m.curriculum_subject_id}`}
                                       subject_type={m.subjects?.subject_type ?? "BOTH"}
-                                      subjectName={m.subjects?.name ?? `#${m.curriculum_subject_id}`}
-                                      palette="coordinator"
+                                      name={m.subjects?.name ?? `#${m.curriculum_subject_id}`}
                                     />
                                   ))
                                 )}
                               </Group>
-                            </Table.Td>
-                          </Table.Tr>
+                            </td>
+                          </tr>
                         ))}
-                      </Table.Tbody>
-                    </Table>
-                  </TableScrollContainer>
+                      </tbody>
+                    </table>
+                  </Box>
                 </div>
 
                 {/* Mobile */}
                 <div className="sm:hidden">
-                  {curriculum.subject_groups.map((sg, i) => (
-                    <div key={sg.subject_group_id}>
-                      {i > 0 && <Divider />}
-                      <div style={{ padding: "12px 0" }}>
-                        <Text fz="md" fw={600} mb={2}>{sg.name}</Text>
-                        {sg.description && (
-                          <Text fz="sm" c="dimmed" mb={6}>{sg.description}</Text>
-                        )}
-                        <Text size="xs" fw={600} c="#808898" mb={6}>Members</Text>
-                        {sg.members.length === 0 ? (
-                          <Text fz="sm" c="dimmed">No members</Text>
-                        ) : (
-                          <Group gap={6} wrap="wrap">
-                            {sg.members.map((m) => (
-                              <SubjectBadge
-                                key={m.curriculum_subject_id}
-                                code={m.subjects?.code ?? `#${m.curriculum_subject_id}`}
-                                subject_type={m.subjects?.subject_type ?? "BOTH"}
-                                subjectName={m.subjects?.name ?? `#${m.curriculum_subject_id}`}
-                                palette="coordinator"
-                              />
-                            ))}
-                          </Group>
-                        )}
-                      </div>
-                    </div>
+                  {sortedGroups.map((sg) => (
+                    <GroupMobileRow
+                      key={sg.subject_group_id}
+                      name={sg.name}
+                      description={sg.description}
+                      members={sg.members}
+                    />
                   ))}
                 </div>
               </>

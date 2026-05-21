@@ -7,6 +7,9 @@ import {
   Alert,
   Anchor,
   Badge,
+  Box,
+  Collapse,
+  Divider,
   Drawer,
   Group,
   Pagination,
@@ -21,13 +24,90 @@ import {
   Tooltip,
   VisuallyHidden,
 } from "@mantine/core";
-import { IconRefresh } from "@tabler/icons-react";
+import { useDisclosure } from "@mantine/hooks";
+import { IconChevronRight, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
+import EmptySearchState from "@/components/EmptySearchState";
 import {
   fetchActiveUsersWithRoles,
   type UserWithRoles,
 } from "@/app/(app)/user-roles/users/_lib";
 import AddFacultyDrawerActions from "./AddFacultyDrawerActions";
+
+function MobileUserRow({
+  user,
+  onAdd,
+}: {
+  user: UserWithRoles;
+  onAdd: (uid: string) => void;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+
+  return (
+    <>
+      <div onClick={toggle} style={{ cursor: "pointer", padding: "12px 4px" }}>
+        <Group justify="space-between" wrap="nowrap" align="center">
+          <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            <IconChevronRight
+              size={16}
+              style={{
+                transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+                transition: "transform 200ms ease",
+                flexShrink: 0,
+                color: "#808898",
+              }}
+            />
+            <Text
+              fw={500}
+              fz="sm"
+              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {user.first_name} {user.last_name}
+            </Text>
+          </Group>
+          <div onClick={(e) => e.stopPropagation()}>
+            <Tooltip label="Add as faculty">
+              <ActionIcon
+                variant="filled"
+                color="#4EAE4A"
+                aria-label="Add as faculty"
+                style={{ backgroundColor: "#4EAE4A", color: "#FFFFFF" }}
+                onClick={() => onAdd(user.uid)}
+              >
+                <IconPlus size={16} stroke={1.8} color="#FFFFFF" />
+              </ActionIcon>
+            </Tooltip>
+          </div>
+        </Group>
+      </div>
+
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: "0.04em" }}>
+            Email
+          </Text>
+          <Text fz="sm" mb="sm">{user.email}</Text>
+
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+            Roles
+          </Text>
+          {user.roles.length > 0 ? (
+            <Group gap="xs" wrap="wrap">
+              {user.roles.map((role) => (
+                <Badge key={role.role_id} variant="light">
+                  {role.name}
+                </Badge>
+              ))}
+            </Group>
+          ) : (
+            <Text fz="sm" c="dimmed" fs="italic">No role assigned</Text>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
 
 interface AddFacultyDrawerProps {
   opened: boolean;
@@ -146,69 +226,85 @@ export default function AddFacultyDrawer({
       )}
 
       {!error && filtered.length === 0 && !loading && (
-        <Text c="dimmed" ta="center" py="xl">
-          {search.trim()
-            ? "No users match your search."
-            : "All active users already have a faculty role."}
-        </Text>
+        search.trim() ? (
+          <EmptySearchState
+            title="No users match your search."
+            description="Try a different name or email address."
+          />
+        ) : (
+          <Text c="dimmed" ta="center" py="xl">
+            All active users already have a faculty role.
+          </Text>
+        )
       )}
 
       {!error && filtered.length > 0 && (
         <>
-          <TableScrollContainer minWidth={400}>
-            <Table verticalSpacing="sm">
-              <TableThead>
-                <TableTr>
-                  <TableTh>Employee</TableTh>
-                  <TableTh>Roles</TableTh>
-                  <TableTh>Email</TableTh>
-                  <TableTh>
-                    <VisuallyHidden>Actions</VisuallyHidden>
-                  </TableTh>
-                </TableTr>
-              </TableThead>
-              <TableTbody>
-                {paginated.map((user) => {
-                  const fullName = `${user.first_name} ${user.last_name}`;
-                  return (
-                    <TableTr key={user.uid}>
-                      <TableTd>
-                        <Text fz="sm" fw={500}>
-                          {fullName}
-                        </Text>
-                      </TableTd>
-                      <TableTd>
-                        {user.roles.length > 0 ? (
-                          <Group gap="xs">
-                            {user.roles.map((role) => (
-                              <Badge key={role.role_id} variant="light">
-                                {role.name}
-                              </Badge>
-                            ))}
-                          </Group>
-                        ) : (
-                          <Text c="dimmed" size="sm">
-                            No role assigned
+          {/* Desktop table */}
+          <div className="hidden sm:block">
+            <TableScrollContainer minWidth={400}>
+              <Table verticalSpacing="sm">
+                <TableThead>
+                  <TableTr>
+                    <TableTh>Employee</TableTh>
+                    <TableTh>Roles</TableTh>
+                    <TableTh>Email</TableTh>
+                    <TableTh>
+                      <VisuallyHidden>Actions</VisuallyHidden>
+                    </TableTh>
+                  </TableTr>
+                </TableThead>
+                <TableTbody>
+                  {paginated.map((user) => {
+                    const fullName = `${user.first_name} ${user.last_name}`;
+                    return (
+                      <TableTr key={user.uid}>
+                        <TableTd>
+                          <Text fz="sm" fw={500}>
+                            {fullName}
                           </Text>
-                        )}
-                      </TableTd>
-                      <TableTd>
-                        <Anchor component="button" size="sm">
-                          {user.email}
-                        </Anchor>
-                      </TableTd>
-                      <TableTd>
-                        <AddFacultyDrawerActions
-                          user={user}
-                          onAdd={handleAddFaculty}
-                        />
-                      </TableTd>
-                    </TableTr>
-                  );
-                })}
-              </TableTbody>
-            </Table>
-          </TableScrollContainer>
+                        </TableTd>
+                        <TableTd>
+                          {user.roles.length > 0 ? (
+                            <Group gap="xs">
+                              {user.roles.map((role) => (
+                                <Badge key={role.role_id} variant="light">
+                                  {role.name}
+                                </Badge>
+                              ))}
+                            </Group>
+                          ) : (
+                            <Text c="dimmed" size="sm">
+                              No role assigned
+                            </Text>
+                          )}
+                        </TableTd>
+                        <TableTd>
+                          <Anchor component="button" size="sm">
+                            {user.email}
+                          </Anchor>
+                        </TableTd>
+                        <TableTd>
+                          <AddFacultyDrawerActions
+                            user={user}
+                            onAdd={handleAddFaculty}
+                          />
+                        </TableTd>
+                      </TableTr>
+                    );
+                  })}
+                </TableTbody>
+              </Table>
+            </TableScrollContainer>
+          </div>
+
+          {/* Mobile accordion list */}
+          <div className="sm:hidden">
+            <Divider />
+            {paginated.map((user) => (
+              <MobileUserRow key={user.uid} user={user} onAdd={handleAddFaculty} />
+            ))}
+          </div>
 
           {totalPages > 1 && (
             <Group justify="center" mt="md">

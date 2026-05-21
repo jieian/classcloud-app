@@ -25,7 +25,7 @@ import {
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import {
-  IconAlertTriangle,
+  IconExclamationCircle,
   IconArrowLeft,
   IconChalkboardTeacher,
   IconChevronDown,
@@ -467,7 +467,7 @@ function FacultyGrid({
                 }}
                 icon={
                   <ThemeIcon color="white" variant="transparent" size="md">
-                    <IconAlertTriangle size={20} />
+                    <IconExclamationCircle size={20} />
                   </ThemeIcon>
                 }
               >
@@ -534,28 +534,14 @@ function FacultyGrid({
                                   <Text size="sm" fw={600} span>
                                     {sub.code}
                                   </Text>
-                                  <Tooltip
-                                    label={
-                                      sub.subject_type === "SSES" ? (
-                                        <Box>
-                                          <Text size="sm">{sub.name}</Text>
-                                          <Text size="sm" fs="italic">
-                                            SSES-exclusive
-                                          </Text>
-                                        </Box>
-                                      ) : (
-                                        sub.name
-                                      )
-                                    }
-                                    withArrow
-                                    maw={220}
-                                  >
+                                  <Tooltip label={sub.name} withArrow multiline maw={220}>
                                     <IconInfoCircle
                                       size={14}
                                       color="#808898"
                                       style={{ cursor: "help", flexShrink: 0 }}
                                     />
                                   </Tooltip>
+                                  <SectionTypeBadge type={sub.subject_type} />
                                 </Group>
                               </TableTh>
                             ))}
@@ -573,18 +559,13 @@ function FacultyGrid({
                             return (
                               <TableTr key={section.tempId}>
                                 <TableTd>
-                                  <Group gap={6} wrap="nowrap" align="center">
-                                    <Text
-                                      size="sm"
-                                      fw={500}
-                                      style={{ whiteSpace: "nowrap" }}
-                                    >
-                                      {section.name}
-                                    </Text>
-                                    <SectionTypeBadge
-                                      type={section.section_type}
-                                    />
-                                  </Group>
+                                  <Text
+                                    size="sm"
+                                    fw={500}
+                                    style={{ whiteSpace: "nowrap" }}
+                                  >
+                                    {section.name}
+                                  </Text>
                                 </TableTd>
 
                                 <TableTd>
@@ -746,6 +727,7 @@ function FacultyGrid({
                               return {
                                 code: sub.code,
                                 name: sub.name,
+                                subject_type: sub.subject_type,
                                 curriculum_subject_id:
                                   sub.curriculum_subject_id,
                                 value: mSubValue,
@@ -904,7 +886,7 @@ function GradeLevelPanel({
                 withArrow
                 position="top"
               >
-                <IconAlertTriangle
+                <IconExclamationCircle
                   size={16}
                   color="#EF4444"
                   style={{ flexShrink: 0 }}
@@ -930,8 +912,8 @@ function GradeLevelPanel({
 
 // ── Section type badge ────────────────────────────────────────────────────────
 
-function SectionTypeBadge({ type }: { type: WizardSection["section_type"] }) {
-  const isSses = type === "SSES";
+function SectionTypeBadge({ type }: { type: string }) {
+  if (type !== "SSES") return null;
   return (
     <span
       style={{
@@ -941,13 +923,13 @@ function SectionTypeBadge({ type }: { type: WizardSection["section_type"] }) {
         borderRadius: 999,
         fontSize: "0.7rem",
         fontWeight: 600,
-        backgroundColor: isSses ? "#70A2FF" : "#B3B4B4",
+        backgroundColor: "#70A2FF",
         color: "#fff",
         flexShrink: 0,
         whiteSpace: "nowrap",
       }}
     >
-      {isSses ? "SSES" : "Regular"}
+      SSES
     </span>
   );
 }
@@ -972,6 +954,7 @@ function SectionMobileAssignmentRow({
   subjectAssignments: {
     code: string;
     name: string;
+    subject_type: "BOTH" | "SSES";
     curriculum_subject_id: number;
     value: string | null;
     displayName: string | null;
@@ -994,33 +977,21 @@ function SectionMobileAssignmentRow({
               color: "#808898",
             }}
           />
-          <Group
-            gap={6}
-            wrap="nowrap"
-            align="center"
-            style={{ flex: 1, minWidth: 0 }}
+          <Text
+            fw={500}
+            fz="md"
+            style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
-            <Text
-              fw={500}
-              fz="md"
-              style={{
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {section.name}
-            </Text>
-            <SectionTypeBadge type={section.section_type} />
-          </Group>
+            {section.name}
+          </Text>
         </Group>
       </div>
       <Collapse in={opened}>
         <Box pb="md" pl={28} pr={4}>
           <Text
-            size="sm"
-            c="#298925"
-            fw={700}
+            size="xs"
+            c="dimmed"
+            fw={600}
             tt="uppercase"
             mb={4}
             style={{ letterSpacing: "0.04em" }}
@@ -1038,16 +1009,15 @@ function SectionMobileAssignmentRow({
           </Box>
           {subjectAssignments.map((sub) => (
             <div key={sub.curriculum_subject_id}>
-              <Text
-                size="sm"
-                c="#298925"
-                fw={700}
-                tt="uppercase"
-                mb={4}
-                style={{ letterSpacing: "0.04em" }}
-              >
-                {sub.code}
-              </Text>
+              <Group gap={4} wrap="nowrap" align="center" mb={4}>
+                <Text size="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+                  {sub.code}
+                </Text>
+                <Tooltip label={sub.name} withArrow multiline maw={220} events={{ hover: false, focus: false, touch: true }}>
+                  <IconInfoCircle size={13} color="#808898" style={{ cursor: "pointer", flexShrink: 0 }} />
+                </Tooltip>
+                <SectionTypeBadge type={sub.subject_type} />
+              </Group>
               <Box mb="sm">
                 <AssignmentTrigger
                   value={sub.value}
