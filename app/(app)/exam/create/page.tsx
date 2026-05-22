@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Container, Stepper, Button, Group, Text, rem, Paper, Stack,
@@ -9,8 +9,8 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
-  IconPlus, IconBookmark, IconAlertCircle,
-  IconAlertTriangle, IconMinus, IconX, IconClipboardCheck,
+  IconPlus, IconAlertCircle,
+  IconAlertTriangle, IconMinus, IconClipboardCheck, IconTrash,
 } from '@tabler/icons-react';
 import { notify } from '@/components/notificationIcon/notificationIcon';
 import { modals } from '@mantine/modals';
@@ -24,6 +24,7 @@ import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } 
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 import NoActivePeriodBanner from '@/components/NoActivePeriodBanner';
+import MobileStepIndicator from '@/components/MobileStepIndicator';
 
 const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // Always 2 columns matching the PDF answer sheet layout
@@ -83,6 +84,73 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (levelNumber <= 4) return 40;
   if (levelNumber <= 6) return 50;
   return 50;
+}
+
+// Answer Key step — fixed-width badge (96px). Ref on inner text span detects overflow.
+function ObjectiveBadge({ objective, color }: {
+  objective: string;
+  color: typeof OBJECTIVE_PALETTE[number];
+}) {
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = textRef.current;
+    if (el) setOverflows(el.scrollWidth > el.clientWidth);
+  }, [objective]);
+  return (
+    <Tooltip
+      label={objective}
+      withArrow
+      position="top"
+      multiline
+      w={260}
+      disabled={!overflows}
+      events={{ hover: true, focus: false, touch: true }}
+      styles={{ tooltip: { wordBreak: 'break-all' } }}
+    >
+      <span
+        className="inline-flex h-7 items-center rounded border px-2 text-[10px] font-semibold leading-none w-[96px] overflow-hidden justify-center text-center"
+        style={{ background: color.bg, borderColor: color.border, color: color.text }}
+      >
+        <span ref={textRef} className="block w-full overflow-hidden whitespace-nowrap text-ellipsis">
+          {objective}
+        </span>
+      </span>
+    </Tooltip>
+  );
+}
+
+// Exam Summary step — flexible-width chip. Ref on the chip span itself detects overflow.
+function ObjectiveChip({ objective, color }: {
+  objective: string;
+  color: typeof OBJECTIVE_PALETTE[number];
+}) {
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = spanRef.current;
+    if (el) setOverflows(el.scrollWidth > el.clientWidth);
+  }, [objective]);
+  return (
+    <Tooltip
+      label={objective}
+      withArrow
+      position="top"
+      multiline
+      w={220}
+      disabled={!overflows}
+      events={{ hover: true, focus: false, touch: true }}
+      styles={{ tooltip: { wordBreak: 'break-all' } }}
+    >
+      <span
+        ref={spanRef}
+        className="inline-block max-w-full truncate px-2 py-0.5 rounded text-xs font-medium border"
+        style={{ background: color.bg, borderColor: color.border, color: color.text }}
+      >
+        {objective}
+      </span>
+    </Tooltip>
+  );
 }
 
 export default function CreateExamPage() {
@@ -459,7 +527,7 @@ export default function CreateExamPage() {
   // ── Step content ──
   const renderStep0 = () => (
     <Stack gap="md">
-      <Text size="lg" fw={700} c="#4EAE4A">Specify Exam Information</Text>
+      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Specify Exam Information</Text>}
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Details</Text>
         {dataLoading ? (
@@ -507,7 +575,7 @@ export default function CreateExamPage() {
                       onChange={setSelectedGradeLevelId}
                       renderOption={({ option }) =>
                         option.disabled ? (
-                          <Tooltip label="All subjects in this grade level already have an exam" position="right" withArrow>
+                          <Tooltip label="All subjects in this grade level already have an exam" position="right" withArrow disabled={!!isMobile}>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
                               <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
@@ -538,7 +606,7 @@ export default function CreateExamPage() {
                       disabled={!selectedGradeLevelId || filteredSections.length === 0}
                       renderOption={({ option }) =>
                         option.disabled ? (
-                          <Tooltip label="All subjects in this section already have an exam" position="right" withArrow>
+                          <Tooltip label="All subjects in this section already have an exam" position="right" withArrow disabled={!!isMobile}>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
                               <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
@@ -570,7 +638,7 @@ export default function CreateExamPage() {
                       error={Boolean(subjectError)}
                       renderOption={({ option }) => (
                         option.disabled ? (
-                          <Tooltip label="An exam already exists for this subject" position="right" withArrow>
+                          <Tooltip label="An exam already exists for this subject" position="right" withArrow disabled={!!isMobile}>
                             <Group gap={6} wrap="nowrap" style={{ width: '100%' }}>
                               <span>{option.label}</span>
                               <IconClipboardCheck size={14} style={{ color: '#aaa', flexShrink: 0 }} />
@@ -619,7 +687,7 @@ export default function CreateExamPage() {
 
   const renderStep1 = () => (
     <Stack gap="md">
-      <Text size="lg" fw={700} c="#4EAE4A">Set Items and Choices</Text>
+      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Items and Choices</Text>}
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Configuration</Text>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -673,7 +741,7 @@ export default function CreateExamPage() {
 
   const renderStep2 = () => (
     <Stack gap="md">
-      <Text size="lg" fw={700} c="#4EAE4A">Set Learning Objectives</Text>
+      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Learning Objectives</Text>}
       <Paper p="lg" withBorder radius="md">
         <Text size="md" fw={700} mb="md" c="#4EAE4A">Map Objectives to Items</Text>
         <Stack gap="sm">
@@ -716,11 +784,26 @@ export default function CreateExamPage() {
                   ? 'Must be >= From'
                   : '');
               return (
-                <div key={row.id} className={`grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_120px_120px_36px] gap-2 items-start rounded-md px-1 ${idx > 0 ? 'pt-1' : ''}`}>
-                  <div className="flex flex-col">
+                <div key={row.id} className={`flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_120px_120px_36px] gap-2 items-start rounded-md px-1 ${idx > 0 ? 'pt-1' : ''}`}>
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-center justify-between mb-1">
+                      <Text size="sm" fw={500}>
+                        Objective Description <span style={{ color: 'var(--mantine-color-red-6)' }}>*</span>
+                      </Text>
+                      <Tooltip label="Remove objective" withArrow position="top" disabled={!!isMobile}>
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="red"
+                          onClick={() => removeRow(row.id)}
+                          disabled={objectiveRows.length === 1}
+                          aria-label="Remove objective"
+                        >
+                          <IconTrash size={14} stroke={1.8} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </div>
                     <TextInput
-                      label="Objective Description"
-                      withAsterisk
                       placeholder="e.g. Identify the parts of a plant"
                       value={row.objective}
                       onChange={(e) => updateRow(row.id, 'objective', e.currentTarget.value)}
@@ -731,53 +814,41 @@ export default function CreateExamPage() {
                       {' '}
                     </Text>
                   </div>
-                  <div className="flex flex-col">
-                    <NumberInput
-                      label="From"
-                      withAsterisk
-                      placeholder="1"
-                      min={1}
-                      max={totalItems}
-                      value={row.start_item === '' ? '' : Number(row.start_item)}
-                      onChange={(val) => updateRow(row.id, 'start_item', val)}
-                      allowDecimal={false}
-                      error={Boolean(startErrorMessage)}
-                      styles={neutralFocusStyles}
-                    />
-                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
-                      {startErrorMessage || ' '}
-                    </Text>
-                  </div>
-                  <div className="flex flex-col">
-                    <NumberInput
-                      label="To"
-                      withAsterisk
-                      placeholder={String(totalItems)}
-                      min={1}
-                      max={totalItems}
-                      value={row.end_item === '' ? '' : Number(row.end_item)}
-                      onChange={(val) => updateRow(row.id, 'end_item', val)}
-                      allowDecimal={false}
-                      error={Boolean(endErrorMessage)}
-                      styles={neutralFocusStyles}
-                    />
-                    <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
-                      {endErrorMessage || ' '}
-                    </Text>
-                  </div>
-                  <div className="pt-7">
-                    <Tooltip label="Remove objective" withArrow position="top">
-                      <ActionIcon
-                        size="sm"
-                        variant="subtle"
-                        color="red"
-                        onClick={() => removeRow(row.id)}
-                        disabled={objectiveRows.length === 1}
-                        aria-label="Remove objective"
-                      >
-                        <IconX size={14} stroke={1.8} />
-                      </ActionIcon>
-                    </Tooltip>
+                  <div className="grid grid-cols-2 md:contents gap-2">
+                    <div className="flex flex-col">
+                      <NumberInput
+                        label="From"
+                        withAsterisk
+                        placeholder="1"
+                        min={1}
+                        max={totalItems}
+                        value={row.start_item === '' ? '' : Number(row.start_item)}
+                        onChange={(val) => updateRow(row.id, 'start_item', val)}
+                        allowDecimal={false}
+                        error={Boolean(startErrorMessage)}
+                        styles={neutralFocusStyles}
+                      />
+                      <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                        {startErrorMessage || ' '}
+                      </Text>
+                    </div>
+                    <div className="flex flex-col">
+                      <NumberInput
+                        label="To"
+                        withAsterisk
+                        placeholder={String(totalItems)}
+                        min={1}
+                        max={totalItems}
+                        value={row.end_item === '' ? '' : Number(row.end_item)}
+                        onChange={(val) => updateRow(row.id, 'end_item', val)}
+                        allowDecimal={false}
+                        error={Boolean(endErrorMessage)}
+                        styles={neutralFocusStyles}
+                      />
+                      <Text size="xs" c="red" mt={4} style={{ minHeight: 16 }}>
+                        {endErrorMessage || ' '}
+                      </Text>
+                    </div>
                   </div>
                 </div>
               );
@@ -801,9 +872,9 @@ export default function CreateExamPage() {
     const remainingCount = unansweredQuestions.length;
     return (
       <Stack gap="md">
-        <Text size="lg" fw={700} c="#4EAE4A">Answer Key</Text>
+        {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Answer Key</Text>}
         <Paper p="lg" withBorder radius="md">
-          <Text size="md" fw={700} mb="md" c="#4EAE4A">Set Answer Key</Text>
+          <Text size="md" fw={700} mb="md" c="#4EAE4A">Choose Answer Key</Text>
           <Stack gap="md">
             <div className="bg-white border border-gray-200 rounded-xl p-4 text-center mx-auto w-full max-w-md">
               <p className="text-3xl font-bold text-gray-900">{answeredCount}/{totalItems}</p>
@@ -834,20 +905,27 @@ export default function CreateExamPage() {
                   if (start > totalItems || count <= 0) return null;
                   return (
                     <div key={col} className="overflow-x-auto">
-                      <table className="w-auto border-collapse text-sm">
-                      <thead>
-                        <tr className="bg-[#4EAE4A]">
-                          <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
-                          {choices.map(option => (
-                            <th key={option} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">
-                              {option}
+                      <table className="w-auto border-collapse text-sm [&_th]:border-x-0 [&_td]:border-x-0">
+                      <colgroup>
+                        <col className="w-8" />
+                        {choices.map((_, i) => <col key={i} className="w-9" />)}
+                        <col className="w-[96px]" />
+                      </colgroup>
+                      {(col === 0 || !isMobile) && (
+                        <thead>
+                          <tr className="bg-[#4EAE4A]">
+                            <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                            {choices.map(option => (
+                              <th key={option} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">
+                                {option}
+                              </th>
+                            ))}
+                            <th className="h-7 w-[96px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">
+                              Objective
                             </th>
-                          ))}
-                          <th className="h-7 w-[96px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">
-                            Objective
-                          </th>
-                        </tr>
-                      </thead>
+                          </tr>
+                        </thead>
+                      )}
                       <tbody className="divide-y divide-gray-100">
                         {Array.from({ length: count }, (_, row) => {
                           const qNum = start + row;
@@ -858,7 +936,7 @@ export default function CreateExamPage() {
                           const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
                           const objRow = objIdx >= 0 ? objectiveRows[objIdx] : null;
                           return (
-                            <tr key={qNum} className={`transition-colors duration-500 ${unansweredRowClass}`}>
+                            <tr key={qNum} className={`transition-colors duration-500 ${unansweredRowClass}${col === 1 && row === 0 ? ' border-t border-gray-100' : ''}`}>
                               <td className={`py-1 px-1 text-center text-xs font-semibold ${unansweredNumClass}`}>{qNum}</td>
                               {choices.map(option => (
                                 <td key={option} className="py-1 px-1 text-center">
@@ -880,26 +958,18 @@ export default function CreateExamPage() {
                                 </td>
                               ))}
                               <td className="py-1 px-2 text-center">
-                                <Tooltip
-                                  label={objRow?.objective ?? 'Not mapped'}
-                                  withArrow
-                                  position="top-start"
-                                  multiline
-                                  w={260}
-                                  disabled={!objRow || objRow.objective.length <= 24}
-                                  styles={{ tooltip: { wordBreak: 'break-all' } }}
-                                >
+                                {color && objRow ? (
+                                  <ObjectiveBadge objective={objRow.objective} color={color} />
+                                ) : (
                                   <span
                                     className="inline-flex h-7 items-center rounded border px-2 text-[10px] font-semibold leading-none w-[96px] overflow-hidden justify-center text-center"
-                                    style={color && objRow
-                                      ? { background: color.bg, borderColor: color.border, color: color.text }
-                                      : { background: '#ffffff', borderColor: '#e5e7eb', color: '#6b7280' }}
+                                    style={{ background: '#ffffff', borderColor: '#e5e7eb', color: '#6b7280' }}
                                   >
                                     <span className="block w-full overflow-hidden whitespace-nowrap text-ellipsis">
-                                      {objRow?.objective ?? 'Not mapped'}
+                                      Not mapped
                                     </span>
                                   </span>
-                                </Tooltip>
+                                )}
                               </td>
                             </tr>
                           );
@@ -932,15 +1002,22 @@ export default function CreateExamPage() {
     const subjectName = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.name ?? '-';
     const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
 
-    const renderTable = (startIdx: number, endIdx: number) => (
-      <table className="w-full text-sm table-fixed">
-        <thead>
-          <tr className="text-xs text-white border-b border-[#3f8f3b] bg-[#4EAE4A]">
-            <th className="text-left py-2 px-3 font-semibold w-10">No.</th>
-            <th className="text-left py-2 px-3 font-semibold w-14">Answer</th>
-            <th className="text-left py-2 px-3 font-semibold">Objective</th>
-          </tr>
-        </thead>
+    const renderTable = (startIdx: number, endIdx: number, showHeader = true) => (
+      <table className="w-full text-sm table-fixed [&_th]:border-x-0 [&_td]:border-x-0">
+        <colgroup>
+          <col className="w-10" />
+          <col className="w-14" />
+          <col />
+        </colgroup>
+        {showHeader && (
+          <thead>
+            <tr className="text-xs text-white border-b border-[#3f8f3b] bg-[#4EAE4A]">
+              <th className="text-left py-2 px-3 font-semibold w-10">No.</th>
+              <th className="text-left py-2 px-3 font-semibold w-14">Answer</th>
+              <th className="text-left py-2 px-3 font-semibold">Objective</th>
+            </tr>
+          </thead>
+        )}
         <tbody className="divide-y divide-gray-50">
           {Array.from({ length: endIdx - startIdx }, (_, i) => {
             const qNum = startIdx + i + 1;
@@ -952,29 +1029,15 @@ export default function CreateExamPage() {
             const objIdx = objRow ? objectiveRows.indexOf(objRow) : -1;
             const color = objIdx >= 0 ? OBJECTIVE_PALETTE[objIdx % OBJECTIVE_PALETTE.length] : null;
             return (
-              <tr key={qNum} className="hover:bg-gray-50">
+              <tr key={qNum} className={`hover:bg-gray-50${!showHeader && i === 0 ? ' border-t border-gray-100' : ''}`}>
                 <td className="py-1.5 px-3 font-semibold text-gray-500">{qNum}</td>
                 <td className="py-1.5 px-3">
                   <span className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold ${answer !== '-' ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-400'}`}>{answer}</span>
                 </td>
                 <td className="py-1.5 px-3">
-                  {color && objRow ? (
-                    <Tooltip
-                      label={objRow.objective}
-                      withArrow
-                      multiline
-                      w={220}
-                      disabled={objRow.objective.length <= 24}
-                      styles={{ tooltip: { wordBreak: 'break-all' } }}
-                    >
-                      <span
-                        className="inline-block max-w-full truncate px-2 py-0.5 rounded text-xs font-medium border"
-                        style={{ background: color.bg, borderColor: color.border, color: color.text }}
-                      >
-                        {objRow.objective}
-                      </span>
-                    </Tooltip>
-                  ) : <span className="text-xs text-gray-300">-</span>}
+                  {color && objRow
+                    ? <ObjectiveChip objective={objRow.objective} color={color} />
+                    : <span className="text-xs text-gray-300">-</span>}
                 </td>
               </tr>
             );
@@ -985,7 +1048,7 @@ export default function CreateExamPage() {
 
     return (
       <Stack gap="md">
-        <Text size="lg" fw={700} c="#4EAE4A">Review & Create</Text>
+        {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Review & Create</Text>}
         <Paper p="lg" withBorder radius="md">
           <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Summary</Text>
           <Stack gap="md">
@@ -1006,9 +1069,9 @@ export default function CreateExamPage() {
               ))}
             </div>
             <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden' }}>
-              <div className="grid grid-cols-2 divide-x divide-gray-100">
+              <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x md:divide-gray-100">
                 <div className="overflow-x-auto">{renderTable(0, half)}</div>
-                <div className="overflow-x-auto">{renderTable(half, totalItems)}</div>
+                <div className="overflow-x-auto">{renderTable(half, totalItems, !isMobile)}</div>
               </div>
             </Paper>
           </Stack>
@@ -1169,7 +1232,7 @@ export default function CreateExamPage() {
   if (!dataLoading && (hasActiveSchoolYear === false || !quarters.some((q) => q.is_active))) {
     return (
       <>
-        <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
+        <h1 className="text-2xl font-bold mb-4 text-[#597D37]">Create Examination</h1>
         <NoActivePeriodBanner />
       </>
     );
@@ -1177,19 +1240,40 @@ export default function CreateExamPage() {
 
   return (
     <>
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
+      <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Create Examination</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
         {isMobile ? (
-          <Stack gap="md">
-            <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
-              {stepDescriptions.map((s, i) => (
-                <Stepper.Step key={i} label={s.label} description={s.description}>
-                  {activeStep === i ? stepContent[i]() : null}
-                </Stepper.Step>
-              ))}
-            </Stepper>
-            {navigationButtons}
-          </Stack>
+          <>
+            <Stack gap="md" pb={80}>
+              <MobileStepIndicator
+                activeStep={activeStep}
+                totalSteps={stepDescriptions.length}
+                stepDescription={stepDescriptions[activeStep].description}
+              />
+              {stepContent[activeStep]()}
+            </Stack>
+            <div style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              backgroundColor: 'white',
+              borderTop: '1px solid #e5e7eb',
+              padding: '12px 16px',
+              zIndex: 200,
+            }}>
+              <WizardNavigationButtons
+                onCancel={handleCancel}
+                showPrevious={activeStep > 0}
+                onPrevious={prevStep}
+                onPrimary={isFinalStep ? handleFinalSave : handleNext}
+                primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
+                primaryDisabled={false}
+                primaryLoading={isFinalStep ? saving : false}
+                mt={0}
+              />
+            </div>
+          </>
         ) : (
           <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>
             {/* Left: Stepper */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Text,
@@ -61,6 +62,7 @@ import EmptySearchState from "@/components/EmptySearchState";
 
 export default function ExamPageClient({ initialData }: { initialData: ExamInitialData | null }) {
   const router = useRouter();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const searchParams = useSearchParams();
   const { user, roles, permissions, loading: authLoading, firstName, lastName } =
     useAuth();
@@ -605,8 +607,11 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 	  }, [filteredExams, allGradeLevels, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
   // Initialize once: open all visible groups if there is no restored state.
+  // Wait for groupedExams to populate — exams load async, so firing before data
+  // arrives would set an empty list and lock it in via accordionInitialized.
   useEffect(() => {
     if (!accordionStateReady || accordionInitialized) return;
+    if (groupedExams.length === 0) return;
     if (openGradeGroups.length > 0) {
       setAccordionInitialized(true);
       return;
@@ -614,6 +619,22 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     setOpenGradeGroups(groupedExams.map((group) => group.gradeLabel));
     setAccordionInitialized(true);
   }, [accordionStateReady, accordionInitialized, openGradeGroups.length, groupedExams]);
+
+  // When newly created exams arrive, open their grade level accordion groups.
+  useEffect(() => {
+    if (newlyCreatedExamIds.size === 0 || groupedExams.length === 0) return;
+    const groupsToOpen = groupedExams
+      .filter((group) => group.exams.some((exam) => newlyCreatedExamIds.has(exam.exam_id)))
+      .map((group) => group.gradeLabel);
+    if (groupsToOpen.length === 0) return;
+    setOpenGradeGroups((prev) => {
+      const merged = Array.from(new Set([...prev, ...groupsToOpen]));
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('examOpenGradeGroups', JSON.stringify(merged));
+      }
+      return merged;
+    });
+  }, [newlyCreatedExamIds, groupedExams]);
 
   const handleAccordionChange = (value: string[]) => {
     setOpenGradeGroups(value);
@@ -710,9 +731,9 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2">
+      <Group justify="space-between" mb="xs" align="flex-start" wrap="nowrap">
         <div>
-          <h1 className="text-3xl font-bold text-[#597D37]">
+          <h1 className="text-2xl font-bold text-[#597D37]">
             Examinations{" "}
             {!loading && hasActiveSchoolYear && hasActiveTerm && (
               <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
@@ -723,58 +744,64 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           </p>
         </div>
 
-        {/* Buttons — row on mobile (balanced), column on desktop (right-aligned) */}
-        <div className="flex flex-row sm:flex-col gap-2 sm:items-end sm:shrink-0">
+        <Group gap="xs">
           {showViewToggleVisible && !loading && !authLoading && (
-            <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
-              <Button
-                fullWidth
-                variant="outline"
-                color={viewMode === "admin" ? "#298925" : "#4A72AE"}
-                radius="md"
-                leftSection={<IconBinoculars size={16} stroke={1.5} />}
-                onClick={() =>
-                  setViewMode(viewMode === "admin" ? "faculty" : "admin")
-                }
-              >
-                {viewMode === "admin"
-                  ? "Switch to Faculty View"
-                  : "Switch to Admin View"}
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              color={viewMode === "admin" ? "#298925" : "#4A72AE"}
+              radius="md"
+              leftSection={<IconBinoculars size={16} stroke={1.5} />}
+              onClick={() =>
+                setViewMode(viewMode === "admin" ? "faculty" : "admin")
+              }
+            >
+              {viewMode === "admin"
+                ? "Switch to Faculty View"
+                : "Switch to Admin View"}
+            </Button>
           )}
           {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
           !effectiveFullAccess ? (
-            <Tooltip
-              label="You need to be assigned to at least one class before you can create exams."
-              disabled={
-                effectiveFullAccess ||
-                !effectiveAllowedSectionIds ||
-                effectiveAllowedSectionIds.size > 0
-              }
-              withArrow
-              multiline
-              w={240}
-            >
-              <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
-                <Button
-                  fullWidth
-                  color="#4EAE4A"
-                  radius="md"
-                  onClick={() => router.push("/exam/create")}
-                  disabled={
-                    !effectiveFullAccess &&
-                    !!effectiveAllowedSectionIds &&
-                    effectiveAllowedSectionIds.size === 0
-                  }
-                >
-                  Create Exam
-                </Button>
-              </div>
-            </Tooltip>
+            <Stack gap={4} align="flex-end">
+              <Tooltip
+                label="You need to be assigned to at least one class before you can create exams."
+                disabled={
+                  isMobile ||
+                  effectiveFullAccess ||
+                  !effectiveAllowedSectionIds ||
+                  effectiveAllowedSectionIds.size > 0
+                }
+                withArrow
+                multiline
+                w={240}
+              >
+                <span>
+                  <Button
+                    color="#4EAE4A"
+                    radius="md"
+                    onClick={() => router.push("/exam/create")}
+                    disabled={
+                      !effectiveFullAccess &&
+                      !!effectiveAllowedSectionIds &&
+                      effectiveAllowedSectionIds.size === 0
+                    }
+                  >
+                    Create Exam
+                  </Button>
+                </span>
+              </Tooltip>
+              {isMobile &&
+                !effectiveFullAccess &&
+                !!effectiveAllowedSectionIds &&
+                effectiveAllowedSectionIds.size === 0 && (
+                  <Text size="xs" c="red" ta="right" maw={160}>
+                    You need a class assignment to create exams.
+                  </Text>
+                )}
+            </Stack>
           ) : null}
-        </div>
-      </div>
+        </Group>
+      </Group>
 
       {/* Error */}
       {dbError && (
@@ -802,7 +829,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         <>
       {/* Filters */}
 	      <div>
-        <Group mb="md" wrap="wrap" align="flex-end" gap="sm">
+        <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
           <SearchBar
             id="search-exams"
             placeholder="Search examinations..."
@@ -812,7 +839,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
-          <Tooltip label="Refresh" position="bottom" withArrow>
+          <Tooltip label="Refresh" position="bottom" withArrow disabled={!!isMobile}>
             <ActionIcon
               variant="outline"
               color="#808898"
