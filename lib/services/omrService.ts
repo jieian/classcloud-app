@@ -29,6 +29,7 @@ export interface DetectionResult {
   cornersAutoDetected: boolean;
   corners:             [Point, Point, Point, Point];
   debugDataUrl:        string;
+  warpedDataUrl:       string;
   detectedExamId:      number | null;
   detectedTotalItems:  number | null;
   detectedNumChoices:  number | null;
@@ -217,6 +218,20 @@ function buildDebugDataUrl(
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
+function buildWarpedDataUrl(
+  warpedBuffer: ArrayBuffer,
+  warpedWidth: number,
+  warpedHeight: number,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = warpedWidth;
+  canvas.height = warpedHeight;
+  const ctx = canvas.getContext('2d')!;
+  const imageData = new ImageData(new Uint8ClampedArray(warpedBuffer), warpedWidth, warpedHeight);
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 // ─── 5. Main pipeline ─────────────────────────────────────────────────────────
 
 export async function processAnswerSheet(
@@ -266,6 +281,9 @@ export async function processAnswerSheet(
           warpedBuffer, warpedWidth, warpedHeight,
           answers, confidence, totalItems, numChoices
         );
+        const warpedDataUrl = buildWarpedDataUrl(
+          warpedBuffer, warpedWidth, warpedHeight
+        );
 
         resolve({
           answers,
@@ -273,6 +291,7 @@ export async function processAnswerSheet(
           corners,
           cornersAutoDetected,
           debugDataUrl,
+          warpedDataUrl,
           detectedExamId: qrPayload.examId,
           detectedTotalItems: qrPayload.totalItems,
           detectedNumChoices: qrPayload.numChoices,

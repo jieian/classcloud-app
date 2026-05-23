@@ -674,14 +674,55 @@ function frameMetrics(buffer, width, height) {
   }
 }
 
+function markerCornersToPageCorners(markerCorners) {
+  const [tl, tr, bl, br] = markerCorners;
+  const srcPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    OMR.CM_TL_C.x, OMR.CM_TL_C.y,
+    OMR.CM_TR_C.x, OMR.CM_TR_C.y,
+    OMR.CM_BL_C.x, OMR.CM_BL_C.y,
+    OMR.CM_BR_C.x, OMR.CM_BR_C.y,
+  ]);
+  const dstPts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    tl.x, tl.y,
+    tr.x, tr.y,
+    bl.x, bl.y,
+    br.x, br.y,
+  ]);
+  const pagePts = cv.matFromArray(4, 1, cv.CV_32FC2, [
+    0, 0,
+    OMR.PAGE_W, 0,
+    0, OMR.PAGE_H,
+    OMR.PAGE_W, OMR.PAGE_H,
+  ]);
+  const transformed = new cv.Mat();
+
+  try {
+    const M = cv.getPerspectiveTransform(srcPts, dstPts);
+    cv.perspectiveTransform(pagePts, transformed, M);
+    M.delete();
+    return [
+      { x: transformed.data32F[0], y: transformed.data32F[1] },
+      { x: transformed.data32F[2], y: transformed.data32F[3] },
+      { x: transformed.data32F[4], y: transformed.data32F[5] },
+      { x: transformed.data32F[6], y: transformed.data32F[7] },
+    ];
+  } finally {
+    srcPts.delete();
+    dstPts.delete();
+    pagePts.delete();
+    transformed.delete();
+  }
+}
+
 function detectDocumentFrame(buffer, width, height) {
   const metrics = frameMetrics(buffer, width, height);
-  let corners = detectPaperEdge(buffer, width, height);
-  let usedPaperEdge = Boolean(corners);
+  let markerCorners = detectCorners(buffer, width, height);
+  let corners = markerCorners ? markerCornersToPageCorners(markerCorners) : null;
+  let usedPaperEdge = false;
 
   if (!corners) {
-    corners = detectCorners(buffer, width, height);
-    usedPaperEdge = false;
+    corners = detectPaperEdge(buffer, width, height);
+    usedPaperEdge = Boolean(corners);
   }
 
   if (!corners) {

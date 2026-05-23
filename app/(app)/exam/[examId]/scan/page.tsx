@@ -39,7 +39,7 @@ import {
   IconBolt,
   IconBoltOff,
 } from '@tabler/icons-react';
-import { detectDocumentInCanvas, processAnswerSheet, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
+import { detectDocumentInCanvas, processAnswerSheet, type DetectionResult, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/lib/services/classService';
@@ -99,6 +99,12 @@ function normalizedCornerDistance(
     return sum + Math.hypot(ax - bx, ay - by);
   }, 0);
   return total / a.corners.length;
+}
+
+function visualPolygonCorners(result: LiveDocumentDetectionResult): string {
+  if (!result.corners) return '';
+  const [tl, tr, bl, br] = result.corners;
+  return [tl, tr, br, bl].map((point) => `${point.x},${point.y}`).join(' ');
 }
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -285,6 +291,10 @@ export default function ScanPapersPage() {
   const [scannerStatus, setScannerStatus] = useState('Looking for sheet');
   const [liveDocument, setLiveDocument] = useState<LiveDocumentDetectionResult | null>(null);
   const [autoCapturing, setAutoCapturing] = useState(false);
+  const [scannerProcessingCapture, setScannerProcessingCapture] = useState(false);
+  const [scannerProcessedPreviewUrl, setScannerProcessedPreviewUrl] = useState<string | null>(null);
+  const [scannerCaptureError, setScannerCaptureError] = useState<string | null>(null);
+  const [scannerScanResult, setScannerScanResult] = useState<DetectionResult | null>(null);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
   const [highlightedEnrollmentId, setHighlightedEnrollmentId] = useState<number | null>(null);
   const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
@@ -470,6 +480,10 @@ export default function ScanPapersPage() {
       setLiveDocument(null);
       setScannerStatus('Looking for sheet');
       setAutoCapturing(false);
+      setScannerProcessingCapture(false);
+      setScannerProcessedPreviewUrl(null);
+      setScannerCaptureError(null);
+      setScannerScanResult(null);
       autoCaptureLockedRef.current = false;
       stableDocumentFramesRef.current = 0;
       lastDocumentRef.current = null;
@@ -496,7 +510,7 @@ export default function ScanPapersPage() {
     }
   };
 
-  const stopCamera = useCallback(() => {
+  const stopCameraStream = useCallback(() => {
     void setTorch(false);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
@@ -512,6 +526,14 @@ export default function ScanPapersPage() {
     lastDocumentRef.current = null;
     autoCaptureLockedRef.current = false;
   }, [setTorch]);
+
+  const stopCamera = useCallback(() => {
+    stopCameraStream();
+    setScannerProcessingCapture(false);
+    setScannerProcessedPreviewUrl(null);
+    setScannerCaptureError(null);
+    setScannerScanResult(null);
+  }, [stopCameraStream]);
 
   useEffect(() => {
     if (!cameraActive || flashMode === 'auto') return;
@@ -631,8 +653,7 @@ export default function ScanPapersPage() {
           }
         } catch { /* capabilities not supported — use defaults */ }
         const blob: Blob = await ic.takePhoto(photoOptions);
-        stopCamera();
-        handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
+        void handleCameraCapturedFile(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
       } catch (err) {
         console.warn('[Camera] ImageCapture.takePhoto() failed, falling back to canvas:', err);
@@ -648,11 +669,41 @@ export default function ScanPapersPage() {
     ctx.drawImage(videoRef.current, 0, 0);
     canvas.toBlob(blob => {
       if (!blob) return;
-      stopCamera();
-      handleFileSelected(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
+      void handleCameraCapturedFile(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.99);
   };
   captureFromCameraRef.current = captureFromCamera;
+
+  const handleCameraCapturedFile = async (file: File) => {
+    stopCameraStream();
+    setCapturedFile(file);
+    setPreviewUrl(null);
+    setScannerProcessingCapture(true);
+    setScannerCaptureError(null);
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerStatus('Processing scan');
+
+    try {
+      const result = await processAnswerSheet(
+        file,
+        totalItems,
+        numChoices,
+        undefined,
+        setScannerStatus,
+      );
+      setScannerScanResult(result);
+      setScannerProcessedPreviewUrl(result.warpedDataUrl);
+      setPreviewUrl(result.warpedDataUrl);
+      setScannerStatus('Review capture');
+    } catch (err: unknown) {
+      setScannerCaptureError(err instanceof Error ? err.message : 'Processing failed');
+      setScannerStatus('Processing failed');
+    } finally {
+      setScannerProcessingCapture(false);
+      setAutoCapturing(false);
+    }
+  };
 
   useEffect(() => {
     if (!cameraActive || startingCamera) return;
@@ -770,6 +821,85 @@ export default function ScanPapersPage() {
     if (file) handleFileSelected(file);
   };
 
+  const applyProcessedScanResult = async (result: DetectionResult): Promise<boolean> => {
+    if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
+      let scannedExamTitle = 'a different exam';
+      try {
+        const scannedExam = await fetchExamById(result.detectedExamId);
+        if (scannedExam?.title) scannedExamTitle = `"${scannedExam.title}"`;
+      } catch { /* ignore — title is optional, fallback is fine */ }
+
+      const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
+      setProcessingError(
+        `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
+        `Please use the correct answer sheet and try again.`
+      );
+      setStep('capture');
+      return false;
+    }
+
+    if (
+      result.detectedTotalItems !== null &&
+      result.detectedTotalItems !== totalItems
+    ) {
+      setProcessingError(
+        `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
+        'Please use the correct answer sheet and try again.'
+      );
+      setStep('capture');
+      return false;
+    }
+
+    if (
+      result.detectedNumChoices !== null &&
+      result.detectedNumChoices !== numChoices
+    ) {
+      setProcessingError(
+        `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
+        'Please use the correct answer sheet and try again.'
+      );
+      setStep('capture');
+      return false;
+    }
+
+    setDetectedAnswers(result.answers);
+    setInitialDetectedAnswers({ ...result.answers });
+    setDetectedConfidence(result.confidence);
+    setCornersOk(result.cornersAutoDetected);
+    setDebugImageUrl(result.debugDataUrl);
+    setWarpedImageUrl(result.warpedDataUrl);
+    setPreviewUrl(result.warpedDataUrl);
+    setStep('review');
+    return true;
+  };
+
+  const handleScannerRetake = () => {
+    setCapturedFile(null);
+    setPreviewUrl(null);
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerCaptureError(null);
+    setScannerProcessingCapture(false);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+    autoCaptureLockedRef.current = false;
+    stableDocumentFramesRef.current = 0;
+    lastDocumentRef.current = null;
+    void startCamera();
+  };
+
+  const handleScannerDone = async () => {
+    if (!scannerScanResult) return;
+    const applied = await applyProcessedScanResult(scannerScanResult);
+    if (!applied) return;
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerCaptureError(null);
+    setScannerProcessingCapture(false);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+  };
+
   // â"€â"€ OMR Processing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const runProcessing = async () => {
     if (!capturedFile) {
@@ -785,57 +915,7 @@ export default function ScanPapersPage() {
         undefined,
         setProcessingStatus,
       );
-
-      // QR mismatch — scanned sheet belongs to a different exam
-      if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
-        // Try to fetch the scanned sheet's exam title for a friendlier message
-        let scannedExamTitle = 'a different exam';
-        try {
-          const scannedExam = await fetchExamById(result.detectedExamId);
-          if (scannedExam?.title) scannedExamTitle = `"${scannedExam.title}"`;
-        } catch { /* ignore — title is optional, fallback is fine */ }
-
-        const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
-        setProcessingError(
-          `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
-          `Please use the correct answer sheet and try again.`
-        );
-        setStep('capture');
-        return;
-      }
-
-      // Item-count mismatch — scanned sheet layout does not match this exam
-      if (
-        result.detectedTotalItems !== null &&
-        result.detectedTotalItems !== totalItems
-      ) {
-        setProcessingError(
-          `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
-          'Please use the correct answer sheet and try again.'
-        );
-        setStep('capture');
-        return;
-      }
-
-      // Choice-count mismatch — prevents mapping answers to the wrong option set
-      if (
-        result.detectedNumChoices !== null &&
-        result.detectedNumChoices !== numChoices
-      ) {
-        setProcessingError(
-          `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
-          'Please use the correct answer sheet and try again.'
-        );
-        setStep('capture');
-        return;
-      }
-
-      setDetectedAnswers(result.answers);
-      setInitialDetectedAnswers({ ...result.answers });
-      setDetectedConfidence(result.confidence);
-      setCornersOk(result.cornersAutoDetected);
-      setDebugImageUrl(result.debugDataUrl);
-      setStep('review');
+      await applyProcessedScanResult(result);
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
       setStep('capture');
@@ -1743,24 +1823,35 @@ export default function ScanPapersPage() {
         </div>
         </div>
       )}
-      {(cameraActive || startingCamera) && (
+      {(cameraActive || startingCamera || scannerProcessingCapture || scannerProcessedPreviewUrl || scannerCaptureError) && (
         <div className="fixed inset-0 z-[10000] bg-black text-white">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 h-full w-full object-contain"
-          />
+          {(cameraActive || startingCamera) && (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
 
-          {liveDocument?.corners && (
+          {scannerProcessedPreviewUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={scannerProcessedPreviewUrl}
+              alt="Corrected answer sheet"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+
+          {cameraActive && liveDocument?.corners && (
             <svg
               className="absolute inset-0 h-full w-full pointer-events-none"
               viewBox={`0 0 ${liveDocument.width} ${liveDocument.height}`}
               preserveAspectRatio="xMidYMid meet"
             >
               <polygon
-                points={liveDocument.corners.map((point) => `${point.x},${point.y}`).join(' ')}
+                points={visualPolygonCorners(liveDocument)}
                 fill={liveDocument.isVisible ? 'rgba(78,174,74,0.10)' : 'rgba(255,193,7,0.08)'}
                 stroke={liveDocument.isVisible ? '#4EAE4A' : '#F6C343'}
                 strokeWidth={Math.max(4, liveDocument.width * 0.006)}
@@ -1769,41 +1860,78 @@ export default function ScanPapersPage() {
             </svg>
           )}
 
-          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
-            <button
-              type="button"
-              onClick={stopCamera}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"
-              aria-label="Close scanner"
-            >
-              <IconX className="h-6 w-6" />
-            </button>
-
-            <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 text-xs font-semibold backdrop-blur">
-              {(['off', 'auto', 'on'] as const).map((mode) => {
-                const selected = flashMode === mode;
-                const disabled = mode === 'on' && !torchSupported;
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => !disabled && setFlashMode(mode)}
-                    disabled={disabled}
-                    className={[
-                      'flex h-9 min-w-14 items-center justify-center gap-1 rounded-full px-3 transition',
-                      selected ? 'bg-white text-black' : 'text-white/85',
-                      disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/15',
-                    ].join(' ')}
-                    title={disabled ? 'Flash is not supported on this camera' : `Flash ${mode}`}
-                  >
-                    {mode === 'off' ? <IconBoltOff className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
-                    <span className="capitalize">{mode}</span>
-                  </button>
-                );
-              })}
+          {scannerProcessingCapture && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/65 px-6 text-center">
+              <div className="rounded-2xl bg-black/70 px-5 py-4 shadow-xl backdrop-blur">
+                <Text c="white" fw={700}>{scannerStatus || 'Processing scan'}</Text>
+                <Text c="white" opacity={0.75} size="sm" mt={4}>Correcting orientation...</Text>
+              </div>
             </div>
+          )}
+
+          {scannerCaptureError && !scannerProcessingCapture && (
+            <div className="absolute inset-x-4 top-28 rounded-2xl bg-red-500 px-4 py-3 text-sm font-semibold shadow-xl">
+              {scannerCaptureError}
+            </div>
+          )}
+
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+            {scannerProcessedPreviewUrl || scannerCaptureError ? (
+              <button
+                type="button"
+                onClick={handleScannerRetake}
+                className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white backdrop-blur"
+              >
+                Retake
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"
+                aria-label="Close scanner"
+              >
+                <IconX className="h-6 w-6" />
+              </button>
+            )}
+
+            {scannerProcessedPreviewUrl || scannerCaptureError ? (
+              <button
+                type="button"
+                onClick={handleScannerDone}
+                disabled={!scannerScanResult || Boolean(scannerCaptureError)}
+                className="rounded-full bg-white px-5 py-2 text-sm font-bold text-black shadow-lg disabled:opacity-50"
+              >
+                Done
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 text-xs font-semibold backdrop-blur">
+                {(['off', 'auto', 'on'] as const).map((mode) => {
+                  const selected = flashMode === mode;
+                  const disabled = mode === 'on' && !torchSupported;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => !disabled && setFlashMode(mode)}
+                      disabled={disabled}
+                      className={[
+                        'flex h-9 min-w-14 items-center justify-center gap-1 rounded-full px-3 transition',
+                        selected ? 'bg-white text-black' : 'text-white/85',
+                        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/15',
+                      ].join(' ')}
+                      title={disabled ? 'Flash is not supported on this camera' : `Flash ${mode}`}
+                    >
+                      {mode === 'off' ? <IconBoltOff className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
+                      <span className="capitalize">{mode}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
+          {!scannerProcessedPreviewUrl && !scannerCaptureError && (
           <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold shadow-lg backdrop-blur">
               {startingCamera ? 'Initializing camera' : scannerStatus}
@@ -1818,6 +1946,7 @@ export default function ScanPapersPage() {
               <span className="block h-14 w-14 rounded-full bg-white" />
             </button>
           </div>
+          )}
         </div>
       )}
       <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
