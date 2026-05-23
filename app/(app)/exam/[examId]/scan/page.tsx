@@ -754,10 +754,10 @@ export default function ScanPapersPage() {
         const previous = lastDocumentRef.current;
         const stable =
           result.isVisible &&
-          result.confidence >= 0.68 &&
-          result.blur >= 35 &&
+          result.confidence >= 0.6 &&
+          result.blur >= 25 &&
           previous != null &&
-          normalizedCornerDistance(result, previous) < 0.018;
+          normalizedCornerDistance(result, previous) < 0.03;
 
         stableDocumentFramesRef.current = stable
           ? stableDocumentFramesRef.current + 1
@@ -772,7 +772,7 @@ export default function ScanPapersPage() {
           setScannerStatus('Looking for sheet');
         } else if (!result.isVisible) {
           setScannerStatus('Fit the full sheet inside the frame');
-        } else if (stableDocumentFramesRef.current < 3) {
+        } else if (stableDocumentFramesRef.current < 2) {
           setScannerStatus('Hold steady');
         } else {
           setScannerStatus('Capturing');

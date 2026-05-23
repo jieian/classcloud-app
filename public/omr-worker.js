@@ -373,11 +373,11 @@ function enhanceWarpedDocument(buffer, width, height) {
     cv.GaussianBlur(gray, background, new cv.Size(blurSize, blurSize), 0);
     cv.divide(gray, background, normalized, 255);
 
-    // Keep the preview natural: stronger contrast and darker marks, but not a
-    // harsh black/white threshold that could erase light pencil fills.
-    normalized.convertTo(contrast, cv.CV_8UC1, 1.38, -24);
-    cv.addWeighted(contrast, 0.82, gray, 0.18, 16, blended);
-    cv.medianBlur(blended, cleaned, 3);
+    // Keep the preview natural: lift shadows, but keep enough of the original
+    // gray channel so light pencil fills and fine bubble outlines do not wash out.
+    normalized.convertTo(contrast, cv.CV_8UC1, 1.12, -10);
+    cv.addWeighted(contrast, 0.55, gray, 0.45, 6, blended);
+    blended.copyTo(cleaned);
     cv.cvtColor(cleaned, rgba, cv.COLOR_GRAY2RGBA);
 
     return { buffer: matToBuffer(rgba), width, height };
@@ -781,8 +781,8 @@ function detectDocumentFrame(buffer, width, height) {
   const minMargin = Math.min(
     ...corners.map((p) => Math.min(p.x, p.y, width - p.x, height - p.y))
   );
-  const marginTarget = Math.min(width, height) * 0.025;
-  const insideFrame = minMargin > marginTarget;
+  const marginTarget = Math.min(width, height) * 0.018;
+  const insideFrame = minMargin > 0;
   const brightnessOk = metrics.brightness > 35 && metrics.brightness < 235;
   const blurOk = metrics.blur > 35;
   const areaScore = Math.max(0, Math.min(1, (areaRatio - 0.18) / 0.42));
@@ -799,7 +799,7 @@ function detectDocumentFrame(buffer, width, height) {
     confidence,
     brightness: metrics.brightness,
     blur: metrics.blur,
-    isVisible: confidence >= 0.58 && insideFrame && areaRatio >= 0.2 && brightnessOk,
+    isVisible: confidence >= 0.52 && insideFrame && areaRatio >= 0.18 && brightnessOk,
     usedPaperEdge,
     width,
     height,
