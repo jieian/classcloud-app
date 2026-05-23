@@ -160,15 +160,17 @@ function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
+  headerBg,
 }: {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
-      <UnstyledButton onClick={() => setOpen((v) => !v)} style={{ width: "100%", padding: "12px 16px" }}>
+      <UnstyledButton onClick={() => setOpen((v) => !v)} style={{ width: "100%", padding: "12px 16px", backgroundColor: headerBg }}>
         <Group justify="space-between">
           <Text fw={700} size="sm">{title}</Text>
           {open ? <IconChevronUp size={16} color="#808898" /> : <IconChevronDown size={16} color="#808898" />}
@@ -184,17 +186,20 @@ function CollapsibleSection({
 // ── Mobile subject row (edit mode) ─────────────────────────────────────────────
 function SubjectMobileRow({
   s,
-  locked,
+  editLocked,
+  deleteLocked,
+  editLockedReason,
   onEdit,
   onRemove,
 }: {
   s: WizardSubject;
-  locked: boolean;
+  editLocked: boolean;
+  deleteLocked: boolean;
+  editLockedReason: string;
   onEdit: () => void;
   onRemove: () => void;
 }) {
   const [opened, { toggle }] = useDisclosure(false);
-  const lockedTooltip = "This subject has records (exams or teacher assignments) and cannot be modified or removed.";
   return (
     <>
       <div style={{ padding: "10px 4px" }}>
@@ -219,15 +224,13 @@ function SubjectMobileRow({
             </Group>
           </UnstyledButton>
           <Group gap={4} wrap="nowrap">
-            {s.source !== "existing" && (
-              <Tooltip label={locked ? lockedTooltip : "Edit"} withArrow multiline w={220} disabled={!locked}>
-                <ActionIcon size="sm" variant="subtle" color="gray" disabled={locked} onClick={onEdit}>
-                  <IconPencil size={14} />
-                </ActionIcon>
-              </Tooltip>
-            )}
-            <Tooltip label={locked ? lockedTooltip : "Remove"} withArrow multiline w={220} disabled={!locked}>
-              <ActionIcon size="sm" variant="subtle" color="red" disabled={locked} onClick={onRemove}>
+            <Tooltip label={editLocked ? editLockedReason : "Edit"} withArrow multiline w={220} disabled={!editLocked}>
+              <ActionIcon size="sm" variant="subtle" color="gray" disabled={editLocked} onClick={onEdit}>
+                <IconPencil size={14} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label={deleteLocked ? "This subject has exam records and cannot be removed." : "Remove"} withArrow multiline w={220} disabled={!deleteLocked}>
+              <ActionIcon size="sm" variant="subtle" color="red" disabled={deleteLocked} onClick={onRemove}>
                 <IconTrash size={14} />
               </ActionIcon>
             </Tooltip>
@@ -610,7 +613,7 @@ type ModalScreen = "choice" | "existing" | "new";
 
 function SubjectModal({ opened, onClose, gradeLevelId, gradeLevelName, existingSubjectIds, editingSubject, curricula, loadingCurricula, onAddSubjects, onEditSubject, onReplaceWithExisting }: {
   opened: boolean; onClose: () => void; gradeLevelId: number; gradeLevelName: string;
-  existingSubjectIds: number[]; editingSubject: Extract<WizardSubject, { source: "new" }> | null;
+  existingSubjectIds: number[]; editingSubject: WizardSubject | null;
   curricula: CurriculumOption[]; loadingCurricula: boolean;
   onAddSubjects: (subjects: WizardSubject[]) => void;
   onEditSubject: (tempId: string, updated: { code: string; name: string; description: string; subject_type: "BOTH" | "SSES" }) => void;
@@ -658,7 +661,7 @@ function SubjectModal({ opened, onClose, gradeLevelId, gradeLevelName, existingS
       {screen === "new" && (
         <FlowNew
           gradeLevelName={gradeLevelName}
-          initial={editingSubject ? { code: editingSubject.code, name: editingSubject.name, description: editingSubject.description, subject_type: editingSubject.subject_type } : undefined}
+          initial={editingSubject ? { code: editingSubject.code, name: editingSubject.name, description: editingSubject.description ?? "", subject_type: editingSubject.subject_type } : undefined}
           onAdd={(s) => {
             if (editingSubject) { onEditSubject(editingSubject.tempId, s); }
             else { onAddSubjects([{ ...s, source: "new", tempId: crypto.randomUUID(), grade_level_id: gradeLevelId }]); }
@@ -850,12 +853,13 @@ function GroupModal({ opened, onClose, initial, prefill, existingGroupNames, all
 interface Props {
   curriculum: CurriculumDetail;
   gradeLevels: GradeLevel[];
-  lockedSubjectIds: number[];
+  examLockedIds: number[];
+  importedIds: number[];
   onCancel: () => void;
   onSaved: () => void;
 }
 
-export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubjectIds, onCancel, onSaved }: Props) {
+export default function EditCurriculumMode({ curriculum, gradeLevels, examLockedIds, importedIds, onCancel, onSaved }: Props) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [checkingName, setCheckingName] = useState(false);
@@ -982,7 +986,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
 
   // ── Subject modal state ───────────────────────────────────────────────────
   const [activeGl, setActiveGl] = useState<GradeLevel | null>(null);
-  const [editingSubject, setEditingSubject] = useState<Extract<WizardSubject, { source: "new" }> | null>(null);
+  const [editingSubject, setEditingSubject] = useState<WizardSubject | null>(null);
 
   // ── Group modal state ─────────────────────────────────────────────────────
   const [groupModalOpen, setGroupModalOpen] = useState(false);
@@ -1195,7 +1199,8 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
   };
 
   return (
-    <Stack gap="md">
+    <>
+    <Stack gap="md" pb={70}>
 
       {/* About — editable */}
       <Paper withBorder p="md" radius="md" w={{ base: "100%", md: "50%" }}>
@@ -1228,7 +1233,7 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
       </Paper>
 
       {/* Subject Groups */}
-      <CollapsibleSection title="Subject Groups" defaultOpen>
+      <CollapsibleSection title="Subject Groups" defaultOpen headerBg="#F5F5F5">
 
         {/* Unassigned / all-assigned banner */}
         {unassigned.length > 0 ? (
@@ -1440,8 +1445,15 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
                       </Table.Thead>
                       <Table.Tbody>
                         {glSubjects.map((s) => {
-                          const locked = s.source === "existing" && lockedSubjectIds.includes(s.subject_id);
-                          const lockedTooltip = "This subject has records (exams or teacher assignments) and cannot be modified or removed.";
+                          const examLocked = s.source === "existing" && examLockedIds.includes(s.subject_id);
+                          const imported = s.source === "existing" && importedIds.includes(s.subject_id);
+                          const editLocked = examLocked || imported;
+                          const deleteLocked = examLocked;
+                          const editTooltip = examLocked
+                            ? "This subject has exam records and cannot be edited."
+                            : imported
+                            ? "This subject belongs to another curriculum and cannot be edited here."
+                            : "Edit";
                           return (
                             <Table.Tr key={s.tempId}>
                               <Table.Td>
@@ -1456,22 +1468,17 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
                               <Table.Td><Text size="sm" c="dimmed">{s.description ?? ""}</Text></Table.Td>
                               <Table.Td>
                                 <Group gap={4} wrap="nowrap" justify="flex-end">
-                                  <Tooltip label={locked ? lockedTooltip : s.source === "existing" ? "Imported subjects cannot be edited" : "Edit"} withArrow multiline w={220}>
+                                  <Tooltip label={editTooltip} withArrow multiline w={220} disabled={!editLocked}>
                                     <ActionIcon
                                       size="sm" variant="subtle" color="gray"
-                                      disabled={locked || s.source === "existing"}
-                                      onClick={() => {
-                                        if (!locked && s.source === "new") {
-                                          setEditingSubject(s as Extract<WizardSubject, { source: "new" }>);
-                                          setActiveGl(gl);
-                                        }
-                                      }}
+                                      disabled={editLocked}
+                                      onClick={() => { if (!editLocked) { setEditingSubject(s); setActiveGl(gl); } }}
                                     >
                                       <IconPencil size={16} />
                                     </ActionIcon>
                                   </Tooltip>
-                                  <Tooltip label={locked ? lockedTooltip : "Remove"} withArrow multiline w={220}>
-                                    <ActionIcon size="sm" variant="subtle" color="red" disabled={locked} onClick={() => !locked && confirmRemoveSubject(s, gl.display_name)}>
+                                  <Tooltip label={deleteLocked ? "This subject has exam records and cannot be removed." : "Remove"} withArrow multiline w={220} disabled={!deleteLocked}>
+                                    <ActionIcon size="sm" variant="subtle" color="red" disabled={deleteLocked} onClick={() => !deleteLocked && confirmRemoveSubject(s, gl.display_name)}>
                                       <IconTrash size={16} />
                                     </ActionIcon>
                                   </Tooltip>
@@ -1486,19 +1493,22 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
                   {/* Mobile */}
                   <div className="sm:hidden">
                     {glSubjects.map((s) => {
-                      const locked = s.source === "existing" && lockedSubjectIds.includes(s.subject_id);
+                      const examLocked = s.source === "existing" && examLockedIds.includes(s.subject_id);
+                      const imported = s.source === "existing" && importedIds.includes(s.subject_id);
+                      const editLocked = examLocked || imported;
+                      const deleteLocked = examLocked;
+                      const editLockedReason = examLocked
+                        ? "This subject has exam records and cannot be edited."
+                        : "This subject belongs to another curriculum and cannot be edited here.";
                       return (
                         <SubjectMobileRow
                           key={s.tempId}
                           s={s}
-                          locked={locked}
-                          onEdit={() => {
-                            if (!locked && s.source === "new") {
-                              setEditingSubject(s as Extract<WizardSubject, { source: "new" }>);
-                              setActiveGl(gl);
-                            }
-                          }}
-                          onRemove={() => !locked && confirmRemoveSubject(s, gl.display_name)}
+                          editLocked={editLocked}
+                          deleteLocked={deleteLocked}
+                          editLockedReason={editLockedReason}
+                          onEdit={() => { if (!editLocked) { setEditingSubject(s); setActiveGl(gl); } }}
+                          onRemove={() => !deleteLocked && confirmRemoveSubject(s, gl.display_name)}
                         />
                       );
                     })}
@@ -1515,14 +1525,33 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
         );
       })}
 
-      {/* Actions */}
-      <Group justify="flex-end" mt="sm">
-        <Button variant="default" onClick={handleCancel}>Cancel</Button>
-        <Button variant="outline" color="red" onClick={handleRevert} disabled={!form.isDirty()}>Revert Changes</Button>
-        <Button color="#4EAE4A" loading={saving || checkingName} onClick={handleSave}>Save Changes</Button>
-      </Group>
+    </Stack>
 
-      {/* Subject modal */}
+      {/* Fixed action bar — avoids scroll-container padding gap issues */}
+      <div style={{
+        position: "fixed",
+        bottom: 0,
+        left: isMobile === true ? 0 : 70,
+        right: 0,
+        zIndex: 10,
+        backgroundColor: "#fff",
+        borderTop: "1px solid #dee2e6",
+        padding: "12px var(--mantine-spacing-lg)",
+      }}>
+        <Group justify="flex-end" wrap="nowrap">
+          <UnstyledButton onClick={handleCancel} style={{ color: "#000", cursor: "pointer" }}>
+            <Text size="sm" fw={600}>Cancel</Text>
+          </UnstyledButton>
+          <Button variant="default" radius="md" disabled={!form.isDirty()} onClick={handleRevert}>
+            Revert Changes
+          </Button>
+          <Button radius="md" loading={saving || checkingName} style={{ backgroundColor: "#4EAE4A" }} onClick={() => void handleSave()}>
+            Save Changes
+          </Button>
+        </Group>
+      </div>
+
+      {/* Subject modal — portaled, position in tree doesn't matter */}
       {activeGl && (
         <SubjectModal
           opened
@@ -1538,6 +1567,6 @@ export default function EditCurriculumMode({ curriculum, gradeLevels, lockedSubj
           onReplaceWithExisting={handleReplaceWithExisting}
         />
       )}
-    </Stack>
+    </>
   );
 }

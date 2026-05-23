@@ -65,87 +65,75 @@ export async function getGradeLevelsCached(): Promise<GradeLevel[]> {
 }
 
 /**
- * Non-cached: returns subject_ids (within this curriculum) that have records
- * (exams OR teacher_class_assignments) across ANY curriculum. These subjects
- * are locked in edit mode — cannot be edited or removed.
+ * Non-cached: returns two sets of subject_ids for use in curriculum edit mode.
+ * - examLockedIds: subject has exam records in ANY curriculum → edit + remove both blocked
+ * - importedIds: subject also lives in another curriculum → edit blocked, remove allowed
  */
-export async function getLockedSubjectIds(curriculumId: number): Promise<number[]> {
+export async function getSubjectLockInfo(curriculumId: number): Promise<{
+  examLockedIds: number[];
+  importedIds: number[];
+}> {
   const supabase = getAdminClient();
 
-  // All subject_ids belonging to this curriculum
   const { data: csRows } = await supabase
     .from("curriculum_subjects")
-    .select("subject_id")
+    .select("curriculum_subject_id, subject_id")
     .eq("curriculum_id", curriculumId)
     .is("deleted_at", null);
 
-  if (!csRows || csRows.length === 0) return [];
+  if (!csRows || csRows.length === 0) return { examLockedIds: [], importedIds: [] };
 
-  const subjectIds = (csRows as { subject_id: number }[]).map((r) => r.subject_id);
+  const rows = csRows as { curriculum_subject_id: number; subject_id: number }[];
+  const subjectIds = [...new Set(rows.map((r) => r.subject_id))];
 
-  // All curriculum_subject_ids for those subject_ids across ALL curricula
+  // All curriculum_subject_ids across ALL curricula for these subjects (for exam check)
   const { data: allCsRows } = await supabase
     .from("curriculum_subjects")
     .select("curriculum_subject_id, subject_id")
     .in("subject_id", subjectIds)
     .is("deleted_at", null);
 
-  if (!allCsRows || allCsRows.length === 0) return [];
+  const allCsIds = (allCsRows ?? []).map((r: any) => r.curriculum_subject_id as number);
+  const csIdToSubjectId = new Map<number, number>();
+  for (const r of (allCsRows ?? []) as any[]) csIdToSubjectId.set(r.curriculum_subject_id, r.subject_id);
 
-  const allCsIds = (allCsRows as { curriculum_subject_id: number; subject_id: number }[]).map((r) => r.curriculum_subject_id);
-
-  // Check exams and teacher_class_assignments in parallel
-  const [examRes, tcaRes] = await Promise.all([
+  const [examRes, otherCsRes] = await Promise.all([
     supabase.from("exams").select("curriculum_subject_id").in("curriculum_subject_id", allCsIds),
-    supabase.from("teacher_class_assignments").select("curriculum_subject_id").in("curriculum_subject_id", allCsIds),
+    supabase
+      .from("curriculum_subjects")
+      .select("subject_id")
+      .in("subject_id", subjectIds)
+      .neq("curriculum_id", curriculumId)
+      .is("deleted_at", null),
   ]);
 
-  const lockedCsIds = new Set([
-    ...(examRes.data ?? []).map((r: any) => r.curriculum_subject_id),
-    ...(tcaRes.data ?? []).map((r: any) => r.curriculum_subject_id),
-  ]);
+  const examLockedCsIds = new Set((examRes.data ?? []).map((r: any) => r.curriculum_subject_id as number));
+  const examLockedIds = [
+    ...new Set(
+      Array.from(examLockedCsIds)
+        .map((csId) => csIdToSubjectId.get(csId))
+        .filter((id): id is number => id !== undefined),
+    ),
+  ];
 
-  if (lockedCsIds.size === 0) return [];
+  const importedIds = [...new Set((otherCsRes.data ?? []).map((r: any) => r.subject_id as number))];
 
-  const locked = new Set<number>();
-  for (const row of allCsRows as { curriculum_subject_id: number; subject_id: number }[]) {
-    if (lockedCsIds.has(row.curriculum_subject_id)) locked.add(row.subject_id);
-  }
-  return Array.from(locked);
+  return { examLockedIds, importedIds };
 }
 
-/** Non-cached: checks whether a curriculum has never been referenced by a school year or exam. */
+/** Non-cached: checks whether a curriculum can be edited or deleted (no active school year references it). */
 export async function isCurriculumDeletable(curriculumId: number): Promise<boolean> {
   const supabase = getAdminClient();
 
-  // Fail fast: if any school year references this curriculum, it's in use
   const { data: syRow } = await supabase
     .from("school_years")
     .select("curriculum_id")
     .eq("curriculum_id", curriculumId)
+    .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
 
-  if (syRow) return false;
-
-  // Get all curriculum_subject_ids for this curriculum
-  const { data: csRows } = await supabase
-    .from("curriculum_subjects")
-    .select("curriculum_subject_id")
-    .eq("curriculum_id", curriculumId);
-
-  if (!csRows || csRows.length === 0) return true;
-
-  // Check if any exam references one of those subjects
-  const ids = (csRows as { curriculum_subject_id: number }[]).map((r) => r.curriculum_subject_id);
-  const { data: examRow } = await supabase
-    .from("exams")
-    .select("exam_id")
-    .in("curriculum_subject_id", ids)
-    .limit(1)
-    .maybeSingle();
-
-  return !examRow;
+  return !syRow;
 }
 
 export async function getCurriculumDetailCached(curriculumId: number): Promise<CurriculumDetail | null> {

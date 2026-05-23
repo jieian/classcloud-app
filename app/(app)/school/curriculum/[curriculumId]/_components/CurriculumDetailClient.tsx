@@ -9,8 +9,8 @@ import {
   Collapse,
   Divider,
   Group,
-  Loader,
   Paper,
+  Skeleton,
   Stack,
   Table,
   TableScrollContainer,
@@ -37,13 +37,51 @@ import BackButton from "@/components/BackButton";
 import { type CurriculumDetail, type CurriculumSubject } from "../../_lib/curriculumService";
 import type { GradeLevel } from "../../create/_lib/types";
 
+function EditModeSkeleton() {
+  return (
+    <Stack gap="md">
+      {/* About card */}
+      <Paper withBorder p="md" radius="md" w={{ base: "100%", md: "50%" }}>
+        <Skeleton height={16} width={60} mb="sm" radius="sm" />
+        <Stack gap="sm">
+          <Group gap="sm" align="flex-start">
+            <Skeleton height={14} width={14} radius="sm" mt={2} />
+            <Skeleton height={34} style={{ flex: 1 }} radius="sm" />
+          </Group>
+          <Group gap="sm" align="flex-start">
+            <Skeleton height={14} width={14} radius="sm" mt={2} />
+            <Skeleton height={60} style={{ flex: 1 }} radius="sm" />
+          </Group>
+          <Group gap="sm">
+            <Skeleton height={14} width={14} radius="sm" />
+            <Skeleton height={14} width={140} radius="sm" />
+          </Group>
+        </Stack>
+      </Paper>
+      {/* Section headers */}
+      {["Subject Groups", "", ""].map((_, i) => (
+        <Paper key={i} withBorder radius="md" style={{ overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px" }}>
+            <Group justify="space-between">
+              <Skeleton height={14} width={i === 0 ? 110 : 80} radius="sm" />
+              <Skeleton height={14} width={14} radius="sm" />
+            </Group>
+          </div>
+        </Paper>
+      ))}
+      {/* Action buttons */}
+      <Group justify="flex-end" mt="sm">
+        <Skeleton height={34} width={80} radius="sm" />
+        <Skeleton height={34} width={110} radius="sm" />
+        <Skeleton height={34} width={100} radius="sm" />
+      </Group>
+    </Stack>
+  );
+}
+
 const EditCurriculumMode = dynamic(() => import("./EditCurriculumMode"), {
   ssr: false,
-  loading: () => (
-    <Group justify="center" py="xl">
-      <Loader size="sm" color="#4EAE4A" />
-    </Group>
-  ),
+  loading: () => <EditModeSkeleton />,
 });
 
 const SUBJECTS_DEFAULT_SHOW = 3;
@@ -89,17 +127,19 @@ function CollapsibleSection({
   title,
   children,
   defaultOpen = true,
+  headerBg,
 }: {
   title: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
+  headerBg?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <Paper withBorder radius="md" style={{ overflow: "hidden" }}>
       <UnstyledButton
         onClick={() => setOpen((v) => !v)}
-        style={{ width: "100%", padding: "12px 16px" }}
+        style={{ width: "100%", padding: "12px 16px", backgroundColor: headerBg }}
       >
         <Group justify="space-between">
           <Text fw={700} size="sm">{title}</Text>
@@ -309,10 +349,11 @@ interface Props {
   initialData: CurriculumDetail;
   canDelete: boolean;
   gradeLevels: GradeLevel[];
-  lockedSubjectIds: number[];
+  examLockedIds: number[];
+  importedIds: number[];
 }
 
-export default function CurriculumDetailClient({ initialData: curriculum, canDelete, gradeLevels, lockedSubjectIds }: Props) {
+export default function CurriculumDetailClient({ initialData: curriculum, canDelete, gradeLevels, examLockedIds, importedIds }: Props) {
   const router = useRouter();
   const [isEditing, setIsEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -409,7 +450,8 @@ export default function CurriculumDetailClient({ initialData: curriculum, canDel
         <EditCurriculumMode
           curriculum={curriculum}
           gradeLevels={gradeLevels}
-          lockedSubjectIds={lockedSubjectIds}
+          examLockedIds={examLockedIds}
+          importedIds={importedIds}
           onCancel={() => setIsEditing(false)}
           onSaved={() => {
             setIsEditing(false);
@@ -453,7 +495,7 @@ export default function CurriculumDetailClient({ initialData: curriculum, canDel
             </Paper>
           )}
 
-          <CollapsibleSection title="Subject Groups" defaultOpen={false}>
+          <CollapsibleSection title="Subject Groups" defaultOpen={false} headerBg="#F5F5F5">
             {sortedGroups.length === 0 ? (
               <Text c="dimmed" size="sm">No subject groups defined for this curriculum.</Text>
             ) : (
