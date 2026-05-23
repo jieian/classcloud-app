@@ -354,6 +354,45 @@ function warpToPage(buffer, width, height, corners, srcIsMarkers = true) {
   return { buffer: resultBuf, width: OMR.PAGE_W * S, height: OMR.PAGE_H * S };
 }
 
+function enhanceWarpedDocument(buffer, width, height) {
+  const src        = bufferToMat(buffer, width, height);
+  const gray       = new cv.Mat();
+  const background = new cv.Mat();
+  const normalized = new cv.Mat();
+  const contrast   = new cv.Mat();
+  const blended    = new cv.Mat();
+  const cleaned    = new cv.Mat();
+  const rgba       = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // Estimate slow lighting changes across the page, then normalize the sheet
+    // so shadows and warm camera casts become closer to clean white paper.
+    const blurSize = Math.max(41, Math.floor(Math.min(width, height) / 18) | 1);
+    cv.GaussianBlur(gray, background, new cv.Size(blurSize, blurSize), 0);
+    cv.divide(gray, background, normalized, 255);
+
+    // Keep the preview natural: stronger contrast and darker marks, but not a
+    // harsh black/white threshold that could erase light pencil fills.
+    normalized.convertTo(contrast, cv.CV_8UC1, 1.38, -24);
+    cv.addWeighted(contrast, 0.82, gray, 0.18, 16, blended);
+    cv.medianBlur(blended, cleaned, 3);
+    cv.cvtColor(cleaned, rgba, cv.COLOR_GRAY2RGBA);
+
+    return { buffer: matToBuffer(rgba), width, height };
+  } finally {
+    src.delete();
+    gray.delete();
+    background.delete();
+    normalized.delete();
+    contrast.delete();
+    blended.delete();
+    cleaned.delete();
+    rgba.delete();
+  }
+}
+
 // ─── Bubble detection ─────────────────────────────────────────────────────────
 
 function detectBubbles(buffer, width, height, totalItems, numChoices) {
@@ -818,9 +857,10 @@ self.onmessage = async (e) => {
       const cand = candidates[ci];
       try {
         const warped = warpToPage(buffer, width, height, cand, !usedPaperEdge);
+        const enhanced = enhanceWarpedDocument(warped.buffer, warped.width, warped.height);
         self.postMessage({ type: 'status', message: 'Reading bubbles\u2026' });
         const { answers, confidence } = detectBubbles(
-          warped.buffer, warped.width, warped.height, totalItems, numChoices
+          enhanced.buffer, enhanced.width, enhanced.height, totalItems, numChoices
         );
         const bubbleQuality = detectionQuality(answers, confidence);
         let quality = bubbleQuality;
@@ -830,11 +870,11 @@ self.onmessage = async (e) => {
         // A wrong orientation puts blank paper there (stddev ~ 5-15).
         // Correct orientation with QR present gives stddev ~ 40-80+.
         // Use this as a light bonus, then rely more on structural layout score.
-        const qrStd = qrRegionStdDev(warped.buffer, warped.width, warped.height);
+        const qrStd = qrRegionStdDev(enhanced.buffer, enhanced.width, enhanced.height);
         const qrBonus = qrStd > 35 ? 0.8 : qrStd > 25 ? 0.3 : 0;
         quality += qrBonus;
 
-        const layout = layoutOrientationScore(warped.buffer, warped.width, warped.height);
+        const layout = layoutOrientationScore(enhanced.buffer, enhanced.width, enhanced.height);
         quality += layout.score;
 
         console.log(
@@ -851,7 +891,7 @@ self.onmessage = async (e) => {
         );
 
         if (!best || quality > best.quality) {
-          best = { quality, corners: cand, answers, confidence, warped };
+          best = { quality, corners: cand, answers, confidence, warped: enhanced };
         }
       } catch { /* skip degenerate orientation */ }
     }
