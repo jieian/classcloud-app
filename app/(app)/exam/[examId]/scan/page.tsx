@@ -693,7 +693,7 @@ export default function ScanPapersPage() {
         setScannerStatus,
       );
       setScannerScanResult(result);
-      setScannerProcessedPreviewUrl(result.warpedDataUrl);
+      setScannerProcessedPreviewUrl(result.debugDataUrl);
       setPreviewUrl(result.warpedDataUrl);
       setScannerStatus('Review capture');
     } catch (err: unknown) {
@@ -1839,7 +1839,7 @@ export default function ScanPapersPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={scannerProcessedPreviewUrl}
-              alt="Corrected answer sheet"
+              alt="Marked answer sheet"
               className="absolute inset-0 h-full w-full object-contain"
             />
           )}
@@ -2216,21 +2216,6 @@ export default function ScanPapersPage() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain pointer-events-none" />
-                    </button>
-                  </Paper>
-                )}
-
-                {/* Uploaded Answer Sheet (warped/perspective-corrected) */}
-                {warpedImageUrl && (
-                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
-                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Uploaded Answer Sheet</Text>
-                    <button
-                      type="button"
-                      className="block w-full rounded-xl overflow-hidden cursor-zoom-in"
-                      onClick={() => setViewerUrl(warpedImageUrl)}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl pointer-events-none" />
                     </button>
                   </Paper>
                 )}
