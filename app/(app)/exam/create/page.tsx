@@ -217,6 +217,7 @@ export default function CreateExamPage() {
   const sectionMountedRef = useRef(false);
   const totalItemsMountedRef = useRef(false);
   const prevGradeLevelForItemsRef = useRef<string | null | undefined>(d?.gradeLevelId);
+  const duplicateCheckRequestRef = useRef(0);
 
   useEffect(() => {
     const load = async () => {
@@ -262,6 +263,8 @@ export default function CreateExamPage() {
   // Auto-reset sections/subject when grade changes (skip on first mount to preserve restored draft)
   useEffect(() => {
     if (!gradeLevelMountedRef.current) { gradeLevelMountedRef.current = true; return; }
+    duplicateCheckRequestRef.current += 1;
+    setDuplicateSectionIds(new Set());
     setSelectedSectionIds([]);
     setSelectedSubjectId(null);
   }, [selectedGradeLevelId]);
@@ -323,6 +326,8 @@ export default function CreateExamPage() {
   // re-pick from the freshly computed intersection of subjects across the new sections.
   useEffect(() => {
     if (!sectionMountedRef.current) { sectionMountedRef.current = true; return; }
+    duplicateCheckRequestRef.current += 1;
+    setDuplicateSectionIds(new Set());
     setSelectedSubjectId(null);
   }, [selectedSectionIds]);
 
@@ -349,11 +354,24 @@ export default function CreateExamPage() {
   useEffect(() => {
     const activeQuarter = quarters.find((q) => q.is_active);
     if (!selectedSubjectId || selectedSectionIds.length === 0 || !activeQuarter) {
+      duplicateCheckRequestRef.current += 1;
       setDuplicateSectionIds(new Set());
       return;
     }
-    checkExamDuplicates(selectedSectionIds, Number(selectedSubjectId), activeQuarter.quarter_id)
-      .then((ids) => setDuplicateSectionIds(new Set(ids)));
+    const requestId = duplicateCheckRequestRef.current + 1;
+    duplicateCheckRequestRef.current = requestId;
+    const subjectId = Number(selectedSubjectId);
+    const quarterId = activeQuarter.quarter_id;
+    const sectionIdsSnapshot = [...selectedSectionIds].sort((a, b) => a - b);
+
+    checkExamDuplicates(sectionIdsSnapshot, subjectId, quarterId)
+      .then((ids) => {
+        if (duplicateCheckRequestRef.current !== requestId) {
+          return;
+        }
+
+        setDuplicateSectionIds(new Set(ids));
+      });
   }, [selectedSubjectId, selectedSectionIds, quarters]);
 
   const filteredSubjects = Array.from(
@@ -506,7 +524,6 @@ export default function CreateExamPage() {
         type: "success",
         title: 'Examination Created',
         message: exam_ids.length > 1 ? `${exam_ids.length} examinations were created successfully.` : 'Examination was created successfully.',
-        color: 'teal',
         autoClose: 2500,
       });
       clearDraft();
@@ -790,18 +807,20 @@ export default function CreateExamPage() {
                       <Text size="sm" fw={500}>
                         Objective Description <span style={{ color: 'var(--mantine-color-red-6)' }}>*</span>
                       </Text>
-                      <Tooltip label="Remove objective" withArrow position="top" disabled={!!isMobile}>
-                        <ActionIcon
-                          size="sm"
-                          variant="subtle"
-                          color="red"
-                          onClick={() => removeRow(row.id)}
-                          disabled={objectiveRows.length === 1}
-                          aria-label="Remove objective"
-                        >
-                          <IconTrash size={14} stroke={1.8} />
-                        </ActionIcon>
-                      </Tooltip>
+                      {isMobile && (
+                        <Tooltip label="Remove objective" withArrow position="top" disabled={!!isMobile}>
+                          <ActionIcon
+                            size="sm"
+                            variant="subtle"
+                            color="red"
+                            onClick={() => removeRow(row.id)}
+                            disabled={objectiveRows.length === 1}
+                            aria-label="Remove objective"
+                          >
+                            <IconTrash size={14} stroke={1.8} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                     </div>
                     <TextInput
                       placeholder="e.g. Identify the parts of a plant"
@@ -850,6 +869,22 @@ export default function CreateExamPage() {
                       </Text>
                     </div>
                   </div>
+                  {!isMobile && (
+                    <div className="w-full h-full flex items-start justify-end pt-6">
+                      <Tooltip label="Remove objective" withArrow position="top">
+                        <ActionIcon
+                          size="sm"
+                          variant="subtle"
+                          color="red"
+                          onClick={() => removeRow(row.id)}
+                          disabled={objectiveRows.length === 1}
+                          aria-label="Remove objective"
+                        >
+                          <IconTrash size={14} stroke={1.8} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1206,6 +1241,23 @@ export default function CreateExamPage() {
     });
   };
 
+  const handleConfirmFinalSave = () => {
+    modals.openConfirmModal({
+      title: 'Create examination?',
+      children: (
+        <Text size="sm">
+          Are you sure this is the final answer key? It cannot be edited once the examination is created.
+        </Text>
+      ),
+      labels: { confirm: 'Create Examination', cancel: 'Review Again' },
+      confirmProps: { color: '#4EAE4A', loading: saving },
+      onConfirm: () => {
+        void handleFinalSave();
+      },
+      ...mobileConfirmModalProps,
+    });
+  };
+
   const stepDescriptions = [
     { label: 'Step 1', description: 'Specify Exam Information' },
     { label: 'Step 2', description: 'Set Items and Choices' },
@@ -1222,7 +1274,7 @@ export default function CreateExamPage() {
       onCancel={handleCancel}
       showPrevious={activeStep > 0}
       onPrevious={prevStep}
-      onPrimary={isFinalStep ? handleFinalSave : handleNext}
+      onPrimary={isFinalStep ? handleConfirmFinalSave : handleNext}
       primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
       primaryDisabled={false}
       primaryLoading={isFinalStep ? saving : false}
@@ -1266,7 +1318,7 @@ export default function CreateExamPage() {
                 onCancel={handleCancel}
                 showPrevious={activeStep > 0}
                 onPrevious={prevStep}
-                onPrimary={isFinalStep ? handleFinalSave : handleNext}
+                onPrimary={isFinalStep ? handleConfirmFinalSave : handleNext}
                 primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
                 primaryDisabled={false}
                 primaryLoading={isFinalStep ? saving : false}

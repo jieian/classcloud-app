@@ -852,6 +852,11 @@ export default function ScanPapersPage() {
       setReviewFilter('all');
       setHighlightedEnrollmentId(scannedId);
       setTimeout(() => setHighlightedEnrollmentId(null), 3000);
+      notify({
+        type: 'success',
+        title: 'Results Saved',
+        message: `Scanned results for ${selectedStudent.full_name} were saved successfully.`,
+      });
     } else {
       notify({ type: 'error', title: 'Save Failed', message: 'Failed to save. Please try again.' });
     }
@@ -1006,7 +1011,7 @@ export default function ScanPapersPage() {
       title: 'Proceed to Reports?',
       children: (
         <Text size="sm">
-          Are you sure you want to proceed? This will finalize the examination and generate reports.
+          Are you sure you want to proceed? This will finalize the examination, generate reports, and prevent any further scans or edits. This action cannot be undone.
         </Text>
       ),
       labels: { confirm: 'Proceed', cancel: 'Stay' },

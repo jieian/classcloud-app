@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import {
   Alert,
+  Badge,
   Box,
   Button,
   Divider,
@@ -18,6 +19,7 @@ import {
 import {
   IconAlertCircle,
   IconBook,
+  IconCheck,
   IconFileText,
   IconSchool,
   IconUser,
@@ -30,6 +32,21 @@ import {
 interface Props {
   sectionId: number;
   initialGradeLevelId?: number | null;
+}
+
+function StatusBadge({
+  status,
+}: {
+  status: "Finalized" | "Not Finalized" | "No exam yet";
+}) {
+  const isFinalized = status === "Finalized";
+  const isPending = status === "Not Finalized";
+
+  return (
+    <Badge color={isFinalized ? "green" : isPending ? "red" : "gray"} variant="light">
+      {status}
+    </Badge>
+  );
 }
 
 export default function ReportDetailsClient({
@@ -89,6 +106,10 @@ export default function ReportDetailsClient({
     );
   }
 
+  const finalizedSubjectsCount = detail.subjects.filter(
+    (subject) => subject.status === "Finalized",
+  ).length;
+
   return (
     <Stack gap="md" maw={1000}>
       <Box>
@@ -97,9 +118,14 @@ export default function ReportDetailsClient({
         </BackButton>
       </Box>
 
-      <Title order={3} fw={700}>
-        {detail.gradeDisplayName} - {detail.sectionName}
-      </Title>
+      <Group justify="space-between" align="center">
+        <Title order={3} fw={700}>
+          {detail.gradeDisplayName} - {detail.sectionName}
+        </Title>
+        <StatusBadge
+          status={detail.isFinalized ? "Finalized" : "Not Finalized"}
+        />
+      </Group>
 
       <Paper withBorder p="md" radius="md">
         <Text fw={700} c="#298925" mb="sm">
@@ -117,7 +143,13 @@ export default function ReportDetailsClient({
           <Group gap="xs">
             <IconFileText size={16} />
             <Text size="sm">
-              Examinations: {detail.finalizedExams}/{detail.totalExams} finalized
+              Subjects: {detail.subjects.length}
+            </Text>
+          </Group>
+          <Group gap="xs">
+            <IconCheck size={16} />
+            <Text size="sm">
+              Finalized: {finalizedSubjectsCount}/{detail.subjects.length}
             </Text>
           </Group>
         </Stack>
@@ -180,21 +212,9 @@ export default function ReportDetailsClient({
                     {subject.teacherName ?? "Unassigned"}
                   </Text>
                 </Group>
-                <Text
-                  size="sm"
-                  w={130}
-                  ta="left"
-                  fw={500}
-                  c={
-                    subject.status === "Finalized"
-                      ? "green"
-                      : subject.status === "Not Finalized"
-                        ? "red"
-                        : "dimmed"
-                  }
-                >
-                  {subject.status}
-                </Text>
+                <Group w={130} justify="flex-start">
+                  <StatusBadge status={subject.status} />
+                </Group>
               </Group>
             ))}
           </Stack>
