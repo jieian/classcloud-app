@@ -1,16 +1,18 @@
 "use client";
 
 import { Center, Stack, Text, ThemeIcon } from "@mantine/core";
-import { IconSearchOff } from "@tabler/icons-react";
+import { IconSearchOff, type Icon } from "@tabler/icons-react";
 
 interface EmptySearchStateProps {
   title?: string;
   description?: string;
+  icon?: Icon;
 }
 
 export default function EmptySearchState({
   title = "No results found.",
   description = "Try adjusting your search or filter to find what you're looking for.",
+  icon: IconComponent = IconSearchOff,
 }: EmptySearchStateProps) {
   return (
     <Center
@@ -24,7 +26,7 @@ export default function EmptySearchState({
     >
       <Stack gap={10} align="center">
         <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled">
-          <IconSearchOff size={28} stroke={1.5} color="#3D4147" />
+          <IconComponent size={28} stroke={1.5} color="#3D4147" />
         </ThemeIcon>
         <Stack gap={4} align="center">
           <Text size="sm" fw={500} c="#111827">

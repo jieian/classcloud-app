@@ -757,36 +757,41 @@ export default function ScanPapersModal({ exam, onClose, onSuccess }: ScanPapers
                   {!hasAnswerKey && <p className="text-xs text-amber-600">Set answer key to score correctness</p>}
                 </div>
                 <div className="max-h-56 overflow-auto">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-white border-b border-gray-200">
-                      <tr className="text-left text-gray-500">
-                        <th className="px-4 py-2 font-semibold">#</th>
-                        <th className="px-4 py-2 font-semibold">Student</th>
-                        <th className="px-4 py-2 font-semibold">Correct</th>
-                        <th className="px-4 py-2 font-semibold">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <div role="table" className="w-max min-w-full space-y-0.5 text-sm">
+                    <div
+                      role="row"
+                      className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-200 bg-white px-1 pb-1 text-gray-500"
+                    >
+                      <span role="columnheader" className="w-7 text-xs font-semibold text-gray-400">#</span>
+                      <span role="columnheader" className="w-8 text-center text-xs font-bold text-gray-500">Student</span>
+                      <span role="columnheader" className="w-8 text-center text-xs font-bold text-gray-500">Correct</span>
+                      <span role="columnheader" className="w-16 text-center text-xs font-bold text-gray-500">Status</span>
+                    </div>
+                    <div role="rowgroup">
                       {itemResults.map((r) => (
-                        <tr key={`submit-${r.item}`} className="border-b border-gray-100 last:border-b-0">
-                          <td className="px-4 py-2 font-medium text-gray-700">{r.item}</td>
-                          <td className="px-4 py-2">{r.student ?? '-'}</td>
-                          <td className="px-4 py-2">{r.correct ?? '-'}</td>
-                          <td className="px-4 py-2">
+                        <div
+                          key={`submit-${r.item}`}
+                          role="row"
+                          className="flex items-center gap-2 border-b border-gray-100 px-1 py-0.5 last:border-b-0"
+                        >
+                          <span role="cell" className="w-7 text-right text-xs font-semibold text-gray-600">{r.item}</span>
+                          <span role="cell" className="w-8 text-center text-xs text-gray-700">{r.student ?? '-'}</span>
+                          <span role="cell" className="w-8 text-center text-xs text-gray-700">{r.correct ?? '-'}</span>
+                          <span role="cell" className="w-16 text-center">
                             {!r.student ? (
-                              <span className="text-orange-600">No answer</span>
+                              <span className="inline-flex w-full justify-center rounded-md bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">Blank</span>
                             ) : !r.correct ? (
-                              <span className="text-gray-500">No key</span>
+                              <span className="inline-flex w-full justify-center rounded-md bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-600">No key</span>
                             ) : r.isCorrect ? (
-                              <span className="text-green-700 font-medium">Correct</span>
+                              <span className="inline-flex w-full justify-center rounded-md bg-green-50 px-2 py-1 text-[10px] font-medium text-green-700">Correct</span>
                             ) : (
-                              <span className="text-red-600 font-medium">Wrong</span>
+                              <span className="inline-flex w-full justify-center rounded-md bg-red-50 px-2 py-1 text-[10px] font-medium text-red-600">Wrong</span>
                             )}
-                          </td>
-                        </tr>
+                          </span>
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  </div>
                 </div>
               </div>
 

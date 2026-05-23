@@ -29,12 +29,24 @@ export interface DetectionResult {
   cornersAutoDetected: boolean;
   corners:             [Point, Point, Point, Point];
   debugDataUrl:        string;
+  warpedDataUrl:       string;
   detectedExamId:      number | null;
   detectedTotalItems:  number | null;
   detectedNumChoices:  number | null;
 }
 
 export type CornerSet = [Point, Point, Point, Point];
+
+export interface LiveDocumentDetectionResult {
+  corners: CornerSet | null;
+  confidence: number;
+  brightness: number;
+  blur: number;
+  isVisible: boolean;
+  usedPaperEdge: boolean;
+  width: number;
+  height: number;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -206,6 +218,20 @@ function buildDebugDataUrl(
   return canvas.toDataURL('image/jpeg', 0.85);
 }
 
+function buildWarpedDataUrl(
+  warpedBuffer: ArrayBuffer,
+  warpedWidth: number,
+  warpedHeight: number,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = warpedWidth;
+  canvas.height = warpedHeight;
+  const ctx = canvas.getContext('2d')!;
+  const imageData = new ImageData(new Uint8ClampedArray(warpedBuffer), warpedWidth, warpedHeight);
+  ctx.putImageData(imageData, 0, 0);
+  return canvas.toDataURL('image/jpeg', 0.92);
+}
+
 // ─── 5. Main pipeline ─────────────────────────────────────────────────────────
 
 export async function processAnswerSheet(
@@ -255,6 +281,9 @@ export async function processAnswerSheet(
           warpedBuffer, warpedWidth, warpedHeight,
           answers, confidence, totalItems, numChoices
         );
+        const warpedDataUrl = buildWarpedDataUrl(
+          warpedBuffer, warpedWidth, warpedHeight
+        );
 
         resolve({
           answers,
@@ -262,6 +291,7 @@ export async function processAnswerSheet(
           corners,
           cornersAutoDetected,
           debugDataUrl,
+          warpedDataUrl,
           detectedExamId: qrPayload.examId,
           detectedTotalItems: qrPayload.totalItems,
           detectedNumChoices: qrPayload.numChoices,
@@ -286,6 +316,41 @@ export async function processAnswerSheet(
         manualCorners: scaledCorners ?? null,
       },
       [buffer]  // transfer the ArrayBuffer (zero-copy)
+    );
+  });
+}
+
+export async function detectDocumentInCanvas(
+  sourceCanvas: HTMLCanvasElement,
+): Promise<LiveDocumentDetectionResult> {
+  const workCanvas = scaleCanvas(sourceCanvas, 900);
+  const ctx = workCanvas.getContext('2d')!;
+  const imageData = ctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
+  const buffer = imageData.data.buffer.slice(0);
+
+  return new Promise<LiveDocumentDetectionResult>((resolve, reject) => {
+    const worker = getWorker();
+
+    const handler = (e: MessageEvent) => {
+      const { type } = e.data;
+      if (type === 'documentResult') {
+        worker.removeEventListener('message', handler);
+        resolve(e.data.result as LiveDocumentDetectionResult);
+      } else if (type === 'documentError') {
+        worker.removeEventListener('message', handler);
+        reject(new Error(e.data.message));
+      }
+    };
+
+    worker.addEventListener('message', handler);
+    worker.postMessage(
+      {
+        type: 'detectDocument',
+        buffer,
+        width: workCanvas.width,
+        height: workCanvas.height,
+      },
+      [buffer],
     );
   });
 }

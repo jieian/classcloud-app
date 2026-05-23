@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Text,
@@ -61,6 +62,7 @@ import EmptySearchState from "@/components/EmptySearchState";
 
 export default function ExamPageClient({ initialData }: { initialData: ExamInitialData | null }) {
   const router = useRouter();
+  const isMobile = useMediaQuery('(max-width: 768px)');
   const searchParams = useSearchParams();
   const { user, roles, permissions, loading: authLoading, firstName, lastName } =
     useAuth();
@@ -101,6 +103,8 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     return localStorage.getItem("examViewMode") === "faculty" ? "faculty" : "admin";
   });
   const fetchSectionIdsRef = useRef<number[] | undefined>(undefined);
+  const gradeGroupRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
+  const newExamScrollDoneRef = useRef(false);
 
   // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
@@ -578,6 +582,24 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   const isFiltering = !!(searchQuery || selectedGradeLevel || selectedSection || selectedSubject);
 
+  const facultyVisibleGradeGroups = useMemo(() => {
+    if (effectiveFullAccess || !effectiveAllowedSectionIds) return [];
+
+    const allowedGradeIds = new Set(
+      allSections
+        .filter((section) => effectiveAllowedSectionIds.has(section.section_id))
+        .map((section) => section.grade_level_id)
+        .filter((gradeLevelId): gradeLevelId is number => gradeLevelId != null),
+    );
+
+    return allGradeLevels
+      .filter((gradeLevel) => allowedGradeIds.has(gradeLevel.grade_level_id))
+      .map((gradeLevel) => ({
+        gradeLabel: gradeLevel.display_name,
+        levelNumber: gradeLevel.level_number,
+      }));
+  }, [effectiveFullAccess, effectiveAllowedSectionIds, allSections, allGradeLevels]);
+
 	  const groupedExams = useMemo(() => {
 	    const groups = new Map<string, { gradeLabel: string; levelNumber: number; exams: ExamWithRelations[] }>();
 	
@@ -585,6 +607,10 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 	    if (effectiveFullAccess) {
 	      for (const gl of allGradeLevels) {
 	        groups.set(gl.display_name, { gradeLabel: gl.display_name, levelNumber: gl.level_number, exams: [] });
+	      }
+	    } else {
+	      for (const group of facultyVisibleGradeGroups) {
+	        groups.set(group.gradeLabel, { gradeLabel: group.gradeLabel, levelNumber: group.levelNumber, exams: [] });
 	      }
 	    }
 	
@@ -600,13 +626,22 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     }
 
     return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        exams: [...group.exams].sort(
+          (a, b) => Number(a.is_locked) - Number(b.is_locked),
+        ),
+      }))
       .filter((g) => !isFiltering || g.exams.length > 0)
       .sort((a, b) => a.levelNumber - b.levelNumber);
-	  }, [filteredExams, allGradeLevels, isFiltering, effectiveFullAccess, getVisibleAssignments]);
+	  }, [filteredExams, allGradeLevels, facultyVisibleGradeGroups, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
   // Initialize once: open all visible groups if there is no restored state.
+  // Wait for groupedExams to populate — exams load async, so firing before data
+  // arrives would set an empty list and lock it in via accordionInitialized.
   useEffect(() => {
     if (!accordionStateReady || accordionInitialized) return;
+    if (groupedExams.length === 0) return;
     if (openGradeGroups.length > 0) {
       setAccordionInitialized(true);
       return;
@@ -614,6 +649,41 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     setOpenGradeGroups(groupedExams.map((group) => group.gradeLabel));
     setAccordionInitialized(true);
   }, [accordionStateReady, accordionInitialized, openGradeGroups.length, groupedExams]);
+
+  // When newly created exams arrive, open their grade level accordion groups.
+  useEffect(() => {
+    if (newlyCreatedExamIds.size === 0 || groupedExams.length === 0) return;
+    const groupsToOpen = groupedExams
+      .filter((group) => group.exams.some((exam) => newlyCreatedExamIds.has(exam.exam_id)))
+      .map((group) => group.gradeLabel);
+    if (groupsToOpen.length === 0) return;
+    setOpenGradeGroups((prev) => {
+      const merged = Array.from(new Set([...prev, ...groupsToOpen]));
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('examOpenGradeGroups', JSON.stringify(merged));
+      }
+      return merged;
+    });
+  }, [newlyCreatedExamIds, groupedExams]);
+
+  useEffect(() => {
+    if (newlyCreatedExamIds.size === 0) {
+      newExamScrollDoneRef.current = false;
+      return;
+    }
+    if (newExamScrollDoneRef.current || groupedExams.length === 0) return;
+
+    const targetGroup = groupedExams.find((group) =>
+      group.exams.some((exam) => newlyCreatedExamIds.has(exam.exam_id)),
+    );
+    if (!targetGroup) return;
+
+    const targetNode = gradeGroupRefs.current.get(targetGroup.gradeLabel);
+    if (!targetNode) return;
+
+    newExamScrollDoneRef.current = true;
+    targetNode.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [newlyCreatedExamIds, groupedExams]);
 
   const handleAccordionChange = (value: string[]) => {
     setOpenGradeGroups(value);
@@ -708,11 +778,76 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     setDeleting(false);
   };
 
+  const viewToggleButton =
+    showViewToggleVisible && !loading && !authLoading ? (
+      <Button
+        variant="outline"
+        color={viewMode === "admin" ? "#298925" : "#4A72AE"}
+        radius="md"
+        size={isMobile ? "xs" : "sm"}
+        fullWidth={isMobile}
+        leftSection={<IconBinoculars size={16} stroke={1.5} />}
+        onClick={() =>
+          setViewMode(viewMode === "admin" ? "faculty" : "admin")
+        }
+      >
+        {isMobile
+          ? viewMode === "admin"
+            ? "Switch to Faculty View"
+            : "Switch to Admin View"
+          : viewMode === "admin"
+            ? "Switch to Faculty View"
+            : "Switch to Admin View"}
+      </Button>
+    ) : null;
+
+  const createExamButton =
+    (loading || (hasActiveSchoolYear && hasActiveTerm)) &&
+    !effectiveFullAccess ? (
+      <Stack gap={4} align="flex-end">
+        <Tooltip
+          label="You need to be assigned to at least one class before you can create exams."
+          disabled={
+            isMobile ||
+            effectiveFullAccess ||
+            !effectiveAllowedSectionIds ||
+            effectiveAllowedSectionIds.size > 0
+          }
+          withArrow
+          multiline
+          w={240}
+        >
+          <span>
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              onClick={() => router.push("/exam/create")}
+              disabled={
+                !effectiveFullAccess &&
+                !!effectiveAllowedSectionIds &&
+                effectiveAllowedSectionIds.size === 0
+              }
+            >
+              Create Exam
+            </Button>
+          </span>
+        </Tooltip>
+        {isMobile &&
+          !effectiveFullAccess &&
+          !!effectiveAllowedSectionIds &&
+          effectiveAllowedSectionIds.size === 0 && (
+            <Text size="xs" c="red" ta="right" maw={160}>
+              You need a class assignment to create exams.
+            </Text>
+          )}
+      </Stack>
+    ) : null;
+
   return (
     <>
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-3 gap-2">
+      <Group justify="space-between" mb="xs" align="flex-start" wrap="nowrap">
         <div>
-          <h1 className="text-3xl font-bold text-[#597D37]">
+          <h1 className="text-2xl md:text-3xl font-bold text-[#597D37]">
             Examinations{" "}
             {!loading && hasActiveSchoolYear && hasActiveTerm && (
               <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
@@ -723,58 +858,11 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           </p>
         </div>
 
-        {/* Buttons — row on mobile (balanced), column on desktop (right-aligned) */}
-        <div className="flex flex-row sm:flex-col gap-2 sm:items-end sm:shrink-0">
-          {showViewToggleVisible && !loading && !authLoading && (
-            <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
-              <Button
-                fullWidth
-                variant="outline"
-                color={viewMode === "admin" ? "#298925" : "#4A72AE"}
-                radius="md"
-                leftSection={<IconBinoculars size={16} stroke={1.5} />}
-                onClick={() =>
-                  setViewMode(viewMode === "admin" ? "faculty" : "admin")
-                }
-              >
-                {viewMode === "admin"
-                  ? "Switch to Faculty View"
-                  : "Switch to Admin View"}
-              </Button>
-            </div>
-          )}
-          {(loading || (hasActiveSchoolYear && hasActiveTerm)) &&
-          !effectiveFullAccess ? (
-            <Tooltip
-              label="You need to be assigned to at least one class before you can create exams."
-              disabled={
-                effectiveFullAccess ||
-                !effectiveAllowedSectionIds ||
-                effectiveAllowedSectionIds.size > 0
-              }
-              withArrow
-              multiline
-              w={240}
-            >
-              <div className="flex-1 sm:flex-none" style={{ display: "flex" }}>
-                <Button
-                  fullWidth
-                  color="#4EAE4A"
-                  radius="md"
-                  onClick={() => router.push("/exam/create")}
-                  disabled={
-                    !effectiveFullAccess &&
-                    !!effectiveAllowedSectionIds &&
-                    effectiveAllowedSectionIds.size === 0
-                  }
-                >
-                  Create Exam
-                </Button>
-              </div>
-            </Tooltip>
-          ) : null}
-        </div>
-      </div>
+        <Group gap="xs">
+          {!isMobile && viewToggleButton}
+          {createExamButton}
+        </Group>
+      </Group>
 
       {/* Error */}
       {dbError && (
@@ -802,7 +890,12 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         <>
       {/* Filters */}
 	      <div>
-        <Group mb="md" wrap="wrap" align="flex-end" gap="sm">
+        {isMobile && viewToggleButton && (
+          <Group mb="md">
+            {viewToggleButton}
+          </Group>
+        )}
+        <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
           <SearchBar
             id="search-exams"
             placeholder="Search examinations..."
@@ -812,7 +905,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
           />
-          <Tooltip label="Refresh" position="bottom" withArrow>
+          <Tooltip label="Refresh" position="bottom" withArrow disabled={!!isMobile}>
             <ActionIcon
               variant="outline"
               color="#808898"
@@ -900,6 +993,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         <EmptySearchState
           title="No examination found."
           description="Try adjusting your search or filters."
+          icon={IconClipboardOff}
         />
       ) : !isFiltering && groupedExams.length === 0 ? (
         <Center
@@ -944,7 +1038,13 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           }}
         >
           {groupedExams.map((group) => (
-            <Accordion.Item key={group.gradeLabel} value={group.gradeLabel}>
+            <Accordion.Item
+              key={group.gradeLabel}
+              value={group.gradeLabel}
+              ref={(node) => {
+                gradeGroupRefs.current.set(group.gradeLabel, node);
+              }}
+            >
               <Accordion.Control>
                 <Group gap="xs">
                   <Text fw={700} size="md">
@@ -1016,7 +1116,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                                 color={exam.is_locked ? "red" : "green"}
                                 variant="light"
                               >
-                                {exam.is_locked ? "Inactive" : "Active"}
+                                {exam.is_locked ? "Closed" : "Open"}
                               </Badge>
                               {!effectiveFullAccess && <Menu
                                 shadow="md"
@@ -1067,8 +1167,8 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                                         }
                                       >
                                         {exam.is_locked
-                                          ? "Set Active"
-                                          : "Set Inactive"}
+                                          ? "Set Open"
+                                          : "Set Closed"}
                                       </Menu.Item>
                                       <Menu.Divider />
                                     </>

@@ -6,6 +6,7 @@ import {
   Alert,
   Box,
   Button,
+  Collapse,
   Container,
   Divider,
   Group,
@@ -26,15 +27,19 @@ import {
   Stack,
   Tooltip,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import {
   IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
   IconRefresh,
   IconDownload,
   IconGenderBigender,
+  IconChevronRight,
+  IconX,
+  IconBolt,
+  IconBoltOff,
 } from '@tabler/icons-react';
-import { processAnswerSheet } from '@/lib/services/omrService';
+import { detectDocumentInCanvas, processAnswerSheet, type DetectionResult, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/lib/services/classService';
@@ -47,11 +52,13 @@ import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/Vert
 import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
 import { resolveExamParams } from '@/lib/exam-supabase';
 import { invalidateReportsCache } from '@/lib/services/reportsAnalysisService';
+import { notify } from '@/components/notificationIcon/notificationIcon';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
 type ReviewFilter = 'all' | 'detected' | 'undetected' | 'needs_attention';
+type FlashMode = 'off' | 'on' | 'auto';
 
 interface DetectedAnswers { [item: number]: string | null; }
 
@@ -75,6 +82,29 @@ interface ScanPageCache {
 interface ItemConfidenceSummary {
   top: number;
   second: number;
+}
+
+function normalizedCornerDistance(
+  a: LiveDocumentDetectionResult,
+  b: LiveDocumentDetectionResult,
+): number {
+  if (!a.corners || !b.corners) return Number.POSITIVE_INFINITY;
+  const total = a.corners.reduce((sum, point, index) => {
+    const other = b.corners?.[index];
+    if (!other) return sum + 1;
+    const ax = point.x / a.width;
+    const ay = point.y / a.height;
+    const bx = other.x / b.width;
+    const by = other.y / b.height;
+    return sum + Math.hypot(ax - bx, ay - by);
+  }, 0);
+  return total / a.corners.length;
+}
+
+function visualPolygonCorners(result: LiveDocumentDetectionResult): string {
+  if (!result.corners) return '';
+  const [tl, tr, bl, br] = result.corners;
+  return [tl, tr, br, bl].map((point) => `${point.x},${point.y}`).join(' ');
 }
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -138,7 +168,96 @@ const STEP_BORDER_COLOR = '#e0e0e0';
 const SCAN_PAGE_CACHE_TTL_MS = 2 * 60 * 1000;
 const getScanPageCacheKey = (id: number) => `scanPageCache:${id}`;
 
-// â"€â"€â"€ Page â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// ─── Mobile accordion row ─────────────────────────────────────────────────────
+
+function StudentMobileRow({
+  student,
+  attempt,
+  totalItems,
+  isHighlighted,
+  isAdminView,
+  isLocked,
+  onScan,
+}: {
+  student: RosterStudent;
+  attempt: ExamScore | undefined;
+  totalItems: number;
+  isHighlighted: boolean;
+  isAdminView: boolean;
+  isLocked: boolean;
+  onScan: (student: RosterStudent) => void;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
+  const proficiency = mpl != null ? getProficiency(mpl) : null;
+  const hasScanned = attempt != null;
+
+  return (
+    <>
+      <div
+        onClick={toggle}
+        style={{
+          cursor: 'pointer',
+          padding: '12px 16px',
+          borderLeft: isHighlighted ? '3px solid #4EAE4A' : undefined,
+          backgroundColor: isHighlighted ? '#f7fbf4' : undefined,
+          transition: 'background-color 1.2s ease',
+        }}
+      >
+        <Group justify="space-between" wrap="nowrap" align="center">
+          <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            <IconChevronRight
+              size={16}
+              style={{
+                transform: opened ? 'rotate(90deg)' : 'rotate(0deg)',
+                transition: 'transform 200ms ease',
+                flexShrink: 0,
+                color: '#808898',
+              }}
+            />
+            <div style={{ overflow: 'hidden', minWidth: 0 }}>
+              <Text fw={500} fz="sm" truncate>{student.full_name}</Text>
+              <Text fz="xs" c="dimmed">LRN: {student.lrn}</Text>
+            </div>
+          </Group>
+          {!isAdminView && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <Tooltip label="This examination has already been proceeded." disabled={!isLocked} withArrow>
+                <Button size="xs" radius="md" color={hasScanned ? 'yellow' : '#4EAE4A'} onClick={() => onScan(student)} disabled={isLocked}>
+                  {hasScanned ? 'Rescan' : 'Scan'}
+                </Button>
+              </Tooltip>
+            </div>
+          )}
+        </Group>
+      </div>
+
+      <Collapse in={opened}>
+        <Box pb="md" pl={36} pr={16}>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={2} style={{ letterSpacing: '0.04em' }}>
+            Test Score
+          </Text>
+          <Text fz="sm" mb="sm" fw={600} c={attempt ? 'dark' : 'dimmed'}>
+            {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
+          </Text>
+          <Text size="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: '0.04em' }}>
+            Level of Proficiency
+          </Text>
+          {proficiency ? (
+            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
+              {proficiency}
+            </span>
+          ) : (
+            <Text fz="sm" c="dimmed" fs="italic">Not yet scanned</Text>
+          )}
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
@@ -152,7 +271,9 @@ export default function ScanPapersPage() {
   const [step, setStep] = useState<Step>('students');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewModalOpened, setPreviewModalOpened] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [imgScale, setImgScale] = useState(1);
+  const [imgTranslate, setImgTranslate] = useState({ x: 0, y: 0 });
   const [detectedAnswers, setDetectedAnswers] = useState<DetectedAnswers>({});
   const [initialDetectedAnswers, setInitialDetectedAnswers] = useState<DetectedAnswers>({});
   const [detectedConfidence, setDetectedConfidence] = useState<{ [item: number]: { [choice: string]: number } }>({});
@@ -165,6 +286,15 @@ export default function ScanPapersPage() {
   const [duplicateImageError, setDuplicateImageError] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
+  const [flashMode, setFlashMode] = useState<FlashMode>('off');
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState('Looking for sheet');
+  const [liveDocument, setLiveDocument] = useState<LiveDocumentDetectionResult | null>(null);
+  const [autoCapturing, setAutoCapturing] = useState(false);
+  const [scannerProcessingCapture, setScannerProcessingCapture] = useState(false);
+  const [scannerProcessedPreviewUrl, setScannerProcessedPreviewUrl] = useState<string | null>(null);
+  const [scannerCaptureError, setScannerCaptureError] = useState<string | null>(null);
+  const [scannerScanResult, setScannerScanResult] = useState<DetectionResult | null>(null);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
   const [highlightedEnrollmentId, setHighlightedEnrollmentId] = useState<number | null>(null);
   const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
@@ -183,9 +313,21 @@ export default function ScanPapersPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const torchEnabledRef = useRef(false);
+  const liveDetectionInFlightRef = useRef(false);
+  const lastDocumentRef = useRef<LiveDocumentDetectionResult | null>(null);
+  const stableDocumentFramesRef = useRef(0);
+  const autoCaptureLockedRef = useRef(false);
+  const captureFromCameraRef = useRef<() => void | Promise<void>>(() => undefined);
   const rosterStudentsRef = useRef<RosterStudent[]>([]);
   const existingAttemptsRef = useRef<ExamScore[]>([]);
   const useSilentRosterRefreshRef = useRef(false);
+  const lastTouchDistRef = useRef<number | null>(null);
+  const lastTouchPosRef = useRef<{ x: number; y: number } | null>(null);
+  const lastTapTimeRef = useRef<number>(0);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const imgContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     rosterStudentsRef.current = rosterStudents;
@@ -277,6 +419,33 @@ export default function ScanPapersPage() {
 
   // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+  const setTorch = useCallback(async (enabled: boolean) => {
+    const track = videoTrackRef.current;
+    if (!track) return false;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const capabilities = typeof track.getCapabilities === 'function' ? (track.getCapabilities() as any) : null;
+      if (!capabilities?.torch) {
+        setTorchSupported(false);
+        return false;
+      }
+
+      if (torchEnabledRef.current === enabled) return true;
+
+      await track.applyConstraints({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        advanced: [{ torch: enabled } as any],
+      });
+      torchEnabledRef.current = enabled;
+      setTorchSupported(true);
+      return true;
+    } catch {
+      setTorchSupported(false);
+      return false;
+    }
+  }, []);
+
   const startCamera = async () => {
     if (startingCamera) return;
     setStartingCamera(true);
@@ -301,10 +470,23 @@ export default function ScanPapersPage() {
       if (videoTrackRef.current) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const capabilities = typeof videoTrackRef.current.getCapabilities === 'function' ? (videoTrackRef.current.getCapabilities() as any) : null;
+          setTorchSupported(Boolean(capabilities?.torch));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await videoTrackRef.current.applyConstraints({ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } as any);
         } catch { /* unsupported */ }
       }
 
+      setLiveDocument(null);
+      setScannerStatus('Looking for sheet');
+      setAutoCapturing(false);
+      setScannerProcessingCapture(false);
+      setScannerProcessedPreviewUrl(null);
+      setScannerCaptureError(null);
+      setScannerScanResult(null);
+      autoCaptureLockedRef.current = false;
+      stableDocumentFramesRef.current = 0;
+      lastDocumentRef.current = null;
       setCameraActive(true);
 
       let videoEl: HTMLVideoElement | null = null;
@@ -318,21 +500,45 @@ export default function ScanPapersPage() {
       videoEl.muted = true;
       await new Promise<void>(resolve => { videoEl!.onloadedmetadata = () => resolve(); });
       await videoEl.play();
+      if (flashMode === 'on') void setTorch(true);
     } catch (error) {
       console.error('Failed to start camera:', error);
-      alert('Camera not available or blocked. Please allow camera permission, then try again.');
+      notify({ type: 'error', title: 'Camera Error', message: 'Camera not available or blocked. Please allow camera permission, then try again.' });
       stopCamera();
     } finally {
       setStartingCamera(false);
     }
   };
 
-  const stopCamera = useCallback(() => {
+  const stopCameraStream = useCallback(() => {
+    void setTorch(false);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     videoTrackRef.current = null;
+    torchEnabledRef.current = false;
+    setTorchSupported(false);
     setCameraActive(false);
-  }, []);
+    setLiveDocument(null);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+    liveDetectionInFlightRef.current = false;
+    stableDocumentFramesRef.current = 0;
+    lastDocumentRef.current = null;
+    autoCaptureLockedRef.current = false;
+  }, [setTorch]);
+
+  const stopCamera = useCallback(() => {
+    stopCameraStream();
+    setScannerProcessingCapture(false);
+    setScannerProcessedPreviewUrl(null);
+    setScannerCaptureError(null);
+    setScannerScanResult(null);
+  }, [stopCameraStream]);
+
+  useEffect(() => {
+    if (!cameraActive || flashMode === 'auto') return;
+    void setTorch(flashMode === 'on');
+  }, [cameraActive, flashMode, setTorch]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -407,7 +613,7 @@ export default function ScanPapersPage() {
   // ── Scan student: preload OpenCV + transition to capture step ────────────
   const handleScanStudent = useCallback((student: RosterStudent) => {
     if (exam?.is_locked) {
-      alert("This examination has been finalized and can no longer accept scans.");
+      notify({ type: 'warning', title: 'Exam Finalized', message: 'This examination has been finalized and can no longer accept scans.' });
       return;
     }
     setSelectedStudent(student);
@@ -427,7 +633,7 @@ export default function ScanPapersPage() {
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
     if (videoRef.current.readyState < 2 || videoRef.current.videoWidth === 0) {
-      alert('Camera is still initializing. Please wait a moment and try again.');
+      notify({ type: 'warning', title: 'Camera Initializing', message: 'Camera is still initializing. Please wait a moment and try again.' });
       return;
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -447,8 +653,7 @@ export default function ScanPapersPage() {
           }
         } catch { /* capabilities not supported — use defaults */ }
         const blob: Blob = await ic.takePhoto(photoOptions);
-        stopCamera();
-        handleFileSelected(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
+        void handleCameraCapturedFile(new File([blob], 'scan.jpg', { type: blob.type || 'image/jpeg' }));
         return;
       } catch (err) {
         console.warn('[Camera] ImageCapture.takePhoto() failed, falling back to canvas:', err);
@@ -464,10 +669,140 @@ export default function ScanPapersPage() {
     ctx.drawImage(videoRef.current, 0, 0);
     canvas.toBlob(blob => {
       if (!blob) return;
-      stopCamera();
-      handleFileSelected(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
+      void handleCameraCapturedFile(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.99);
   };
+  captureFromCameraRef.current = captureFromCamera;
+
+  const handleCameraCapturedFile = async (file: File) => {
+    stopCameraStream();
+    setCapturedFile(file);
+    setPreviewUrl(null);
+    setScannerProcessingCapture(true);
+    setScannerCaptureError(null);
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerStatus('Processing scan');
+
+    try {
+      const result = await processAnswerSheet(
+        file,
+        totalItems,
+        numChoices,
+        undefined,
+        setScannerStatus,
+      );
+      setScannerScanResult(result);
+      setScannerProcessedPreviewUrl(result.warpedDataUrl);
+      setPreviewUrl(result.warpedDataUrl);
+      setScannerStatus('Review capture');
+    } catch (err: unknown) {
+      setScannerCaptureError(err instanceof Error ? err.message : 'Processing failed');
+      setScannerStatus('Processing failed');
+    } finally {
+      setScannerProcessingCapture(false);
+      setAutoCapturing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!cameraActive || startingCamera) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const frameCanvas = document.createElement('canvas');
+
+    const schedule = (delay = 520) => {
+      if (cancelled) return;
+      timer = setTimeout(() => {
+        void detectFrame();
+      }, delay);
+    };
+
+    const detectFrame = async () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+        schedule();
+        return;
+      }
+
+      if (liveDetectionInFlightRef.current) {
+        schedule(180);
+        return;
+      }
+
+      liveDetectionInFlightRef.current = true;
+      try {
+        frameCanvas.width = video.videoWidth;
+        frameCanvas.height = video.videoHeight;
+        const ctx = frameCanvas.getContext('2d');
+        if (!ctx) {
+          schedule();
+          return;
+        }
+
+        ctx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+        const result = await detectDocumentInCanvas(frameCanvas);
+        if (cancelled) return;
+
+        setLiveDocument(result);
+        if (flashMode === 'auto' && torchSupported) {
+          void setTorch(result.brightness < 75);
+        }
+
+        const previous = lastDocumentRef.current;
+        const stable =
+          result.isVisible &&
+          result.confidence >= 0.68 &&
+          result.blur >= 35 &&
+          previous != null &&
+          normalizedCornerDistance(result, previous) < 0.018;
+
+        stableDocumentFramesRef.current = stable
+          ? stableDocumentFramesRef.current + 1
+          : result.isVisible
+            ? 1
+            : 0;
+        lastDocumentRef.current = result;
+
+        if (autoCapturing || autoCaptureLockedRef.current) {
+          setScannerStatus('Capturing');
+        } else if (!result.corners) {
+          setScannerStatus('Looking for sheet');
+        } else if (!result.isVisible) {
+          setScannerStatus('Fit the full sheet inside the frame');
+        } else if (stableDocumentFramesRef.current < 3) {
+          setScannerStatus('Hold steady');
+        } else {
+          setScannerStatus('Capturing');
+          autoCaptureLockedRef.current = true;
+          setAutoCapturing(true);
+          setTimeout(() => {
+            void captureFromCameraRef.current();
+          }, 180);
+          return;
+        }
+      } catch {
+        if (!cancelled) {
+          setLiveDocument(null);
+          setScannerStatus('Looking for sheet');
+        }
+      } finally {
+        liveDetectionInFlightRef.current = false;
+      }
+
+      schedule();
+    };
+
+    void detectFrame();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      liveDetectionInFlightRef.current = false;
+    };
+  }, [autoCapturing, cameraActive, flashMode, setTorch, startingCamera, torchSupported]);
 
   // â"€â"€ File handling â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleFileSelected = (file: File) => {
@@ -486,9 +821,91 @@ export default function ScanPapersPage() {
     if (file) handleFileSelected(file);
   };
 
+  const applyProcessedScanResult = async (result: DetectionResult): Promise<boolean> => {
+    if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
+      let scannedExamTitle = 'a different exam';
+      try {
+        const scannedExam = await fetchExamById(result.detectedExamId);
+        if (scannedExam?.title) scannedExamTitle = `"${scannedExam.title}"`;
+      } catch { /* ignore — title is optional, fallback is fine */ }
+
+      const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
+      setProcessingError(
+        `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
+        `Please use the correct answer sheet and try again.`
+      );
+      setStep('capture');
+      return false;
+    }
+
+    if (
+      result.detectedTotalItems !== null &&
+      result.detectedTotalItems !== totalItems
+    ) {
+      setProcessingError(
+        `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
+        'Please use the correct answer sheet and try again.'
+      );
+      setStep('capture');
+      return false;
+    }
+
+    if (
+      result.detectedNumChoices !== null &&
+      result.detectedNumChoices !== numChoices
+    ) {
+      setProcessingError(
+        `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
+        'Please use the correct answer sheet and try again.'
+      );
+      setStep('capture');
+      return false;
+    }
+
+    setDetectedAnswers(result.answers);
+    setInitialDetectedAnswers({ ...result.answers });
+    setDetectedConfidence(result.confidence);
+    setCornersOk(result.cornersAutoDetected);
+    setDebugImageUrl(result.debugDataUrl);
+    setWarpedImageUrl(result.warpedDataUrl);
+    setPreviewUrl(result.warpedDataUrl);
+    setStep('review');
+    return true;
+  };
+
+  const handleScannerRetake = () => {
+    setCapturedFile(null);
+    setPreviewUrl(null);
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerCaptureError(null);
+    setScannerProcessingCapture(false);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+    autoCaptureLockedRef.current = false;
+    stableDocumentFramesRef.current = 0;
+    lastDocumentRef.current = null;
+    void startCamera();
+  };
+
+  const handleScannerDone = async () => {
+    if (!scannerScanResult) return;
+    const applied = await applyProcessedScanResult(scannerScanResult);
+    if (!applied) return;
+    setScannerProcessedPreviewUrl(null);
+    setScannerScanResult(null);
+    setScannerCaptureError(null);
+    setScannerProcessingCapture(false);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+  };
+
   // â"€â"€ OMR Processing â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const runProcessing = async () => {
-    if (!capturedFile) return;
+    if (!capturedFile) {
+      notify({ type: 'warning', title: 'No Answer Sheet', message: 'Please upload or capture an answer sheet before proceeding.' });
+      return;
+    }
     setStep('processing');
     setProcessingError(null);
     setProcessingStatus('');
@@ -498,57 +915,7 @@ export default function ScanPapersPage() {
         undefined,
         setProcessingStatus,
       );
-
-      // QR mismatch — scanned sheet belongs to a different exam
-      if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
-        // Try to fetch the scanned sheet's exam title for a friendlier message
-        let scannedExamTitle = 'a different exam';
-        try {
-          const scannedExam = await fetchExamById(result.detectedExamId);
-          if (scannedExam?.title) scannedExamTitle = `"${scannedExam.title}"`;
-        } catch { /* ignore — title is optional, fallback is fine */ }
-
-        const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
-        setProcessingError(
-          `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
-          `Please use the correct answer sheet and try again.`
-        );
-        setStep('capture');
-        return;
-      }
-
-      // Item-count mismatch — scanned sheet layout does not match this exam
-      if (
-        result.detectedTotalItems !== null &&
-        result.detectedTotalItems !== totalItems
-      ) {
-        setProcessingError(
-          `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
-          'Please use the correct answer sheet and try again.'
-        );
-        setStep('capture');
-        return;
-      }
-
-      // Choice-count mismatch — prevents mapping answers to the wrong option set
-      if (
-        result.detectedNumChoices !== null &&
-        result.detectedNumChoices !== numChoices
-      ) {
-        setProcessingError(
-          `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
-          'Please use the correct answer sheet and try again.'
-        );
-        setStep('capture');
-        return;
-      }
-
-      setDetectedAnswers(result.answers);
-      setInitialDetectedAnswers({ ...result.answers });
-      setDetectedConfidence(result.confidence);
-      setCornersOk(result.cornersAutoDetected);
-      setDebugImageUrl(result.debugDataUrl);
-      setStep('review');
+      await applyProcessedScanResult(result);
     } catch (err: unknown) {
       setProcessingError(err instanceof Error ? err.message : 'Processing failed');
       setStep('capture');
@@ -701,12 +1068,12 @@ export default function ScanPapersPage() {
   // â"€â"€ Submit â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleSubmit = async () => {
     if (!canAccessExams) {
-      alert("You don't have permission to save exam scores.");
+      notify({ type: 'error', title: 'No Permission', message: "You don't have permission to save exam scores." });
       return;
     }
-    if (!exam || !selectedStudent) { alert('No student selected.'); return; }
+    if (!exam || !selectedStudent) { notify({ type: 'warning', title: 'No Student', message: 'No student selected.' }); return; }
     if (exam.is_locked) {
-      alert("This examination has been finalized and can no longer accept scans.");
+      notify({ type: 'warning', title: 'Exam Finalized', message: 'This examination has been finalized and can no longer accept scans.' });
       return;
     }
 
@@ -714,7 +1081,7 @@ export default function ScanPapersPage() {
       .find(a => a.sections?.section_id === selectedStudent.section_id)?.id;
 
     if (!examAssignmentId) {
-      alert('Could not find exam assignment for this student\'s section.');
+      notify({ type: 'error', title: 'Assignment Not Found', message: "Could not find exam assignment for this student's section." });
       return;
     }
 
@@ -748,15 +1115,31 @@ export default function ScanPapersPage() {
       setReviewFilter('all');
       setHighlightedEnrollmentId(scannedId);
       setTimeout(() => setHighlightedEnrollmentId(null), 3000);
+      notify({
+        type: 'success',
+        title: 'Results Saved',
+        message: `Scanned results for ${selectedStudent.full_name} were saved successfully.`,
+      });
     } else {
-      alert('Failed to save. Please try again.');
+      notify({ type: 'error', title: 'Save Failed', message: 'Failed to save. Please try again.' });
     }
     setSubmitting(false);
   };
 
   const handleSubmitWithValidation = () => {
     if (undetectedCount <= 0) {
-      void handleSubmit();
+      modals.openConfirmModal({
+        title: 'Save Results?',
+        children: (
+          <Text size="sm">
+            {`Save scanned results for ${selectedStudent?.full_name ?? 'this student'}? This will record their answers and compute their score.`}
+          </Text>
+        ),
+        labels: { confirm: 'Save Results', cancel: 'Review Again' },
+        confirmProps: { color: '#4EAE4A' },
+        onConfirm: () => { void handleSubmit(); },
+        ...mobileConfirmModalProps,
+      });
       return;
     }
 
@@ -779,7 +1162,7 @@ export default function ScanPapersPage() {
   const handleExportCsv = async () => {
     if (!exam) return;
     if (scannedStudentsCount === 0) {
-      alert('No scanned student results to export yet.');
+      notify({ type: 'warning', title: 'No Results', message: 'No scanned student results to export yet.' });
       return;
     }
     setExportingCsv(true);
@@ -795,7 +1178,7 @@ export default function ScanPapersPage() {
         } catch {
           // ignore parse errors
         }
-        alert(message);
+        notify({ type: 'error', title: 'Export Failed', message });
         return;
       }
 
@@ -812,7 +1195,7 @@ export default function ScanPapersPage() {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       console.error('CSV export failed:', error);
-      alert('Failed to export CSV.');
+      notify({ type: 'error', title: 'Export Failed', message: 'Failed to export CSV.' });
     } finally {
       setExportingCsv(false);
     }
@@ -848,10 +1231,7 @@ export default function ScanPapersPage() {
         | null;
 
       if (!response.ok) {
-        alert(
-          body?.error ??
-            "Unable to finalize examination for reports. Please try again.",
-        );
+        notify({ type: 'error', title: 'Finalization Failed', message: body?.error ?? 'Unable to finalize examination for reports. Please try again.' });
         return;
       }
 
@@ -864,7 +1244,7 @@ export default function ScanPapersPage() {
         !Number.isFinite(sectionId) ||
         !Number.isFinite(finalizedExamId)
       ) {
-        alert("Finalization succeeded but report context is incomplete.");
+        notify({ type: 'error', title: 'Incomplete Response', message: 'Finalization succeeded but report context is incomplete.' });
         return;
       }
 
@@ -874,7 +1254,7 @@ export default function ScanPapersPage() {
       );
     } catch (error) {
       console.error("Failed to finalize examination:", error);
-      alert("Unable to finalize examination for reports. Please try again.");
+      notify({ type: 'error', title: 'Finalization Failed', message: 'Unable to finalize examination for reports. Please try again.' });
     } finally {
       setFinalizingReports(false);
     }
@@ -882,11 +1262,19 @@ export default function ScanPapersPage() {
 
   const handleProceedToReports = () => {
     if (!exam) return;
+    if (exam.is_locked) {
+      notify({ type: 'info', title: 'Already Proceeded', message: 'This examination has already been proceeded to reports.' });
+      return;
+    }
+    if (rosterStudents.length > 0 && scannedStudentsCount < rosterStudents.length) {
+      notify({ type: 'warning', title: 'Incomplete Scans', message: `Not all students have been scanned yet (${scannedStudentsCount}/${rosterStudents.length}). Please scan all students before proceeding to reports.` });
+      return;
+    }
     modals.openConfirmModal({
       title: 'Proceed to Reports?',
       children: (
         <Text size="sm">
-          Are you sure you want to proceed? This will finalize the examination and generate reports.
+          Are you sure you want to proceed? This will finalize the examination, generate reports, and prevent any further scans or edits. This action cannot be undone.
         </Text>
       ),
       labels: { confirm: 'Proceed', cancel: 'Stay' },
@@ -918,7 +1306,7 @@ export default function ScanPapersPage() {
   if (examLoading) {
     return (
       <>
-        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+        <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
         <Stack gap="md" maw={1000} style={{ width: '100%' }}>
           <Box>
             <BackButton size="sm" href="/exam">
@@ -977,46 +1365,26 @@ export default function ScanPapersPage() {
     );
   }
 
-  // Navigation buttons rendered outside the main Paper
-  const wizardNavButtons = !isStudentStep ? (
-    step === 'capture' ? (
-      <WizardNavigationButtons
-        onCancel={handleCancel}
-        onPrimary={runProcessing}
-        primaryLabel="Next"
-        primaryDisabled={!previewUrl}
-        cancelLabel="Cancel"
-      />
-    ) : step === 'review' ? (
-      <WizardNavigationButtons
-        onCancel={handleCancel}
-        onPrevious={() => setStep('capture')}
-        showPrevious
-        onPrimary={() => setStep('submit')}
-        primaryLabel="Next"
-        cancelLabel="Cancel"
-      />
-    ) : step === 'submit' ? (
-      <WizardNavigationButtons
-        onCancel={handleCancel}
-        onPrevious={() => setStep('review')}
-        showPrevious
-        onPrimary={handleSubmitWithValidation}
-        primaryLabel={submitting ? 'Saving...' : 'Save Result'}
-        primaryLoading={submitting}
-        primaryDisabled={submitting}
-        colorWhenEnabledOnly={false}
-        cancelLabel="Cancel"
-      />
-    ) : null
-  ) : null;
+  // Navigation buttons — call with mt=0 for the fixed mobile bar
+  const getNavButtons = (mt?: number | string) => {
+    if (step === 'capture') return (
+      <WizardNavigationButtons mt={mt} onCancel={handleCancel} onPrimary={runProcessing} primaryLabel="Next" colorWhenEnabledOnly={false} cancelLabel="Cancel" />
+    );
+    if (step === 'review') return (
+      <WizardNavigationButtons mt={mt} onCancel={handleCancel} onPrevious={() => setStep('capture')} showPrevious onPrimary={() => setStep('submit')} primaryLabel="Next" cancelLabel="Cancel" />
+    );
+    if (step === 'submit') return (
+      <WizardNavigationButtons mt={mt} onCancel={handleCancel} onPrevious={() => setStep('review')} showPrevious onPrimary={handleSubmitWithValidation} primaryLabel={submitting ? 'Saving...' : 'Save Result'} primaryLoading={submitting} primaryDisabled={submitting} colorWhenEnabledOnly={false} cancelLabel="Cancel" />
+    );
+    return null;
+  };
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (isStudentStep) {
     return (
       <>
-        <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+        <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
         <Stack gap="md" maw={1000} style={{ width: '100%' }}>
           <Box>
             <BackButton size="sm" href="/exam">
@@ -1028,53 +1396,55 @@ export default function ScanPapersPage() {
             <Box style={{ flex: 1, minWidth: 0 }}>
               <Title order={3} fw={700} lineClamp={2}>{exam.title}</Title>
             </Box>
-            <Button
-              variant="outline"
-              color="gray"
-              leftSection={<IconDownload size={16} />}
-              size="sm"
-              w={isMobile ? '100%' : 180}
-              loading={exportingCsv}
-              disabled={exportingCsv || scannedStudentsCount === 0}
-              onClick={handleExportCsv}
-            >
-              Download Results
-            </Button>
-            {exam.is_locked ? (
-              <Tooltip label="This examination has already been proceeded." withArrow>
+            <Group gap="sm" grow={!!isMobile} w={isMobile ? '100%' : 'auto'}>
+              <Button
+                variant="outline"
+                color="#4EAE4A"
+                radius="md"
+                leftSection={<IconDownload size={16} />}
+                size="sm"
+                loading={exportingCsv}
+                disabled={exportingCsv || scannedStudentsCount === 0}
+                onClick={handleExportCsv}
+              >
+                {isMobile ? 'Download' : 'Download Results'}
+              </Button>
+              {exam.is_locked ? (
+                <Tooltip label="This examination has already been proceeded." withArrow>
+                  <Button
+                    variant="outline"
+                    color="gray"
+                    size="sm"
+                    w={isMobile ? undefined : 180}
+                    disabled
+                  >
+                    Proceed to Reports
+                  </Button>
+                </Tooltip>
+              ) : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+                <Button
+                  variant="filled"
+                  size="sm"
+                  w={isMobile ? undefined : 180}
+                  styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
+                  onClick={handleProceedToReports}
+                  loading={finalizingReports}
+                  disabled={finalizingReports}
+                >
+                  Proceed to Reports
+                </Button>
+              ) : (
                 <Button
                   variant="outline"
                   color="gray"
                   size="sm"
-                  w={isMobile ? '100%' : 180}
+                  w={isMobile ? undefined : 180}
                   disabled
                 >
-                  Proceed to Reports
+                  Scanned {scannedStudentsCount}/{rosterStudents.length}
                 </Button>
-              </Tooltip>
-            ) : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
-              <Button
-                variant="filled"
-                size="sm"
-                w={isMobile ? '100%' : 180}
-                styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
-                onClick={handleProceedToReports}
-                loading={finalizingReports}
-                disabled={finalizingReports}
-              >
-                Proceed to Reports
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                color="gray"
-                size="sm"
-                w={isMobile ? '100%' : 180}
-                disabled
-              >
-                Scanned {scannedStudentsCount}/{rosterStudents.length}
-              </Button>
-            )}
+              )}
+            </Group>
           </Group>
 
           <Group gap="sm" align="flex-end" wrap="wrap">
@@ -1126,149 +1496,172 @@ export default function ScanPapersPage() {
                 <p className="text-xs text-gray-400 mt-1">No roster is linked to the sections assigned to this exam.</p>
               </div>
             ) : (
-                <TableScrollContainer minWidth={640} type="native">
-                  <Table verticalSpacing="sm" striped={false} highlightOnHover>
-                    <TableThead>
-                      <TableTr>
-                        <TableTh>Name of Pupil</TableTh>
-                        <TableTh w={160} ta="center">Test Score</TableTh>
-                        <TableTh w={220} ta="center">Level of Proficiency</TableTh>
-                        {!isAdminView && <TableTh w={120} ta="center" />}
-                      </TableTr>
-                    </TableThead>
-                    <TableTbody>
-                      {filteredStudents.length === 0 ? (
+              <>
+                {/* Desktop table */}
+                <div className="hidden sm:block">
+                  <TableScrollContainer minWidth={640} type="native">
+                    <Table verticalSpacing="sm" striped={false} highlightOnHover>
+                      <TableThead>
                         <TableTr>
-                          <TableTd colSpan={isAdminView ? 3 : 4}>
-                            <Text size="sm" c="dimmed" ta="center" py="md">No matching students</Text>
-                          </TableTd>
+                          <TableTh>Name of Pupil</TableTh>
+                          <TableTh w={160} ta="center">Test Score</TableTh>
+                          <TableTh w={220} ta="center">Level of Proficiency</TableTh>
+                          {!isAdminView && <TableTh w={120} ta="center" />}
                         </TableTr>
-                      ) : (
-                        <>
-                          {maleStudents.length > 0 && (
-                            <TableTr>
-                              <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
-                                Male ({maleStudents.length})
-                              </TableTd>
-                            </TableTr>
-                          )}
-                          {maleStudents.map(student => {
-                            const attempt = getStudentAttempt(student);
-                            const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
-                            const proficiency = mpl != null ? getProficiency(mpl) : null;
-                            const hasScanned = attempt != null;
-                            const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
-                            return (
-                              <TableTr key={student.enrollment_id}>
-                                <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
-                                  <Text
-                                    fz="sm"
-                                    fw={500}
-                                    c="dark"
-                                  >
-                                    {student.full_name}
-                                  </Text>
-                                  <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
+                      </TableThead>
+                      <TableTbody>
+                        {filteredStudents.length === 0 ? (
+                          <TableTr>
+                            <TableTd colSpan={isAdminView ? 3 : 4}>
+                              <Text size="sm" c="dimmed" ta="center" py="md">No matching students</Text>
+                            </TableTd>
+                          </TableTr>
+                        ) : (
+                          <>
+                            {maleStudents.length > 0 && (
+                              <TableTr>
+                                <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                                  Male ({maleStudents.length})
                                 </TableTd>
-                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
-                                  <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
-                                    {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
-                                  </Text>
-                                </TableTd>
-                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
-                                  {proficiency ? (
-                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
-                                      {proficiency}
-                                    </span>
-                                  ) : <Text span size="sm" c="dimmed">—</Text>}
-                                </TableTd>
-                                {!isAdminView && (
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                    <Tooltip
-                                      label="This examination has already been proceeded."
-                                      disabled={!exam.is_locked}
-                                      withArrow
-                                    >
-                                      <Button
-                                        size="xs"
-                                        radius="md"
-                                        color={hasScanned ? "yellow" : "#4EAE4A"}
-                                        onClick={() => handleScanStudent(student)}
-                                        disabled={exam.is_locked}
-                                      >
-                                        {hasScanned ? 'Rescan' : 'Scan'}
-                                      </Button>
-                                    </Tooltip>
-                                  </TableTd>
-                                )}
                               </TableTr>
-                            );
-                          })}
+                            )}
+                            {maleStudents.map(student => {
+                              const attempt = getStudentAttempt(student);
+                              const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
+                              const proficiency = mpl != null ? getProficiency(mpl) : null;
+                              const hasScanned = attempt != null;
+                              const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
+                              return (
+                                <TableTr key={student.enrollment_id}>
+                                  <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
+                                    <Text fz="sm" fw={500} c="dark">{student.full_name}</Text>
+                                    <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
+                                  </TableTd>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
+                                    <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
+                                      {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
+                                    </Text>
+                                  </TableTd>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
+                                    {proficiency ? (
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
+                                        {proficiency}
+                                      </span>
+                                    ) : <Text span size="sm" c="dimmed">—</Text>}
+                                  </TableTd>
+                                  {!isAdminView && (
+                                    <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
+                                      <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
+                                        <Button size="xs" radius="md" color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
+                                          {hasScanned ? 'Rescan' : 'Scan'}
+                                        </Button>
+                                      </Tooltip>
+                                    </TableTd>
+                                  )}
+                                </TableTr>
+                              );
+                            })}
+                            {femaleStudents.length > 0 && (
+                              <TableTr>
+                                <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
+                                  Female ({femaleStudents.length})
+                                </TableTd>
+                              </TableTr>
+                            )}
+                            {femaleStudents.map(student => {
+                              const attempt = getStudentAttempt(student);
+                              const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
+                              const proficiency = mpl != null ? getProficiency(mpl) : null;
+                              const hasScanned = attempt != null;
+                              const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
+                              return (
+                                <TableTr key={student.enrollment_id}>
+                                  <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
+                                    <Text fz="sm" fw={500} c="dark">{student.full_name}</Text>
+                                    <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
+                                  </TableTd>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
+                                    <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
+                                      {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
+                                    </Text>
+                                  </TableTd>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
+                                    {proficiency ? (
+                                      <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
+                                        {proficiency}
+                                      </span>
+                                    ) : <Text span size="sm" c="dimmed">—</Text>}
+                                  </TableTd>
+                                  {!isAdminView && (
+                                    <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
+                                      <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
+                                        <Button size="xs" radius="md" color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
+                                          {hasScanned ? 'Rescan' : 'Scan'}
+                                        </Button>
+                                      </Tooltip>
+                                    </TableTd>
+                                  )}
+                                </TableTr>
+                              );
+                            })}
+                          </>
+                        )}
+                      </TableTbody>
+                    </Table>
+                  </TableScrollContainer>
+                </div>
 
-                          {femaleStudents.length > 0 && (
-                            <TableTr>
-                              <TableTd colSpan={isAdminView ? 3 : 4} fw={700} fz="sm" ta="center" style={{ backgroundColor: "var(--mantine-color-gray-1)" }}>
-                                Female ({femaleStudents.length})
-                              </TableTd>
-                            </TableTr>
-                          )}
-                          {femaleStudents.map(student => {
-                            const attempt = getStudentAttempt(student);
-                            const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
-                            const proficiency = mpl != null ? getProficiency(mpl) : null;
-                            const hasScanned = attempt != null;
-                            const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
-                            return (
-                              <TableTr key={student.enrollment_id}>
-                                <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
-                                  <Text
-                                    fz="sm"
-                                    fw={500}
-                                    c="dark"
-                                  >
-                                    {student.full_name}
-                                  </Text>
-                                  <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
-                                </TableTd>
-                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
-                                  <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
-                                    {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
-                                  </Text>
-                                </TableTd>
-                                <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
-                                  {proficiency ? (
-                                    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
-                                      {proficiency}
-                                    </span>
-                                  ) : <Text span size="sm" c="dimmed">—</Text>}
-                                </TableTd>
-                                {!isAdminView && (
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                    <Tooltip
-                                      label="This examination has already been proceeded."
-                                      disabled={!exam.is_locked}
-                                      withArrow
-                                    >
-                                      <Button
-                                        size="xs"
-                                        radius="md"
-                                        color={hasScanned ? "yellow" : "#4EAE4A"}
-                                        onClick={() => handleScanStudent(student)}
-                                        disabled={exam.is_locked}
-                                      >
-                                        {hasScanned ? 'Rescan' : 'Scan'}
-                                      </Button>
-                                    </Tooltip>
-                                  </TableTd>
-                                )}
-                              </TableTr>
-                            );
-                          })}
+                {/* Mobile accordion list */}
+                <div className="sm:hidden">
+                  <Divider />
+                  {filteredStudents.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Text size="sm" c="dimmed" ta="center">No matching students</Text>
+                    </div>
+                  ) : (
+                    <>
+                      {maleStudents.length > 0 && (
+                        <>
+                          <div className="px-4 py-2 bg-gray-100 text-sm font-bold text-center text-gray-700">
+                            Male ({maleStudents.length})
+                          </div>
+                          {maleStudents.map(student => (
+                            <StudentMobileRow
+                              key={student.enrollment_id}
+                              student={student}
+                              attempt={getStudentAttempt(student)}
+                              totalItems={totalItems}
+                              isHighlighted={highlightedEnrollmentId === student.enrollment_id}
+                              isAdminView={isAdminView}
+                              isLocked={exam.is_locked}
+                              onScan={handleScanStudent}
+                            />
+                          ))}
                         </>
                       )}
-                    </TableTbody>
-                  </Table>
-                </TableScrollContainer>
+                      {femaleStudents.length > 0 && (
+                        <>
+                          <div className="px-4 py-2 bg-gray-100 text-sm font-bold text-center text-gray-700">
+                            Female ({femaleStudents.length})
+                          </div>
+                          {femaleStudents.map(student => (
+                            <StudentMobileRow
+                              key={student.enrollment_id}
+                              student={student}
+                              attempt={getStudentAttempt(student)}
+                              totalItems={totalItems}
+                              isHighlighted={highlightedEnrollmentId === student.enrollment_id}
+                              isAdminView={isAdminView}
+                              isLocked={exam.is_locked}
+                              onScan={handleScanStudent}
+                            />
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              </>
             )}
           </>
         )}
@@ -1279,35 +1672,292 @@ export default function ScanPapersPage() {
     );
   }
 
+  const clampTranslate = (x: number, y: number, scale: number) => {
+    const el = imgContainerRef.current;
+    if (!el || scale <= 1) return { x: 0, y: 0 };
+    const maxX = (el.clientWidth * (scale - 1)) / 2;
+    const maxY = (el.clientHeight * (scale - 1)) / 2;
+    return {
+      x: Math.max(-maxX, Math.min(maxX, x)),
+      y: Math.max(-maxY, Math.min(maxY, y)),
+    };
+  };
+
   // Wizard steps: capture / review / submit
   return (
     <>
-      <Modal
-        opened={previewModalOpened}
-        onClose={() => setPreviewModalOpened(false)}
-        title="Uploaded Answer Sheet"
-        size="xl"
-        centered
-      >
-        {previewUrl && (
-          <div className="max-h-[80vh] overflow-auto rounded-xl bg-gray-50">
+      {/* Image viewer overlay */}
+      {viewerUrl && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-8"
+          style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setViewerUrl(null);
+              setImgScale(1);
+              setImgTranslate({ x: 0, y: 0 });
+            }
+          }}
+        >
+        <div
+          className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden w-full max-w-2xl"
+          style={{ maxHeight: '90vh' }}
+        >
+          {/* Header bar */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+            <span className="font-semibold text-sm text-gray-800">Answer Sheet Preview</span>
+            <button
+              type="button"
+              onClick={() => {
+                setViewerUrl(null);
+                setImgScale(1);
+                setImgTranslate({ x: 0, y: 0 });
+              }}
+              className="text-gray-500 p-1 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="Close preview"
+            >
+              <IconX className="w-6 h-6" />
+            </button>
+          </div>
+
+          {/* Zoomable image area */}
+          <div
+            ref={imgContainerRef}
+            className="relative overflow-hidden bg-gray-50 select-none"
+            style={{ height: '70vh', cursor: imgScale > 1 ? 'grab' : 'default', touchAction: 'none' }}
+            onWheel={(e) => {
+              e.preventDefault();
+              const factor = e.deltaY > 0 ? 0.9 : 1.1;
+              setImgScale(s => {
+                const next = Math.min(Math.max(s * factor, 1), 5);
+                setImgTranslate(t => clampTranslate(t.x, t.y, next));
+                return next;
+              });
+            }}
+            onMouseDown={(e) => {
+              if (imgScale > 1) {
+                isDraggingRef.current = true;
+                dragStartRef.current = { x: e.clientX - imgTranslate.x, y: e.clientY - imgTranslate.y };
+              }
+            }}
+            onMouseMove={(e) => {
+              if (isDraggingRef.current && dragStartRef.current) {
+                const raw = { x: e.clientX - dragStartRef.current.x, y: e.clientY - dragStartRef.current.y };
+                setImgTranslate(clampTranslate(raw.x, raw.y, imgScale));
+              }
+            }}
+            onMouseUp={() => { isDraggingRef.current = false; }}
+            onMouseLeave={() => { isDraggingRef.current = false; }}
+            onTouchStart={(e) => {
+              if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                lastTouchDistRef.current = Math.hypot(dx, dy);
+              } else if (e.touches.length === 1) {
+                lastTouchPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                const now = Date.now();
+                if (now - lastTapTimeRef.current < 300) {
+                  setImgScale(s => {
+                    if (s > 1) { setImgTranslate({ x: 0, y: 0 }); return 1; }
+                    setImgTranslate({ x: 0, y: 0 });
+                    return 2.5;
+                  });
+                }
+                lastTapTimeRef.current = now;
+              }
+            }}
+            onTouchMove={(e) => {
+              if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                if (lastTouchDistRef.current !== null) {
+                  const ratio = dist / lastTouchDistRef.current;
+                  setImgScale(s => {
+                    const next = Math.min(Math.max(s * ratio, 1), 5);
+                    setImgTranslate(t => clampTranslate(t.x, t.y, next));
+                    return next;
+                  });
+                }
+                lastTouchDistRef.current = dist;
+              } else if (e.touches.length === 1 && lastTouchPosRef.current) {
+                const dx = e.touches[0].clientX - lastTouchPosRef.current.x;
+                const dy = e.touches[0].clientY - lastTouchPosRef.current.y;
+                setImgTranslate(t => clampTranslate(t.x + dx, t.y + dy, imgScale));
+                lastTouchPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+              }
+            }}
+            onTouchEnd={() => { lastTouchDistRef.current = null; }}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={previewUrl}
-              alt="Uploaded answer sheet preview"
-              className="mx-auto h-auto max-w-none"
+              src={viewerUrl}
+              alt="Answer sheet preview"
+              draggable={false}
+              style={{
+                transform: `scale(${imgScale}) translate(${imgTranslate.x / imgScale}px, ${imgTranslate.y / imgScale}px)`,
+                transformOrigin: 'center center',
+                transition: imgScale === 1 ? 'transform 0.2s ease' : 'none',
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
+                userSelect: 'none',
+              }}
             />
+
+            {imgScale > 1 && (
+              <button
+                type="button"
+                onClick={() => { setImgScale(1); setImgTranslate({ x: 0, y: 0 }); }}
+                className="absolute bottom-4 right-4 bg-white/90 rounded-full px-3 py-1 text-xs text-gray-800 shadow-lg"
+              >
+                Reset zoom
+              </button>
+            )}
+            {imgScale === 1 && (
+              <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-gray-400 pointer-events-none">
+                Pinch or double-tap to zoom · drag to pan
+              </p>
+            )}
           </div>
-        )}
-      </Modal>
-      <h1 className="text-2xl sm:text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">Scan Papers</h1>
+        </div>
+        </div>
+      )}
+      {(cameraActive || startingCamera || scannerProcessingCapture || scannerProcessedPreviewUrl || scannerCaptureError) && (
+        <div className="fixed inset-0 z-[10000] bg-black text-white">
+          {(cameraActive || startingCamera) && (
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+
+          {scannerProcessedPreviewUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={scannerProcessedPreviewUrl}
+              alt="Corrected answer sheet"
+              className="absolute inset-0 h-full w-full object-contain"
+            />
+          )}
+
+          {cameraActive && liveDocument?.corners && (
+            <svg
+              className="absolute inset-0 h-full w-full pointer-events-none"
+              viewBox={`0 0 ${liveDocument.width} ${liveDocument.height}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <polygon
+                points={visualPolygonCorners(liveDocument)}
+                fill={liveDocument.isVisible ? 'rgba(78,174,74,0.10)' : 'rgba(255,193,7,0.08)'}
+                stroke={liveDocument.isVisible ? '#4EAE4A' : '#F6C343'}
+                strokeWidth={Math.max(4, liveDocument.width * 0.006)}
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+
+          {scannerProcessingCapture && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/65 px-6 text-center">
+              <div className="rounded-2xl bg-black/70 px-5 py-4 shadow-xl backdrop-blur">
+                <Text c="white" fw={700}>{scannerStatus || 'Processing scan'}</Text>
+                <Text c="white" opacity={0.75} size="sm" mt={4}>Correcting orientation...</Text>
+              </div>
+            </div>
+          )}
+
+          {scannerCaptureError && !scannerProcessingCapture && (
+            <div className="absolute inset-x-4 top-28 rounded-2xl bg-red-500 px-4 py-3 text-sm font-semibold shadow-xl">
+              {scannerCaptureError}
+            </div>
+          )}
+
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+            {scannerProcessedPreviewUrl || scannerCaptureError ? (
+              <button
+                type="button"
+                onClick={handleScannerRetake}
+                className="rounded-full bg-black/60 px-4 py-2 text-sm font-bold text-white backdrop-blur"
+              >
+                Retake
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"
+                aria-label="Close scanner"
+              >
+                <IconX className="h-6 w-6" />
+              </button>
+            )}
+
+            {scannerProcessedPreviewUrl || scannerCaptureError ? (
+              <button
+                type="button"
+                onClick={handleScannerDone}
+                disabled={!scannerScanResult || Boolean(scannerCaptureError)}
+                className="rounded-full bg-white px-5 py-2 text-sm font-bold text-black shadow-lg disabled:opacity-50"
+              >
+                Done
+              </button>
+            ) : (
+              <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 text-xs font-semibold backdrop-blur">
+                {(['off', 'auto', 'on'] as const).map((mode) => {
+                  const selected = flashMode === mode;
+                  const disabled = mode === 'on' && !torchSupported;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => !disabled && setFlashMode(mode)}
+                      disabled={disabled}
+                      className={[
+                        'flex h-9 min-w-14 items-center justify-center gap-1 rounded-full px-3 transition',
+                        selected ? 'bg-white text-black' : 'text-white/85',
+                        disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/15',
+                      ].join(' ')}
+                      title={disabled ? 'Flash is not supported on this camera' : `Flash ${mode}`}
+                    >
+                      {mode === 'off' ? <IconBoltOff className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
+                      <span className="capitalize">{mode}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {!scannerProcessedPreviewUrl && !scannerCaptureError && (
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold shadow-lg backdrop-blur">
+              {startingCamera ? 'Initializing camera' : scannerStatus}
+            </div>
+            <button
+              type="button"
+              onClick={captureFromCamera}
+              disabled={startingCamera || autoCapturing}
+              className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white/90 bg-white/20 shadow-2xl transition active:scale-95 disabled:opacity-60"
+              aria-label="Capture answer sheet"
+            >
+              <span className="block h-14 w-14 rounded-full bg-white" />
+            </button>
+          </div>
+          )}
+        </div>
+      )}
+      <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
+      <div style={isMobile ? { paddingBottom: 80 } : undefined}>
       <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
 
         {/* STEP: CAPTURE */}
         {step === 'capture' && (
           <Stack gap="sm">
-            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>
+            {!isMobile && <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>}
             <Stack gap="md">
                 {/* Student & Examination Information */}
                 <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
@@ -1331,20 +1981,6 @@ export default function ScanPapersPage() {
                     </div>
                   </div>
                 </Paper>
-
-{/* Camera active state */}
-                {(cameraActive || startingCamera) && (
-                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
-                    <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                    {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
-                    <Group mt="sm">
-                      <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
-                        Capture
-                      </Button>
-                      <Button variant="default" onClick={stopCamera}>Cancel</Button>
-                    </Group>
-                  </Paper>
-                )}
 
                 {/* Scanning Guidelines — only on the initial upload page */}
                 {!cameraActive && !previewUrl && (
@@ -1414,7 +2050,7 @@ export default function ScanPapersPage() {
                         <button
                           type="button"
                           className="mb-4 block w-full max-h-96 overflow-hidden rounded-xl bg-gray-50 cursor-zoom-in"
-                          onClick={() => setPreviewModalOpened(true)}
+                          onClick={() => setViewerUrl(previewUrl)}
                         >
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -1427,9 +2063,9 @@ export default function ScanPapersPage() {
                           <Button
                             variant="default"
                             onClick={() => {
-                              previousFileRef.current = capturedFile;
+                              if (fileInputRef.current) fileInputRef.current.value = '';
                               setDuplicateImageError(false);
-                              setPreviewModalOpened(false);
+                              setViewerUrl(null);
                               setProcessingError(null);
                               setPreviewUrl(null);
                               setCapturedFile(null);
@@ -1443,7 +2079,7 @@ export default function ScanPapersPage() {
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <button
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={() => { if (fileInputRef.current) { fileInputRef.current.value = ''; fileInputRef.current.click(); } }}
                           className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-gray-300 hover:border-green-400 rounded-xl hover:bg-green-50 transition-all"
                         >
                           <IconUpload className="w-8 h-8 text-gray-400" />
@@ -1476,7 +2112,7 @@ export default function ScanPapersPage() {
         {/* â"€â"€ STEP: PROCESSING â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'processing' && (
           <Stack gap="sm">
-            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>
+            {!isMobile && <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Scan Answer Sheet</Text>}
             <Stack gap="md">
               <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
                 <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Student &amp; Examination Information</Text>
@@ -1522,7 +2158,7 @@ export default function ScanPapersPage() {
         {/* â"€â"€ STEP: REVIEW â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'review' && (
           <Stack gap="sm">
-            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Review Detected Answers</Text>
+            {!isMobile && <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Review Detected Answers</Text>}
             <Stack gap="md">
 
                 {/* Student & Examination Information */}
@@ -1572,9 +2208,15 @@ export default function ScanPapersPage() {
                         <p className="text-yellow-700">Corner markers not found — results may be less accurate. Review and correct any wrong answers.</p>
                       </div>
                     )}
-                    <div className="overflow-auto bg-gray-100 rounded-xl flex items-start justify-center p-2" style={{ maxHeight: '640px' }}>
-                      <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain" />
-                    </div>
+                    <button
+                      type="button"
+                      className="w-full overflow-auto bg-gray-100 rounded-xl flex items-start justify-center p-2 cursor-zoom-in"
+                      style={{ maxHeight: '640px' }}
+                      onClick={() => setViewerUrl(debugImageUrl)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain pointer-events-none" />
+                    </button>
                   </Paper>
                 )}
 
@@ -1582,7 +2224,14 @@ export default function ScanPapersPage() {
                 {warpedImageUrl && (
                   <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
                     <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Uploaded Answer Sheet</Text>
-                    <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl" />
+                    <button
+                      type="button"
+                      className="block w-full rounded-xl overflow-hidden cursor-zoom-in"
+                      onClick={() => setViewerUrl(warpedImageUrl)}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl pointer-events-none" />
+                    </button>
                   </Paper>
                 )}
 
@@ -1592,39 +2241,23 @@ export default function ScanPapersPage() {
 
                   <div className="mx-auto w-full max-w-[860px] flex flex-col gap-4">
                     {/* Stat cards — clickable filters for faster review */}
-                    <div className="flex gap-3 w-full">
-                      <button
-                        type="button"
-                        onClick={() => setReviewFilter('detected')}
-                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'detected' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                      >
-                        <p className={`text-2xl font-bold ${reviewFilter === 'detected' ? 'text-white' : 'text-gray-900'}`}>{answeredCount}</p>
-                        <p className={`text-xs mt-0.5 ${reviewFilter === 'detected' ? 'text-white/95' : 'text-gray-600'}`}>Detected</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReviewFilter('undetected')}
-                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'undetected' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                      >
-                        <p className={`text-2xl font-bold ${reviewFilter === 'undetected' ? 'text-white' : 'text-gray-900'}`}>{undetectedCount}</p>
-                        <p className={`text-xs mt-0.5 ${reviewFilter === 'undetected' ? 'text-white/95' : 'text-gray-600'}`}>Undetected</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReviewFilter('needs_attention')}
-                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'needs_attention' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                      >
-                        <p className={`text-2xl font-bold ${reviewFilter === 'needs_attention' ? 'text-white' : 'text-gray-900'}`}>{needsAttentionCount}</p>
-                        <p className={`text-xs mt-0.5 ${reviewFilter === 'needs_attention' ? 'text-white/95' : 'text-gray-600'}`}>Needs Attention</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReviewFilter('all')}
-                        className={`rounded-xl p-3 text-center flex-1 border transition ${reviewFilter === 'all' ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
-                      >
-                        <p className={`text-2xl font-bold ${reviewFilter === 'all' ? 'text-white' : 'text-gray-900'}`}>{totalItems}</p>
-                        <p className={`text-xs mt-0.5 ${reviewFilter === 'all' ? 'text-white/95' : 'text-gray-600'}`}>All Items</p>
-                      </button>
+                    <div className="grid grid-cols-4 gap-3 w-full">
+                      {([
+                        { filter: 'detected', count: answeredCount, label: 'Detected' },
+                        { filter: 'undetected', count: undetectedCount, label: 'Undetected' },
+                        { filter: 'needs_attention', count: needsAttentionCount, label: 'Needs Attention' },
+                        { filter: 'all', count: totalItems, label: 'All Items' },
+                      ] as const).map(({ filter, count, label }) => (
+                        <button
+                          key={filter}
+                          type="button"
+                          onClick={() => setReviewFilter(filter)}
+                          className={`rounded-xl p-3 flex flex-col items-center justify-center border transition ${reviewFilter === filter ? 'border-[#2f7f2b] bg-[#4EAE4A]' : 'border-gray-200 bg-white hover:bg-gray-50'}`}
+                        >
+                          <span className={`text-2xl font-bold ${reviewFilter === filter ? 'text-white' : 'text-gray-900'}`}>{count}</span>
+                          <span className={`text-xs mt-0.5 leading-tight text-center ${reviewFilter === filter ? 'text-white/95' : 'text-gray-600'}`}>{label}</span>
+                        </button>
+                      ))}
                     </div>
                     <Group justify="center" align="center" gap="sm">
                       <Text size="xs" c="dimmed">
@@ -1675,24 +2308,31 @@ export default function ScanPapersPage() {
                             if (columnItems.length === 0) return null;
                             return (
                               <div key={col} className="overflow-x-auto">
-                                <table className="w-auto border-collapse text-sm">
-                                  <thead>
-                                    <tr className="bg-[#4EAE4A]">
-                                      <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
-                                      {choices.map(ch => (
-                                        <th key={ch} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">{ch}</th>
-                                      ))}
-                                      <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
-                                    </tr>
-                                  </thead>
+                                <table className="w-auto border-collapse text-sm [&_th]:border-x-0 [&_td]:border-x-0">
+                                  <colgroup>
+                                    <col className="w-8" />
+                                    {choices.map((_, i) => <col key={i} className="w-9" />)}
+                                    <col className="w-[64px]" />
+                                  </colgroup>
+                                  {(col === 1 || !isMobile) && (
+                                    <thead>
+                                      <tr className="bg-[#4EAE4A]">
+                                        <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                                        {choices.map(ch => (
+                                          <th key={ch} className="h-7 w-9 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">{ch}</th>
+                                        ))}
+                                        <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                                      </tr>
+                                    </thead>
+                                  )}
                                   <tbody className="divide-y divide-gray-100">
-                                    {columnItems.map(item => {
+                                    {columnItems.map((item, rowIdx) => {
                                       const correct = answerKey[item];
                                       const detected = detectedAnswers[item];
                                       const statusChip = getStatusChip(detected, correct);
                                       const rowHighlight = getRowHighlight(item);
                                       return (
-                                        <tr key={item} className={`transition-colors duration-300 ${rowHighlight || (!detected && reviewFilter === 'all' ? 'bg-gray-50' : '')}`}>
+                                        <tr key={item} className={`transition-colors duration-300 ${rowHighlight || (!detected && reviewFilter === 'all' ? 'bg-gray-50' : '')}${col === 2 && rowIdx === 0 ? ' border-t border-gray-100' : ''}`}>
                                           <td className="py-1 px-1 text-center text-xs font-semibold text-gray-600">{item}</td>
                                           {choices.map(ch => (
                                             <td key={ch} className="py-1 px-1 text-center">
@@ -1743,7 +2383,7 @@ export default function ScanPapersPage() {
         {/* â"€â"€ STEP: SUBMIT â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€ */}
         {step === 'submit' && (
           <Stack gap="sm">
-            <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Save Scanned Results</Text>
+            {!isMobile && <Text size="xl" fw={700} c={STEP_HEADING_COLOR}>Save Scanned Results</Text>}
             <Stack gap="md">
 
                 {/* Student & Examination Information */}
@@ -1783,44 +2423,88 @@ export default function ScanPapersPage() {
                   </div>
 
                   <Paper withBorder radius="md" p={0} style={{ overflow: 'hidden', width: 'fit-content', margin: '0 auto' }}>
-                    <div className="flex flex-col md:flex-row justify-center items-start md:divide-x md:divide-gray-100">
-                      {[1, 2].map(col => {
-                        const itemsInCol1 = Math.ceil(itemResults.length / 2);
-                        const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
-                        if (colItems.length === 0) return null;
-                        return (
-                          <div key={col} className="overflow-x-auto">
-                            <table className="w-auto border-collapse text-sm">
-                              <thead>
-                                <tr className="bg-[#4EAE4A]">
-                                  <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">Item</th>
-                                  <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Student</th>
-                                  <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Correct</th>
-                                  <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                    {isMobile ? (
+                      <div className="overflow-x-auto">
+                        <table className="w-auto table-fixed border-collapse text-sm [&_th]:border-x-0 [&_td]:border-x-0">
+                          <colgroup>
+                            <col className="w-8" />
+                            <col className="w-14" />
+                            <col className="w-14" />
+                            <col className="w-[64px]" />
+                          </colgroup>
+                          <thead>
+                            <tr className="bg-[#4EAE4A]">
+                              <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                              <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Student</th>
+                              <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Correct</th>
+                              <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {itemResults.map((r) => {
+                              const statusChip = getStatusChip(r.student, r.correct);
+                              return (
+                                <tr key={`submit-${r.item}`}>
+                                  <td className="w-8 py-1 px-1 text-center text-xs font-semibold text-gray-600">{r.item}</td>
+                                  <td className="w-14 py-1 px-2 text-center text-xs text-gray-800">{r.student ?? '-'}</td>
+                                  <td className="w-14 py-1 px-2 text-center text-xs text-gray-800">{r.correct ?? '-'}</td>
+                                  <td className="w-[64px] py-1 px-2 text-center">
+                                    <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                      {statusChip.label}
+                                    </span>
+                                  </td>
                                 </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {colItems.map(r => {
-                                  const statusChip = getStatusChip(r.student, r.correct);
-                                  return (
-                                    <tr key={`submit-${r.item}`}>
-                                      <td className="py-1 px-1 text-center text-xs font-semibold text-gray-600">{r.item}</td>
-                                      <td className="py-1 px-2 text-center text-xs text-gray-800">{r.student ?? '-'}</td>
-                                      <td className="py-1 px-2 text-center text-xs text-gray-800">{r.correct ?? '-'}</td>
-                                      <td className="py-1 px-2 text-center">
-                                        <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
-                                          {statusChip.label}
-                                        </span>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        );
-                      })}
-                    </div>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="flex justify-center items-start divide-x divide-gray-100">
+                        {[1, 2].map(col => {
+                          const itemsInCol1 = Math.ceil(itemResults.length / 2);
+                          const colItems = col === 1 ? itemResults.slice(0, itemsInCol1) : itemResults.slice(itemsInCol1);
+                          if (colItems.length === 0) return null;
+                          return (
+                            <div key={col} className="overflow-x-auto">
+                              <table className="w-auto table-fixed border-collapse text-sm [&_th]:border-x-0 [&_td]:border-x-0">
+                                <colgroup>
+                                  <col className="w-8" />
+                                  <col className="w-14" />
+                                  <col className="w-14" />
+                                  <col className="w-[64px]" />
+                                </colgroup>
+                                <thead>
+                                  <tr className="bg-[#4EAE4A]">
+                                    <th className="h-7 w-8 px-1 text-center text-xs font-semibold text-white whitespace-nowrap">No.</th>
+                                    <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Student</th>
+                                    <th className="h-7 w-14 px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Correct</th>
+                                    <th className="h-7 w-[64px] px-2 text-center text-xs font-semibold text-white whitespace-nowrap">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {colItems.map((r) => {
+                                    const statusChip = getStatusChip(r.student, r.correct);
+                                    return (
+                                      <tr key={`submit-${r.item}`}>
+                                        <td className="w-8 py-1 px-1 text-center text-xs font-semibold text-gray-600">{r.item}</td>
+                                        <td className="w-14 py-1 px-2 text-center text-xs text-gray-800">{r.student ?? '-'}</td>
+                                        <td className="w-14 py-1 px-2 text-center text-xs text-gray-800">{r.correct ?? '-'}</td>
+                                        <td className="w-[64px] py-1 px-2 text-center">
+                                          <span className={`${STATUS_CHIP_CLASS} ${statusChip.className}`}>
+                                            {statusChip.label}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </Paper>
                 </Paper>
 
@@ -1828,7 +2512,22 @@ export default function ScanPapersPage() {
           </Stack>
         )}
       </VerticalWizardLayout>
-      {wizardNavButtons}
+      {!isMobile && getNavButtons()}
+      </div>
+      {isMobile && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: 'white',
+          borderTop: '1px solid #e5e7eb',
+          padding: '12px 16px',
+          zIndex: 200,
+        }}>
+          {getNavButtons(0)}
+        </div>
+      )}
     </Container>
     </>
   );

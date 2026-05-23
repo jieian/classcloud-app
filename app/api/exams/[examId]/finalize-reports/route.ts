@@ -22,25 +22,36 @@ type ExamFinalizeRow = {
       }
     | null;
   is_locked: boolean | null;
+  creator_teacher_id: string | null;
+  quarter_id: number | null;
   curriculum_subject_id: number | null;
+};
+
+type SectionJoin = {
+  grade_level_id: number | null;
+  sy_id: number | null;
+  section_type: "REGULAR" | "SSES" | null;
 };
 
 type AssignmentRow = {
   id: number;
   section_id: number;
-  sections:
-    | {
-        grade_level_id: number | null;
-      }
-    | {
-        grade_level_id: number | null;
-      }[]
-    | null;
+  sections: SectionJoin | SectionJoin[] | null;
 };
 
 type EnrollmentRow = {
   enrollment_id: number;
   section_id: number;
+  students:
+    | {
+        full_name: string | null;
+        sex: string | null;
+      }
+    | {
+        full_name: string | null;
+        sex: string | null;
+      }[]
+    | null;
 };
 
 type ScoreRow = {
@@ -51,6 +62,25 @@ type ScoreRow = {
   calculated_score: number;
   graded_at: string;
 };
+
+type TeacherAssignmentRow = {
+  section_id: number | null;
+  teacher_id: string | null;
+};
+
+type ReportStudentScore = {
+  enrollment_id: number;
+  student_name: string;
+  sex: "Male" | "Female";
+  score_id: number;
+  score: number;
+  total_items: number;
+  mpl: number;
+  proficiency_level: string;
+  graded_at: string;
+};
+
+const MPL_THRESHOLD = 60;
 
 function normalizeAnswerKey(
   raw: ExamFinalizeRow["answer_key"],
@@ -73,11 +103,243 @@ function normalizeAnswerKey(
   return mapped;
 }
 
-function asSectionJoin(
-  join: AssignmentRow["sections"],
-): { grade_level_id: number | null } | null {
+function round2(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function asSectionJoin(join: AssignmentRow["sections"]): SectionJoin | null {
   if (Array.isArray(join)) return join[0] ?? null;
   return join ?? null;
+}
+
+function asStudentJoin(
+  join: EnrollmentRow["students"],
+): { full_name: string | null; sex: string | null } | null {
+  if (Array.isArray(join)) return join[0] ?? null;
+  return join ?? null;
+}
+
+function normalizeSex(value: string | null | undefined): "Male" | "Female" {
+  const raw = (value ?? "").trim().toLowerCase();
+  return raw === "f" || raw === "female" || raw.startsWith("female")
+    ? "Female"
+    : "Male";
+}
+
+function getProficiencyLevel(mpl: number): string {
+  if (mpl >= 90) return "Highly Proficient";
+  if (mpl >= 75) return "Proficient";
+  if (mpl >= 50) return "Nearly Proficient";
+  if (mpl >= 25) return "Low Proficient";
+  return "Not Proficient";
+}
+
+function percent(part: number, total: number): number {
+  return total > 0 ? round2((part / total) * 100) : 0;
+}
+
+function buildExamResultReportRows({
+  exam,
+  examId,
+  assignments,
+  enrollments,
+  latestScoreByPair,
+  sectionToTeacherId,
+  totalItems,
+  generatedBy,
+}: {
+  exam: ExamFinalizeRow;
+  examId: number;
+  assignments: AssignmentRow[];
+  enrollments: EnrollmentRow[];
+  latestScoreByPair: Map<string, ScoreRow>;
+  sectionToTeacherId: Map<number, string>;
+  totalItems: number;
+  generatedBy: string;
+}): Record<string, unknown>[] {
+  const now = new Date().toISOString();
+  const enrollmentsBySection = new Map<number, EnrollmentRow[]>();
+  for (const enrollment of enrollments) {
+    const group = enrollmentsBySection.get(enrollment.section_id) ?? [];
+    group.push(enrollment);
+    enrollmentsBySection.set(enrollment.section_id, group);
+  }
+
+  return assignments.map((assignment) => {
+    const section = asSectionJoin(assignment.sections);
+    const sectionEnrollments = enrollmentsBySection.get(assignment.section_id) ?? [];
+    const studentScores: ReportStudentScore[] = [];
+
+    for (const enrollment of sectionEnrollments) {
+      const score = latestScoreByPair.get(
+        `${enrollment.enrollment_id}-${assignment.id}`,
+      );
+      if (!score) continue;
+
+      const student = asStudentJoin(enrollment.students);
+      const sex = normalizeSex(student?.sex);
+      const scoreValue = score.calculated_score ?? 0;
+      const mpl = totalItems > 0 ? round2((scoreValue / totalItems) * 100) : 0;
+
+      studentScores.push({
+        enrollment_id: enrollment.enrollment_id,
+        student_name:
+          student?.full_name?.trim() || `Enrollment #${enrollment.enrollment_id}`,
+        sex,
+        score_id: score.score_id,
+        score: scoreValue,
+        total_items: totalItems,
+        mpl,
+        proficiency_level: getProficiencyLevel(mpl),
+        graded_at: score.graded_at,
+      });
+    }
+
+    const scores = studentScores.map((studentScore) => studentScore.score);
+    const totalCases = studentScores.length;
+    const maleScores = studentScores.filter((studentScore) => studentScore.sex === "Male");
+    const femaleScores = studentScores.filter((studentScore) => studentScore.sex === "Female");
+    const totalScore = scores.reduce((sum, score) => sum + score, 0);
+    const mean = totalCases > 0 ? round2(totalScore / totalCases) : 0;
+    const mps = totalItems > 0 ? round2(mean / totalItems) : 0;
+    const pl = totalItems > 0 ? round2((mean / totalItems) * 100) : 0;
+    const sd =
+      totalCases > 0
+        ? round2(
+            Math.sqrt(
+              scores.reduce((sum, score) => sum + (score - mean) ** 2, 0) /
+                totalCases,
+            ),
+          )
+        : 0;
+
+    const achieved = studentScores.filter((studentScore) => studentScore.mpl >= MPL_THRESHOLD);
+    const failed = studentScores.filter((studentScore) => studentScore.mpl < MPL_THRESHOLD);
+    const countBySex = (
+      rows: ReportStudentScore[],
+      sex: "Male" | "Female",
+    ) => rows.filter((row) => row.sex === sex).length;
+    const countByLevel = (
+      sex: "Male" | "Female",
+      level: ReportStudentScore["proficiency_level"],
+    ) =>
+      studentScores.filter(
+        (row) => row.sex === sex && row.proficiency_level === level,
+      ).length;
+
+    const totalMaleCases = maleScores.length;
+    const totalFemaleCases = femaleScores.length;
+    const totalEnrolledMale = sectionEnrollments.filter(
+      (enrollment) => normalizeSex(asStudentJoin(enrollment.students)?.sex) === "Male",
+    ).length;
+    const totalEnrolledFemale = sectionEnrollments.filter(
+      (enrollment) => normalizeSex(asStudentJoin(enrollment.students)?.sex) === "Female",
+    ).length;
+    const totalEnrolled = totalEnrolledMale + totalEnrolledFemale;
+
+    const maleHighly = countByLevel("Male", "Highly Proficient");
+    const femaleHighly = countByLevel("Female", "Highly Proficient");
+    const maleProficient = countByLevel("Male", "Proficient");
+    const femaleProficient = countByLevel("Female", "Proficient");
+    const maleNearly = countByLevel("Male", "Nearly Proficient");
+    const femaleNearly = countByLevel("Female", "Nearly Proficient");
+    const maleLow = countByLevel("Male", "Low Proficient");
+    const femaleLow = countByLevel("Female", "Low Proficient");
+    const maleNot = countByLevel("Male", "Not Proficient");
+    const femaleNot = countByLevel("Female", "Not Proficient");
+
+    return {
+      exam_id: examId,
+      section_id: assignment.section_id,
+      teacher_id:
+        exam.creator_teacher_id ?? sectionToTeacherId.get(assignment.section_id) ?? null,
+      sy_id: section?.sy_id ?? null,
+      curriculum_subject_id: exam.curriculum_subject_id,
+      grade_level_id: section?.grade_level_id ?? null,
+      quarter_id: exam.quarter_id,
+      section_type: section?.section_type ?? "REGULAR",
+      total_items: totalItems,
+      total_cases: totalCases,
+      total_male_cases: totalMaleCases,
+      total_female_cases: totalFemaleCases,
+      total_score: totalScore,
+      mean,
+      mps,
+      pl,
+      sd,
+      highest_score: scores.length > 0 ? Math.max(...scores) : 0,
+      lowest_score: scores.length > 0 ? Math.min(...scores) : 0,
+      mpl_threshold: MPL_THRESHOLD,
+      total_male_achieved: countBySex(achieved, "Male"),
+      total_female_achieved: countBySex(achieved, "Female"),
+      total_achieved: achieved.length,
+      male_achieved_percent: percent(countBySex(achieved, "Male"), totalMaleCases),
+      female_achieved_percent: percent(countBySex(achieved, "Female"), totalFemaleCases),
+      total_achieved_percent: percent(achieved.length, totalCases),
+      total_male_failed: countBySex(failed, "Male"),
+      total_female_failed: countBySex(failed, "Female"),
+      total_failed: failed.length,
+      male_failed_percent: percent(countBySex(failed, "Male"), totalMaleCases),
+      female_failed_percent: percent(countBySex(failed, "Female"), totalFemaleCases),
+      total_failed_percent: percent(failed.length, totalCases),
+      total_male_highly: maleHighly,
+      total_male_proficient: maleProficient,
+      total_male_nearly: maleNearly,
+      total_male_low: maleLow,
+      total_male_not: maleNot,
+      total_female_highly: femaleHighly,
+      total_female_proficient: femaleProficient,
+      total_female_nearly: femaleNearly,
+      total_female_low: femaleLow,
+      total_female_not: femaleNot,
+      percent_highly: percent(maleHighly + femaleHighly, totalCases),
+      percent_proficient: percent(maleProficient + femaleProficient, totalCases),
+      percent_nearly: percent(maleNearly + femaleNearly, totalCases),
+      percent_low: percent(maleLow + femaleLow, totalCases),
+      percent_not: percent(maleNot + femaleNot, totalCases),
+      student_scores: studentScores,
+      total_enrolled_male: totalEnrolledMale,
+      total_enrolled_female: totalEnrolledFemale,
+      male_percentage: percent(totalMaleCases, totalEnrolledMale),
+      female_percentage: percent(totalFemaleCases, totalEnrolledFemale),
+      total_percentage: percent(totalCases, totalEnrolled),
+      generated_at: now,
+      generated_by: generatedBy,
+    };
+  });
+}
+
+async function saveExamResultReportRows(
+  rows: Record<string, unknown>[],
+): Promise<{ error: { message: string } | null }> {
+  for (const row of rows) {
+    const examId = row.exam_id;
+    const sectionId = row.section_id;
+    const { data: existing, error: lookupError } = await adminClient
+      .from("exam_results_reports")
+      .select("report_id")
+      .eq("exam_id", examId)
+      .eq("section_id", sectionId);
+
+    if (lookupError) return { error: { message: lookupError.message } };
+
+    if ((existing ?? []).length > 0) {
+      const { error: updateError } = await adminClient
+        .from("exam_results_reports")
+        .update(row)
+        .eq("exam_id", examId)
+        .eq("section_id", sectionId);
+      if (updateError) return { error: { message: updateError.message } };
+      continue;
+    }
+
+    const { error: insertError } = await adminClient
+      .from("exam_results_reports")
+      .insert(row);
+    if (insertError) return { error: { message: insertError.message } };
+  }
+
+  return { error: null };
 }
 
 const _POST = async function (
@@ -109,7 +371,7 @@ const _POST = async function (
   const { data: examData, error: examError } = await adminClient
     .from("exams")
     .select(
-      "exam_id, total_items, answer_key, is_locked, curriculum_subject_id, deleted_at",
+      "exam_id, total_items, answer_key, is_locked, creator_teacher_id, quarter_id, curriculum_subject_id, deleted_at",
     )
     .eq("exam_id", examId)
     .is("deleted_at", null)
@@ -127,10 +389,16 @@ const _POST = async function (
   }
 
   const exam = examData as ExamFinalizeRow;
+  if (exam.curriculum_subject_id == null || exam.quarter_id == null) {
+    return Response.json(
+      { error: "Exam is missing report context." },
+      { status: 400 },
+    );
+  }
 
   const { data: assignmentData, error: assignmentError } = await adminClient
     .from("exam_assignments")
-    .select("id, section_id, sections!inner(grade_level_id)")
+    .select("id, section_id, sections!inner(grade_level_id, sy_id, section_type)")
     .eq("exam_id", examId);
 
   if (assignmentError) {
@@ -160,48 +428,56 @@ const _POST = async function (
       { status: 400 },
     );
   }
+  const hasMissingAssignmentContext = assignments.some((assignment) => {
+    const section = asSectionJoin(assignment.sections);
+    return !section?.grade_level_id || !section.sy_id || !section.section_type;
+  });
 
-  if (exam.is_locked) {
+  if (hasMissingAssignmentContext) {
     return Response.json(
-      {
-        examId,
-        gradeLevelId,
-        sectionId,
-        finalized: true,
-      },
-      { status: 200 },
+      { error: "Exam assignment is missing report context." },
+      { status: 400 },
     );
   }
 
   const sectionIds = [...new Set(assignments.map((a) => a.section_id))];
   const assignmentIds = assignments.map((a) => a.id);
 
-  if (!hasFullAccess) {
-    const { data: teacherAssignments, error: teacherAssignmentsError } =
-      await adminClient
-        .from("teacher_class_assignments")
-        .select("section_id, curriculum_subject_id")
-        .eq("teacher_id", user.id)
-        .in("section_id", sectionIds)
-        .eq("curriculum_subject_id", exam.curriculum_subject_id)
-        .is("deleted_at", null);
+  const { data: teacherAssignmentsData, error: teacherAssignmentsError } =
+    await adminClient
+      .from("teacher_class_assignments")
+      .select("section_id, teacher_id")
+      .in("section_id", sectionIds)
+      .eq("curriculum_subject_id", exam.curriculum_subject_id)
+      .is("deleted_at", null);
 
-    if (teacherAssignmentsError) {
-      console.error(
-        "[api/exams/finalize-reports] teacher assignment check error:",
-        teacherAssignmentsError.message,
-      );
-      return Response.json({ error: "Internal server error." }, { status: 500 });
-    }
+  if (teacherAssignmentsError) {
+    console.error(
+      "[api/exams/finalize-reports] teacher assignment check error:",
+      teacherAssignmentsError.message,
+    );
+    return Response.json({ error: "Internal server error." }, { status: 500 });
+  }
 
-    if (!teacherAssignments || teacherAssignments.length === 0) {
-      return Response.json({ error: "Forbidden" }, { status: 403 });
+  const teacherAssignments = (teacherAssignmentsData ?? []) as TeacherAssignmentRow[];
+  if (
+    !hasFullAccess &&
+    !teacherAssignments.some((assignment) => assignment.teacher_id === user.id)
+  ) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const sectionToTeacherId = new Map<number, string>();
+  for (const assignment of teacherAssignments) {
+    if (assignment.section_id == null || assignment.teacher_id == null) continue;
+    if (!sectionToTeacherId.has(assignment.section_id)) {
+      sectionToTeacherId.set(assignment.section_id, assignment.teacher_id);
     }
   }
 
   const { data: enrollmentsData, error: enrollmentsError } = await adminClient
     .from("enrollments")
-    .select("enrollment_id, section_id")
+    .select("enrollment_id, section_id, students!left(full_name, sex)")
     .in("section_id", sectionIds)
     .is("deleted_at", null);
 
@@ -336,6 +612,29 @@ const _POST = async function (
     }
   }
 
+  const reportRows = buildExamResultReportRows({
+    exam,
+    examId,
+    assignments,
+    enrollments,
+    latestScoreByPair,
+    sectionToTeacherId,
+    totalItems,
+    generatedBy: user.id,
+  });
+  const { error: reportsSaveError } = await saveExamResultReportRows(reportRows);
+
+  if (reportsSaveError) {
+    console.error(
+      "[api/exams/finalize-reports] exam results report save error:",
+      reportsSaveError.message,
+    );
+    return Response.json(
+      { error: "Failed to save examination results report." },
+      { status: 500 },
+    );
+  }
+
   if (!exam.is_locked) {
     const { error: lockError } = await adminClient
       .from("exams")
@@ -363,6 +662,7 @@ const _POST = async function (
       gradeLevelId,
       sectionId,
       finalized: true,
+      reportsSaved: true,
       itemStatsSaved,
       warning: finalizeWarning,
     },

@@ -1,0 +1,14 @@
+.examNotifications:where([data-position='top-right']) {
+  top: calc(var(--mantine-spacing-lg) + var(--mantine-spacing-md));
+  right: var(--mantine-spacing-lg);
+}
+
+.examNotifications:where([data-position='top-center']) {
+  top: calc(56px + var(--mantine-spacing-lg) + 44px);
+}
+
+@media (max-width: 767.9px) {
+  .examNotifications:where([data-position='top-center']) {
+    top: calc(56px + var(--mantine-spacing-xs));
+  }
+}

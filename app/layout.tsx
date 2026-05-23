@@ -6,8 +6,8 @@ import { ModalsProvider } from "@mantine/modals";
 import "@mantine/core/styles.css";
 import "./globals.css";
 
-import { Notifications } from "@mantine/notifications";
 import "@mantine/notifications/styles.css";
+import DynamicNotifications from "@/app/(app)/exam/_components/ExamNotificationsPosition";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -46,7 +46,7 @@ export default function RootLayout({
           }}
         >
           <ModalsProvider>
-            <Notifications position="bottom-right" />
+            <DynamicNotifications />
             {children}
           </ModalsProvider>
         </MantineProvider>

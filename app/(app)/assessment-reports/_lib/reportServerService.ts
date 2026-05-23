@@ -36,6 +36,19 @@ type RawSectionRow = {
   grade_level_id: number | null;
   grade_levels: RawGradeJoin | RawGradeJoin[] | null;
 };
+type RawTeacherAssignmentRow = {
+  section_id: number | null;
+  curriculum_subjects:
+    | {
+        subject_id: number | null;
+        subjects: RawSubjectJoin | RawSubjectJoin[] | null;
+      }
+    | {
+        subject_id: number | null;
+        subjects: RawSubjectJoin | RawSubjectJoin[] | null;
+      }[]
+    | null;
+};
 
 function firstJoin<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -56,6 +69,10 @@ function getExamSortScore(examDate: string | null, examId: number): number {
   const timestamp = examDate ? new Date(examDate).getTime() : 0;
   const safeTimestamp = Number.isFinite(timestamp) ? timestamp : 0;
   return safeTimestamp * 10_000 + examId;
+}
+
+function isSsesSectionName(name: string): boolean {
+  return name.trim().toUpperCase() === "SSES";
 }
 
 async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
@@ -169,9 +186,47 @@ async function getGradeLevelsCached(): Promise<GradeLevel[]> {
   return (data ?? []) as GradeLevel[];
 }
 
-function buildSectionCards(examCards: ReportExamCard[], activeSections: RawSectionRow[]): ReportSectionCard[] {
+async function getSectionSubjectsCached(): Promise<Map<number, Map<number, string>>> {
+  "use cache";
+  cacheTag(REPORTS_CACHE_TAG);
+  cacheTag("teacher-assignments");
+  cacheLife("minutes");
+
+  const { data, error } = await admin
+    .from("teacher_class_assignments")
+    .select("section_id, curriculum_subjects!inner(subject_id, subjects(name))")
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("[reportServerService] getSectionSubjectsCached error:", error.message);
+    return new Map();
+  }
+
+  const result = new Map<number, Map<number, string>>();
+
+  for (const row of (data ?? []) as RawTeacherAssignmentRow[]) {
+    const sectionId = row.section_id ?? null;
+    const curriculum = firstJoin(row.curriculum_subjects);
+    if (sectionId == null || !curriculum || curriculum.subject_id == null) continue;
+    const subjectId = curriculum.subject_id;
+
+    const subjectJoin = firstJoin(curriculum.subjects);
+    const subjectName = subjectJoin?.name ?? "Unknown Subject";
+
+    if (!result.has(sectionId)) result.set(sectionId, new Map());
+    result.get(sectionId)!.set(subjectId, subjectName);
+  }
+
+  return result;
+}
+
+function buildSectionCards(
+  examCards: ReportExamCard[],
+  activeSections: RawSectionRow[],
+  sectionSubjects: Map<number, Map<number, string>>,
+): ReportSectionCard[] {
   const grouped = new Map<number, ReportSectionCard>();
-  const seenExamBySection = new Set<string>();
+  const latestBySectionSubject = new Map<string, ReportExamCard>();
 
   for (const card of examCards) {
     if (!grouped.has(card.sectionId)) {
@@ -191,23 +246,39 @@ function buildSectionCards(examCards: ReportExamCard[], activeSections: RawSecti
     }
 
     const current = grouped.get(card.sectionId)!;
-    const examKey = `${card.sectionId}-${card.examId}`;
-    if (!seenExamBySection.has(examKey)) {
-      seenExamBySection.add(examKey);
-      current.totalExams += 1;
-      if (card.isFinalized) current.finalizedExams += 1;
+    const currentSort = getExamSortScore(current.latestExamDate, current.latestExamId ?? 0);
+    const candidateSort = getExamSortScore(card.examDate, card.examId);
+    if (candidateSort >= currentSort) {
+      current.latestExamDate = card.examDate;
+      current.latestExamId = card.examId;
+    }
 
-      const currentSort = getExamSortScore(current.latestExamDate, current.latestExamId ?? 0);
-      const candidateSort = getExamSortScore(card.examDate, card.examId);
-      if (candidateSort >= currentSort) {
-        current.latestExamDate = card.examDate;
-        current.latestExamId = card.examId;
+    if (card.subjectId != null) {
+      if (!sectionSubjects.has(card.sectionId)) {
+        sectionSubjects.set(card.sectionId, new Map());
+      }
+      sectionSubjects.get(card.sectionId)!.set(card.subjectId, card.subjectName);
+    }
+
+    if (card.subjectId != null) {
+      const subjectKey = `${card.sectionId}-${card.subjectId}`;
+      const latest = latestBySectionSubject.get(subjectKey);
+      if (!latest) {
+        latestBySectionSubject.set(subjectKey, card);
+      } else {
+        const latestSort = getExamSortScore(latest.examDate, latest.examId);
+        if (candidateSort >= latestSort) {
+          latestBySectionSubject.set(subjectKey, card);
+        }
       }
     }
+  }
 
-    if (!current.subjectNames.includes(card.subjectName)) {
-      current.subjectNames.push(card.subjectName);
-    }
+  for (const latestCard of latestBySectionSubject.values()) {
+    const current = grouped.get(latestCard.sectionId);
+    if (!current) continue;
+    current.totalExams += 1;
+    if (latestCard.isFinalized) current.finalizedExams += 1;
   }
 
   for (const section of activeSections) {
@@ -232,16 +303,22 @@ function buildSectionCards(examCards: ReportExamCard[], activeSections: RawSecti
 
   const cards = Array.from(grouped.values()).map((card) => ({
     ...card,
-    subjectNames: card.subjectNames.sort((a, b) =>
+    subjectNames: Array.from(sectionSubjects.get(card.sectionId)?.values() ?? []).sort((a, b) =>
       a.localeCompare(b, undefined, { sensitivity: "base" }),
     ),
-    isFinalized: card.totalExams > 0 && card.finalizedExams === card.totalExams,
+    totalExams: sectionSubjects.get(card.sectionId)?.size ?? 0,
+    isFinalized:
+      (sectionSubjects.get(card.sectionId)?.size ?? 0) > 0 &&
+      card.finalizedExams === (sectionSubjects.get(card.sectionId)?.size ?? 0),
   }));
 
   return cards.sort((a, b) => {
     const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     if (ga !== gb) return ga - gb;
+    const aIsSses = isSsesSectionName(a.sectionName);
+    const bIsSses = isSsesSectionName(b.sectionName);
+    if (aIsSses !== bIsSses) return aIsSses ? -1 : 1;
     return a.sectionName.localeCompare(b.sectionName, undefined, { sensitivity: "base" });
   });
 }
@@ -252,12 +329,13 @@ export type ReportInitData = {
 };
 
 export async function getReportInitData(): Promise<ReportInitData> {
-  const [examCards, activeSections, gradeLevels] = await Promise.all([
+  const [examCards, activeSections, gradeLevels, sectionSubjects] = await Promise.all([
     getReportExamCardsCached(),
     getActiveSectionsCached(),
     getGradeLevelsCached(),
+    getSectionSubjectsCached(),
   ]);
 
-  const sectionCards = buildSectionCards(examCards, activeSections);
+  const sectionCards = buildSectionCards(examCards, activeSections, sectionSubjects);
   return { sectionCards, gradeLevels };
 }

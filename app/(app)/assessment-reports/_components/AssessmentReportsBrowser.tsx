@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   Accordion,
   ActionIcon,
+  Badge,
   Box,
   Card,
   Divider,
@@ -17,10 +18,10 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
+  IconBook,
+  IconCheck,
   IconList,
   IconRefresh,
-  IconSchool,
-  IconUsers,
 } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import EmptySearchState from "@/components/EmptySearchState";
@@ -39,6 +40,14 @@ type GradeGroup = {
   cards: ReportSectionCard[];
   accordionValue: string;
 };
+
+function SectionStatusBadge({ isFinalized }: { isFinalized: boolean }) {
+  return (
+    <Badge color={isFinalized ? "green" : "red"} variant="light">
+      {isFinalized ? "Finalized" : "Not Finalized"}
+    </Badge>
+  );
+}
 
 interface AssessmentReportsBrowserProps {
   initialGradeLevelId?: number | null;
@@ -350,6 +359,7 @@ export default function AssessmentReportsBrowser({
                           <Text fw={550} size="lg" lineClamp={2} style={{ flex: 1, minWidth: 0 }}>
                             {card.sectionName}
                           </Text>
+                          <SectionStatusBadge isFinalized={card.isFinalized} />
                         </Group>
 
                         <Divider my="sm" mb="lg" />
@@ -358,13 +368,13 @@ export default function AssessmentReportsBrowser({
                           About
                         </Text>
                         <Group mb="xs" gap="xs">
-                          <IconUsers size={16} color="gray" />
-                          <Text size="sm">Examinations: {card.totalExams}</Text>
+                          <IconBook size={16} color="gray" />
+                          <Text size="sm">Subjects: {card.subjectNames.length}</Text>
                         </Group>
                         <Group mb="xs" gap="xs">
-                          <IconSchool size={16} color="gray" />
+                          <IconCheck size={16} color="gray" />
                           <Text size="sm">
-                            Finalized: {card.finalizedExams}/{card.totalExams}
+                            Finalized: {card.finalizedExams}/{card.subjectNames.length}
                           </Text>
                         </Group>
                       </Card>
