@@ -397,8 +397,8 @@ async function fetchSectionSubjectsForReports(): Promise<Map<number, Map<number,
   for (const row of (data ?? []) as RawSectionTeacherRow[]) {
     const sectionId = row.section_id ?? null;
     const curriculum = firstJoin(row.curriculum_subjects);
-    const subjectId = curriculum?.subject_id ?? null;
-    if (sectionId == null || subjectId == null) continue;
+    if (sectionId == null || !curriculum || curriculum.subject_id == null) continue;
+    const subjectId = curriculum.subject_id;
 
     const subjectJoin = firstJoin(curriculum.subjects);
     const subjectName = subjectJoin?.name ?? "Unknown Subject";
