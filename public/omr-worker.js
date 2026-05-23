@@ -637,15 +637,113 @@ function detectionQuality(answers, confidence) {
   return items ? score / items : -1e9;
 }
 
+function polygonArea(corners) {
+  if (!corners || corners.length !== 4) return 0;
+  let area = 0;
+  for (let i = 0; i < corners.length; i++) {
+    const a = corners[i];
+    const b = corners[(i + 1) % corners.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(area) / 2;
+}
+
+function frameMetrics(buffer, width, height) {
+  const src = bufferToMat(buffer, width, height);
+  const gray = new cv.Mat();
+  const lap = new cv.Mat();
+  const mean = new cv.Mat();
+  const stddev = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+    cv.meanStdDev(gray, mean, stddev);
+    const brightness = mean.data64F[0];
+
+    cv.Laplacian(gray, lap, cv.CV_64F);
+    cv.meanStdDev(lap, mean, stddev);
+    const blur = Math.pow(stddev.data64F[0], 2);
+
+    return { brightness, blur };
+  } finally {
+    src.delete();
+    gray.delete();
+    lap.delete();
+    mean.delete();
+    stddev.delete();
+  }
+}
+
+function detectDocumentFrame(buffer, width, height) {
+  const metrics = frameMetrics(buffer, width, height);
+  let corners = detectPaperEdge(buffer, width, height);
+  let usedPaperEdge = Boolean(corners);
+
+  if (!corners) {
+    corners = detectCorners(buffer, width, height);
+    usedPaperEdge = false;
+  }
+
+  if (!corners) {
+    return {
+      corners: null,
+      confidence: 0,
+      brightness: metrics.brightness,
+      blur: metrics.blur,
+      isVisible: false,
+      usedPaperEdge,
+      width,
+      height,
+    };
+  }
+
+  const areaRatio = polygonArea(corners) / (width * height);
+  const minMargin = Math.min(
+    ...corners.map((p) => Math.min(p.x, p.y, width - p.x, height - p.y))
+  );
+  const marginTarget = Math.min(width, height) * 0.025;
+  const insideFrame = minMargin > marginTarget;
+  const brightnessOk = metrics.brightness > 35 && metrics.brightness < 235;
+  const blurOk = metrics.blur > 35;
+  const areaScore = Math.max(0, Math.min(1, (areaRatio - 0.18) / 0.42));
+  const marginScore = insideFrame ? 1 : Math.max(0, minMargin / marginTarget);
+  const lightScore = brightnessOk ? 1 : 0.45;
+  const blurScore = blurOk ? 1 : Math.max(0.35, metrics.blur / 35);
+  const confidence = Math.max(
+    0,
+    Math.min(1, areaScore * 0.55 + marginScore * 0.2 + lightScore * 0.1 + blurScore * 0.15)
+  );
+
+  return {
+    corners,
+    confidence,
+    brightness: metrics.brightness,
+    blur: metrics.blur,
+    isVisible: confidence >= 0.58 && insideFrame && areaRatio >= 0.2 && brightnessOk,
+    usedPaperEdge,
+    width,
+    height,
+  };
+}
+
 // ─── Message handler ──────────────────────────────────────────────────────────
 
 self.onmessage = async (e) => {
   const { type, buffer, width, height, totalItems, numChoices, manualCorners } = e.data;
-  if (type !== 'scan') return;
 
   try {
     self.postMessage({ type: 'status', message: 'Loading scanner engine\u2026' });
     if (!cv) await loadCV();
+
+    if (type === 'detectDocument') {
+      self.postMessage({
+        type: 'documentResult',
+        result: detectDocumentFrame(buffer, width, height),
+      });
+      return;
+    }
+
+    if (type !== 'scan') return;
 
     let corners, autoDetected, usedPaperEdge = false;
 
@@ -736,6 +834,9 @@ self.onmessage = async (e) => {
     );
 
   } catch (err) {
-    self.postMessage({ type: 'error', message: err.message || String(err) });
+    self.postMessage({
+      type: type === 'detectDocument' ? 'documentError' : 'error',
+      message: err.message || String(err),
+    });
   }
 };

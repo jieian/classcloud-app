@@ -36,8 +36,10 @@ import {
   IconGenderBigender,
   IconChevronRight,
   IconX,
+  IconBolt,
+  IconBoltOff,
 } from '@tabler/icons-react';
-import { processAnswerSheet } from '@/lib/services/omrService';
+import { detectDocumentInCanvas, processAnswerSheet, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
 import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/lib/services/classService';
@@ -56,6 +58,7 @@ import { notify } from '@/components/notificationIcon/notificationIcon';
 
 type Step = 'students' | 'capture' | 'processing' | 'review' | 'submit';
 type ReviewFilter = 'all' | 'detected' | 'undetected' | 'needs_attention';
+type FlashMode = 'off' | 'on' | 'auto';
 
 interface DetectedAnswers { [item: number]: string | null; }
 
@@ -79,6 +82,23 @@ interface ScanPageCache {
 interface ItemConfidenceSummary {
   top: number;
   second: number;
+}
+
+function normalizedCornerDistance(
+  a: LiveDocumentDetectionResult,
+  b: LiveDocumentDetectionResult,
+): number {
+  if (!a.corners || !b.corners) return Number.POSITIVE_INFINITY;
+  const total = a.corners.reduce((sum, point, index) => {
+    const other = b.corners?.[index];
+    if (!other) return sum + 1;
+    const ax = point.x / a.width;
+    const ay = point.y / a.height;
+    const bx = other.x / b.width;
+    const by = other.y / b.height;
+    return sum + Math.hypot(ax - bx, ay - by);
+  }, 0);
+  return total / a.corners.length;
 }
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -260,6 +280,11 @@ export default function ScanPapersPage() {
   const [duplicateImageError, setDuplicateImageError] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [startingCamera, setStartingCamera] = useState(false);
+  const [flashMode, setFlashMode] = useState<FlashMode>('off');
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState('Looking for sheet');
+  const [liveDocument, setLiveDocument] = useState<LiveDocumentDetectionResult | null>(null);
+  const [autoCapturing, setAutoCapturing] = useState(false);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
   const [highlightedEnrollmentId, setHighlightedEnrollmentId] = useState<number | null>(null);
   const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
@@ -278,6 +303,12 @@ export default function ScanPapersPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoTrackRef = useRef<MediaStreamTrack | null>(null);
+  const torchEnabledRef = useRef(false);
+  const liveDetectionInFlightRef = useRef(false);
+  const lastDocumentRef = useRef<LiveDocumentDetectionResult | null>(null);
+  const stableDocumentFramesRef = useRef(0);
+  const autoCaptureLockedRef = useRef(false);
+  const captureFromCameraRef = useRef<() => void | Promise<void>>(() => undefined);
   const rosterStudentsRef = useRef<RosterStudent[]>([]);
   const existingAttemptsRef = useRef<ExamScore[]>([]);
   const useSilentRosterRefreshRef = useRef(false);
@@ -378,6 +409,33 @@ export default function ScanPapersPage() {
 
   // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
+  const setTorch = useCallback(async (enabled: boolean) => {
+    const track = videoTrackRef.current;
+    if (!track) return false;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const capabilities = typeof track.getCapabilities === 'function' ? (track.getCapabilities() as any) : null;
+      if (!capabilities?.torch) {
+        setTorchSupported(false);
+        return false;
+      }
+
+      if (torchEnabledRef.current === enabled) return true;
+
+      await track.applyConstraints({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        advanced: [{ torch: enabled } as any],
+      });
+      torchEnabledRef.current = enabled;
+      setTorchSupported(true);
+      return true;
+    } catch {
+      setTorchSupported(false);
+      return false;
+    }
+  }, []);
+
   const startCamera = async () => {
     if (startingCamera) return;
     setStartingCamera(true);
@@ -402,10 +460,19 @@ export default function ScanPapersPage() {
       if (videoTrackRef.current) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const capabilities = typeof videoTrackRef.current.getCapabilities === 'function' ? (videoTrackRef.current.getCapabilities() as any) : null;
+          setTorchSupported(Boolean(capabilities?.torch));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await videoTrackRef.current.applyConstraints({ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } } as any);
         } catch { /* unsupported */ }
       }
 
+      setLiveDocument(null);
+      setScannerStatus('Looking for sheet');
+      setAutoCapturing(false);
+      autoCaptureLockedRef.current = false;
+      stableDocumentFramesRef.current = 0;
+      lastDocumentRef.current = null;
       setCameraActive(true);
 
       let videoEl: HTMLVideoElement | null = null;
@@ -419,6 +486,7 @@ export default function ScanPapersPage() {
       videoEl.muted = true;
       await new Promise<void>(resolve => { videoEl!.onloadedmetadata = () => resolve(); });
       await videoEl.play();
+      if (flashMode === 'on') void setTorch(true);
     } catch (error) {
       console.error('Failed to start camera:', error);
       notify({ type: 'error', title: 'Camera Error', message: 'Camera not available or blocked. Please allow camera permission, then try again.' });
@@ -429,11 +497,26 @@ export default function ScanPapersPage() {
   };
 
   const stopCamera = useCallback(() => {
+    void setTorch(false);
     streamRef.current?.getTracks().forEach(t => t.stop());
     streamRef.current = null;
     videoTrackRef.current = null;
+    torchEnabledRef.current = false;
+    setTorchSupported(false);
     setCameraActive(false);
-  }, []);
+    setLiveDocument(null);
+    setScannerStatus('Looking for sheet');
+    setAutoCapturing(false);
+    liveDetectionInFlightRef.current = false;
+    stableDocumentFramesRef.current = 0;
+    lastDocumentRef.current = null;
+    autoCaptureLockedRef.current = false;
+  }, [setTorch]);
+
+  useEffect(() => {
+    if (!cameraActive || flashMode === 'auto') return;
+    void setTorch(flashMode === 'on');
+  }, [cameraActive, flashMode, setTorch]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -569,6 +652,106 @@ export default function ScanPapersPage() {
       handleFileSelected(new File([blob], 'scan.jpg', { type: 'image/jpeg' }));
     }, 'image/jpeg', 0.99);
   };
+  captureFromCameraRef.current = captureFromCamera;
+
+  useEffect(() => {
+    if (!cameraActive || startingCamera) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const frameCanvas = document.createElement('canvas');
+
+    const schedule = (delay = 520) => {
+      if (cancelled) return;
+      timer = setTimeout(() => {
+        void detectFrame();
+      }, delay);
+    };
+
+    const detectFrame = async () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) {
+        schedule();
+        return;
+      }
+
+      if (liveDetectionInFlightRef.current) {
+        schedule(180);
+        return;
+      }
+
+      liveDetectionInFlightRef.current = true;
+      try {
+        frameCanvas.width = video.videoWidth;
+        frameCanvas.height = video.videoHeight;
+        const ctx = frameCanvas.getContext('2d');
+        if (!ctx) {
+          schedule();
+          return;
+        }
+
+        ctx.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+        const result = await detectDocumentInCanvas(frameCanvas);
+        if (cancelled) return;
+
+        setLiveDocument(result);
+        if (flashMode === 'auto' && torchSupported) {
+          void setTorch(result.brightness < 75);
+        }
+
+        const previous = lastDocumentRef.current;
+        const stable =
+          result.isVisible &&
+          result.confidence >= 0.68 &&
+          result.blur >= 35 &&
+          previous != null &&
+          normalizedCornerDistance(result, previous) < 0.018;
+
+        stableDocumentFramesRef.current = stable
+          ? stableDocumentFramesRef.current + 1
+          : result.isVisible
+            ? 1
+            : 0;
+        lastDocumentRef.current = result;
+
+        if (autoCapturing || autoCaptureLockedRef.current) {
+          setScannerStatus('Capturing');
+        } else if (!result.corners) {
+          setScannerStatus('Looking for sheet');
+        } else if (!result.isVisible) {
+          setScannerStatus('Fit the full sheet inside the frame');
+        } else if (stableDocumentFramesRef.current < 3) {
+          setScannerStatus('Hold steady');
+        } else {
+          setScannerStatus('Capturing');
+          autoCaptureLockedRef.current = true;
+          setAutoCapturing(true);
+          setTimeout(() => {
+            void captureFromCameraRef.current();
+          }, 180);
+          return;
+        }
+      } catch {
+        if (!cancelled) {
+          setLiveDocument(null);
+          setScannerStatus('Looking for sheet');
+        }
+      } finally {
+        liveDetectionInFlightRef.current = false;
+      }
+
+      schedule();
+    };
+
+    void detectFrame();
+
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      liveDetectionInFlightRef.current = false;
+    };
+  }, [autoCapturing, cameraActive, flashMode, setTorch, startingCamera, torchSupported]);
 
   // â"€â"€ File handling â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   const handleFileSelected = (file: File) => {
@@ -1560,6 +1743,83 @@ export default function ScanPapersPage() {
         </div>
         </div>
       )}
+      {(cameraActive || startingCamera) && (
+        <div className="fixed inset-0 z-[10000] bg-black text-white">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 h-full w-full object-contain"
+          />
+
+          {liveDocument?.corners && (
+            <svg
+              className="absolute inset-0 h-full w-full pointer-events-none"
+              viewBox={`0 0 ${liveDocument.width} ${liveDocument.height}`}
+              preserveAspectRatio="xMidYMid meet"
+            >
+              <polygon
+                points={liveDocument.corners.map((point) => `${point.x},${point.y}`).join(' ')}
+                fill={liveDocument.isVisible ? 'rgba(78,174,74,0.10)' : 'rgba(255,193,7,0.08)'}
+                stroke={liveDocument.isVisible ? '#4EAE4A' : '#F6C343'}
+                strokeWidth={Math.max(4, liveDocument.width * 0.006)}
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 pt-[max(1rem,env(safe-area-inset-top))]">
+            <button
+              type="button"
+              onClick={stopCamera}
+              className="flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur"
+              aria-label="Close scanner"
+            >
+              <IconX className="h-6 w-6" />
+            </button>
+
+            <div className="flex items-center gap-1 rounded-full bg-black/55 p-1 text-xs font-semibold backdrop-blur">
+              {(['off', 'auto', 'on'] as const).map((mode) => {
+                const selected = flashMode === mode;
+                const disabled = mode === 'on' && !torchSupported;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => !disabled && setFlashMode(mode)}
+                    disabled={disabled}
+                    className={[
+                      'flex h-9 min-w-14 items-center justify-center gap-1 rounded-full px-3 transition',
+                      selected ? 'bg-white text-black' : 'text-white/85',
+                      disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-white/15',
+                    ].join(' ')}
+                    title={disabled ? 'Flash is not supported on this camera' : `Flash ${mode}`}
+                  >
+                    {mode === 'off' ? <IconBoltOff className="h-4 w-4" /> : <IconBolt className="h-4 w-4" />}
+                    <span className="capitalize">{mode}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="rounded-full bg-black/55 px-4 py-2 text-sm font-semibold shadow-lg backdrop-blur">
+              {startingCamera ? 'Initializing camera' : scannerStatus}
+            </div>
+            <button
+              type="button"
+              onClick={captureFromCamera}
+              disabled={startingCamera || autoCapturing}
+              className="flex h-20 w-20 items-center justify-center rounded-full border-4 border-white/90 bg-white/20 shadow-2xl transition active:scale-95 disabled:opacity-60"
+              aria-label="Capture answer sheet"
+            >
+              <span className="block h-14 w-14 rounded-full bg-white" />
+            </button>
+          </div>
+        </div>
+      )}
       <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
       <div style={isMobile ? { paddingBottom: 80 } : undefined}>
@@ -1592,20 +1852,6 @@ export default function ScanPapersPage() {
                     </div>
                   </div>
                 </Paper>
-
-{/* Camera active state */}
-                {(cameraActive || startingCamera) && (
-                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
-                    <video ref={videoRef} autoPlay playsInline className="w-full rounded-xl border border-gray-300 bg-black" />
-                    {startingCamera && <Text size="xs" c="dimmed" mt="xs">Initializing camera...</Text>}
-                    <Group mt="sm">
-                      <Button color="#4EAE4A" onClick={captureFromCamera} leftSection={<IconCamera className="w-4 h-4" />} style={{ flex: 1 }}>
-                        Capture
-                      </Button>
-                      <Button variant="default" onClick={stopCamera}>Cancel</Button>
-                    </Group>
-                  </Paper>
-                )}
 
                 {/* Scanning Guidelines — only on the initial upload page */}
                 {!cameraActive && !previewUrl && (

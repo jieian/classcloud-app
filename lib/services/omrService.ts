@@ -36,6 +36,17 @@ export interface DetectionResult {
 
 export type CornerSet = [Point, Point, Point, Point];
 
+export interface LiveDocumentDetectionResult {
+  corners: CornerSet | null;
+  confidence: number;
+  brightness: number;
+  blur: number;
+  isVisible: boolean;
+  usedPaperEdge: boolean;
+  width: number;
+  height: number;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const WARP_SCALE  = 2;
@@ -286,6 +297,41 @@ export async function processAnswerSheet(
         manualCorners: scaledCorners ?? null,
       },
       [buffer]  // transfer the ArrayBuffer (zero-copy)
+    );
+  });
+}
+
+export async function detectDocumentInCanvas(
+  sourceCanvas: HTMLCanvasElement,
+): Promise<LiveDocumentDetectionResult> {
+  const workCanvas = scaleCanvas(sourceCanvas, 900);
+  const ctx = workCanvas.getContext('2d')!;
+  const imageData = ctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
+  const buffer = imageData.data.buffer.slice(0);
+
+  return new Promise<LiveDocumentDetectionResult>((resolve, reject) => {
+    const worker = getWorker();
+
+    const handler = (e: MessageEvent) => {
+      const { type } = e.data;
+      if (type === 'documentResult') {
+        worker.removeEventListener('message', handler);
+        resolve(e.data.result as LiveDocumentDetectionResult);
+      } else if (type === 'documentError') {
+        worker.removeEventListener('message', handler);
+        reject(new Error(e.data.message));
+      }
+    };
+
+    worker.addEventListener('message', handler);
+    worker.postMessage(
+      {
+        type: 'detectDocument',
+        buffer,
+        width: workCanvas.width,
+        height: workCanvas.height,
+      },
+      [buffer],
     );
   });
 }
