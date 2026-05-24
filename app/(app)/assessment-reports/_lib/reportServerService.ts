@@ -49,6 +49,10 @@ type RawTeacherAssignmentRow = {
       }[]
     | null;
 };
+type RawReportKeyRow = {
+  exam_id: number | null;
+  section_id: number | null;
+};
 
 function firstJoin<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -75,6 +79,31 @@ function isSsesSectionName(name: string): boolean {
   return name.trim().toUpperCase() === "SSES";
 }
 
+function reportKey(examId: number, sectionId: number): string {
+  return `${examId}-${sectionId}`;
+}
+
+async function getFinalizedReportKeysCached(): Promise<Set<string>> {
+  "use cache";
+  cacheTag(REPORTS_CACHE_TAG);
+  cacheLife("minutes");
+
+  const { data, error } = await admin
+    .from("exam_results_reports")
+    .select("exam_id, section_id");
+
+  if (error) {
+    console.error("[reportServerService] getFinalizedReportKeysCached error:", error.message);
+    return new Set();
+  }
+
+  return new Set(
+    ((data ?? []) as RawReportKeyRow[])
+      .filter((row) => row.exam_id != null && row.section_id != null)
+      .map((row) => reportKey(Number(row.exam_id), Number(row.section_id))),
+  );
+}
+
 async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
   "use cache";
   cacheTag(REPORTS_CACHE_TAG);
@@ -93,6 +122,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     return [];
   }
 
+  const finalizedKeys = await getFinalizedReportKeysCached();
   const grouped = new Map<string, ReportExamCard>();
 
   for (const row of (data ?? []) as RawRow[]) {
@@ -108,7 +138,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     const subjectId = curriculumJoin?.subject_id ?? null;
     const subjectName = subjectJoin?.name ?? "Unknown Subject";
 
-    const key = `${examJoin.exam_id}-${sectionJoin.section_id}`;
+    const key = reportKey(examJoin.exam_id, sectionJoin.section_id);
     const existing = grouped.get(key);
     if (existing) {
       existing.assignmentIds.push(row.id);
@@ -122,7 +152,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
       examDate: examJoin.exam_date,
       subjectId,
       subjectName,
-      isFinalized: Boolean(examJoin.is_locked),
+      isFinalized: finalizedKeys.has(key),
       sectionId: sectionJoin.section_id,
       sectionName: sectionJoin.name,
       gradeLevelId: sectionJoin.grade_level_id,

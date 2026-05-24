@@ -104,6 +104,20 @@ const _POST = async function(request: Request) {
   if (error) {
     console.error("[api/exams/scores/create] rpc create_score error:", error.message);
 
+    if (String(error.message).includes("EXAM_LOCKED")) {
+      return Response.json(
+        { error: "Exam is finalized and cannot accept new scans." },
+        { status: 409 },
+      );
+    }
+
+    if (String(error.message).includes("INVALID_EXAM_ASSIGNMENT")) {
+      return Response.json(
+        { error: "Invalid exam assignment." },
+        { status: 400 },
+      );
+    }
+
     const uniqueViolation =
       String(error.code).toLowerCase() === "23505" ||
       String(error.message).toLowerCase().includes("unique") ||

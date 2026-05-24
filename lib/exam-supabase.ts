@@ -122,13 +122,3 @@ export interface ExamScore {
   student_name?: string | null;
 }
 
-export interface ItemStatistic {
-  stat_id: number;
-  exam_id: number;
-  item_number: number;
-  difficulty_index: number | null;
-  discrimination_index: number | null;
-  choice_frequencies: { [choice: string]: number } | null;
-  total_responses: number;
-  computed_at: string;
-}
