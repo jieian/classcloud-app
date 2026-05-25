@@ -6,7 +6,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
-import { syncUserPermissions } from "@/lib/permissions-sync";
+import { syncUsersBatch } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
@@ -57,18 +57,11 @@ const _DELETE = async function(request: Request) {
   // Batched to avoid hitting the Auth admin API rate limit; after() guarantees
   // completion even after the serverless function responds.
   if (affectedUids.length > 0) {
-    after(async () => {
-      const BATCH_SIZE = 10;
-      for (let i = 0; i < affectedUids.length; i += BATCH_SIZE) {
-        const batch = affectedUids.slice(i, i + BATCH_SIZE);
-        const results = await Promise.allSettled(batch.map((uid) => syncUserPermissions(uid)));
-        results.forEach((result, index) => {
-          if (result.status === "rejected") {
-            console.error(`syncUserPermissions failed after delete-role for uid ${batch[index]}:`, result.reason);
-          }
-        });
-      }
-    });
+    after(() =>
+      syncUsersBatch(affectedUids).catch((err) =>
+        console.error("syncUsersBatch failed after delete-role:", err),
+      ),
+    );
   }
 
   // 8. Audit

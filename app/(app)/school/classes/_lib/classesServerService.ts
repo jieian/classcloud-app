@@ -17,6 +17,21 @@ export type ClassesInitialData = {
   assignedSectionIds: number[];
 };
 
+interface SectionUserRow {
+  first_name: string | null;
+  last_name: string | null;
+  deleted_at: string | null;
+}
+
+interface SectionRow {
+  section_id: number;
+  name: string;
+  section_type: "SSES" | "REGULAR";
+  grade_level_id: number;
+  adviser_id: string | null;
+  users: SectionUserRow | SectionUserRow[] | null;
+}
+
 export async function getSchoolYearsCached(): Promise<SchoolYearOption[]> {
   "use cache";
   cacheTag(SCHOOL_YEARS_CACHE_TAG);
@@ -49,9 +64,9 @@ export async function getGradeLevelsCached(): Promise<GradeLevelRow[]> {
  */
 export async function getClassesInitData(
   userId: string,
-  permissions: string[],
+  _permissions: string[],
 ): Promise<ClassesInitialData> {
-  const isPartialAccess = !permissions.includes("classes.full_access");
+  void _permissions;
 
   // Fetch the active school year ID live so it is never stale, even when
   // the school_years cache hasn't been revalidated yet after an activation.
@@ -90,14 +105,12 @@ export async function getClassesInitData(
       .select("section_id")
       .eq("sy_id", defaultSyId)
       .is("deleted_at", null),
-    isPartialAccess
-      ? admin
-          .from("teacher_class_assignments")
-          .select("section_id, sections!inner(sy_id)")
-          .eq("teacher_id", userId)
-          .eq("sections.sy_id", defaultSyId)
-          .is("deleted_at", null)
-      : Promise.resolve({ data: [] as { section_id: number }[], error: null }),
+    admin
+      .from("teacher_class_assignments")
+      .select("section_id, sections!inner(sy_id)")
+      .eq("teacher_id", userId)
+      .eq("sections.sy_id", defaultSyId)
+      .is("deleted_at", null),
   ]);
 
   const countMap: Record<number, number> = {};
@@ -105,7 +118,7 @@ export async function getClassesInitData(
     countMap[e.section_id] = (countMap[e.section_id] ?? 0) + 1;
   }
 
-  const sections: SectionCard[] = ((secResult.data ?? []) as any[]).map((s) => {
+  const sections: SectionCard[] = ((secResult.data ?? []) as SectionRow[]).map((s) => {
     const u = Array.isArray(s.users) ? s.users[0] : s.users;
     const adviserName =
       u && s.adviser_id && u.deleted_at === null

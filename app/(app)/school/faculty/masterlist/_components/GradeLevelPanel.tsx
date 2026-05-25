@@ -81,7 +81,7 @@ export default function GradeLevelPanel({
               >
                 <IconAlertTriangle
                   size={16}
-                  color="#EF4444"
+                  color="#c4a827"
                   style={{ flexShrink: 0 }}
                 />
               </Tooltip>

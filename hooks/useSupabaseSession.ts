@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
 import type { Session, AuthChangeEvent, User } from "@supabase/supabase-js";
 
@@ -43,16 +43,12 @@ export function useSupabaseSession({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Prevent concurrent applySession calls racing each other.
-  const applyInFlightRef = useRef(false);
-
   useEffect(() => {
     let alive = true;
     let settled = false;
 
     const applySession = (session: Session | null) => {
-      if (!alive || applyInFlightRef.current) return;
-      applyInFlightRef.current = true;
+      if (!alive) return;
 
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -66,7 +62,6 @@ export function useSupabaseSession({
 
       if (alive) setLoading(false);
       settled = true;
-      applyInFlightRef.current = false;
 
       // Refresh display name in background after unblocking the UI.
       if (currentUser) {
@@ -104,10 +99,13 @@ export function useSupabaseSession({
       "getSession",
     )
       .then(({ data }) => {
+        // Skip if onAuthStateChange already settled the session — it is more
+        // authoritative (server-validated) and fires first in the normal path.
+        if (!alive || settled) return;
         applySession(data.session ?? null);
       })
       .catch(() => {
-        if (!alive) return;
+        if (!alive || settled) return;
         setUser(null);
         onSessionCleared();
         setLoading(false);
@@ -124,7 +122,6 @@ export function useSupabaseSession({
 
     return () => {
       alive = false;
-      applyInFlightRef.current = false;
       clearTimeout(watchdog);
       subscription.unsubscribe();
     };

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Button, Divider, Group } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 import AddFacultyDrawer from "./AddFacultyDrawer";
 import SubjectCoordinatorsSection from "./SubjectCoordinatorsSection";
@@ -16,6 +17,7 @@ interface FacultySectionProps {
 }
 
 export function FacultySection({ isActive, highlightCoordinators = false }: FacultySectionProps) {
+  const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [facultyCount, setFacultyCount] = useState<number | null>(null);
   const [drawerOpened, setDrawerOpened] = useState(false);
   const teachingStaffRef = useRef<TeachingStaffSectionRef>(null);
@@ -33,28 +35,32 @@ export function FacultySection({ isActive, highlightCoordinators = false }: Facu
         />
       )}
 
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="mb-3 text-2xl font-bold">
+      <div className="mb-3">
+        <Group justify="space-between" wrap="nowrap" align="flex-end" mb="sm">
+          <h1 className="mb-0 text-2xl md:text-3xl font-bold leading-tight">
             Faculty{" "}
             {isActive && facultyCount !== null && (
-              <span className="text-[#808898]">({facultyCount})</span>
+              <span className="text-[#808898] text-xl font-semibold">
+                ({facultyCount})
+              </span>
             )}
           </h1>
-          <p className="text-sm text-[#808898] sm:max-w-2xl">
-            The collective body of educators. A faculty member can be a class adviser, a subject teacher, a coordinator, or a combination of these.
-          </p>
-        </div>
-        {isActive && (
-          <Button
-            color="#4EAE4A"
-            radius="md"
-            className="self-start"
-            onClick={() => setDrawerOpened(true)}
-          >
-            Add a Faculty
-          </Button>
-        )}
+          {isActive && (
+            <Button
+              color="#4EAE4A"
+              radius="md"
+              size={isMobile ? "sm" : "sm"}
+              px={isMobile ? "md" : undefined}
+              style={isMobile ? { flexShrink: 0 } : undefined}
+              onClick={() => setDrawerOpened(true)}
+            >
+              Add a Faculty
+            </Button>
+          )}
+        </Group>
+        <p className="text-sm text-[#808898] sm:max-w-2xl">
+          The collective body of educators. A faculty member can be a class adviser, a subject teacher, a coordinator, or a combination of these.
+        </p>
       </div>
 
       {!isActive ? (

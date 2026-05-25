@@ -36,14 +36,22 @@ function hasIncompleteAssignments(data: MasterlistData): boolean {
         const isApplicable =
           subject.subject_type === "BOTH" || section.section_type === "SSES";
         if (!isApplicable) continue;
-        if (!assignedSet.has(`${section.section_id}:${subject.curriculum_subject_id}`)) return true;
+        if (
+          !assignedSet.has(
+            `${section.section_id}:${subject.curriculum_subject_id}`,
+          )
+        )
+          return true;
       }
     }
   }
   return false;
 }
 
-function buildValidationMessage(missingAdvisers: number, missingSubjects: number): string {
+function buildValidationMessage(
+  missingAdvisers: number,
+  missingSubjects: number,
+): string {
   const hasA = missingAdvisers > 0;
   const hasS = missingSubjects > 0;
 
@@ -83,9 +91,12 @@ export default function MasterlistClient() {
       }
     : {};
 
-  const syncValidationVisibility = useCallback((nextData: MasterlistData | null) => {
-    setShowValidation(nextData ? hasIncompleteAssignments(nextData) : false);
-  }, []);
+  const syncValidationVisibility = useCallback(
+    (nextData: MasterlistData | null) => {
+      setShowValidation(nextData ? hasIncompleteAssignments(nextData) : false);
+    },
+    [],
+  );
 
   // ── Data fetch ──────────────────────────────────────────────────────────────
 
@@ -117,7 +128,10 @@ export default function MasterlistClient() {
       }
     }
     for (const a of data.assignments) {
-      map.set(`subject:${a.section_id}:${a.curriculum_subject_id}`, a.teacher_id);
+      map.set(
+        `subject:${a.section_id}:${a.curriculum_subject_id}`,
+        a.teacher_id,
+      );
     }
     return map;
   }, [data]);
@@ -178,7 +192,11 @@ export default function MasterlistClient() {
   const teachingLoadByTeacher = useMemo(() => {
     if (!data) return new Map<string, MasterlistTeacherLoad[]>();
 
-    type RawSection = { levelNumber: number; sectionName: string; label: string };
+    type RawSection = {
+      levelNumber: number;
+      sectionName: string;
+      label: string;
+    };
     type LoadEntry = {
       curriculum_subject_id: number;
       code: string;
@@ -241,10 +259,17 @@ export default function MasterlistClient() {
           .map(({ rawSections, ...load }) => ({
             ...load,
             sections: rawSections
-              .sort((a, b) => a.levelNumber - b.levelNumber || a.sectionName.localeCompare(b.sectionName))
+              .sort(
+                (a, b) =>
+                  a.levelNumber - b.levelNumber ||
+                  a.sectionName.localeCompare(b.sectionName),
+              )
               .map((e) => e.label),
           }))
-          .sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name)),
+          .sort(
+            (a, b) =>
+              a.code.localeCompare(b.code) || a.name.localeCompare(b.name),
+          ),
       ]),
     );
   }, [data, draft, getCellValue, originalMap]);
@@ -266,7 +291,8 @@ export default function MasterlistClient() {
 
   const validation = useMemo((): ValidationResult => {
     const panelHasErrors = new Map<number, boolean>();
-    if (!data) return { missingAdvisers: 0, missingSubjects: 0, panelHasErrors };
+    if (!data)
+      return { missingAdvisers: 0, missingSubjects: 0, panelHasErrors };
 
     let missingAdvisers = 0;
     let missingSubjects = 0;
@@ -283,7 +309,11 @@ export default function MasterlistClient() {
           const isApplicable =
             subject.subject_type === "BOTH" || section.section_type === "SSES";
           if (!isApplicable) continue;
-          if (!getCellValue(`subject:${section.section_id}:${subject.curriculum_subject_id}`)) {
+          if (
+            !getCellValue(
+              `subject:${section.section_id}:${subject.curriculum_subject_id}`,
+            )
+          ) {
             missingSubjects++;
             glHasError = true;
           }
@@ -345,7 +375,9 @@ export default function MasterlistClient() {
       modals.openConfirmModal({
         title: "Discard changes?",
         children: (
-          <Text size="sm">You have unsaved changes. Are you sure you want to leave?</Text>
+          <Text size="sm">
+            You have unsaved changes. Are you sure you want to leave?
+          </Text>
         ),
         labels: { confirm: "Discard", cancel: "Stay" },
         confirmProps: { color: "red" },
@@ -368,7 +400,9 @@ export default function MasterlistClient() {
     modals.openConfirmModal({
       title: "Revert all changes?",
       children: (
-        <Text size="sm">All unsaved changes will be lost. This cannot be undone.</Text>
+        <Text size="sm">
+          All unsaved changes will be lost. This cannot be undone.
+        </Text>
       ),
       labels: { confirm: "Revert", cancel: "Cancel" },
       confirmProps: { color: "red" },
@@ -384,7 +418,10 @@ export default function MasterlistClient() {
     if (!data) return;
     setSaving(true);
     try {
-      const adviser_changes: { section_id: number; adviser_id: string | null }[] = [];
+      const adviser_changes: {
+        section_id: number;
+        adviser_id: string | null;
+      }[] = [];
       const assignment_changes: {
         section_id: number;
         curriculum_subject_id: number;
@@ -395,7 +432,10 @@ export default function MasterlistClient() {
         if (value === (originalMap.get(key) ?? null)) continue;
         const parts = key.split(":");
         if (parts[0] === "adviser") {
-          adviser_changes.push({ section_id: parseInt(parts[1], 10), adviser_id: value });
+          adviser_changes.push({
+            section_id: parseInt(parts[1], 10),
+            adviser_id: value,
+          });
         } else {
           assignment_changes.push({
             section_id: parseInt(parts[1], 10),
@@ -406,7 +446,11 @@ export default function MasterlistClient() {
       }
 
       // Include the SY the client loaded so the server can detect staleness
-      await saveMasterlist({ sy_id: data.sy_id, adviser_changes, assignment_changes });
+      await saveMasterlist({
+        sy_id: data.sy_id,
+        adviser_changes,
+        assignment_changes,
+      });
 
       // Save committed — clear draft immediately and show success
       setDraft(new Map());
@@ -427,14 +471,17 @@ export default function MasterlistClient() {
           notify({
             type: "warning",
             title: "Saved, but refresh failed",
-            message: "Your changes were saved. Reload the page to see the latest data.",
+            message:
+              "Your changes were saved. Reload the page to see the latest data.",
           });
         });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Something went wrong.";
+      const message =
+        err instanceof Error ? err.message : "Something went wrong.";
       // 409 = stale data (SY changed/deactivated) — prompt user to reload
       const isSyConflict =
-        message.includes("school year changed") || message.includes("No active school year");
+        message.includes("school year changed") ||
+        message.includes("No active school year");
       notify({
         type: "error",
         title: isSyConflict ? "School year changed" : "Save failed",
@@ -466,7 +513,8 @@ export default function MasterlistClient() {
       title: "Save changes?",
       children: (
         <Text size="sm">
-          This will update all teaching load assignments for the current academic period.
+          This will update all teaching load assignments for the current
+          academic period.
         </Text>
       ),
       labels: { confirm: "Confirm", cancel: "Cancel" },
@@ -487,8 +535,8 @@ export default function MasterlistClient() {
       <div className="mb-4 mt-4">
         <h2 className="mb-1 text-2xl font-bold">Teaching Load Master List</h2>
         <p className="text-sm text-[#808898]">
-          The master record of all subject assignments and advisory designations for the current
-          academic period.
+          The master record of all subject assignments and advisory designations
+          for the current academic period.
         </p>
       </div>
 
@@ -502,7 +550,7 @@ export default function MasterlistClient() {
               radius="md"
               styles={{
                 root: {
-                  backgroundColor: "#FF6666",
+                  backgroundColor: "#fae173",
                 },
                 icon: {
                   alignSelf: "center",
@@ -510,15 +558,15 @@ export default function MasterlistClient() {
                 },
               }}
               icon={
-                <ThemeIcon color="white" variant="transparent" size="md">
+                <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
                   <IconAlertTriangle size={20} />
                 </ThemeIcon>
               }
             >
-              <Text fw={700} size="sm">
+              <Text fw={700} size="sm" c="#2A2A2A">
                 Incomplete Faculty Assignments
               </Text>
-              <Text size="sm" fs="italic">
+              <Text size="sm" fs="italic" c="#2A2A2A">
                 {buildValidationMessage(
                   validation.missingAdvisers,
                   validation.missingSubjects,
@@ -532,7 +580,9 @@ export default function MasterlistClient() {
               key={gl.grade_level_id}
               gradeLevel={gl}
               isDirty={isPanelDirty(gl.grade_level_id)}
-              hasPanelErrors={validation.panelHasErrors.get(gl.grade_level_id) ?? false}
+              hasPanelErrors={
+                validation.panelHasErrors.get(gl.grade_level_id) ?? false
+              }
               showValidation={showValidation}
               getCellValue={getCellValue}
               isCellDirty={isCellDirty}

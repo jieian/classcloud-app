@@ -36,7 +36,8 @@ export default function SubjectCoordinatorsSection({
   const [glowing, setGlowing] = useState(glowOnMount);
   const [search, setSearch] = useState("");
   const [coordinatorCount, setCoordinatorCount] = useState<number | null>(null);
-  const [hasIncompleteAssignments, setHasIncompleteAssignments] = useState(false);
+  const [hasIncompleteAssignments, setHasIncompleteAssignments] =
+    useState(false);
   const tableRef = useRef<SubjectCoordinatorsTableWrapperRef>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +68,9 @@ export default function SubjectCoordinatorsSection({
   const glowStyle: CSSProperties = {
     borderRadius: 8,
     padding: glowing ? 16 : 0,
-    boxShadow: glowing ? "0 0 0 3px #4EAE4A, 0 4px 16px rgba(78,174,74,0.20)" : undefined,
+    boxShadow: glowing
+      ? "0 0 0 3px #4EAE4A, 0 4px 16px rgba(78,174,74,0.20)"
+      : undefined,
     transition: "box-shadow 1.2s ease, padding 0.3s ease",
   };
 
@@ -145,7 +148,7 @@ export default function SubjectCoordinatorsSection({
             mb="md"
             styles={{
               root: {
-                backgroundColor: "#FF6666",
+                backgroundColor: "#fae173",
               },
               icon: {
                 alignSelf: "center",
@@ -153,16 +156,17 @@ export default function SubjectCoordinatorsSection({
               },
             }}
             icon={
-              <ThemeIcon color="white" variant="transparent" size="md">
+              <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
                 <IconAlertTriangle size={20} />
               </ThemeIcon>
             }
           >
-            <Text fw={700} size="sm">
+            <Text fw={700} size="sm" c="#2A2A2A">
               Incomplete Subject Coordinator Assignments
             </Text>
-            <Text size="sm" fs="italic">
-              One or more subject groups currently have no assigned subject coordinator.
+            <Text size="sm" fs="italic" c="#2A2A2A">
+              One or more subject groups currently have no assigned subject
+              coordinator.
             </Text>
           </Alert>
         )}

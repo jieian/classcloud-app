@@ -13,6 +13,7 @@ import {
   ThemeIcon,
   Tooltip,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconRefresh, IconSchoolOff } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { SearchBar } from "@/components/searchBar/SearchBar";
@@ -23,6 +24,7 @@ import EmptySearchState from "@/components/EmptySearchState";
 
 export default function CurriculumSection() {
   const router = useRouter();
+  const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,14 +60,23 @@ export default function CurriculumSection() {
 
   return (
     <>
-      <Group justify="space-between">
-        <h1 className="mb-3 text-2xl font-bold">
+      <Group justify="space-between" wrap="nowrap" align="flex-end" mb="sm">
+        <h1 className="text-2xl md:text-3xl font-bold text-[#597D37] mb-0 leading-tight">
           Curriculum{" "}
           {curriculums.length > 0 && (
-            <span className="text-[#808898]">({curriculums.length})</span>
+            <span className="text-[#808898] text-xl font-semibold">
+              ({curriculums.length})
+            </span>
           )}
         </h1>
-        <Button color="#4EAE4A" radius="md" mr="md" onClick={() => router.push("/school/curriculum/create")}>
+        <Button
+          color="#4EAE4A"
+          radius="md"
+          size={isMobile ? "sm" : "sm"}
+          px={isMobile ? "md" : undefined}
+          style={isMobile ? { flexShrink: 0 } : undefined}
+          onClick={() => router.push("/school/curriculum/create")}
+        >
           Create a Curriculum
         </Button>
       </Group>

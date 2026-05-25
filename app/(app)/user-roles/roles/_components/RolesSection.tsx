@@ -31,8 +31,8 @@ export function RolesSection({ initialRoles }: RolesSectionProps) {
 
   return (
     <>
-      <Group justify="space-between">
-        <h1 className="mb-3 text-2xl font-bold">
+      <Group justify="space-between" align="flex-end" mb="sm">
+        <h1 className="mb-0 text-2xl font-bold leading-tight">
           Roles{" "}
           {roleCount !== null && (
             <span className="text-[#808898]">({roleCount})</span>

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { Badge, Card, Divider, Group, Text, Tooltip } from "@mantine/core";
-import { IconPencil, IconUser, IconUsers } from "@tabler/icons-react";
+import {
+  IconPencil,
+  IconChalkboardTeacher,
+  IconUsers,
+} from "@tabler/icons-react";
 import type { SectionCard } from "@/lib/services/classService";
 
 interface ClassCardProps {
@@ -33,7 +37,7 @@ export default function ClassCard({ section }: ClassCardProps) {
         About
       </Text>
       <Group mb="xs" gap="xs">
-        <IconUser size={16} />
+        <IconChalkboardTeacher size={16} />
         <Text size="sm">
           Adviser:{" "}
           {section.adviser_name ?? (

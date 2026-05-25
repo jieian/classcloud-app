@@ -48,8 +48,8 @@ export const TeachingStaffSection = forwardRef<
 
   return (
     <>
-      <Group justify="space-between" align="flex-start">
-        <h2 className="mb-3 text-2xl font-bold">
+      <Group justify="space-between" align="flex-end" mb="sm">
+        <h2 className="mb-0 text-2xl font-bold leading-tight">
           Teaching Staff{" "}
           {staffCount !== null && (
             <span className="text-[#808898]">({staffCount})</span>

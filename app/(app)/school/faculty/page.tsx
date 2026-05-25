@@ -13,7 +13,7 @@ export default async function Faculty({ searchParams }: Props) {
 
   return (
     <ProtectedRoute requiredPermissions={["faculty.full_access"]}>
-      <h1 className="mb-6 text-3xl font-bold text-[#597D37]">
+      <h1 className="mb-6 text-2xl md:text-3xl font-bold text-[#597D37]">
         Faculty Management
       </h1>
       <FacultySection

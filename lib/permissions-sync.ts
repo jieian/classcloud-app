@@ -1,5 +1,12 @@
+import pLimit from "p-limit";
 import { adminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
+
+/** Max simultaneous Admin API calls during a bulk sync. */
+const BULK_CONCURRENCY = 5;
+/** Pause between batches to avoid overwhelming the Auth admin API. */
+const INTER_BATCH_DELAY_MS = 200;
+const BATCH_SIZE = 10;
 
 interface Role {
   role_id: number;
@@ -65,6 +72,46 @@ export async function syncUserPermissions(uid: string): Promise<void> {
 }
 
 /**
+ * Syncs permissions for an arbitrary list of UIDs.
+ *
+ * Uses p-limit to cap concurrent Admin API calls and adds a short pause
+ * between batches so a large role change doesn't overwhelm the Auth service.
+ * Safe to call from after() — errors are logged, never thrown.
+ */
+export async function syncUsersBatch(uids: string[]): Promise<void> {
+  if (uids.length === 0) return;
+
+  const limit = pLimit(BULK_CONCURRENCY);
+  const failed: string[] = [];
+
+  for (let i = 0; i < uids.length; i += BATCH_SIZE) {
+    const batch = uids.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map((uid) => limit(() => syncUserPermissions(uid))),
+    );
+
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        const uid = batch[index];
+        console.error(`syncUserPermissions failed for uid ${uid}:`, result.reason);
+        failed.push(uid);
+      }
+    });
+
+    // Breathe between batches to avoid rate-limiting the Auth admin API.
+    if (i + BATCH_SIZE < uids.length) {
+      await new Promise((r) => setTimeout(r, INTER_BATCH_DELAY_MS));
+    }
+  }
+
+  if (failed.length > 0) {
+    console.error(
+      `syncUsersBatch: ${failed.length}/${uids.length} failed — UIDs: ${failed.join(", ")}`,
+    );
+  }
+}
+
+/**
  * Re-syncs permissions for every user that currently holds the given role.
  *
  * Call this after a role's permissions are changed (update) or the role is
@@ -79,26 +126,5 @@ export async function syncAllUsersWithRole(roleId: number): Promise<void> {
   if (!data || data.length === 0) return;
 
   const uids = data.map((row: { uid: string }) => row.uid);
-  const failed: string[] = [];
-
-  // Process in batches to avoid hitting admin API rate limits
-  const BATCH_SIZE = 10;
-  for (let i = 0; i < uids.length; i += BATCH_SIZE) {
-    const batch = uids.slice(i, i + BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map((uid) => syncUserPermissions(uid)));
-
-    results.forEach((result, index) => {
-      if (result.status === "rejected") {
-        const uid = batch[index];
-        console.error(`syncUserPermissions failed for uid ${uid}:`, result.reason);
-        failed.push(uid);
-      }
-    });
-  }
-
-  if (failed.length > 0) {
-    console.error(
-      `syncAllUsersWithRole(${roleId}): ${failed.length}/${uids.length} users failed — UIDs: ${failed.join(", ")}`,
-    );
-  }
+  await syncUsersBatch(uids);
 }

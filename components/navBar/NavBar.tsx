@@ -1,6 +1,6 @@
 // components/NavBar.tsx
 "use client";
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -140,11 +140,27 @@ const navigationData: NavigationLink[] = [
 export default function Navbar() {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 767.9px)");
+  const mobileDrawerRef = useRef<HTMLElement | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [drawerTitle, setDrawerTitle] = useState("");
   const [drawerSublinks, setDrawerSublinks] = useState<Sublink[]>([]);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDraggingDrawer, setIsDraggingDrawer] = useState(false);
+  const dragStateRef = useRef<{
+    startX: number;
+    lastX: number;
+    lastTime: number;
+    velocityX: number;
+    active: boolean;
+  }>({
+    startX: 0,
+    lastX: 0,
+    lastTime: 0,
+    velocityX: 0,
+    active: false,
+  });
 
   const { signOut, permissions } = useAuth();
 
@@ -273,6 +289,18 @@ export default function Navbar() {
     if (isMobile && isMobileMenuOpen) setIsMobileMenuOpen(false);
   };
 
+  const resetDrawerDrag = useCallback(() => {
+    dragStateRef.current = {
+      startX: 0,
+      lastX: 0,
+      lastTime: 0,
+      velocityX: 0,
+      active: false,
+    };
+    setDragOffset(0);
+    setIsDraggingDrawer(false);
+  }, []);
+
   const handleSimpleLinkClick = () => {
     setIsDrawerOpen(false);
     if (isMobile) setIsMobileMenuOpen(false);
@@ -286,6 +314,65 @@ export default function Navbar() {
       setIsMobileMenuOpen(false);
     }
   }, [pathname, isMobile]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) {
+      resetDrawerDrag();
+    }
+  }, [isMobileMenuOpen, resetDrawerDrag]);
+
+  const handleDrawerTouchStart = (e: React.TouchEvent<HTMLElement>) => {
+    if (!isMobile || !isMobileMenuOpen) return;
+
+    const touch = e.touches[0];
+    dragStateRef.current = {
+      startX: touch.clientX,
+      lastX: touch.clientX,
+      lastTime: e.timeStamp,
+      velocityX: 0,
+      active: true,
+    };
+    setIsDraggingDrawer(true);
+  };
+
+  const handleDrawerTouchMove = (e: React.TouchEvent<HTMLElement>) => {
+    if (!dragStateRef.current.active || !isMobile) return;
+
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - dragStateRef.current.startX;
+    const elapsed = Math.max(e.timeStamp - dragStateRef.current.lastTime, 1);
+    const velocityX =
+      (touch.clientX - dragStateRef.current.lastX) / elapsed;
+    dragStateRef.current.velocityX = velocityX;
+
+    if (deltaX >= 0) {
+      dragStateRef.current.lastX = touch.clientX;
+      dragStateRef.current.lastTime = e.timeStamp;
+      setDragOffset(0);
+      return;
+    }
+
+    dragStateRef.current.lastX = touch.clientX;
+    dragStateRef.current.lastTime = e.timeStamp;
+    setDragOffset(deltaX * 0.96);
+  };
+
+  const handleDrawerTouchEnd = () => {
+    if (!dragStateRef.current.active || !isMobile) return;
+
+    const drawerWidth = mobileDrawerRef.current?.offsetWidth ?? 320;
+    const closeDistance = drawerWidth * 0.24;
+    const closeVelocity = -0.55;
+    const shouldClose =
+      Math.abs(dragOffset) > closeDistance ||
+      dragStateRef.current.velocityX < closeVelocity;
+
+    if (shouldClose) {
+      setIsMobileMenuOpen(false);
+    }
+
+    resetDrawerDrag();
+  };
 
   const [logoutOpened, { open: openLogout, close: closeLogout }] =
     useDisclosure(false);
@@ -467,6 +554,40 @@ export default function Navbar() {
     );
   });
 
+  const settingsAndLogout = (
+    <div className={classes.bottomActions}>
+      <Tooltip
+        label="Account Settings"
+        position="right"
+        withArrow
+        disabled={isMobile}
+      >
+        <Link href="/settings" style={{ textDecoration: "none" }}>
+          <UnstyledButton
+            onClick={handleSimpleLinkClick}
+            className={classes.mainLink}
+            data-active={pathname === "/settings" || undefined}
+          >
+            <IconSettings size={22} stroke={1.5} />
+            {isMobile && <span>Account Settings</span>}
+          </UnstyledButton>
+        </Link>
+      </Tooltip>
+
+      <Tooltip
+        label="Logout"
+        position="right"
+        withArrow
+        disabled={isMobile}
+      >
+        <UnstyledButton onClick={handleLogout} className={classes.mainLink}>
+          <IconLogout size={22} stroke={1.5} />
+          {isMobile && <span>Logout</span>}
+        </UnstyledButton>
+      </Tooltip>
+    </div>
+  );
+
   return (
     <>
       {/* MOBILE TOP BAR — always visible on mobile */}
@@ -492,12 +613,25 @@ export default function Navbar() {
 
       {/* THE NAVBAR ITSELF */}
       <nav
+        ref={mobileDrawerRef}
         className={`${classes.navbar} ${
           isMobile && isMobileMenuOpen ? classes.open : ""
         }`}
+        data-dragging={isDraggingDrawer || undefined}
         onMouseLeave={() => {
           if (!isMobile) setIsDrawerOpen(false);
         }}
+        onTouchStart={handleDrawerTouchStart}
+        onTouchMove={handleDrawerTouchMove}
+        onTouchEnd={handleDrawerTouchEnd}
+        onTouchCancel={handleDrawerTouchEnd}
+        style={
+          isMobile && isMobileMenuOpen
+            ? {
+                transform: `translateX(${Math.min(0, dragOffset)}px)`,
+              }
+            : undefined
+        }
       >
         {/* Logo Section with Close Button for Mobile */}
         <div className={classes.logo}>
@@ -505,7 +639,7 @@ export default function Navbar() {
             <img
               src="/logo/CCLogo.png"
               alt="ClassCloud Logo"
-              style={{ height: "28px", width: "auto" }}
+              className={classes.desktopLogoImage}
             />
           )}
           {isMobile && (
@@ -513,7 +647,7 @@ export default function Navbar() {
               <img
                 src="/logo/CCLogo.png"
                 alt="ClassCloud Logo"
-                style={{ height: "32px", width: "auto" }}
+                className={classes.mobileLogoImage}
               />
               <UnstyledButton
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -527,40 +661,11 @@ export default function Navbar() {
 
         {/* Main Navigation Links and Bottom Actions */}
         <div className={classes.aside}>
-          {mainLinks}
-          <div className={classes.spacer}></div>
-
-          {/* Account Settings Link */}
-          <Tooltip
-            label="Account Settings"
-            position="right"
-            withArrow
-            disabled={isMobile}
-          >
-            <Link href="/settings" style={{ textDecoration: "none" }}>
-              <UnstyledButton
-                onClick={handleSimpleLinkClick}
-                className={classes.mainLink}
-                data-active={pathname === "/settings" || undefined}
-              >
-                <IconSettings size={22} stroke={1.5} />
-                {isMobile && <span>Account Settings</span>}
-              </UnstyledButton>
-            </Link>
-          </Tooltip>
-
-          {/* Logout Button */}
-          <Tooltip
-            label="Logout"
-            position="right"
-            withArrow
-            disabled={isMobile}
-          >
-            <UnstyledButton onClick={handleLogout} className={classes.mainLink}>
-              <IconLogout size={22} stroke={1.5} />
-              {isMobile && <span>Logout</span>}
-            </UnstyledButton>
-          </Tooltip>
+          <div className={classes.primaryLinks}>
+            {mainLinks}
+            <div className={classes.spacer}></div>
+          </div>
+          {settingsAndLogout}
         </div>
 
         {/* THE DRAWER (desktop only — mobile uses inline sublinks above) */}

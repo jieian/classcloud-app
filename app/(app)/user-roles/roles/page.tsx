@@ -8,7 +8,7 @@ export default async function RolesManagement() {
 
   return (
     <ProtectedRoute requiredPermissions={["roles.full_access"]}>
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
+      <h1 className="text-2xl md:text-3xl font-bold mb-6 text-[#597D37]">
         Roles Management
       </h1>
       <RolesSection initialRoles={initialRoles} />

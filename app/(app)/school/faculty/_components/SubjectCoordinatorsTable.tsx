@@ -19,7 +19,11 @@ import {
   VisuallyHidden,
 } from "@mantine/core";
 import { useClickOutside, useDisclosure } from "@mantine/hooks";
-import { IconAlertTriangle, IconChevronRight, IconPencil } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconChevronRight,
+  IconPencil,
+} from "@tabler/icons-react";
 import type { SubjectCoordinatorRow } from "../_lib/facultyService";
 import SubjectBadge from "./SubjectBadge";
 import SubjectOverflowCard from "./SubjectOverflowCard";
@@ -81,7 +85,12 @@ function SubjectCoordinatorMobileRow({
                 color: "#808898",
               }}
             />
-            <Group gap={6} wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
+            <Group
+              gap={6}
+              wrap="nowrap"
+              align="center"
+              style={{ flex: 1, minWidth: 0 }}
+            >
               <Text
                 fw={500}
                 fz="sm"
@@ -94,10 +103,14 @@ function SubjectCoordinatorMobileRow({
                 {group.name}
               </Text>
               {group.coordinator === null && (
-                <Tooltip label="No coordinator assigned" withArrow position="top">
+                <Tooltip
+                  label="No coordinator assigned"
+                  withArrow
+                  position="top"
+                >
                   <IconAlertTriangle
                     size={14}
-                    color="#EF4444"
+                    color="#c4a827"
                     style={{ flexShrink: 0 }}
                   />
                 </Tooltip>

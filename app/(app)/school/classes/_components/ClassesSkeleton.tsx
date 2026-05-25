@@ -1,31 +1,43 @@
-import { Group, Skeleton, Stack } from "@mantine/core";
+import { Box, Group, SimpleGrid, Skeleton, Stack } from "@mantine/core";
+
+const skeletonGroups = [
+  { labelWidth: 112, cards: 1 },
+  { labelWidth: 124, cards: 4 },
+  { labelWidth: 136, cards: 3 },
+];
 
 export default function ClassesSkeleton() {
   return (
     <>
-      {/* Buttons row: Transfer Requests + Create a Class */}
-      <Group justify="flex-end" mb="md" gap="xs">
-        <Skeleton height={34} width={160} radius="md" />
-        <Skeleton height={34} width={130} radius="md" />
-      </Group>
-
-      {/* Search + refresh */}
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-        <Skeleton height={36} style={{ flex: 1, maxWidth: 700 }} radius="md" />
-        <Skeleton height={36} width={36} radius="xl" />
-      </Group>
-
-      {/* Filters */}
-      <Group mb="md" gap="sm">
-        <Skeleton height={36} width={200} radius="md" />
-        <Skeleton height={36} width={200} radius="md" />
-      </Group>
-
       {/* Accordion sections */}
       <Stack gap="md">
-        <Skeleton height={220} radius="md" />
-        <Skeleton height={220} radius="md" />
-        <Skeleton height={220} radius="md" />
+        {skeletonGroups.map((group, index) => (
+          <Box
+            key={index}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              overflow: "hidden",
+            }}
+          >
+            <Box px="md" py="sm" style={{ backgroundColor: "#f3f4f6" }}>
+              <Group gap="xs">
+                <Skeleton height={18} width={group.labelWidth} radius="sm" />
+                <Skeleton height={14} width={28} radius="sm" />
+              </Group>
+            </Box>
+            <Box p="sm">
+              <SimpleGrid
+                cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
+                spacing="sm"
+              >
+                {Array.from({ length: group.cards }).map((_, cardIndex) => (
+                  <Skeleton key={cardIndex} height={170} radius="md" />
+                ))}
+              </SimpleGrid>
+            </Box>
+          </Box>
+        ))}
       </Stack>
     </>
   );

@@ -8,6 +8,14 @@ import type { User } from "@supabase/supabase-js";
 const POLL_INTERVAL_MS = 15 * 60_000;
 
 /**
+ * Maximum random delay added before polling after a reconnect or tab-focus event.
+ * Spreads simultaneous reconnects across a window so N clients don't all hit
+ * /api/auth/permissions-version (and the Auth service) at the same instant.
+ * Full-jitter pattern: delay = random(0, JITTER_MAX_MS).
+ */
+const RECONNECT_JITTER_MAX_MS = 5_000;
+
+/**
  * sessionStorage key tracking the server permissions version at the time of
  * the last JWT refresh. If the server version advances past this value (even
  * after a full page reload), we force a session refresh so the new claims are
@@ -64,20 +72,20 @@ export function usePermissionsSync(user: User | null): void {
 
         const storedRefreshVersion = getStoredRefreshVersion();
 
-        // Refresh if:
-        // - The server version is ahead of the last version we refreshed at
-        //   (covers live changes while the page is open AND the page-reload
-        //    case where the cached JWT predates the latest role change).
-        // - We have never stored a refresh version (fresh session, safe to
-        //   refresh once to guarantee the JWT matches current DB roles).
+        // Only refresh when the server version has genuinely advanced past the
+        // version we last refreshed at. Treating a null stored version as stale
+        // caused a redundant refreshSession() on every new tab / hard refresh —
+        // unnecessary because a fresh login already issues a JWT with current claims.
+        // We always write the current version so subsequent polls have a baseline.
         const needsRefresh =
-          storedRefreshVersion === null || version > storedRefreshVersion;
+          storedRefreshVersion !== null && version > storedRefreshVersion;
 
         if (needsRefresh) {
           await supabase.auth.refreshSession();
-          setStoredRefreshVersion(version);
         }
 
+        // Always record the latest server version so future polls can detect changes.
+        setStoredRefreshVersion(version);
         lastVersionRef.current = version;
       } catch {
         // Network error or route unavailable — silently skip this tick.
@@ -85,8 +93,12 @@ export function usePermissionsSync(user: User | null): void {
     };
 
     // Tab focus: recover stale permissions when user returns to the tab.
+    // Jitter avoids a burst when many users switch back simultaneously (e.g. after a meeting).
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && alive) poll();
+      if (document.visibilityState === "visible" && alive) {
+        const delay = Math.random() * RECONNECT_JITTER_MAX_MS;
+        setTimeout(() => { if (alive) poll(); }, delay);
+      }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
@@ -103,11 +115,18 @@ export function usePermissionsSync(user: User | null): void {
       })
       .subscribe((status: string) => {
         if (status === "SUBSCRIBED") {
-          if (subscribedOnceRef.current && alive) poll(); // reconnected — recover missed events
+          if (subscribedOnceRef.current && alive) {
+            // Reconnected — recover missed events, but jitter to avoid thundering herd
+            // when N clients all reconnect to Realtime at the same instant.
+            const delay = Math.random() * RECONNECT_JITTER_MAX_MS;
+            setTimeout(() => { if (alive) poll(); }, delay);
+          }
           subscribedOnceRef.current = true;
         }
         if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && alive) {
-          poll(); // channel failed — fall back to version check
+          // Channel failed — fall back to version check with jitter.
+          const delay = Math.random() * RECONNECT_JITTER_MAX_MS;
+          setTimeout(() => { if (alive) poll(); }, delay);
         }
       });
 

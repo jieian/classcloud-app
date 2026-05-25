@@ -18,9 +18,6 @@ export default async function ClassDetailPage({ params }: Props) {
         "students.full_access",
       ]}
     >
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">
-        Classes Management
-      </h1>
       <ClassDetailClient sectionId={id} />
     </ProtectedRoute>
   );

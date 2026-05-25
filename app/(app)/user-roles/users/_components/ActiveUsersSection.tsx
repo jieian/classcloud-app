@@ -32,8 +32,8 @@ export function ActiveUsersSection() {
 
   return (
     <>
-      <Group justify="space-between">
-        <h1 className="mb-3 text-2xl font-bold">
+      <Group justify="space-between" align="flex-end" mb="sm">
+        <h1 className="mb-0 text-2xl font-bold leading-tight">
           Users{" "}
           {userCount !== null && (
             <span className="text-[#808898]">({userCount})</span>

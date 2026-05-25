@@ -4,6 +4,7 @@
  * Next.js 16 + React 19 optimized
  */
 
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { getSupabasePublicEnv } from "./env";
@@ -42,16 +43,18 @@ export async function createServerSupabaseClient() {
 }
 
 /**
- * Gets the current authenticated user from server-side
- * Returns null if not authenticated
+ * Gets the current authenticated user from server-side.
+ * Wrapped with React cache() so multiple server components or route handlers
+ * calling this within the same request share one Auth round-trip instead of N.
+ * cache() resets per request, so there is no cross-request data leakage.
  */
-export async function getServerUser() {
+export const getServerUser = cache(async function getServerUser() {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});
 
 /**
  * Reads the user's permissions directly from their verified JWT app_metadata.

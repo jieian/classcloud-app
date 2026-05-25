@@ -6,6 +6,7 @@ import {
   Select,
   Tooltip,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { IconSchool, IconList, IconRefresh } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import type { GradeLevelRow, SchoolYearOption } from "@/lib/services/classService";
@@ -21,6 +22,8 @@ interface UtilitiesSectionProps {
   onSearchChange: (val: string) => void;
   onRefresh: () => void;
   loading: boolean;
+  showSchoolYearFilter: boolean;
+  showGradeLevelFilter: boolean;
 }
 
 export default function UtilitiesSection({
@@ -34,7 +37,11 @@ export default function UtilitiesSection({
   onSearchChange,
   onRefresh,
   loading,
+  showSchoolYearFilter,
+  showGradeLevelFilter,
 }: UtilitiesSectionProps) {
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
   const syOptions = schoolYears.map((sy) => ({
     value: String(sy.sy_id),
     label: sy.year_range,
@@ -74,27 +81,40 @@ export default function UtilitiesSection({
           </ActionIcon>
         </Tooltip>
       </Group>
-      <Group mb="md" gap="sm">
-        <Select
-          placeholder="School Year"
-          data={syOptions}
-          value={selectedSyId ? String(selectedSyId) : null}
-          onChange={(val) => val && onSyChange(Number(val))}
-          leftSection={<IconSchool size={16} />}
-          w={200}
-          clearable={false}
-        />
-        <Select
-          placeholder="All Grade Levels"
-          data={glOptions}
-          value={gradeLevelFilter ? String(gradeLevelFilter) : "all"}
-          onChange={(val) =>
-            onGradeLevelChange(val && val !== "all" ? Number(val) : null)
-          }
-          leftSection={<IconList size={16} />}
-          w={200}
-        />
-      </Group>
+      {(showSchoolYearFilter || showGradeLevelFilter) && (
+        <Group
+          mb="md"
+          gap="sm"
+          grow={isMobile}
+          wrap={isMobile ? "nowrap" : "wrap"}
+        >
+          {showSchoolYearFilter && (
+            <Select
+              placeholder="School Year"
+              data={syOptions}
+              value={selectedSyId ? String(selectedSyId) : null}
+              onChange={(val) => val && onSyChange(Number(val))}
+              leftSection={<IconSchool size={16} />}
+              w={isMobile ? undefined : 200}
+              style={isMobile ? { flex: 1, minWidth: 0 } : undefined}
+              clearable={false}
+            />
+          )}
+          {showGradeLevelFilter && (
+            <Select
+              placeholder="All Grade Levels"
+              data={glOptions}
+              value={gradeLevelFilter ? String(gradeLevelFilter) : "all"}
+              onChange={(val) =>
+                onGradeLevelChange(val && val !== "all" ? Number(val) : null)
+              }
+              leftSection={<IconList size={16} />}
+              w={isMobile ? undefined : 200}
+              style={isMobile ? { flex: 1, minWidth: 0 } : undefined}
+            />
+          )}
+        </Group>
+      )}
     </>
   );
 }

@@ -1,8 +1,10 @@
 import { Suspense } from "react";
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import {
+  createServerSupabaseClient,
+  getPermissionsFromUser,
+} from "@/lib/supabase/server";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ClassesClient from "./_components/ClassesClient";
-import ClassesSkeleton from "./_components/ClassesSkeleton";
 import { getClassesInitData } from "./_lib/classesServerService";
 
 const REQUIRED_PERMISSIONS = [
@@ -18,7 +20,9 @@ async function ClassesContent({
   userId: string;
   permissions: string[];
 }) {
-  const initialData = await getClassesInitData(userId, permissions).catch(() => null);
+  const initialData = await getClassesInitData(userId, permissions).catch(
+    () => null,
+  );
   return <ClassesClient initialData={initialData} />;
 }
 
@@ -31,10 +35,9 @@ export default async function Classes() {
   const permissions = user ? getPermissionsFromUser(user) : [];
 
   return (
-    <ProtectedRoute match="any" requiredPermissions={[...REQUIRED_PERMISSIONS]}>
-      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Classes</h1>
+      <ProtectedRoute match="any" requiredPermissions={[...REQUIRED_PERMISSIONS]}>
       {user ? (
-        <Suspense fallback={<ClassesSkeleton />}>
+        <Suspense fallback={<ClassesClient initialData={null} />}>
           <ClassesContent userId={user.id} permissions={permissions} />
         </Suspense>
       ) : (

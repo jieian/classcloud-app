@@ -7,7 +7,7 @@ export default async function CreateSchoolYearPage() {
 
   return (
     <ProtectedRoute requiredPermissions={["school_year.full_access"]}>
-      <h1 className="text-3xl font-bold mb-4 sm:mb-6 text-[#597D37]">School Year</h1>
+      <h1 className="text-3xl font-bold mb-6 text-[#597D37]">School Year</h1>
       <CreateSchoolYearWizard initialData={initialData} />
     </ProtectedRoute>
   );
