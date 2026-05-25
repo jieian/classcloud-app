@@ -10,8 +10,10 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
+import { IconUserQuestion, IconBallpen, IconMailSpark } from "@tabler/icons-react";
 import PendingUsersTable from "./PendingUsersTable";
 import PendingUsersTableSkeleton from "./PendingUsersTableSkeleton";
+import EmptySearchState from "../../../../../components/EmptySearchState";
 import { fetchPendingUsers, fetchAllRoles, type PendingUser, type Role } from "../_lib";
 
 export type PendingFilter = "all" | "self_register" | "admin_invite";
@@ -130,6 +132,40 @@ export default forwardRef<
       <Alert color="red" title="Error">
         {error}
       </Alert>
+    );
+  }
+
+  if (filteredUsers.length === 0) {
+    if (search.trim()) {
+      return <EmptySearchState />;
+    }
+
+    if (filter === "self_register") {
+      return (
+        <EmptySearchState
+          icon={IconBallpen}
+          title="No self-registered users"
+          description="No users have signed up and are awaiting activation."
+        />
+      );
+    }
+
+    if (filter === "admin_invite") {
+      return (
+        <EmptySearchState
+          icon={IconMailSpark}
+          title="No admin-invited users"
+          description="No users have been invited and are awaiting activation."
+        />
+      );
+    }
+
+    return (
+      <EmptySearchState
+        icon={IconUserQuestion}
+        title="No pending users"
+        description="There are no users waiting for account activation."
+      />
     );
   }
 

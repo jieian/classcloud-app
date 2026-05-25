@@ -54,11 +54,14 @@ const _POST = async function (request: Request) {
   );
 
   if (existingAuthUser) {
-    // Check if public profile already exists
+    // Check if public profile already exists and is active (not soft-deleted).
+    // A restore re-registration leaves the row intact with deleted_at IS NOT NULL,
+    // so we must NOT treat that as "already confirmed".
     const { data: existingProfile } = await adminClient
       .from("users")
       .select("uid")
       .eq("uid", existingAuthUser.id)
+      .is("deleted_at", null)
       .maybeSingle();
 
     if (existingProfile) {

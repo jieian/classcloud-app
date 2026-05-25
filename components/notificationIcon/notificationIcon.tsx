@@ -46,7 +46,7 @@ const modeMap: Record<
   facultyView: {
     title: "Switched to Faculty View",
     message: "Showing only classes assigned to you.",
-    color: "#298925",
+    color: "#4EAE4A",
     icon: <IconSchool size={20} />,
   },
   adminView: {

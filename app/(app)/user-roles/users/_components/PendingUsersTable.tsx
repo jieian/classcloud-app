@@ -32,14 +32,6 @@ export default function PendingUsersTable({
   unreadMap,
   onMarkRead,
 }: PendingUsersTableProps) {
-  if (users.length === 0) {
-    return (
-      <Text c="dimmed" ta="center" py="xl">
-        No pending users
-      </Text>
-    );
-  }
-
   const hasBothSources =
     users.some((u) => u.source === "self_register") &&
     users.some((u) => u.source === "admin_invite");

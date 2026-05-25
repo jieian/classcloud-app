@@ -25,7 +25,6 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
-import { notify } from "@/components/notificationIcon/notificationIcon";
 import type {
   GradeLevelRow,
   SchoolYearOption,
@@ -243,9 +242,6 @@ export default function ClassesClient({ initialData }: Props = {}) {
           await loadClasses(nextSyId);
         }
 
-        notify({
-          mode: switchingToFaculty ? "facultyView" : "adminView",
-        });
       } finally {
         setViewTransitioning(false);
       }
@@ -371,31 +367,30 @@ export default function ClassesClient({ initialData }: Props = {}) {
           position: "relative",
           display: "flex",
           width: isMobile ? "100%" : 300,
-          height: isMobile ? 42 : 46,
+          height: isMobile ? 36 : 38,
           fontFamily: "Arial, Helvetica, sans-serif",
-          padding: 4,
-          background: "#f1f3f5",
-          border: "1px solid #e9ecef",
+          padding: 3,
+          background: "#ffffff",
+          border: "1.5px solid #9ca3af",
           borderRadius: 9999,
-          boxShadow: "inset 0 1px 2px rgba(0,0,0,0.04)",
         }}
       >
         <Box
           aria-hidden="true"
           style={{
             position: "absolute",
-            top: 4,
-            bottom: 4,
-            width: "calc(50% - 4px)",
-            left: isAdminView ? "calc(50% + 2px)" : "4px",
+            top: 3,
+            bottom: 3,
+            width: "calc(50% - 3px)",
+            left: isAdminView ? "calc(50% + 1.5px)" : "3px",
             borderRadius: 9999,
             zIndex: 1,
             background: isAdminView
               ? "linear-gradient(180deg, #5578b7 0%, #4A72AE 100%)"
-              : "linear-gradient(180deg, #31982d 0%, #298925 100%)",
+              : "linear-gradient(180deg, #5dc259 0%, #4EAE4A 100%)",
             boxShadow: isAdminView
               ? "0 2px 8px rgba(74, 114, 174, 0.22), 0 1px 2px rgba(0,0,0,0.05)"
-              : "0 2px 8px rgba(41, 137, 37, 0.22), 0 1px 2px rgba(0,0,0,0.05)",
+              : "0 2px 8px rgba(78, 174, 74, 0.22), 0 1px 2px rgba(0,0,0,0.05)",
             transition: "all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
         />
