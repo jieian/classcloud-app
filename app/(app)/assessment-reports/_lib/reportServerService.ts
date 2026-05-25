@@ -6,7 +6,7 @@ import type { ReportExamCard, ReportSectionCard } from "@/lib/services/reportsAn
 export const REPORTS_CACHE_TAG = "reports";
 
 type RawGradeJoin = { display_name: string; level_number: number | null };
-type RawSubjectJoin = { name: string | null };
+type RawSubjectJoin = { name: string | null; subject_type?: "BOTH" | "SSES" | null };
 type RawCurriculumSubjectJoin = { subject_id: number | null; subjects: RawSubjectJoin | RawSubjectJoin[] | null };
 type RawSectionJoin = {
   section_id: number;
@@ -113,7 +113,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
   const { data, error } = await admin
     .from("exam_assignments")
     .select(
-      "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name)))",
+      "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
     )
     .is("exams.deleted_at", null);
 
@@ -137,6 +137,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     const subjectJoin = firstJoin(curriculumJoin?.subjects);
     const subjectId = curriculumJoin?.subject_id ?? null;
     const subjectName = subjectJoin?.name ?? "Unknown Subject";
+    const subjectType = subjectJoin?.subject_type ?? null;
 
     const key = reportKey(examJoin.exam_id, sectionJoin.section_id);
     const existing = grouped.get(key);
@@ -152,6 +153,7 @@ async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
       examDate: examJoin.exam_date,
       subjectId,
       subjectName,
+      subjectType,
       isFinalized: finalizedKeys.has(key),
       sectionId: sectionJoin.section_id,
       sectionName: sectionJoin.name,

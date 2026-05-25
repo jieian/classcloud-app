@@ -67,6 +67,7 @@ export type ReportExamCard = {
   examDate: string | null;
   subjectId: number | null;
   subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
   isFinalized: boolean;
   sectionId: number;
   sectionName: string;
@@ -95,6 +96,7 @@ export type ReportSubjectStatus = "Finalized" | "Not Finalized" | "No exam yet";
 export type ReportSectionSubjectRow = {
   subjectId: number;
   subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
   teacherName: string | null;
   status: ReportSubjectStatus;
   latestExamId: number | null;
@@ -116,8 +118,57 @@ export type ReportSectionOverview = {
   subjects: ReportSectionSubjectRow[];
 };
 
+export type ReportSubjectCard = {
+  subjectId: number;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  sectionCount: number;
+  finalizedSections: number;
+  isFinalized: boolean;
+  teacherNames: string[];
+  sectionNames: string[];
+  latestExamId: number | null;
+  latestExamDate: string | null;
+};
+
+export type ReportSubjectSectionRow = {
+  sectionId: number;
+  sectionName: string;
+  teacherName: string | null;
+  status: ReportSubjectStatus;
+  latestExamId: number | null;
+  latestExamTitle: string | null;
+};
+
+export type ReportSubjectOverview = {
+  subjectId: number;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  sectionCount: number;
+  finalizedSections: number;
+  isFinalized: boolean;
+  latestExamId: number | null;
+  latestExamTitle: string | null;
+  latestExamDate: string | null;
+  sections: ReportSubjectSectionRow[];
+};
+
+export type ConsolidatedReportResult = {
+  summary: ExamDetailsSummary | null;
+  proficiencyRows: ProficiencyRow[];
+  itemAnalysis: ItemAnalysisSummary;
+  sectionCount: number;
+};
+
 type SubjectJoin = {
   name: string | null;
+  subject_type?: "BOTH" | "SSES" | null;
 };
 
 type CurriculumSubjectJoin = {
@@ -319,13 +370,23 @@ function isSsesSectionName(name: string): boolean {
   return name.trim().toUpperCase() === "SSES";
 }
 
-function getSubjectInfo(exam: ExamJoin): { subjectId: number | null; subjectName: string } {
+function getSubjectInfo(exam: ExamJoin): {
+  subjectId: number | null;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+} {
   const curriculumJoin = firstJoin(exam.curriculum_subjects);
   const subjectJoin = firstJoin(curriculumJoin?.subjects);
   return {
     subjectId: curriculumJoin?.subject_id ?? null,
     subjectName: subjectJoin?.name ?? "Unknown Subject",
+    subjectType: subjectJoin?.subject_type ?? null,
   };
+}
+
+function compareSubjectType(a: "BOTH" | "SSES" | null, b: "BOTH" | "SSES" | null): number {
+  if (a === b) return 0;
+  return a === "SSES" ? -1 : 1;
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {
@@ -334,6 +395,61 @@ function toFiniteNumber(value: unknown, fallback = 0): number {
 
 function reportKey(examId: number, sectionId: number): string {
   return `${examId}-${sectionId}`;
+}
+
+function subjectGradeKey(gradeLevelId: number, subjectId: number): string {
+  return `${gradeLevelId}-${subjectId}`;
+}
+
+function aggregateSummaries(rows: ExamDetailsSummary[]): ExamDetailsSummary | null {
+  if (rows.length === 0) return null;
+  const numberOfCases = rows.reduce((sum, row) => sum + row.numberOfCases, 0);
+  const totalScore = rows.reduce((sum, row) => sum + row.totalScore, 0);
+  const totalItems = Math.max(...rows.map((row) => row.totalItems), 0);
+  const highestScore = Math.max(...rows.map((row) => row.highestScore), 0);
+  const lowestScore = Math.min(...rows.map((row) => row.lowestScore));
+  const passCount = rows.reduce((sum, row) => sum + row.passCount, 0);
+  const mean = numberOfCases > 0 ? totalScore / numberOfCases : 0;
+  const mps = totalItems > 0 ? (mean / totalItems) * 100 : 0;
+  const pl = rows.reduce((sum, row) => sum + row.pl * row.numberOfCases, 0) / Math.max(numberOfCases, 1);
+
+  return {
+    totalItems,
+    numberOfCases,
+    totalScore,
+    mean,
+    pl,
+    highestScore,
+    lowestScore: Number.isFinite(lowestScore) ? lowestScore : 0,
+    mps,
+    passCount,
+  };
+}
+
+function aggregateItemAnalysis(summaries: ItemAnalysisSummary[]): ItemAnalysisSummary {
+  const grouped = new Map<number, ItemAnalysisRow>();
+  for (const summary of summaries) {
+    for (const row of summary.rows) {
+      const existing = grouped.get(row.itemNo);
+      if (!existing) {
+        grouped.set(row.itemNo, { ...row });
+        continue;
+      }
+      existing.correctResponses += row.correctResponses;
+      if (existing.objective === "-" && row.objective !== "-") existing.objective = row.objective;
+    }
+  }
+
+  const ranked = Array.from(grouped.values())
+    .sort((a, b) => b.correctResponses - a.correctResponses || a.itemNo - b.itemNo)
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+  const rows = [...ranked].sort((a, b) => a.itemNo - b.itemNo);
+
+  return {
+    rows,
+    topMostLearned: ranked.slice(0, 5),
+    topLeastLearned: [...ranked].reverse().slice(0, 5),
+  };
 }
 
 async function fetchFinalizedReportKeys(): Promise<Set<string>> {
@@ -480,7 +596,7 @@ export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
     const result = await supabase
       .from("exam_assignments")
       .select(
-        "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name)))",
+        "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
       )
       .is("exams.deleted_at", null);
 
@@ -535,6 +651,7 @@ export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
       examDate: examJoin.exam_date,
       subjectId: subjectInfo.subjectId,
       subjectName: subjectInfo.subjectName,
+      subjectType: subjectInfo.subjectType,
       isFinalized: finalizedKeys.has(key),
       sectionId: sectionJoin.section_id,
       sectionName: sectionJoin.name,
@@ -718,7 +835,7 @@ export async function fetchReportSectionOverview(
   const { data: teacherData, error: teacherError } = await supabase
     .from("teacher_class_assignments")
     .select(
-      "curriculum_subject_id, users!teacher_id(first_name, last_name), curriculum_subjects!inner(subject_id, subjects(name))",
+      "curriculum_subject_id, users!teacher_id(first_name, last_name), curriculum_subjects!inner(subject_id, subjects(name, subject_type))",
     )
     .eq("section_id", sectionId)
     .is("deleted_at", null);
@@ -742,10 +859,11 @@ export async function fetchReportSectionOverview(
     const teacherName = toTeacherName(row.users);
     const latestExam = latestBySubject.get(subjectId) ?? null;
 
-    subjectRows.set(subjectId, {
-      subjectId,
-      subjectName,
-      teacherName,
+      subjectRows.set(subjectId, {
+        subjectId,
+        subjectName,
+        subjectType: subjectJoin?.subject_type ?? null,
+        teacherName,
       status: latestExam
         ? latestExam.isFinalized
           ? "Finalized"
@@ -762,6 +880,7 @@ export async function fetchReportSectionOverview(
     subjectRows.set(card.subjectId, {
       subjectId: card.subjectId,
       subjectName: card.subjectName,
+      subjectType: card.subjectType,
       teacherName: null,
       status: latestExam.isFinalized ? "Finalized" : "Not Finalized",
       latestExamId: latestExam.examId,
@@ -793,12 +912,168 @@ export async function fetchReportSectionOverview(
     latestExamTitle: latestOverall?.title ?? null,
     latestExamDate: latestOverall?.examDate ?? null,
     subjects: Array.from(subjectRows.values()).sort((a, b) =>
+      compareSubjectType(a.subjectType, b.subjectType) ||
       a.subjectName.localeCompare(b.subjectName, undefined, {
         sensitivity: "base",
       }),
     ),
   };
   return cacheSet(cacheKey, result);
+}
+
+export async function fetchReportSubjectCards(): Promise<ReportSubjectCard[]> {
+  const cached = cacheGet<ReportSubjectCard[]>("subjectCards");
+  if (cached) return cached;
+
+  const [sectionCards, examCards] = await Promise.all([
+    fetchReportSectionCards(),
+    fetchReportExamCards(),
+  ]);
+  const grouped = new Map<string, ReportSubjectCard>();
+
+  for (const section of sectionCards) {
+    const overview = await fetchReportSectionOverview(section.sectionId);
+    for (const subject of overview?.subjects ?? []) {
+      const key = subjectGradeKey(section.gradeLevelId, subject.subjectId);
+      const existing = grouped.get(key);
+      if (!existing) {
+        grouped.set(key, {
+          subjectId: subject.subjectId,
+          subjectName: subject.subjectName,
+          subjectType: subject.subjectType,
+          gradeLevelId: section.gradeLevelId,
+          gradeDisplayName: section.gradeDisplayName,
+          gradeLevelNumber: section.gradeLevelNumber,
+          sectionCount: 0,
+          finalizedSections: 0,
+          isFinalized: false,
+          teacherNames: [],
+          sectionNames: [],
+          latestExamId: null,
+          latestExamDate: null,
+        });
+      }
+
+      const current = grouped.get(key)!;
+      current.sectionCount += 1;
+      current.sectionNames.push(section.sectionName);
+      if (subject.teacherName && !current.teacherNames.includes(subject.teacherName)) {
+        current.teacherNames.push(subject.teacherName);
+      }
+      if (subject.status === "Finalized") current.finalizedSections += 1;
+
+      const latest = examCards
+        .filter(
+          (card) =>
+            card.gradeLevelId === section.gradeLevelId &&
+            card.sectionId === section.sectionId &&
+            card.subjectId === subject.subjectId,
+        )
+        .reduce<ReportExamCard | null>((hit, card) => {
+          if (!hit) return card;
+          return getExamSortScore(card.examDate, card.examId) >=
+            getExamSortScore(hit.examDate, hit.examId)
+            ? card
+            : hit;
+        }, null);
+
+      if (latest) {
+        if (
+          getExamSortScore(latest.examDate, latest.examId) >=
+          getExamSortScore(current.latestExamDate, current.latestExamId ?? 0)
+        ) {
+          current.latestExamId = latest.examId;
+          current.latestExamDate = latest.examDate;
+        }
+      }
+    }
+  }
+
+  const cards = Array.from(grouped.values()).map((card) => ({
+    ...card,
+    isFinalized: card.sectionCount > 0 && card.finalizedSections === card.sectionCount,
+    teacherNames: card.teacherNames.sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    ),
+    sectionNames: card.sectionNames.sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: "base" }),
+    ),
+  }));
+
+  return cacheSet(
+    "subjectCards",
+    cards.sort((a, b) => {
+      const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      if (ga !== gb) return ga - gb;
+      const typeCompare = compareSubjectType(a.subjectType, b.subjectType);
+      if (typeCompare !== 0) return typeCompare;
+      return a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" });
+    }),
+  );
+}
+
+export async function fetchReportSubjectOverview(
+  gradeLevelId: number,
+  subjectId: number,
+): Promise<ReportSubjectOverview | null> {
+  if (!Number.isFinite(gradeLevelId) || !Number.isFinite(subjectId)) return null;
+  const cacheKey = `subjectOverview:${gradeLevelId}:${subjectId}`;
+  const cached = cacheGet<ReportSubjectOverview | null>(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const [subjectCards, sectionCards] = await Promise.all([
+    fetchReportSubjectCards(),
+    fetchReportSectionCards(),
+  ]);
+  const subjectCard =
+    subjectCards.find(
+      (card) => card.gradeLevelId === gradeLevelId && card.subjectId === subjectId,
+    ) ?? null;
+  if (!subjectCard) return cacheSet(cacheKey, null);
+
+  const sectionRows: ReportSubjectSectionRow[] = [];
+  for (const section of sectionCards.filter((card) => card.gradeLevelId === gradeLevelId)) {
+    const overview = await fetchReportSectionOverview(section.sectionId);
+    const subject = overview?.subjects.find((row) => row.subjectId === subjectId);
+    if (!subject) continue;
+    sectionRows.push({
+      sectionId: section.sectionId,
+      sectionName: section.sectionName,
+      teacherName: subject.teacherName,
+      status: subject.status,
+      latestExamId: subject.latestExamId,
+      latestExamTitle: subject.latestExamTitle,
+    });
+  }
+
+  const latestCard = (await fetchReportExamCards())
+    .filter((card) => card.gradeLevelId === gradeLevelId && card.subjectId === subjectId)
+    .reduce<ReportExamCard | null>((latest, card) => {
+      if (!latest) return card;
+      return getExamSortScore(card.examDate, card.examId) >=
+        getExamSortScore(latest.examDate, latest.examId)
+        ? card
+        : latest;
+    }, null);
+
+  return cacheSet(cacheKey, {
+    subjectId,
+    subjectName: subjectCard.subjectName,
+    subjectType: subjectCard.subjectType,
+    gradeLevelId,
+    gradeDisplayName: subjectCard.gradeDisplayName,
+    gradeLevelNumber: subjectCard.gradeLevelNumber,
+    sectionCount: subjectCard.sectionCount,
+    finalizedSections: subjectCard.finalizedSections,
+    isFinalized: subjectCard.isFinalized,
+    latestExamId: latestCard?.examId ?? subjectCard.latestExamId,
+    latestExamTitle: latestCard?.title ?? null,
+    latestExamDate: latestCard?.examDate ?? subjectCard.latestExamDate,
+    sections: sectionRows.sort((a, b) =>
+      a.sectionName.localeCompare(b.sectionName, undefined, { sensitivity: "base" }),
+    ),
+  });
 }
 
 export async function fetchSavedExamDetailsSummary(
@@ -960,4 +1235,61 @@ export async function fetchSavedItemAnalysisSummary(
     topMostLearned: mapSavedItemAnalysisRows(row.most_learned),
     topLeastLearned: mapSavedItemAnalysisRows(row.least_learned),
   });
+}
+
+export async function fetchConsolidatedSubjectAnalytics(
+  gradeLevelId: number,
+  subjectId: number,
+  examId: number | null,
+): Promise<ConsolidatedReportResult> {
+  const empty: ConsolidatedReportResult = {
+    summary: null,
+    proficiencyRows: [],
+    itemAnalysis: { rows: [], topMostLearned: [], topLeastLearned: [] },
+    sectionCount: 0,
+  };
+  if (!Number.isFinite(gradeLevelId) || !Number.isFinite(subjectId)) return empty;
+
+  const examCards = (await fetchReportExamCards()).filter(
+    (card) =>
+      card.gradeLevelId === gradeLevelId &&
+      card.subjectId === subjectId &&
+      card.isFinalized &&
+      (examId == null || card.examId === examId),
+  );
+
+  const latestBySection = new Map<number, ReportExamCard>();
+  for (const card of examCards) {
+    const existing = latestBySection.get(card.sectionId);
+    if (!existing) {
+      latestBySection.set(card.sectionId, card);
+      continue;
+    }
+    if (
+      getExamSortScore(card.examDate, card.examId) >=
+      getExamSortScore(existing.examDate, existing.examId)
+    ) {
+      latestBySection.set(card.sectionId, card);
+    }
+  }
+
+  const cards = Array.from(latestBySection.values());
+  if (cards.length === 0) return empty;
+
+  const [summaries, proficiencyGroups, itemSummaries] = await Promise.all([
+    Promise.all(cards.map((card) => fetchSavedExamDetailsSummary(card.examId, card.sectionId))),
+    Promise.all(cards.map((card) => fetchSavedProficiencyRows(card.examId, card.sectionId))),
+    Promise.all(cards.map((card) => fetchSavedItemAnalysisSummary(card.examId, card.sectionId))),
+  ]);
+
+  return {
+    summary: aggregateSummaries(
+      summaries.filter((summary): summary is ExamDetailsSummary => summary != null),
+    ),
+    proficiencyRows: proficiencyGroups.flat().sort((a, b) =>
+      a.pupilName.localeCompare(b.pupilName, undefined, { sensitivity: "base" }),
+    ),
+    itemAnalysis: aggregateItemAnalysis(itemSummaries),
+    sectionCount: cards.length,
+  };
 }

@@ -25,6 +25,8 @@ import BackButton from "@/components/BackButton";
 import {
   fetchReportExamCards,
   fetchReportSectionOverview,
+  fetchReportSubjectOverview,
+  fetchConsolidatedSubjectAnalytics,
   fetchSavedExamDetailsSummary,
   fetchSavedItemAnalysisSummary,
   fetchSavedProficiencyRows,
@@ -32,12 +34,15 @@ import {
   type ItemAnalysisSummary,
   type ProficiencyRow,
   type ReportExamCard,
+  type ReportSubjectOverview,
 } from "@/lib/services/reportsAnalysisService";
 
 interface ReportAnalyticsClientProps {
   initialGradeLevelId?: number | null;
   initialSectionId?: number | null;
   initialExamId?: number | null;
+  initialSubjectId?: number | null;
+  mode?: "section" | "subject";
 }
 
 const COLLAPSIBLE_KEYS = ["details", "proficiency", "mpl", "itemRanking", "itemAnalysis", "proficiencyLevel", "laempl"] as const;
@@ -270,6 +275,8 @@ export default function ReportAnalyticsClient({
   initialGradeLevelId = null,
   initialSectionId = null,
   initialExamId = null,
+  initialSubjectId = null,
+  mode = "section",
 }: ReportAnalyticsClientProps) {
   const searchParams = useSearchParams();
   const queryGradeParam = Number(searchParams.get("gradeLevelId"));
@@ -289,7 +296,11 @@ export default function ReportAnalyticsClient({
   const [loading, setLoading] = useState(true);
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
+    Number.isFinite(initialSubjectId) ? Number(initialSubjectId) : null,
+  );
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [subjectOverview, setSubjectOverview] = useState<ReportSubjectOverview | null>(null);
   const [subjectHydrated, setSubjectHydrated] = useState(false);
   const [subjectClearedByUser, setSubjectClearedByUser] = useState(false);
   const [sectionSubjectOptions, setSectionSubjectOptions] = useState<
@@ -301,6 +312,7 @@ export default function ReportAnalyticsClient({
   >("exam_results");
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState<ExamDetailsSummary | null>(null);
+  const [consolidatedSectionCount, setConsolidatedSectionCount] = useState(0);
   const [proficiencyLoading, setProficiencyLoading] = useState(false);
   const [proficiencyRows, setProficiencyRows] = useState<ProficiencyRow[]>([]);
   const [itemAnalysisLoading, setItemAnalysisLoading] = useState(false);
@@ -314,17 +326,21 @@ export default function ReportAnalyticsClient({
   const SUBJECT_CLEARED_SENTINEL = "__CLEARED__";
   const subjectStorageKey = useMemo(
     () =>
-      selectedSectionId != null
+      mode === "subject" && selectedSubjectId != null
+        ? `assessment-reports:selected-subject:subject:${selectedSubjectId}`
+        : selectedSectionId != null
         ? `assessment-reports:selected-subject:section:${selectedSectionId}`
         : null,
-    [selectedSectionId],
+    [mode, selectedSectionId, selectedSubjectId],
   );
   const collapsibleStorageKey = useMemo(
     () =>
-      selectedSectionId != null
+      mode === "subject" && selectedSubjectId != null
+        ? `assessment-reports:analytics-open:subject:${selectedSubjectId}`
+        : selectedSectionId != null
         ? `assessment-reports:analytics-open:section:${selectedSectionId}`
         : null,
-    [selectedSectionId],
+    [mode, selectedSectionId, selectedSubjectId],
   );
   const maleProficiencyRows = useMemo(
     () => proficiencyRows.filter((row) => row.sex === "Male"),
@@ -441,7 +457,42 @@ export default function ReportAnalyticsClient({
     setSelectedGradeId(queryMatch ?? cards[0].gradeLevelId);
   }, [cards, gradeParam, selectedGradeId]);
 
+  useEffect(() => {
+    if (mode !== "subject") return;
+    const nextSubjectId = Number.isFinite(initialSubjectId) ? Number(initialSubjectId) : null;
+    setSelectedSubjectId(nextSubjectId);
+  }, [initialSubjectId, mode]);
+
+  useEffect(() => {
+    if (mode !== "subject" || selectedGradeId == null || selectedSubjectId == null) {
+      setSubjectOverview(null);
+      return;
+    }
+
+    let mounted = true;
+    const load = async () => {
+      const overview = await fetchReportSubjectOverview(selectedGradeId, selectedSubjectId);
+      if (!mounted) return;
+      setSubjectOverview(overview);
+      setSelectedSubject(overview?.subjectName ?? null);
+    };
+    void load();
+    return () => {
+      mounted = false;
+    };
+  }, [mode, selectedGradeId, selectedSubjectId]);
+
   const sectionOptions = useMemo(() => {
+    if (mode === "subject") {
+      return [
+        { value: "all", label: "All" },
+        ...(subjectOverview?.sections ?? []).map((section) => ({
+          value: String(section.sectionId),
+          label: section.sectionName,
+        })),
+      ];
+    }
+
     const rows = cards.filter((card) =>
       selectedGradeId == null ? true : card.gradeLevelId === selectedGradeId,
     );
@@ -454,9 +505,27 @@ export default function ReportAnalyticsClient({
     return Array.from(dedup.values()).sort((a, b) =>
       a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
     );
-  }, [cards, selectedGradeId]);
+  }, [cards, mode, selectedGradeId, subjectOverview]);
 
   useEffect(() => {
+    if (mode === "subject") {
+      if (initialSectionId != null && Number.isFinite(initialSectionId)) {
+        const hasRouteSection = sectionOptions.some(
+          (option) => option.value === String(initialSectionId),
+        );
+        setSelectedSectionId(hasRouteSection ? Number(initialSectionId) : null);
+        return;
+      }
+      if (selectedSectionId != null) {
+        const hasCurrent = sectionOptions.some(
+          (option) => option.value === String(selectedSectionId),
+        );
+        if (hasCurrent) return;
+      }
+      setSelectedSectionId(null);
+      return;
+    }
+
     if (sectionOptions.length === 0) {
       setSelectedSectionId(null);
       return;
@@ -491,11 +560,20 @@ export default function ReportAnalyticsClient({
 
     // Last fallback: first available section under current grade scope.
     setSelectedSectionId(Number(sectionOptions[0]?.value ?? null));
-  }, [initialSectionId, sectionOptions, selectedSectionId, sectionParam]);
+  }, [initialSectionId, mode, sectionOptions, selectedSectionId, sectionParam]);
 
   useEffect(() => {
     let mounted = true;
     const loadSubjects = async () => {
+      if (mode === "subject") {
+        const options = subjectOverview
+          ? [{ value: subjectOverview.subjectName, label: subjectOverview.subjectName }]
+          : [];
+        setSectionSubjectOptions(options);
+        setSubjectHydrated(true);
+        return;
+      }
+
       if (selectedSectionId == null) {
         setSectionSubjectOptions([]);
         return;
@@ -517,9 +595,18 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [selectedSectionId]);
+  }, [mode, selectedSectionId, subjectOverview]);
 
   const availableExamCards = useMemo(() => {
+    if (mode === "subject") {
+      return cards.filter((card) => {
+        if (selectedGradeId != null && card.gradeLevelId !== selectedGradeId) return false;
+        if (selectedSubjectId != null && card.subjectId !== selectedSubjectId) return false;
+        if (selectedSectionId != null && card.sectionId !== selectedSectionId) return false;
+        return true;
+      });
+    }
+
     if (!selectedSubject) {
       if (!Number.isFinite(examParam)) return [];
       return cards.filter((card) => {
@@ -535,13 +622,14 @@ export default function ReportAnalyticsClient({
       if (card.subjectName !== selectedSubject) return false;
       return true;
     });
-  }, [cards, examParam, selectedGradeId, selectedSectionId, selectedSubject]);
+  }, [cards, examParam, mode, selectedGradeId, selectedSectionId, selectedSubject, selectedSubjectId]);
 
   useEffect(() => {
+    if (mode === "subject") return;
     setSubjectHydrated(false);
     setSubjectClearedByUser(false);
     setSelectedSubject(null);
-  }, [selectedSectionId]);
+  }, [mode, selectedSectionId]);
 
   useEffect(() => {
     if (
@@ -553,6 +641,12 @@ export default function ReportAnalyticsClient({
   }, [selectedSubject, sectionSubjectOptions]);
 
   useEffect(() => {
+    if (mode === "subject") {
+      setSelectedSubject(subjectOverview?.subjectName ?? null);
+      setSubjectHydrated(true);
+      return;
+    }
+
     if (sectionSubjectOptions.length === 0) {
       setSelectedSubject(null);
       setSubjectHydrated(true);
@@ -620,6 +714,8 @@ export default function ReportAnalyticsClient({
     selectedSubject,
     subjectClearedByUser,
     subjectStorageKey,
+    mode,
+    subjectOverview,
   ]);
 
   useEffect(() => {
@@ -657,11 +753,28 @@ export default function ReportAnalyticsClient({
   }, [activeTab]);
 
   const examOptions = useMemo(() => {
+    if (mode === "subject" && selectedSectionId == null) {
+      const dedup = new Map<number, { value: string; label: string; sort: number }>();
+      for (const card of availableExamCards) {
+        if (!dedup.has(card.examId)) {
+          const timestamp = card.examDate ? new Date(card.examDate).getTime() : 0;
+          dedup.set(card.examId, {
+            value: `${card.examId}-all`,
+            label: card.title,
+            sort: (Number.isFinite(timestamp) ? timestamp : 0) * 10_000 + card.examId,
+          });
+        }
+      }
+      return Array.from(dedup.values())
+        .sort((a, b) => b.sort - a.sort)
+        .map(({ value, label }) => ({ value, label }));
+    }
+
     return availableExamCards.map((card) => ({
       value: `${card.examId}-${card.sectionId}`,
       label: card.title,
     }));
-  }, [availableExamCards]);
+  }, [availableExamCards, mode, selectedSectionId]);
 
   useEffect(() => {
     if (examOptions.length === 0) {
@@ -673,40 +786,69 @@ export default function ReportAnalyticsClient({
     if (hasCurrent) return;
 
     const queryMatch =
-      Number.isFinite(examParam) &&
-      Number.isFinite(sectionParam) &&
-      examOptions.some((option) => option.value === `${examParam}-${sectionParam}`)
-        ? `${examParam}-${sectionParam}`
+      Number.isFinite(examParam)
+        ? mode === "subject" && selectedSectionId == null
+          ? examOptions.some((option) => option.value === `${examParam}-all`)
+            ? `${examParam}-all`
+            : null
+          : Number.isFinite(sectionParam) &&
+            examOptions.some((option) => option.value === `${examParam}-${sectionParam}`)
+          ? `${examParam}-${sectionParam}`
+          : null
         : null;
 
     setSelectedKey(queryMatch ?? examOptions[0].value);
-  }, [examOptions, selectedKey, examParam, sectionParam]);
+  }, [examOptions, selectedKey, examParam, mode, selectedSectionId, sectionParam]);
 
   const selectedCard = useMemo(() => {
     if (!selectedKey) return null;
+    if (mode === "subject" && selectedSectionId == null) {
+      const [examIdPart] = selectedKey.split("-");
+      const selectedExamId = Number(examIdPart);
+      return (
+        availableExamCards.find((card) => card.examId === selectedExamId && card.isFinalized) ??
+        availableExamCards.find((card) => card.examId === selectedExamId) ??
+        null
+      );
+    }
     return (
       availableExamCards.find(
         (card) => `${card.examId}-${card.sectionId}` === selectedKey,
       ) ?? null
     );
-  }, [availableExamCards, selectedKey]);
+  }, [availableExamCards, mode, selectedKey, selectedSectionId]);
+
+  const isConsolidatedSubjectView = mode === "subject" && selectedSectionId == null;
 
   useEffect(() => {
     let mounted = true;
     const loadSummary = async () => {
       if (!selectedCard) {
         setSummary(null);
+        setConsolidatedSectionCount(0);
         return;
       }
 
       setSummaryLoading(true);
       try {
-        const savedSummary = await fetchSavedExamDetailsSummary(
-          selectedCard.examId,
-          selectedCard.sectionId,
-        );
-        if (!mounted) return;
-        setSummary(savedSummary);
+        if (isConsolidatedSubjectView) {
+          const consolidated = await fetchConsolidatedSubjectAnalytics(
+            selectedCard.gradeLevelId,
+            selectedSubjectId ?? 0,
+            selectedCard.examId,
+          );
+          if (!mounted) return;
+          setSummary(consolidated.summary);
+          setConsolidatedSectionCount(consolidated.sectionCount);
+        } else {
+          const savedSummary = await fetchSavedExamDetailsSummary(
+            selectedCard.examId,
+            selectedCard.sectionId,
+          );
+          if (!mounted) return;
+          setSummary(savedSummary);
+          setConsolidatedSectionCount(0);
+        }
       } finally {
         if (mounted) setSummaryLoading(false);
       }
@@ -715,22 +857,31 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [selectedCard]);
+  }, [isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
 
   useEffect(() => {
     let mounted = true;
     const loadProficiencyRows = async () => {
-      if (!selectedCard || !selectedSubject || !selectedCard.isFinalized) {
+      if (!selectedCard) {
+        setProficiencyRows([]);
+        return;
+      }
+      if ((!selectedSubject || !selectedCard.isFinalized) && !isConsolidatedSubjectView) {
         setProficiencyRows([]);
         return;
       }
 
       setProficiencyLoading(true);
       try {
-        const rows = await fetchSavedProficiencyRows(
-          selectedCard.examId,
-          selectedCard.sectionId,
-        );
+        const rows = isConsolidatedSubjectView
+          ? (
+              await fetchConsolidatedSubjectAnalytics(
+                selectedCard.gradeLevelId,
+                selectedSubjectId ?? 0,
+                selectedCard.examId,
+              )
+            ).proficiencyRows
+          : await fetchSavedProficiencyRows(selectedCard.examId, selectedCard.sectionId);
         if (!mounted) return;
         setProficiencyRows(rows);
       } finally {
@@ -742,21 +893,30 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [selectedCard, selectedSubject]);
+  }, [isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
   useEffect(() => {
     let mounted = true;
     const loadItemAnalysis = async () => {
-      if (!selectedCard || !selectedSubject || !selectedCard.isFinalized) {
+      if (!selectedCard) {
+        setItemAnalysis({ rows: [], topMostLearned: [], topLeastLearned: [] });
+        return;
+      }
+      if ((!selectedSubject || !selectedCard.isFinalized) && !isConsolidatedSubjectView) {
         setItemAnalysis({ rows: [], topMostLearned: [], topLeastLearned: [] });
         return;
       }
       setItemAnalysisLoading(true);
       try {
-        const summary = await fetchSavedItemAnalysisSummary(
-          selectedCard.examId,
-          selectedCard.sectionId,
-        );
+        const summary = isConsolidatedSubjectView
+          ? (
+              await fetchConsolidatedSubjectAnalytics(
+                selectedCard.gradeLevelId,
+                selectedSubjectId ?? 0,
+                selectedCard.examId,
+              )
+            ).itemAnalysis
+          : await fetchSavedItemAnalysisSummary(selectedCard.examId, selectedCard.sectionId);
         if (!mounted) return;
         setItemAnalysis(summary);
       } finally {
@@ -767,7 +927,7 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [selectedCard, selectedSubject]);
+  }, [isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
 
   if (loading) {
@@ -787,6 +947,7 @@ export default function ReportAnalyticsClient({
     return hit?.label ?? "Grade";
   })();
   const selectedSectionLabel = (() => {
+    if (mode === "subject" && selectedSectionId == null) return "All Sections";
     if (selectedSectionId == null) return "Section";
     const hit = sectionOptions.find(
       (option) => Number(option.value) === selectedSectionId,
@@ -794,11 +955,16 @@ export default function ReportAnalyticsClient({
     return hit?.label ?? "Section";
   })();
   const detailHref =
+    mode === "subject" && Number.isFinite(initialGradeLevelId) && Number.isFinite(initialSubjectId)
+      ? `/assessment-reports/subject-details/${initialGradeLevelId}/${initialSubjectId}`
+      : 
     Number.isFinite(initialGradeLevelId) && Number.isFinite(initialSectionId)
-      ? `/assessment-reports/report-details/${initialGradeLevelId}/${initialSectionId}`
-      : "/assessment-reports";
+      ? `/assessment-reports/grade-details/${initialGradeLevelId}/${initialSectionId}`
+      : "/assessment-reports/grade";
   const backLabel =
-    detailHref === "/assessment-reports"
+    mode === "subject"
+      ? "Back to Subject Report Details"
+      : detailHref === "/assessment-reports/grade"
       ? "Back to Assessment Reports"
       : "Back to Report Details";
   return (
@@ -809,16 +975,29 @@ export default function ReportAnalyticsClient({
           {backLabel}
         </BackButton>
         <Text size="lg" fw={700} c="black">
-          {selectedGradeLabel} - {selectedSectionLabel}
+          {mode === "subject" && subjectOverview
+            ? `${selectedGradeLabel} - ${subjectOverview.subjectName} - ${selectedSectionLabel}`
+            : `${selectedGradeLabel} - ${selectedSectionLabel}`}
         </Text>
       </div>
 
       <Group mb="md" align="flex-end" gap="sm">
         <Select
-          placeholder="Select subjects"
-          data={sectionSubjectOptions}
-          value={selectedSubject}
+          placeholder={mode === "subject" ? "Select sections" : "Select subjects"}
+          data={mode === "subject" ? sectionOptions : sectionSubjectOptions}
+          value={
+            mode === "subject"
+              ? selectedSectionId == null
+                ? "all"
+                : String(selectedSectionId)
+              : selectedSubject
+          }
           onChange={(value) => {
+            if (mode === "subject") {
+              setSelectedSectionId(value && value !== "all" ? Number(value) : null);
+              setSelectedKey(null);
+              return;
+            }
             if (!value) {
               setSelectedSubject(null);
               setSubjectClearedByUser(true);
@@ -831,11 +1010,17 @@ export default function ReportAnalyticsClient({
           }}
           leftSection={<IconBook size={16} />}
           w={{ base: "100%", sm: 260 }}
-          disabled={sectionSubjectOptions.length === 0}
-          clearable
+          disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
+          clearable={mode !== "subject"}
           nothingFoundMessage="No Data available"
         />
       </Group>
+
+      {isConsolidatedSubjectView && consolidatedSectionCount > 0 && (
+        <Text size="sm" c="dimmed">
+          Consolidated from {consolidatedSectionCount} section{consolidatedSectionCount === 1 ? "" : "s"}.
+        </Text>
+      )}
 
       <div className="space-y-3 min-w-0">
         <div className="sticky top-0 z-20 w-full bg-white/95 pb-1 backdrop-blur">
