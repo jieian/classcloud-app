@@ -49,7 +49,7 @@ function StatusBadge({
   );
 }
 
-export default function ReportDetailsClient({
+export default function GradeReportDetailsClient({
   sectionId,
   initialGradeLevelId,
 }: Props) {
@@ -84,7 +84,7 @@ export default function ReportDetailsClient({
     };
   }, [sectionId]);
 
-  const backHref = "/assessment-reports";
+  const backHref = "/assessment-reports/grade";
 
   if (loading) {
     return (

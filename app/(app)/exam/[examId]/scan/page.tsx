@@ -41,7 +41,6 @@ import {
 } from '@tabler/icons-react';
 import { detectDocumentInCanvas, processAnswerSheet, type DetectionResult, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
 import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
-import { computeItemStatistics, saveItemStatistics } from '@/lib/services/analysisService';
 import { fetchStudentRoster } from '@/lib/services/classService';
 import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
@@ -682,6 +681,7 @@ export default function ScanPapersPage() {
     setScannerCaptureError(null);
     setScannerProcessedPreviewUrl(null);
     setScannerScanResult(null);
+    setProcessingError(null);
     setScannerStatus('Processing scan');
 
     try {
@@ -692,9 +692,15 @@ export default function ScanPapersPage() {
         undefined,
         setScannerStatus,
       );
-      setScannerScanResult(result);
-      setScannerProcessedPreviewUrl(result.warpedDataUrl);
+      setScannerProcessedPreviewUrl(result.debugDataUrl);
       setPreviewUrl(result.warpedDataUrl);
+      const validationError = await getScanValidationError(result);
+      if (validationError) {
+        setScannerCaptureError(validationError);
+        setScannerStatus('Wrong answer sheet');
+        return;
+      }
+      setScannerScanResult(result);
       setScannerStatus('Review capture');
     } catch (err: unknown) {
       setScannerCaptureError(err instanceof Error ? err.message : 'Processing failed');
@@ -754,10 +760,10 @@ export default function ScanPapersPage() {
         const previous = lastDocumentRef.current;
         const stable =
           result.isVisible &&
-          result.confidence >= 0.68 &&
-          result.blur >= 35 &&
+          result.confidence >= 0.6 &&
+          result.blur >= 25 &&
           previous != null &&
-          normalizedCornerDistance(result, previous) < 0.018;
+          normalizedCornerDistance(result, previous) < 0.03;
 
         stableDocumentFramesRef.current = stable
           ? stableDocumentFramesRef.current + 1
@@ -772,7 +778,7 @@ export default function ScanPapersPage() {
           setScannerStatus('Looking for sheet');
         } else if (!result.isVisible) {
           setScannerStatus('Fit the full sheet inside the frame');
-        } else if (stableDocumentFramesRef.current < 3) {
+        } else if (stableDocumentFramesRef.current < 2) {
           setScannerStatus('Hold steady');
         } else {
           setScannerStatus('Capturing');
@@ -821,7 +827,7 @@ export default function ScanPapersPage() {
     if (file) handleFileSelected(file);
   };
 
-  const applyProcessedScanResult = async (result: DetectionResult): Promise<boolean> => {
+  const getScanValidationError = async (result: DetectionResult): Promise<string | null> => {
     if (result.detectedExamId !== null && result.detectedExamId !== Number(examId)) {
       let scannedExamTitle = 'a different exam';
       try {
@@ -830,34 +836,39 @@ export default function ScanPapersPage() {
       } catch { /* ignore — title is optional, fallback is fine */ }
 
       const currentExamTitle = exam?.title ? `"${exam.title}"` : 'this exam';
-      setProcessingError(
+      return (
         `This answer sheet is for ${scannedExamTitle}, not ${currentExamTitle}. ` +
         `Please use the correct answer sheet and try again.`
       );
-      setStep('capture');
-      return false;
     }
 
     if (
       result.detectedTotalItems !== null &&
       result.detectedTotalItems !== totalItems
     ) {
-      setProcessingError(
+      return (
         `This answer sheet is for ${result.detectedTotalItems} items, but this exam expects ${totalItems}. ` +
         'Please use the correct answer sheet and try again.'
       );
-      setStep('capture');
-      return false;
     }
 
     if (
       result.detectedNumChoices !== null &&
       result.detectedNumChoices !== numChoices
     ) {
-      setProcessingError(
+      return (
         `This answer sheet uses ${result.detectedNumChoices} choices per item, but this exam expects ${numChoices}. ` +
         'Please use the correct answer sheet and try again.'
       );
+    }
+
+    return null;
+  };
+
+  const applyProcessedScanResult = async (result: DetectionResult): Promise<boolean> => {
+    const validationError = await getScanValidationError(result);
+    if (validationError) {
+      setProcessingError(validationError);
       setStep('capture');
       return false;
     }
@@ -1098,8 +1109,6 @@ export default function ScanPapersPage() {
 
     if (attempt) {
       const allAttempts = await fetchAttemptsForExam(exam.exam_id);
-      const itemStats = computeItemStatistics(allAttempts, answerKey, totalItems);
-      await saveItemStatistics(exam.exam_id, itemStats);
 
       // Refresh existing attempts and go back to student list
       const scannedId = selectedStudent.enrollment_id;
@@ -1839,7 +1848,7 @@ export default function ScanPapersPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={scannerProcessedPreviewUrl}
-              alt="Corrected answer sheet"
+              alt="Marked answer sheet"
               className="absolute inset-0 h-full w-full object-contain"
             />
           )}
@@ -1870,8 +1879,14 @@ export default function ScanPapersPage() {
           )}
 
           {scannerCaptureError && !scannerProcessingCapture && (
-            <div className="absolute inset-x-4 top-28 rounded-2xl bg-red-500 px-4 py-3 text-sm font-semibold shadow-xl">
-              {scannerCaptureError}
+            <div
+              role="alert"
+              className="absolute inset-x-4 top-28 rounded-2xl border border-red-300/60 bg-red-600 px-4 py-3 text-sm shadow-2xl"
+            >
+              <Text c="white" fw={800} size="sm">Wrong answer sheet</Text>
+              <Text c="white" fw={600} size="sm" mt={4}>
+                {scannerCaptureError}
+              </Text>
             </div>
           )}
 
@@ -2216,21 +2231,6 @@ export default function ScanPapersPage() {
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={debugImageUrl} alt="OMR debug" style={{ height: '640px', width: 'auto' }} className="object-contain pointer-events-none" />
-                    </button>
-                  </Paper>
-                )}
-
-                {/* Uploaded Answer Sheet (warped/perspective-corrected) */}
-                {warpedImageUrl && (
-                  <Paper withBorder radius="md" p="md" style={{ borderColor: STEP_BORDER_COLOR }}>
-                    <Text size="lg" fw={700} mb="md" c={STEP_HEADING_COLOR}>Uploaded Answer Sheet</Text>
-                    <button
-                      type="button"
-                      className="block w-full rounded-xl overflow-hidden cursor-zoom-in"
-                      onClick={() => setViewerUrl(warpedImageUrl)}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={warpedImageUrl} alt="Warped scan" className="w-full rounded-xl pointer-events-none" />
                     </button>
                   </Paper>
                 )}

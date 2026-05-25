@@ -10,6 +10,7 @@ import {
   Card,
   Divider,
   Group,
+  Pagination,
   Select,
   SimpleGrid,
   Skeleton,
@@ -41,6 +42,8 @@ type GradeGroup = {
   accordionValue: string;
 };
 
+const CARDS_PAGE_SIZE = 4;
+
 function SectionStatusBadge({ isFinalized }: { isFinalized: boolean }) {
   return (
     <Badge color={isFinalized ? "green" : "red"} variant="light">
@@ -49,15 +52,15 @@ function SectionStatusBadge({ isFinalized }: { isFinalized: boolean }) {
   );
 }
 
-interface AssessmentReportsBrowserProps {
+interface GradeReportsBrowserProps {
   initialGradeLevelId?: number | null;
   initialData?: ReportInitData;
 }
 
-export default function AssessmentReportsBrowser({
+export default function GradeReportsBrowser({
   initialGradeLevelId = null,
   initialData,
-}: AssessmentReportsBrowserProps) {
+}: GradeReportsBrowserProps) {
   const OPEN_GROUPS_STORAGE_KEY = "assessment-reports:open-grade-groups:v2";
   const GRADE_FILTER_STORAGE_KEY = "assessment-reports:grade-filter";
   const SEARCH_STORAGE_KEY = "assessment-reports:search-query";
@@ -74,6 +77,7 @@ export default function AssessmentReportsBrowser({
   const [searchQuery, setSearchQuery] = useState("");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
   const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
+  const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
   const [restoredFromSession, setRestoredFromSession] = useState(false);
 
   const loadData = async () => {
@@ -194,6 +198,32 @@ export default function AssessmentReportsBrowser({
     return openGradeGroups.filter((value) => validGroupValues.has(value));
   }, [groupedCards, openGradeGroups]);
 
+  useEffect(() => {
+    setPageMap((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      const validGroups = new Set(groupedCards.map((group) => group.accordionValue));
+
+      for (const key of next.keys()) {
+        if (!validGroups.has(key)) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+
+      for (const group of groupedCards) {
+        const totalPages = Math.max(1, Math.ceil(group.cards.length / CARDS_PAGE_SIZE));
+        const currentPage = next.get(group.accordionValue) ?? 1;
+        if (currentPage > totalPages) {
+          next.set(group.accordionValue, totalPages);
+          changed = true;
+        }
+      }
+
+      return changed ? next : prev;
+    });
+  }, [groupedCards]);
+
 
   useEffect(() => {
     if (typeof window === "undefined" || !restoredFromSession) return;
@@ -255,7 +285,7 @@ export default function AssessmentReportsBrowser({
     <div className="space-y-5">
       <div>
         <h1 className="text-3xl font-bold text-[#597D37]">
-          Assessment Reports{" "}
+          Grade Level Reports{" "}
           <span className="text-[#808898] text-xl font-semibold">({totalVisibleCards})</span>
         </h1>
         <p className="mb-3 text-sm text-[#808898]">Manage and track all assessment reports</p>
@@ -336,50 +366,72 @@ export default function AssessmentReportsBrowser({
                     />
                   </div>
                 ) : (
-                  <SimpleGrid
-                    cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
-                    p={{ base: 0, sm: "xs" }}
-                    spacing={{ base: "sm", sm: "md" }}
-                  >
-                    {group.cards.map((card) => (
-                      <Card
-                        key={card.sectionId}
-                        shadow="sm"
-                        padding="lg"
-                        radius="md"
-                        withBorder
-                        onClick={() => {
-                          router.push(
-                            `/assessment-reports/report-details/${card.gradeLevelId}/${card.sectionId}`,
-                          );
-                        }}
-                        style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
-                      >
-                        <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
-                          <Text fw={550} size="lg" lineClamp={2} style={{ flex: 1, minWidth: 0 }}>
-                            {card.sectionName}
-                          </Text>
-                          <SectionStatusBadge isFinalized={card.isFinalized} />
-                        </Group>
+                  <>
+                    <SimpleGrid
+                      cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
+                      p={{ base: 0, sm: "xs" }}
+                      spacing={{ base: "sm", sm: "md" }}
+                    >
+                      {group.cards
+                        .slice(
+                          ((pageMap.get(group.accordionValue) ?? 1) - 1) * CARDS_PAGE_SIZE,
+                          (pageMap.get(group.accordionValue) ?? 1) * CARDS_PAGE_SIZE,
+                        )
+                        .map((card) => (
+                          <Card
+                            key={card.sectionId}
+                            shadow="sm"
+                            padding="lg"
+                            radius="md"
+                            withBorder
+                            onClick={() => {
+                              router.push(
+                                `/assessment-reports/grade-details/${card.gradeLevelId}/${card.sectionId}`,
+                              );
+                            }}
+                            style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
+                          >
+                            <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
+                              <Text fw={550} size="lg" lineClamp={2} style={{ flex: 1, minWidth: 0 }}>
+                                {card.sectionName}
+                              </Text>
+                              <SectionStatusBadge isFinalized={card.isFinalized} />
+                            </Group>
 
-                        <Divider my="sm" mb="lg" />
+                            <Divider my="sm" mb="lg" />
 
-                        <Text c="#969696" fw={550} mb="sm">
-                          About
-                        </Text>
-                        <Group mb="xs" gap="xs">
-                          <IconBook size={16} color="gray" />
-                          <Text size="sm">Subjects: {card.subjectNames.length}</Text>
-                        </Group>
-                        <Group mb="xs" gap="xs">
-                          <IconCheck size={16} color="gray" />
-                          <Text size="sm">
-                            Finalized: {card.finalizedExams}/{card.subjectNames.length}
-                          </Text>
-                        </Group>
-                      </Card>
-                    ))}
-                  </SimpleGrid>
+                            <Text c="#969696" fw={550} mb="sm">
+                              About
+                            </Text>
+                            <Group mb="xs" gap="xs">
+                              <IconBook size={16} color="gray" />
+                              <Text size="sm">Subjects: {card.subjectNames.length}</Text>
+                            </Group>
+                            <Group mb="xs" gap="xs">
+                              <IconCheck size={16} color="gray" />
+                              <Text size="sm">
+                                Finalized: {card.finalizedExams}/{card.subjectNames.length}
+                              </Text>
+                            </Group>
+                          </Card>
+                        ))}
+                    </SimpleGrid>
+                    {group.cards.length > CARDS_PAGE_SIZE && (
+                      <Group justify="center" mt="sm">
+                        <Pagination
+                          total={Math.ceil(group.cards.length / CARDS_PAGE_SIZE)}
+                          value={pageMap.get(group.accordionValue) ?? 1}
+                          onChange={(page) =>
+                            setPageMap((prev) =>
+                              new Map(prev).set(group.accordionValue, page),
+                            )
+                          }
+                          size="sm"
+                          color="#4EAE4A"
+                        />
+                      </Group>
+                    )}
+                  </>
                 )}
               </Accordion.Panel>
             </Accordion.Item>

@@ -354,6 +354,45 @@ function warpToPage(buffer, width, height, corners, srcIsMarkers = true) {
   return { buffer: resultBuf, width: OMR.PAGE_W * S, height: OMR.PAGE_H * S };
 }
 
+function enhanceWarpedDocument(buffer, width, height) {
+  const src        = bufferToMat(buffer, width, height);
+  const gray       = new cv.Mat();
+  const background = new cv.Mat();
+  const normalized = new cv.Mat();
+  const contrast   = new cv.Mat();
+  const blended    = new cv.Mat();
+  const cleaned    = new cv.Mat();
+  const rgba       = new cv.Mat();
+
+  try {
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+    // Estimate slow lighting changes across the page, then normalize the sheet
+    // so shadows and warm camera casts become closer to clean white paper.
+    const blurSize = Math.max(41, Math.floor(Math.min(width, height) / 18) | 1);
+    cv.GaussianBlur(gray, background, new cv.Size(blurSize, blurSize), 0);
+    cv.divide(gray, background, normalized, 255);
+
+    // Keep the preview natural: lift shadows, but keep enough of the original
+    // gray channel so light pencil fills and fine bubble outlines do not wash out.
+    normalized.convertTo(contrast, cv.CV_8UC1, 1.12, -10);
+    cv.addWeighted(contrast, 0.55, gray, 0.45, 6, blended);
+    blended.copyTo(cleaned);
+    cv.cvtColor(cleaned, rgba, cv.COLOR_GRAY2RGBA);
+
+    return { buffer: matToBuffer(rgba), width, height };
+  } finally {
+    src.delete();
+    gray.delete();
+    background.delete();
+    normalized.delete();
+    contrast.delete();
+    blended.delete();
+    cleaned.delete();
+    rgba.delete();
+  }
+}
+
 // ─── Bubble detection ─────────────────────────────────────────────────────────
 
 function detectBubbles(buffer, width, height, totalItems, numChoices) {
@@ -742,8 +781,8 @@ function detectDocumentFrame(buffer, width, height) {
   const minMargin = Math.min(
     ...corners.map((p) => Math.min(p.x, p.y, width - p.x, height - p.y))
   );
-  const marginTarget = Math.min(width, height) * 0.025;
-  const insideFrame = minMargin > marginTarget;
+  const marginTarget = Math.min(width, height) * 0.018;
+  const insideFrame = minMargin > 0;
   const brightnessOk = metrics.brightness > 35 && metrics.brightness < 235;
   const blurOk = metrics.blur > 35;
   const areaScore = Math.max(0, Math.min(1, (areaRatio - 0.18) / 0.42));
@@ -760,7 +799,7 @@ function detectDocumentFrame(buffer, width, height) {
     confidence,
     brightness: metrics.brightness,
     blur: metrics.blur,
-    isVisible: confidence >= 0.58 && insideFrame && areaRatio >= 0.2 && brightnessOk,
+    isVisible: confidence >= 0.52 && insideFrame && areaRatio >= 0.18 && brightnessOk,
     usedPaperEdge,
     width,
     height,
@@ -818,9 +857,10 @@ self.onmessage = async (e) => {
       const cand = candidates[ci];
       try {
         const warped = warpToPage(buffer, width, height, cand, !usedPaperEdge);
+        const enhanced = enhanceWarpedDocument(warped.buffer, warped.width, warped.height);
         self.postMessage({ type: 'status', message: 'Reading bubbles\u2026' });
         const { answers, confidence } = detectBubbles(
-          warped.buffer, warped.width, warped.height, totalItems, numChoices
+          enhanced.buffer, enhanced.width, enhanced.height, totalItems, numChoices
         );
         const bubbleQuality = detectionQuality(answers, confidence);
         let quality = bubbleQuality;
@@ -830,11 +870,11 @@ self.onmessage = async (e) => {
         // A wrong orientation puts blank paper there (stddev ~ 5-15).
         // Correct orientation with QR present gives stddev ~ 40-80+.
         // Use this as a light bonus, then rely more on structural layout score.
-        const qrStd = qrRegionStdDev(warped.buffer, warped.width, warped.height);
+        const qrStd = qrRegionStdDev(enhanced.buffer, enhanced.width, enhanced.height);
         const qrBonus = qrStd > 35 ? 0.8 : qrStd > 25 ? 0.3 : 0;
         quality += qrBonus;
 
-        const layout = layoutOrientationScore(warped.buffer, warped.width, warped.height);
+        const layout = layoutOrientationScore(enhanced.buffer, enhanced.width, enhanced.height);
         quality += layout.score;
 
         console.log(
@@ -851,7 +891,7 @@ self.onmessage = async (e) => {
         );
 
         if (!best || quality > best.quality) {
-          best = { quality, corners: cand, answers, confidence, warped };
+          best = { quality, corners: cand, answers, confidence, warped: enhanced };
         }
       } catch { /* skip degenerate orientation */ }
     }
