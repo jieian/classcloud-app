@@ -7,220 +7,435 @@ import {
   ActionIcon,
   Badge,
   Box,
-  Card,
-  Divider,
+  Button,
   Group,
-  Pagination,
-  Select,
-  SimpleGrid,
+  SegmentedControl,
   Skeleton,
   Stack,
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconCheck, IconList, IconRefresh, IconUsers } from "@tabler/icons-react";
-import { SearchBar } from "@/components/searchBar/SearchBar";
-import EmptySearchState from "@/components/EmptySearchState";
-import { fetchGradeLevels } from "@/lib/services/gradeLevelService";
-import type { GradeLevel } from "@/lib/exam-supabase";
 import {
-  fetchReportSubjectCards,
-  type ReportSubjectCard,
+  IconChevronRight,
+  IconRefresh,
+} from "@tabler/icons-react";
+import EmptySearchState from "@/components/EmptySearchState";
+import { useAuth } from "@/context/AuthContext";
+import { useReportPermissions } from "@/hooks/useReportPermissions";
+import {
+  fetchReportMonitoringTree,
+  type ReportMonitoringCoordinatorGroup,
+  type ReportMonitoringGradeGroup,
+  type ReportMonitoringRow,
+  type ReportMonitoringSectionGroup,
+  type ReportMonitoringSubjectGroup,
+  type ReportMonitoringTree,
 } from "@/lib/services/reportsAnalysisService";
-import { useReportPermissions, isSubjectInScope } from "@/hooks/useReportPermissions";
 
-type GradeGroup = {
-  gradeLevelId: number;
-  gradeLabel: string;
-  cards: ReportSubjectCard[];
-  accordionValue: string;
+const emptyTree: ReportMonitoringTree = {
+  assigned: { advisorySections: [], handledSections: [] },
+  gradeMonitoring: [],
+  subjectGroupMonitoring: [],
+  allMonitoring: { gradeLevels: [], subjectGroups: [] },
 };
 
-const CARDS_PAGE_SIZE = 4;
-const SSES_COLOR = "#70A2FF";
+const reportAccordionStyles = {
+  control: { backgroundColor: "#F5F5F5" },
+  item: { border: "1px solid #e2edff" },
+};
 
-function SubjectNameWithSsesDot({
-  name,
-  isSses,
-}: {
-  name: string;
-  isSses: boolean;
-}) {
-  return (
-    <Text fw={550} size="lg" lineClamp={2} style={{ minWidth: 0 }}>
-      {name}
-      {isSses && (
-        <Box
-          component="span"
-          aria-label="SSES subject"
-          style={{
-            display: "inline-block",
-            width: 9,
-            height: 9,
-            borderRadius: 999,
-            backgroundColor: SSES_COLOR,
-            marginLeft: 6,
-            verticalAlign: "middle",
-          }}
-        />
-      )}
-    </Text>
-  );
-}
+const reportSegmentedStyles = {
+  root: {
+    backgroundColor: "#ffffff",
+    border: "1px solid #D6D9E0",
+    padding: 3,
+    width: "min(100%, 300px)",
+    minWidth: 0,
+  },
+  label: {
+    fontWeight: 500,
+    fontSize: "clamp(12px, 2.7vw, 14px)",
+    padding: "3px 6px",
+    whiteSpace: "nowrap",
+  },
+  indicator: {
+    border: "1px solid #4EAE4A",
+  },
+};
 
-function StatusBadge({ isFinalized }: { isFinalized: boolean }) {
+function StatusBadge({ status }: { status: ReportMonitoringRow["status"] }) {
+  const color =
+    status === "Finalized" ? "green" : status === "Not Finalized" ? "red" : "gray";
   return (
-    <Badge color={isFinalized ? "green" : "red"} variant="light">
-      {isFinalized ? "Finalized" : "Not Finalized"}
+    <Badge color={color} variant="light" miw={112} ta="center">
+      {status}
     </Badge>
   );
 }
 
-export default function SubjectReportsBrowser() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(true);
-  const [cards, setCards] = useState<ReportSubjectCard[]>([]);
-  const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
-  const reportScope = useReportPermissions();
-  const scopedCards = useMemo(
-    () =>
-      reportScope.scopeLoading
-        ? []
-        : cards.filter((card) => isSubjectInScope(card.subjectId, reportScope)),
-    [cards, reportScope],
+function ProgressSummary({ rows }: { rows: ReportMonitoringRow[] }) {
+  const finalized = rows.filter((row) => row.status === "Finalized").length;
+  return (
+    <Text span size="sm" c="dimmed" fw={500}>
+      ({finalized}/{rows.length})
+    </Text>
   );
-  const [searchQuery, setSearchQuery] = useState("");
-  const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
-  const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
-  const [pageMap, setPageMap] = useState<Map<string, number>>(new Map());
+}
+
+function RowLine({
+  row,
+  label,
+}: {
+  row: ReportMonitoringRow;
+  label: string;
+}) {
+  const router = useRouter();
+  const href =
+    row.latestExamId != null
+      ? `/assessment-reports/report-analytics/subject/${row.gradeLevelId}/${row.subjectId}/${row.latestExamId}`
+      : null;
+
+  return (
+    <Group
+      justify="space-between"
+      gap="sm"
+      py="xs"
+      px="sm"
+      wrap="nowrap"
+      style={{ borderBottom: "1px dotted #d1d5db" }}
+    >
+      <Group gap="xs" style={{ minWidth: 0, flex: 1 }} wrap="nowrap">
+        <Text size="sm" lineClamp={1}>
+          {label}
+        </Text>
+      </Group>
+      <StatusBadge status={row.status} />
+      <Group gap={6} wrap="nowrap" w={{ base: 150, sm: 230 }} style={{ minWidth: 0 }}>
+        <Text size="sm" lineClamp={1} c={row.teacherName ? undefined : "dimmed"}>
+          {row.teacherName ?? "Unassigned"}
+        </Text>
+      </Group>
+      <Button
+        variant="subtle"
+        color="#4EAE4A"
+        size="compact-sm"
+        px={6}
+        disabled={!href}
+        onClick={() => href && router.push(href)}
+        rightSection={<IconChevronRight size={14} />}
+      >
+        View
+      </Button>
+    </Group>
+  );
+}
+
+function EmptyPanel({ message }: { message: string }) {
+  return (
+    <Box py="md">
+      <Text size="sm" c="dimmed" ta="center">
+        {message}
+      </Text>
+    </Box>
+  );
+}
+
+function SectionAccordion({
+  sections,
+  rowLabel,
+  emptyMessage,
+}: {
+  sections: ReportMonitoringSectionGroup[];
+  rowLabel: (row: ReportMonitoringRow) => string;
+  emptyMessage: string;
+}) {
+  if (sections.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  return (
+    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+      {sections.map((section) => (
+        <Accordion.Item key={section.sectionId} value={`section-${section.sectionId}`}>
+          <Accordion.Control>
+            <Group gap="xs">
+              <Text fw={700} size="sm">
+                {section.gradeDisplayName} • {section.sectionName}
+              </Text>
+              <ProgressSummary rows={section.rows} />
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            {section.rows.map((row) => (
+              <RowLine
+                key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                row={row}
+                label={rowLabel(row)}
+              />
+            ))}
+          </Accordion.Panel>
+        </Accordion.Item>
+      ))}
+    </Accordion>
+  );
+}
+
+function SubjectAccordion({
+  subjects,
+  emptyMessage,
+}: {
+  subjects: ReportMonitoringSubjectGroup[];
+  emptyMessage: string;
+}) {
+  if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  return (
+    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+      {subjects.map((subject) => (
+        <Accordion.Item
+          key={subject.curriculumSubjectId}
+          value={`subject-${subject.curriculumSubjectId}`}
+        >
+          <Accordion.Control>
+            <Group gap="xs">
+              <Text fw={700} size="sm">
+                {subject.subjectName}
+              </Text>
+              <ProgressSummary rows={subject.rows} />
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            {subject.rows.map((row) => (
+              <RowLine
+                key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                row={row}
+                label={row.sectionName}
+              />
+            ))}
+          </Accordion.Panel>
+        </Accordion.Item>
+      ))}
+    </Accordion>
+  );
+}
+
+function GradeMonitoring({
+  grades,
+  emptyMessage,
+}: {
+  grades: ReportMonitoringGradeGroup[];
+  emptyMessage: string;
+}) {
+  if (grades.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  return (
+    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+      {grades.map((grade) => (
+        <Accordion.Item key={grade.gradeLevelId} value={`grade-${grade.gradeLevelId}`}>
+          <Accordion.Control>
+            <Group gap="xs">
+              <Text fw={700} size="sm">
+                {grade.gradeDisplayName}
+              </Text>
+              <Text span size="sm" c="dimmed">
+                ({grade.subjects.length})
+              </Text>
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <SubjectAccordion
+              subjects={grade.subjects}
+              emptyMessage="No subjects are available for this grade level."
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
+      ))}
+    </Accordion>
+  );
+}
+
+function SubjectGroupMonitoring({
+  groups,
+  emptyMessage,
+}: {
+  groups: ReportMonitoringCoordinatorGroup[];
+  emptyMessage: string;
+}) {
+  if (groups.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  return (
+    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+      {groups.map((group) => (
+        <Accordion.Item
+          key={group.subjectGroupId}
+          value={`subject-group-${group.subjectGroupId}`}
+        >
+          <Accordion.Control>
+            <Group gap="xs">
+              <Text fw={700} size="sm">
+                {group.subjectGroupName}
+              </Text>
+              <Text span size="sm" c="dimmed">
+                ({group.subjects.length})
+              </Text>
+            </Group>
+          </Accordion.Control>
+          <Accordion.Panel>
+            <SubjectAccordion
+              subjects={group.subjects}
+              emptyMessage="No subject rows are available for this group."
+            />
+          </Accordion.Panel>
+        </Accordion.Item>
+      ))}
+    </Accordion>
+  );
+}
+
+function AssignedReports({ tree }: { tree: ReportMonitoringTree }) {
+  const [view, setView] = useState<"advisory" | "assigned">("advisory");
+  const hasAdvisory = tree.assigned.advisorySections.length > 0;
+  const hasHandled = tree.assigned.handledSections.length > 0;
+
+  useEffect(() => {
+    if (!hasAdvisory && hasHandled) setView("assigned");
+    if (hasAdvisory && !hasHandled) setView("advisory");
+  }, [hasAdvisory, hasHandled]);
+
+  if (!hasAdvisory && !hasHandled) {
+    return <EmptyPanel message="No advisory or assigned subject reports found." />;
+  }
+
+  const showSegmented = hasAdvisory && hasHandled;
+
+  return (
+    <Stack gap="sm">
+      {showSegmented && (
+        <SegmentedControl
+          value={view}
+          onChange={(value) => setView(value as "advisory" | "assigned")}
+          data={[
+            { value: "advisory", label: "Advisory" },
+            { value: "assigned", label: "Assigned Subjects" },
+          ]}
+          color="#4EAE4A"
+          radius="sm"
+          size="sm"
+          transitionDuration={180}
+          styles={reportSegmentedStyles}
+        />
+      )}
+
+      {(view === "advisory" || !showSegmented) && hasAdvisory ? (
+        <SectionAccordion
+          sections={tree.assigned.advisorySections}
+          rowLabel={(row) => row.subjectName}
+          emptyMessage="No advisory reports found."
+        />
+      ) : (
+        <SectionAccordion
+          sections={tree.assigned.handledSections}
+          rowLabel={(row) => row.subjectName}
+          emptyMessage="No assigned subject reports found."
+        />
+      )}
+    </Stack>
+  );
+}
+
+function ReportsMonitoring({ tree }: { tree: ReportMonitoringTree }) {
+  const [view, setView] = useState<"grade" | "subject-group">("grade");
+
+  return (
+    <Stack gap="sm">
+      <SegmentedControl
+        value={view}
+        onChange={(value) => setView(value as "grade" | "subject-group")}
+        data={[
+          { value: "grade", label: "Grade Level" },
+          { value: "subject-group", label: "Subject Group" },
+        ]}
+        color="#4EAE4A"
+        radius="sm"
+        size="sm"
+        transitionDuration={180}
+        styles={reportSegmentedStyles}
+      />
+      {view === "grade" ? (
+        <GradeMonitoring
+          grades={tree.allMonitoring.gradeLevels}
+          emptyMessage="No grade level reports found."
+        />
+      ) : (
+        <SubjectGroupMonitoring
+          groups={tree.allMonitoring.subjectGroups}
+          emptyMessage="No subject group reports found."
+        />
+      )}
+    </Stack>
+  );
+}
+
+function LoadingState() {
+  return (
+    <Stack gap="md">
+      {[1, 2, 3].map((item) => (
+        <Box
+          key={item}
+          style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}
+        >
+          <Box px="md" py="sm" style={{ backgroundColor: "#f3f4f6" }}>
+            <Skeleton height={18} width={220} radius="sm" />
+          </Box>
+          <Box p="sm">
+            <Skeleton height={44} radius="sm" mb="xs" />
+            <Skeleton height={44} radius="sm" />
+          </Box>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+export default function SubjectReportsBrowser() {
+  const { user } = useAuth();
+  const reportScope = useReportPermissions();
+  const [loading, setLoading] = useState(true);
+  const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [nextCards, nextGradeLevels] = await Promise.all([
-        fetchReportSubjectCards(),
-        fetchGradeLevels(),
-      ]);
-      setCards(nextCards);
-      setGradeLevels(nextGradeLevels);
+      setTree(await fetchReportMonitoringTree(user?.id ?? null));
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (!user?.id) return;
     void loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
-  const gradeOptions = useMemo(
+  const hasAnyVisibleSection = useMemo(
     () =>
-      gradeLevels.map((grade) => ({
-        value: String(grade.grade_level_id),
-        label: grade.display_name,
-      })),
-    [gradeLevels],
+      reportScope.canViewAll ||
+      reportScope.canViewAssigned ||
+      reportScope.canMonitorGradeLevel ||
+      reportScope.canMonitorSubjects,
+    [reportScope],
   );
 
-  const searchableCards = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return scopedCards;
-    return scopedCards.filter((card) => {
-      const haystack = `${card.subjectName} ${card.gradeDisplayName} ${card.sectionNames.join(
-        " ",
-      )} ${card.teacherNames.join(" ")}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [cards, searchQuery]);
+  if (loading || reportScope.scopeLoading) return <LoadingState />;
 
-  const groupedCards = useMemo<GradeGroup[]>(() => {
-    const selectedGrades =
-      gradeLevelFilter == null
-        ? gradeLevels
-        : gradeLevels.filter((grade) => grade.grade_level_id === gradeLevelFilter);
-
-    return selectedGrades.map((grade) => ({
-      gradeLevelId: grade.grade_level_id,
-      gradeLabel: grade.display_name,
-      cards: searchableCards.filter((card) => card.gradeLevelId === grade.grade_level_id),
-      accordionValue: `grade-${grade.grade_level_id}`,
-    }));
-  }, [gradeLevels, searchableCards, gradeLevelFilter]);
-
-  const visibleOpenGradeGroups = useMemo(() => {
-    const valid = new Set(groupedCards.map((group) => group.accordionValue));
-    return openGradeGroups.filter((value) => valid.has(value));
-  }, [groupedCards, openGradeGroups]);
-
-  useEffect(() => {
-    setPageMap((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      const validGroups = new Set(groupedCards.map((group) => group.accordionValue));
-
-      for (const key of next.keys()) {
-        if (!validGroups.has(key)) {
-          next.delete(key);
-          changed = true;
-        }
-      }
-
-      for (const group of groupedCards) {
-        const totalPages = Math.max(1, Math.ceil(group.cards.length / CARDS_PAGE_SIZE));
-        const currentPage = next.get(group.accordionValue) ?? 1;
-        if (currentPage > totalPages) {
-          next.set(group.accordionValue, totalPages);
-          changed = true;
-        }
-      }
-
-      return changed ? next : prev;
-    });
-  }, [groupedCards]);
-
-  const totalVisibleCards = groupedCards.reduce((sum, group) => sum + group.cards.length, 0);
-  const visibleGroupsWithCards = groupedCards.filter((group) => group.cards.length > 0);
-
-  if (loading || reportScope.scopeLoading) {
-    return (
-      <Stack gap="md">
-        {[3, 2].map((count, idx) => (
-          <Box key={idx} style={{ border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
-            <Box px="md" py="sm" style={{ backgroundColor: "#f3f4f6" }}>
-              <Skeleton height={18} width={90} radius="sm" />
-            </Box>
-            <Box p="sm">
-              <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} spacing="sm">
-                {Array.from({ length: count }).map((_, i) => (
-                  <Skeleton key={i} height={170} radius="md" />
-                ))}
-              </SimpleGrid>
-            </Box>
-          </Box>
-        ))}
-      </Stack>
-    );
-  }
+  if (!hasAnyVisibleSection) return <EmptySearchState />;
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-3xl font-bold text-[#597D37]">
-          Subject Reports{" "}
-          <span className="text-[#808898] text-xl font-semibold">({totalVisibleCards})</span>
-        </h1>
-        <p className="mb-3 text-sm text-[#808898]">Monitor assessment reports by subject</p>
-      </div>
-
-      <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
-        <SearchBar
-          id="search-subject-reports"
-          placeholder="Search subjects..."
-          ariaLabel="Search subjects"
-          style={{ flex: 1, minWidth: 0 }}
-          maw={700}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.currentTarget.value)}
-        />
+      <Group justify="space-between" align="flex-end" gap="sm">
+        <div>
+          <h1 className="text-3xl font-bold text-[#597D37]">Reports</h1>
+          <p className="mb-3 text-sm text-[#808898]">Monitor finalized assessment reports</p>
+        </div>
         <Tooltip label="Refresh" position="bottom" withArrow>
           <ActionIcon
             variant="outline"
@@ -229,105 +444,82 @@ export default function SubjectReportsBrowser() {
             radius="xl"
             onClick={() => void loadData()}
             loading={loading}
-            aria-label="Refresh subject reports"
+            aria-label="Refresh reports"
           >
             <IconRefresh size={18} stroke={1.5} />
           </ActionIcon>
         </Tooltip>
       </Group>
 
-      <Group mb="md" gap="sm">
-        <Select
-          placeholder="All Grade Levels"
-          data={gradeOptions}
-          value={gradeLevelFilter != null ? String(gradeLevelFilter) : null}
-          onChange={(value) => setGradeLevelFilter(value ? Number(value) : null)}
-          leftSection={<IconList size={16} />}
-          w={220}
-          clearable
-        />
-      </Group>
+      <Accordion
+        multiple
+        defaultValue={[
+          reportScope.canViewAll ? "reports-monitoring" : "",
+          reportScope.canViewAssigned ? "assigned" : "",
+          reportScope.canMonitorGradeLevel ? "grade-subject-monitoring" : "",
+          reportScope.canMonitorSubjects ? "subject-group-monitoring" : "",
+        ].filter(Boolean)}
+        variant="separated"
+        styles={reportAccordionStyles}
+      >
+        {reportScope.canViewAll && (
+          <Accordion.Item value="reports-monitoring">
+            <Accordion.Control>
+              <Text fw={700} size="md" c="#1f2937">
+                Reports Monitoring
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <ReportsMonitoring tree={tree} />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
 
-      {totalVisibleCards === 0 ? (
-        <EmptySearchState />
-      ) : (
-        <Accordion
-          multiple
-          value={visibleOpenGradeGroups}
-          onChange={setOpenGradeGroups}
-          variant="separated"
-          styles={{
-            control: { backgroundColor: "#e2edff" },
-            item: { border: "1px solid #e2edff" },
-          }}
-        >
-          {visibleGroupsWithCards.map((group) => (
-            <Accordion.Item key={group.gradeLevelId} value={group.accordionValue}>
-              <Accordion.Control>
-                <Group gap="xs">
-                  <Text fw={700} size="md">{group.gradeLabel}</Text>
-                  <Text span size="sm" c="dimmed" fw={500}>({group.cards.length})</Text>
-                </Group>
-              </Accordion.Control>
-              <Accordion.Panel>
-                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p={{ base: 0, sm: "xs" }} spacing={{ base: "sm", sm: "md" }}>
-                  {group.cards
-                    .slice(
-                      ((pageMap.get(group.accordionValue) ?? 1) - 1) * CARDS_PAGE_SIZE,
-                      (pageMap.get(group.accordionValue) ?? 1) * CARDS_PAGE_SIZE,
-                    )
-                    .map((card) => (
-                      <Card
-                        key={`${card.gradeLevelId}-${card.subjectId}`}
-                        shadow="sm"
-                        padding="lg"
-                        radius="md"
-                        withBorder
-                        onClick={() => router.push(`/assessment-reports/subject-details/${card.gradeLevelId}/${card.subjectId}`)}
-                        style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
-                      >
-                        <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
-                          <Box style={{ flex: 1, minWidth: 0 }}>
-                            <SubjectNameWithSsesDot
-                              name={card.subjectName}
-                              isSses={card.subjectType === "SSES"}
-                            />
-                          </Box>
-                          <StatusBadge isFinalized={card.isFinalized} />
-                        </Group>
-                        <Divider my="sm" mb="lg" />
-                        <Text c="#969696" fw={550} mb="sm">About</Text>
-                        <Group mb="xs" gap="xs">
-                          <IconUsers size={16} color="gray" />
-                          <Text size="sm">Sections: {card.sectionCount}</Text>
-                        </Group>
-                        <Group mb="xs" gap="xs">
-                          <IconCheck size={16} color="gray" />
-                          <Text size="sm">Finalized: {card.finalizedSections}/{card.sectionCount}</Text>
-                        </Group>
-                      </Card>
-                    ))}
-                </SimpleGrid>
-                {group.cards.length > CARDS_PAGE_SIZE && (
-                  <Group justify="center" mt="sm">
-                    <Pagination
-                      total={Math.ceil(group.cards.length / CARDS_PAGE_SIZE)}
-                      value={pageMap.get(group.accordionValue) ?? 1}
-                      onChange={(page) =>
-                        setPageMap((prev) =>
-                          new Map(prev).set(group.accordionValue, page),
-                        )
-                      }
-                      size="sm"
-                      color="#4EAE4A"
-                    />
-                  </Group>
-                )}
-              </Accordion.Panel>
-            </Accordion.Item>
-          ))}
-        </Accordion>
-      )}
+        {reportScope.canViewAssigned && (
+          <Accordion.Item value="assigned">
+            <Accordion.Control>
+              <Text fw={700} size="md" c="#1f2937">
+                Assigned
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <AssignedReports tree={tree} />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {reportScope.canMonitorGradeLevel && !reportScope.canViewAll && (
+          <Accordion.Item value="grade-subject-monitoring">
+            <Accordion.Control>
+              <Text fw={700} size="md" c="#1f2937">
+                Grade Subject Monitoring
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <GradeMonitoring
+                grades={tree.gradeMonitoring}
+                emptyMessage="No grade subject monitoring reports found."
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {reportScope.canMonitorSubjects && (
+          <Accordion.Item value="subject-group-monitoring">
+            <Accordion.Control>
+              <Text fw={700} size="md" c="#1f2937">
+                Subject Group Monitoring
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <SubjectGroupMonitoring
+                groups={tree.subjectGroupMonitoring}
+                emptyMessage="No active subject group assignment found for this school year."
+              />
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+      </Accordion>
     </div>
   );
 }

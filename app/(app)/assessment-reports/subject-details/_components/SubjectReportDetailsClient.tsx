@@ -123,7 +123,7 @@ export default function SubjectReportDetailsClient({ gradeLevelId, subjectId }: 
     <Stack gap="md" maw={1000}>
       <Box>
         <BackButton href="/assessment-reports/subject" mb="md" size="sm">
-          Back to Subject Reports
+          Back to Reports
         </BackButton>
       </Box>
 

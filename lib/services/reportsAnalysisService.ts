@@ -276,6 +276,7 @@ type RawSectionOnly = {
   name: string;
   grade_level_id: number | null;
   sy_id?: number | null;
+  adviser_id?: string | null;
   grade_levels: GradeJoin | GradeJoin[] | null;
 };
 
@@ -553,7 +554,7 @@ async function fetchActiveSectionsForReports(): Promise<RawSectionOnly[]> {
 
   let query = supabase
     .from("sections")
-    .select("section_id, name, grade_level_id, sy_id, grade_levels(display_name, level_number)")
+    .select("section_id, name, grade_level_id, sy_id, adviser_id, grade_levels(display_name, level_number)")
     .is("deleted_at", null)
     .order("name", { ascending: true });
 
@@ -1531,6 +1532,464 @@ export type AssignedScope = {
   glSectionIds: number[];
   subjectSectionIds: number[];
 };
+
+export type ReportMonitoringStatus = ReportSubjectStatus;
+
+export type ReportMonitoringRow = {
+  sectionId: number;
+  sectionName: string;
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  curriculumSubjectId: number;
+  subjectId: number;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+  teacherId: string | null;
+  teacherName: string | null;
+  adviserId: string | null;
+  status: ReportMonitoringStatus;
+  latestExamId: number | null;
+};
+
+export type ReportMonitoringSectionGroup = {
+  sectionId: number;
+  sectionName: string;
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  rows: ReportMonitoringRow[];
+};
+
+export type ReportMonitoringSubjectGroup = {
+  curriculumSubjectId: number;
+  subjectId: number;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  rows: ReportMonitoringRow[];
+};
+
+export type ReportMonitoringGradeGroup = {
+  gradeLevelId: number;
+  gradeDisplayName: string;
+  gradeLevelNumber: number | null;
+  subjects: ReportMonitoringSubjectGroup[];
+};
+
+export type ReportMonitoringCoordinatorGroup = {
+  subjectGroupId: number;
+  subjectGroupName: string;
+  subjects: ReportMonitoringSubjectGroup[];
+};
+
+export type ReportMonitoringTree = {
+  assigned: {
+    advisorySections: ReportMonitoringSectionGroup[];
+    handledSections: ReportMonitoringSectionGroup[];
+  };
+  gradeMonitoring: ReportMonitoringGradeGroup[];
+  subjectGroupMonitoring: ReportMonitoringCoordinatorGroup[];
+  allMonitoring: {
+    gradeLevels: ReportMonitoringGradeGroup[];
+    subjectGroups: ReportMonitoringCoordinatorGroup[];
+  };
+};
+
+type ActiveContextRow = {
+  sy_id: number;
+  curriculum_id: number | null;
+};
+
+type MonitoringAssignmentRow = {
+  section_id: number | null;
+  teacher_id: string | null;
+  curriculum_subject_id: number | null;
+  users:
+    | {
+        first_name: string | null;
+        last_name: string | null;
+      }
+    | {
+        first_name: string | null;
+        last_name: string | null;
+      }[]
+    | null;
+};
+
+type SubjectGroupMemberRow = {
+  subject_group_id: number;
+  name: string;
+  subject_group_members:
+    | {
+        curriculum_subject_id: number | null;
+      }[]
+    | null;
+};
+
+type SubjectCoordinatorRow = {
+  user_id: string | null;
+  subject_group_id: number | null;
+};
+
+function compareMonitoringRows(a: ReportMonitoringRow, b: ReportMonitoringRow): number {
+  const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+  const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+  if (ga !== gb) return ga - gb;
+  const sectionCompare = a.sectionName.localeCompare(b.sectionName, undefined, {
+    sensitivity: "base",
+  });
+  if (sectionCompare !== 0) return sectionCompare;
+  return (
+    compareSubjectType(a.subjectType, b.subjectType) ||
+    a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" })
+  );
+}
+
+function compareMonitoringSubjects(
+  a: ReportMonitoringSubjectGroup,
+  b: ReportMonitoringSubjectGroup,
+): number {
+  const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+  const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+  if (ga !== gb) return ga - gb;
+  return (
+    compareSubjectType(a.subjectType, b.subjectType) ||
+    a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" })
+  );
+}
+
+function buildSectionGroups(rows: ReportMonitoringRow[]): ReportMonitoringSectionGroup[] {
+  const grouped = new Map<number, ReportMonitoringSectionGroup>();
+  for (const row of rows) {
+    if (!grouped.has(row.sectionId)) {
+      grouped.set(row.sectionId, {
+        sectionId: row.sectionId,
+        sectionName: row.sectionName,
+        gradeLevelId: row.gradeLevelId,
+        gradeDisplayName: row.gradeDisplayName,
+        gradeLevelNumber: row.gradeLevelNumber,
+        rows: [],
+      });
+    }
+    grouped.get(row.sectionId)!.rows.push(row);
+  }
+
+  return Array.from(grouped.values())
+    .map((group) => ({
+      ...group,
+      rows: group.rows.sort(compareMonitoringRows),
+    }))
+    .sort((a, b) => {
+      const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      if (ga !== gb) return ga - gb;
+      return a.sectionName.localeCompare(b.sectionName, undefined, {
+        sensitivity: "base",
+      });
+    });
+}
+
+function buildGradeGroups(rows: ReportMonitoringRow[]): ReportMonitoringGradeGroup[] {
+  const gradeMap = new Map<number, Map<number, ReportMonitoringSubjectGroup>>();
+
+  for (const row of rows) {
+    if (!gradeMap.has(row.gradeLevelId)) gradeMap.set(row.gradeLevelId, new Map());
+    const subjectMap = gradeMap.get(row.gradeLevelId)!;
+    if (!subjectMap.has(row.curriculumSubjectId)) {
+      subjectMap.set(row.curriculumSubjectId, {
+        curriculumSubjectId: row.curriculumSubjectId,
+        subjectId: row.subjectId,
+        subjectName: row.subjectName,
+        subjectType: row.subjectType,
+        gradeLevelId: row.gradeLevelId,
+        gradeDisplayName: row.gradeDisplayName,
+        gradeLevelNumber: row.gradeLevelNumber,
+        rows: [],
+      });
+    }
+    subjectMap.get(row.curriculumSubjectId)!.rows.push(row);
+  }
+
+  return Array.from(gradeMap.entries())
+    .map(([gradeLevelId, subjectMap]) => {
+      const subjects = Array.from(subjectMap.values())
+        .map((subject) => ({
+          ...subject,
+          rows: subject.rows.sort(compareMonitoringRows),
+        }))
+        .sort(compareMonitoringSubjects);
+      const first = subjects[0];
+      return {
+        gradeLevelId,
+        gradeDisplayName: first?.gradeDisplayName ?? `Grade ${gradeLevelId}`,
+        gradeLevelNumber: first?.gradeLevelNumber ?? null,
+        subjects,
+      };
+    })
+    .sort((a, b) => {
+      const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      if (ga !== gb) return ga - gb;
+      return a.gradeDisplayName.localeCompare(b.gradeDisplayName, undefined, {
+        sensitivity: "base",
+      });
+    });
+}
+
+function buildSubjectGroupMonitoring(
+  rows: ReportMonitoringRow[],
+  subjectGroups: SubjectGroupMemberRow[],
+  coordinatorRows: SubjectCoordinatorRow[],
+  userId: string | null,
+  includeAllGroups: boolean,
+): ReportMonitoringCoordinatorGroup[] {
+  const allowedGroupIds = new Set<number>();
+  if (includeAllGroups) {
+    for (const group of subjectGroups) allowedGroupIds.add(group.subject_group_id);
+  } else if (userId) {
+    for (const coordinator of coordinatorRows) {
+      if (coordinator.user_id === userId && coordinator.subject_group_id != null) {
+        allowedGroupIds.add(coordinator.subject_group_id);
+      }
+    }
+  }
+
+  const byCurriculumSubjectId = new Map(rows.map((row) => [row.curriculumSubjectId, row]));
+  const result: ReportMonitoringCoordinatorGroup[] = [];
+
+  for (const group of subjectGroups) {
+    if (!allowedGroupIds.has(group.subject_group_id)) continue;
+
+    const memberIds = new Set(
+      (group.subject_group_members ?? [])
+        .map((member) => member.curriculum_subject_id)
+        .filter((id): id is number => id != null),
+    );
+    const groupRows = rows.filter((row) => memberIds.has(row.curriculumSubjectId));
+    if (groupRows.length === 0) continue;
+
+    const gradeSubjects = buildGradeGroups(groupRows)
+      .flatMap((grade) => grade.subjects)
+      .sort(compareMonitoringSubjects);
+
+    if (gradeSubjects.length === 0 && byCurriculumSubjectId.size === 0) continue;
+
+    result.push({
+      subjectGroupId: group.subject_group_id,
+      subjectGroupName: group.name,
+      subjects: gradeSubjects,
+    });
+  }
+
+  return result.sort((a, b) =>
+    a.subjectGroupName.localeCompare(b.subjectGroupName, undefined, {
+      sensitivity: "base",
+    }),
+  );
+}
+
+export async function fetchReportMonitoringTree(
+  userId: string | null,
+): Promise<ReportMonitoringTree> {
+  const cacheKey = `monitoringTree:${userId ?? "anonymous"}`;
+  const cached = cacheGet<ReportMonitoringTree>(cacheKey);
+  if (cached) return cached;
+
+  const empty: ReportMonitoringTree = {
+    assigned: { advisorySections: [], handledSections: [] },
+    gradeMonitoring: [],
+    subjectGroupMonitoring: [],
+    allMonitoring: { gradeLevels: [], subjectGroups: [] },
+  };
+
+  const { data: activeContextData, error: activeContextError } = await supabase
+    .from("school_years")
+    .select("sy_id, curriculum_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (activeContextError) {
+    console.error(
+      "[reportsAnalysisService] fetchReportMonitoringTree active context error:",
+      activeContextError.message,
+    );
+    return cacheSet(cacheKey, empty);
+  }
+
+  const activeContext = activeContextData as ActiveContextRow | null;
+  if (!activeContext?.sy_id || activeContext.curriculum_id == null) {
+    return cacheSet(cacheKey, empty);
+  }
+
+  const [sections, activeSubjects, examCards, assignmentResult, groupsResult, coordinatorsResult] =
+    await Promise.all([
+      fetchActiveSectionsForReports(),
+      fetchActiveCurriculumSubjectsForReports(),
+      fetchReportExamCards(),
+      supabase
+        .from("teacher_class_assignments")
+        .select(
+          "section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)",
+        )
+        .is("deleted_at", null),
+      supabase
+        .from("subject_groups")
+        .select(
+          "subject_group_id, name, subject_group_members(curriculum_subject_id)",
+        )
+        .eq("curriculum_id", activeContext.curriculum_id)
+        .is("deleted_at", null)
+        .is("subject_group_members.deleted_at", null),
+      supabase
+        .from("subject_coordinators")
+        .select("user_id, subject_group_id")
+        .eq("sy_id", activeContext.sy_id)
+        .is("deleted_at", null),
+    ]);
+
+  if (assignmentResult.error) {
+    console.error(
+      "[reportsAnalysisService] fetchReportMonitoringTree assignments error:",
+      assignmentResult.error.message,
+    );
+  }
+  if (groupsResult.error) {
+    console.error(
+      "[reportsAnalysisService] fetchReportMonitoringTree groups error:",
+      groupsResult.error.message,
+    );
+  }
+  if (coordinatorsResult.error) {
+    console.error(
+      "[reportsAnalysisService] fetchReportMonitoringTree coordinators error:",
+      coordinatorsResult.error.message,
+    );
+  }
+
+  const sectionsById = new Map<number, RawSectionOnly>();
+  for (const section of sections) {
+    if (section.grade_level_id != null) sectionsById.set(section.section_id, section);
+  }
+
+  const subjectsByGrade = new Map<number, ActiveCurriculumSubject[]>();
+  for (const subject of activeSubjects) {
+    if (!subjectsByGrade.has(subject.gradeLevelId)) {
+      subjectsByGrade.set(subject.gradeLevelId, []);
+    }
+    subjectsByGrade.get(subject.gradeLevelId)!.push(subject);
+  }
+
+  const assignmentByPair = new Map<string, { teacherId: string | null; teacherName: string | null }>();
+  for (const row of (assignmentResult.data ?? []) as MonitoringAssignmentRow[]) {
+    if (row.section_id == null || row.curriculum_subject_id == null) continue;
+    assignmentByPair.set(`${row.section_id}:${row.curriculum_subject_id}`, {
+      teacherId: row.teacher_id ?? null,
+      teacherName: toTeacherName(row.users),
+    });
+  }
+
+  const latestBySectionSubject = new Map<string, ReportExamCard>();
+  for (const card of examCards) {
+    if (card.subjectId == null) continue;
+    const key = `${card.sectionId}:${card.subjectId}`;
+    const existing = latestBySectionSubject.get(key);
+    if (
+      !existing ||
+      getExamSortScore(card.examDate, card.examId) >=
+        getExamSortScore(existing.examDate, existing.examId)
+    ) {
+      latestBySectionSubject.set(key, card);
+    }
+  }
+
+  const allRows: ReportMonitoringRow[] = [];
+
+  for (const section of sectionsById.values()) {
+    if (section.grade_level_id == null) continue;
+    const gradeJoin = firstJoin(section.grade_levels);
+    if (!gradeJoin) continue;
+
+    const subjects = subjectsByGrade
+      .get(section.grade_level_id)
+      ?.filter((subject) => isSubjectApplicableToSection(subject, section.name)) ?? [];
+
+    for (const subject of subjects) {
+      const assignment = assignmentByPair.get(
+        `${section.section_id}:${subject.curriculumSubjectId}`,
+      ) ?? { teacherId: null, teacherName: null };
+      const latestExam = latestBySectionSubject.get(
+        `${section.section_id}:${subject.subjectId}`,
+      ) ?? null;
+
+      allRows.push({
+        sectionId: section.section_id,
+        sectionName: section.name,
+        gradeLevelId: section.grade_level_id,
+        gradeDisplayName: gradeJoin.display_name,
+        gradeLevelNumber: gradeJoin.level_number,
+        curriculumSubjectId: subject.curriculumSubjectId,
+        subjectId: subject.subjectId,
+        subjectName: subject.subjectName,
+        subjectType: subject.subjectType,
+        teacherId: assignment.teacherId,
+        teacherName: assignment.teacherName,
+        adviserId: (section as RawSectionOnly & { adviser_id?: string | null }).adviser_id ?? null,
+        status: latestExam
+          ? latestExam.isFinalized
+            ? "Finalized"
+            : "Not Finalized"
+          : "No exam yet",
+        latestExamId: latestExam?.examId ?? null,
+      });
+    }
+  }
+
+  const userHandledRows = userId
+    ? allRows.filter((row) => row.teacherId === userId)
+    : [];
+  const userAdvisoryRows = userId
+    ? allRows.filter((row) => row.adviserId === userId)
+    : [];
+  const userCurriculumSubjectIds = new Set(
+    userHandledRows.map((row) => row.curriculumSubjectId),
+  );
+  const gradeMonitoringRows = userId
+    ? allRows.filter((row) => userCurriculumSubjectIds.has(row.curriculumSubjectId))
+    : [];
+  const subjectGroups = (groupsResult.data ?? []) as SubjectGroupMemberRow[];
+  const coordinatorRows = (coordinatorsResult.data ?? []) as SubjectCoordinatorRow[];
+
+  const result: ReportMonitoringTree = {
+    assigned: {
+      advisorySections: buildSectionGroups(userAdvisoryRows),
+      handledSections: buildSectionGroups(userHandledRows),
+    },
+    gradeMonitoring: buildGradeGroups(gradeMonitoringRows),
+    subjectGroupMonitoring: buildSubjectGroupMonitoring(
+      allRows,
+      subjectGroups,
+      coordinatorRows,
+      userId,
+      false,
+    ),
+    allMonitoring: {
+      gradeLevels: buildGradeGroups(allRows),
+      subjectGroups: buildSubjectGroupMonitoring(
+        allRows,
+        subjectGroups,
+        coordinatorRows,
+        userId,
+        true,
+      ),
+    },
+  };
+
+  return cacheSet(cacheKey, result);
+}
 
 export async function fetchMyAssignedScope(userId: string): Promise<AssignedScope> {
   const cacheKey = `assignedScope:${userId}`;
