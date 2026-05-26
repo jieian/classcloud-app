@@ -1,14 +1,15 @@
 import ProtectedRoute from "@/components/ProtectedRoute";
-import ReportAnalyticsClient from "../../_components/ReportAnalyticsClient";
+import ReportAnalyticsClient from "../../../_components/ReportAnalyticsClient";
 
 interface Props {
-  params: Promise<{ gradeLevelId: string; sectionId: string }>;
+  params: Promise<{ gradeLevelId: string; sectionId: string; examId: string }>;
 }
 
-export default async function ReportAnalyticsBySectionPage({ params }: Props) {
-  const { gradeLevelId, sectionId } = await params;
+export default async function ReportAnalyticsByExamPage({ params }: Props) {
+  const { gradeLevelId, sectionId, examId } = await params;
   const parsedGradeLevelId = Number(gradeLevelId);
   const parsedSectionId = Number(sectionId);
+  const parsedExamId = Number(examId);
 
   return (
     <ProtectedRoute
@@ -16,10 +17,9 @@ export default async function ReportAnalyticsBySectionPage({ params }: Props) {
       requiredPermissions={["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"]}
     >
       <ReportAnalyticsClient
-        initialGradeLevelId={
-          Number.isFinite(parsedGradeLevelId) ? parsedGradeLevelId : null
-        }
+        initialGradeLevelId={Number.isFinite(parsedGradeLevelId) ? parsedGradeLevelId : null}
         initialSectionId={Number.isFinite(parsedSectionId) ? parsedSectionId : null}
+        initialExamId={Number.isFinite(parsedExamId) ? parsedExamId : null}
       />
     </ProtectedRoute>
   );

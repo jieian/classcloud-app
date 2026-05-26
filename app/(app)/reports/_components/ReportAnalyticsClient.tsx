@@ -998,18 +998,18 @@ export default function ReportAnalyticsClient({
   const subjectStorageKey = useMemo(
     () =>
       mode === "subject" && selectedSubjectId != null
-        ? `assessment-reports:selected-subject:subject:${selectedSubjectId}`
+        ? `reports:selected-subject:subject:${selectedSubjectId}`
         : selectedSectionId != null
-        ? `assessment-reports:selected-subject:section:${selectedSectionId}`
+        ? `reports:selected-subject:section:${selectedSectionId}`
         : null,
     [mode, selectedSectionId, selectedSubjectId],
   );
   const collapsibleStorageKey = useMemo(
     () =>
       mode === "subject" && selectedSubjectId != null
-        ? `assessment-reports:analytics-open:subject:${selectedSubjectId}`
+        ? `reports:analytics-open:subject:${selectedSubjectId}`
         : selectedSectionId != null
-        ? `assessment-reports:analytics-open:section:${selectedSectionId}`
+        ? `reports:analytics-open:section:${selectedSectionId}`
         : null,
     [mode, selectedSectionId, selectedSubjectId],
   );
@@ -1653,19 +1653,8 @@ export default function ReportAnalyticsClient({
     );
     return hit?.label ?? "Section";
   })();
-  const detailHref =
-    mode === "subject" && Number.isFinite(initialGradeLevelId) && Number.isFinite(initialSubjectId)
-      ? `/assessment-reports/subject-details/${initialGradeLevelId}/${initialSubjectId}`
-      : 
-    Number.isFinite(initialGradeLevelId) && Number.isFinite(initialSectionId)
-      ? `/assessment-reports/grade-details/${initialGradeLevelId}/${initialSectionId}`
-      : "/assessment-reports/grade";
-  const backLabel =
-    mode === "subject"
-      ? "Back to Subject Report Details"
-      : detailHref === "/assessment-reports/grade"
-      ? "Back to Assessment Reports"
-      : "Back to Report Details";
+  const detailHref = "/reports";
+  const backLabel = "Back to Reports";
   return (
     <div className="space-y-5 min-w-0">
       <div>

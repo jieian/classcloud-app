@@ -448,6 +448,15 @@ function toFiniteNumber(value: unknown, fallback = 0): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+function logReportFetchError(label: string, message: string): void {
+  const text = `[reportsAnalysisService] ${label}: ${message}`;
+  if (/failed to fetch/i.test(message)) {
+    console.warn(text);
+    return;
+  }
+  console.error(text);
+}
+
 function reportKey(examId: number, sectionId: number): string {
   return `${examId}-${sectionId}`;
 }
@@ -524,14 +533,45 @@ function standardDeviation(values: number[]): number | null {
   return Math.sqrt(variance);
 }
 
-async function fetchFinalizedReportKeys(): Promise<Set<string>> {
-  const { data, error } = await supabase
+async function fetchFinalizedReportKeys(syId: number | null): Promise<Set<string>> {
+  let query = supabase
     .from("exam_results_reports")
     .select("exam_id, section_id");
+
+  if (syId != null) query = query.eq("sy_id", syId);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error(
       "[reportsAnalysisService] fetchFinalizedReportKeys error:",
+      error.message,
+    );
+    return new Set();
+  }
+
+  return new Set(
+    ((data ?? []) as RawExamResultReportRow[])
+      .filter((row) => row.exam_id != null && row.section_id != null)
+      .map((row) => reportKey(Number(row.exam_id), Number(row.section_id))),
+  );
+}
+
+async function fetchFinalizedReportKeysForContext(
+  syId: number,
+  sectionIds: number[],
+): Promise<Set<string>> {
+  if (sectionIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from("exam_results_reports")
+    .select("exam_id, section_id")
+    .eq("sy_id", syId)
+    .in("section_id", sectionIds);
+
+  if (error) {
+    logReportFetchError(
+      "fetchFinalizedReportKeysForContext error",
       error.message,
     );
     return new Set();
@@ -574,6 +614,24 @@ async function fetchActiveSectionsForReports(): Promise<RawSectionOnly[]> {
   return (data ?? []) as RawSectionOnly[];
 }
 
+async function fetchActiveSectionsForReportsBySy(
+  syId: number,
+): Promise<RawSectionOnly[]> {
+  const { data, error } = await supabase
+    .from("sections")
+    .select("section_id, name, grade_level_id, sy_id, adviser_id, grade_levels(display_name, level_number)")
+    .eq("sy_id", syId)
+    .is("deleted_at", null)
+    .order("name", { ascending: true });
+
+  if (error) {
+    logReportFetchError("fetchActiveSectionsForReportsBySy error", error.message);
+    return [];
+  }
+
+  return (data ?? []) as RawSectionOnly[];
+}
+
 async function fetchSectionSubjectsForReports(): Promise<Map<number, Map<number, string>>> {
   const { data, error } = await supabase
     .from("teacher_class_assignments")
@@ -608,16 +666,21 @@ async function fetchSectionSubjectsForReports(): Promise<Map<number, Map<number,
   return result;
 }
 
-async function fetchAllTeacherAssignmentsWithNames(): Promise<Map<number, Map<number, BulkTeacherEntry>>> {
-  const cacheKey = "allTeacherAssignments";
+async function fetchAllTeacherAssignmentsWithNames(
+  sectionIds: number[],
+): Promise<Map<number, Map<number, BulkTeacherEntry>>> {
+  const cacheKey = `allTeacherAssignments:${sectionIds.slice().sort((a, b) => a - b).join(",")}`;
   const cached = cacheGet<Map<number, Map<number, BulkTeacherEntry>>>(cacheKey);
   if (cached) return cached;
+
+  if (sectionIds.length === 0) return new Map();
 
   const { data, error } = await supabase
     .from("teacher_class_assignments")
     .select(
       "section_id, curriculum_subjects!inner(subject_id, subjects(name, subject_type)), users!teacher_id(first_name, last_name)",
     )
+    .in("section_id", sectionIds)
     .is("deleted_at", null);
 
   if (error) {
@@ -649,6 +712,9 @@ async function fetchAllTeacherAssignmentsWithNames(): Promise<Map<number, Map<nu
 }
 
 async function fetchActiveCurriculumSubjectsForReports(): Promise<ActiveCurriculumSubject[]> {
+  const cached = cacheGet<ActiveCurriculumSubject[]>("activeCurriculumSubjects");
+  if (cached) return cached;
+
   const { data: syData, error: syError } = await supabase
     .from("school_years")
     .select("curriculum_id")
@@ -657,8 +723,8 @@ async function fetchActiveCurriculumSubjectsForReports(): Promise<ActiveCurricul
     .maybeSingle();
 
   if (syError) {
-    console.error(
-      "[reportsAnalysisService] fetchActiveCurriculumSubjectsForReports sy error:",
+    logReportFetchError(
+      "fetchActiveCurriculumSubjectsForReports sy error",
       syError.message,
     );
     return [];
@@ -674,8 +740,54 @@ async function fetchActiveCurriculumSubjectsForReports(): Promise<ActiveCurricul
     .is("deleted_at", null);
 
   if (error) {
-    console.error(
-      "[reportsAnalysisService] fetchActiveCurriculumSubjectsForReports error:",
+    logReportFetchError(
+      "fetchActiveCurriculumSubjectsForReports error",
+      error.message,
+    );
+    return [];
+  }
+
+  const subjects = ((data ?? []) as {
+    curriculum_subject_id: number | null;
+    subject_id: number | null;
+    grade_level_id: number | null;
+    subjects: SubjectJoin | SubjectJoin[] | null;
+  }[])
+    .map((row) => {
+      const subjectJoin = firstJoin(row.subjects);
+      if (
+        row.curriculum_subject_id == null ||
+        row.subject_id == null ||
+        row.grade_level_id == null ||
+        !subjectJoin
+      ) {
+        return null;
+      }
+      return {
+        curriculumSubjectId: row.curriculum_subject_id,
+        subjectId: row.subject_id,
+        subjectName: subjectJoin.name ?? "Unknown Subject",
+        subjectType: subjectJoin.subject_type ?? null,
+        gradeLevelId: row.grade_level_id,
+      };
+    })
+    .filter((row): row is ActiveCurriculumSubject => row != null);
+
+  return cacheSet("activeCurriculumSubjects", subjects);
+}
+
+async function fetchActiveCurriculumSubjectsForReportsByCurriculum(
+  curriculumId: number,
+): Promise<ActiveCurriculumSubject[]> {
+  const { data, error } = await supabase
+    .from("curriculum_subjects")
+    .select("curriculum_subject_id, subject_id, grade_level_id, subjects!inner(name, subject_type, deleted_at)")
+    .eq("curriculum_id", curriculumId)
+    .is("deleted_at", null);
+
+  if (error) {
+    logReportFetchError(
+      "fetchActiveCurriculumSubjectsForReportsByCurriculum error",
       error.message,
     );
     return [];
@@ -760,51 +872,58 @@ export async function fetchReportExamsForSection(
 export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
   const cached = cacheGet<ReportExamCard[]>("examCards");
   if (cached) return cached;
-  const maxAttempts = 3;
-  let data: RawAssignmentRow[] | null = null;
-  let finalError: { message: string } | null = null;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = await supabase
-      .from("exam_assignments")
-      .select(
-        "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
-      )
-      .is("exams.deleted_at", null);
-
-    if (!result.error) {
-      data = (result.data ?? []) as RawAssignmentRow[];
-      finalError = null;
-      break;
+  try {
+    const res = await fetch("/api/reports/exam-cards", { credentials: "include" });
+    if (!res.ok) {
+      logReportFetchError("fetchReportExamCards error", `HTTP ${res.status}`);
+      return [];
     }
-
-    finalError = { message: result.error.message };
-    if (
-      isSchemaCacheTransientError(result.error.message) &&
-      attempt < maxAttempts
-    ) {
-      await sleep(180 * attempt);
-      continue;
-    }
-    break;
-  }
-
-  if (finalError) {
-    console.error(
-      "[reportsAnalysisService] fetchReportExamCards error:",
-      finalError.message,
+    const cards = (await res.json()) as ReportExamCard[];
+    return cacheSet("examCards", cards);
+  } catch (e) {
+    logReportFetchError(
+      "fetchReportExamCards error",
+      e instanceof Error ? e.message : "fetch failed",
     );
     return [];
   }
+}
 
-  const finalizedKeys = await fetchFinalizedReportKeys();
+async function fetchReportExamCardsForContext(
+  syId: number,
+  sectionsById: Map<number, RawSectionOnly>,
+  sectionIds: number[],
+): Promise<ReportExamCard[]> {
+  if (sectionIds.length === 0) return [];
+
+  const cacheKey = `examCards:sy:${syId}:sections:${sectionIds.slice().sort((a, b) => a - b).join(",")}`;
+  const cached = cacheGet<ReportExamCard[]>(cacheKey);
+  if (cached) return cached;
+
+  const { data, error } = await supabase
+    .from("exam_assignments")
+    .select(
+      "id, exam_id, section_id, exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
+    )
+    .in("section_id", sectionIds)
+    .is("exams.deleted_at", null);
+
+  if (error) {
+    logReportFetchError("fetchReportExamCardsForContext error", error.message);
+    return cacheSet(cacheKey, []);
+  }
+
+  const finalizedKeys = await fetchFinalizedReportKeysForContext(syId, sectionIds);
   const grouped = new Map<string, ReportExamCard>();
 
-  for (const row of data ?? []) {
+  for (const row of (data ?? []) as RawAssignmentRow[]) {
     const examJoin = firstJoin(row.exams);
-    const sectionJoin = firstJoin(row.sections);
-    if (!examJoin || !sectionJoin || sectionJoin.grade_level_id == null) continue;
+    const sectionId = row.section_id ?? null;
+    if (!examJoin || sectionId == null) continue;
 
+    const sectionJoin = sectionsById.get(sectionId);
+    if (!sectionJoin || sectionJoin.grade_level_id == null) continue;
     const gradeJoin = firstJoin(sectionJoin.grade_levels);
     if (!gradeJoin) continue;
     const subjectInfo = getSubjectInfo(examJoin);
@@ -834,7 +953,7 @@ export async function fetchReportExamCards(): Promise<ReportExamCard[]> {
     });
   }
 
-  return cacheSet("examCards", Array.from(grouped.values()).sort((a, b) => {
+  return cacheSet(cacheKey, Array.from(grouped.values()).sort((a, b) => {
     const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     if (ga !== gb) return ga - gb;
@@ -1115,11 +1234,11 @@ export async function fetchReportSubjectCards(): Promise<ReportSubjectCard[]> {
   const cached = cacheGet<ReportSubjectCard[]>("subjectCards");
   if (cached) return cached;
 
-  // Single parallel fetch — no per-section waterfall
-  const [sectionCards, examCards, teacherMap] = await Promise.all([
-    fetchReportSectionCards(),
+  const sectionCards = await fetchReportSectionCards();
+  const activeSectionIds = sectionCards.map((c) => c.sectionId);
+  const [examCards, teacherMap] = await Promise.all([
     fetchReportExamCards(),
-    fetchAllTeacherAssignmentsWithNames(),
+    fetchAllTeacherAssignmentsWithNames(activeSectionIds),
   ]);
 
   const grouped = new Map<string, ReportSubjectCard>();
@@ -1230,10 +1349,16 @@ export async function fetchReportSubjectOverview(
     ) ?? null;
   if (!subjectCard) return cacheSet(cacheKey, null);
 
+  const sectionsInGrade = sectionCards.filter((card) => card.gradeLevelId === gradeLevelId);
+  const overviews = await Promise.all(
+    sectionsInGrade.map((section) => fetchReportSectionOverview(section.sectionId)),
+  );
+
   const sectionRows: ReportSubjectSectionRow[] = [];
   let curriculumSubjectId = 0;
-  for (const section of sectionCards.filter((card) => card.gradeLevelId === gradeLevelId)) {
-    const overview = await fetchReportSectionOverview(section.sectionId);
+  for (let i = 0; i < sectionsInGrade.length; i++) {
+    const overview = overviews[i];
+    const section = sectionsInGrade[i];
     const subject = overview?.subjects.find((row) => row.subjectId === subjectId);
     if (!subject) continue;
     if (curriculumSubjectId === 0 && subject.curriculumSubjectId) {
@@ -1598,6 +1723,13 @@ export type ReportMonitoringTree = {
   };
 };
 
+export type ReportMonitoringTreeOptions = {
+  canViewAll?: boolean;
+  canViewAssigned?: boolean;
+  canMonitorGradeLevel?: boolean;
+  canMonitorSubjects?: boolean;
+};
+
 type ActiveContextRow = {
   sy_id: number;
   curriculum_id: number | null;
@@ -1632,6 +1764,12 @@ type SubjectGroupMemberRow = {
 type SubjectCoordinatorRow = {
   user_id: string | null;
   subject_group_id: number | null;
+};
+
+type GradeSubjectLeaderRow = {
+  user_id: string | null;
+  curriculum_subject_id: number | null;
+  grade_level_id: number | null;
 };
 
 function compareMonitoringRows(a: ReportMonitoringRow, b: ReportMonitoringRow): number {
@@ -1739,6 +1877,78 @@ function buildGradeGroups(rows: ReportMonitoringRow[]): ReportMonitoringGradeGro
     });
 }
 
+function buildGradeSubjectLeaderGroups(
+  rows: ReportMonitoringRow[],
+  leaderRows: GradeSubjectLeaderRow[],
+  activeSubjects: ActiveCurriculumSubject[],
+  userId: string | null,
+): ReportMonitoringGradeGroup[] {
+  if (!userId) return [];
+
+  const leaderSubjectIds = new Set(
+    leaderRows
+      .filter((row) => row.user_id === userId)
+      .map((row) => row.curriculum_subject_id)
+      .filter((id): id is number => id != null),
+  );
+
+  if (leaderSubjectIds.size === 0) return [];
+
+  const groups = buildGradeGroups(
+    rows.filter((row) => leaderSubjectIds.has(row.curriculumSubjectId)),
+  );
+
+  const existingSubjectIds = new Set(
+    groups.flatMap((group) =>
+      group.subjects.map((subject) => subject.curriculumSubjectId),
+    ),
+  );
+
+  const missingSubjects = activeSubjects.filter(
+    (subject) =>
+      leaderSubjectIds.has(subject.curriculumSubjectId) &&
+      !existingSubjectIds.has(subject.curriculumSubjectId),
+  );
+
+  for (const subject of missingSubjects) {
+    let gradeGroup = groups.find((group) => group.gradeLevelId === subject.gradeLevelId);
+    if (!gradeGroup) {
+      gradeGroup = {
+        gradeLevelId: subject.gradeLevelId,
+        gradeDisplayName: `Grade ${subject.gradeLevelId}`,
+        gradeLevelNumber: null,
+        subjects: [],
+      };
+      groups.push(gradeGroup);
+    }
+
+    gradeGroup.subjects.push({
+      curriculumSubjectId: subject.curriculumSubjectId,
+      subjectId: subject.subjectId,
+      subjectName: subject.subjectName,
+      subjectType: subject.subjectType,
+      gradeLevelId: subject.gradeLevelId,
+      gradeDisplayName: gradeGroup.gradeDisplayName,
+      gradeLevelNumber: gradeGroup.gradeLevelNumber,
+      rows: [],
+    });
+  }
+
+  return groups
+    .map((group) => ({
+      ...group,
+      subjects: group.subjects.sort(compareMonitoringSubjects),
+    }))
+    .sort((a, b) => {
+      const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
+      if (ga !== gb) return ga - gb;
+      return a.gradeDisplayName.localeCompare(b.gradeDisplayName, undefined, {
+        sensitivity: "base",
+      });
+    });
+}
+
 function buildSubjectGroupMonitoring(
   rows: ReportMonitoringRow[],
   subjectGroups: SubjectGroupMemberRow[],
@@ -1793,8 +2003,19 @@ function buildSubjectGroupMonitoring(
 
 export async function fetchReportMonitoringTree(
   userId: string | null,
+  options: ReportMonitoringTreeOptions = {},
 ): Promise<ReportMonitoringTree> {
-  const cacheKey = `monitoringTree:${userId ?? "anonymous"}`;
+  const canViewAll = options.canViewAll === true;
+  const canViewAssigned = options.canViewAssigned === true;
+  const canMonitorGradeLevel = options.canMonitorGradeLevel === true;
+  const canMonitorSubjects = options.canMonitorSubjects === true;
+  const cacheKey = [
+    `monitoringTree:${userId ?? "anonymous"}`,
+    canViewAll ? "all" : "",
+    canViewAssigned ? "assigned" : "",
+    canMonitorGradeLevel ? "grade" : "",
+    canMonitorSubjects ? "subjects" : "",
+  ].join(":");
   const cached = cacheGet<ReportMonitoringTree>(cacheKey);
   if (cached) return cached;
 
@@ -1825,38 +2046,35 @@ export async function fetchReportMonitoringTree(
     return cacheSet(cacheKey, empty);
   }
 
-  const [sections, activeSubjects, examCards, assignmentResult, groupsResult, coordinatorsResult] =
-    await Promise.all([
-      fetchActiveSectionsForReports(),
-      fetchActiveCurriculumSubjectsForReports(),
-      fetchReportExamCards(),
-      supabase
-        .from("teacher_class_assignments")
-        .select(
-          "section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)",
-        )
-        .is("deleted_at", null),
-      supabase
-        .from("subject_groups")
-        .select(
-          "subject_group_id, name, subject_group_members(curriculum_subject_id)",
-        )
-        .eq("curriculum_id", activeContext.curriculum_id)
-        .is("deleted_at", null)
-        .is("subject_group_members.deleted_at", null),
-      supabase
-        .from("subject_coordinators")
-        .select("user_id, subject_group_id")
-        .eq("sy_id", activeContext.sy_id)
-        .is("deleted_at", null),
-    ]);
+  const [
+    sections,
+    activeSubjects,
+    groupsResult,
+    coordinatorsResult,
+    gradeSubjectLeadersResult,
+  ] = await Promise.all([
+    fetchActiveSectionsForReportsBySy(activeContext.sy_id),
+    fetchActiveCurriculumSubjectsForReportsByCurriculum(activeContext.curriculum_id),
+    supabase
+      .from("subject_groups")
+      .select(
+        "subject_group_id, name, subject_group_members(curriculum_subject_id)",
+      )
+      .eq("curriculum_id", activeContext.curriculum_id)
+      .is("deleted_at", null)
+      .is("subject_group_members.deleted_at", null),
+    supabase
+      .from("subject_coordinators")
+      .select("user_id, subject_group_id")
+      .eq("sy_id", activeContext.sy_id)
+      .is("deleted_at", null),
+    supabase
+      .from("grade_subject_leaders")
+      .select("user_id, curriculum_subject_id, grade_level_id")
+      .eq("sy_id", activeContext.sy_id)
+      .is("deleted_at", null),
+  ]);
 
-  if (assignmentResult.error) {
-    console.error(
-      "[reportsAnalysisService] fetchReportMonitoringTree assignments error:",
-      assignmentResult.error.message,
-    );
-  }
   if (groupsResult.error) {
     console.error(
       "[reportsAnalysisService] fetchReportMonitoringTree groups error:",
@@ -1869,11 +2087,18 @@ export async function fetchReportMonitoringTree(
       coordinatorsResult.error.message,
     );
   }
+  if (gradeSubjectLeadersResult.error) {
+    console.error(
+      "[reportsAnalysisService] fetchReportMonitoringTree grade subject leaders error:",
+      gradeSubjectLeadersResult.error.message,
+    );
+  }
 
   const sectionsById = new Map<number, RawSectionOnly>();
   for (const section of sections) {
     if (section.grade_level_id != null) sectionsById.set(section.section_id, section);
   }
+  const activeSectionIds = Array.from(sectionsById.keys());
 
   const subjectsByGrade = new Map<number, ActiveCurriculumSubject[]>();
   for (const subject of activeSubjects) {
@@ -1883,8 +2108,121 @@ export async function fetchReportMonitoringTree(
     subjectsByGrade.get(subject.gradeLevelId)!.push(subject);
   }
 
+  const subjectGroups = (groupsResult.data ?? []) as SubjectGroupMemberRow[];
+  const coordinatorRows = (coordinatorsResult.data ?? []) as SubjectCoordinatorRow[];
+  const gradeSubjectLeaderRows =
+    (gradeSubjectLeadersResult.data ?? []) as GradeSubjectLeaderRow[];
+
+  const userGradeLeaderSubjectIds = new Set(
+    canMonitorGradeLevel && userId
+      ? gradeSubjectLeaderRows
+          .filter((row) => row.user_id === userId)
+          .map((row) => row.curriculum_subject_id)
+          .filter((id): id is number => id != null)
+      : [],
+  );
+  const userCoordinatorGroupIds = new Set(
+    canMonitorSubjects && userId
+      ? coordinatorRows
+          .filter((row) => row.user_id === userId)
+          .map((row) => row.subject_group_id)
+          .filter((id): id is number => id != null)
+      : [],
+  );
+  const userSubjectGroupMemberIds = new Set<number>();
+  for (const group of subjectGroups) {
+    if (!userCoordinatorGroupIds.has(group.subject_group_id)) continue;
+    for (const member of group.subject_group_members ?? []) {
+      if (member.curriculum_subject_id != null) {
+        userSubjectGroupMemberIds.add(member.curriculum_subject_id);
+      }
+    }
+  }
+  const monitoredCurriculumSubjectIds = new Set<number>([
+    ...userGradeLeaderSubjectIds,
+    ...userSubjectGroupMemberIds,
+  ]);
+
+  let handledAssignmentRows: MonitoringAssignmentRow[] = [];
+  if (canViewAssigned && userId && activeSectionIds.length > 0) {
+    const { data, error } = await supabase
+      .from("teacher_class_assignments")
+      .select("section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)")
+      .eq("teacher_id", userId)
+      .in("section_id", activeSectionIds)
+      .is("deleted_at", null);
+
+    if (error) {
+      logReportFetchError(
+        "fetchReportMonitoringTree handled assignments error",
+        error.message,
+      );
+    } else {
+      handledAssignmentRows = (data ?? []) as MonitoringAssignmentRow[];
+    }
+  }
+
+  const advisorySectionIds = new Set<number>(
+    canViewAssigned && userId
+      ? sections
+          .filter((section) => section.adviser_id === userId)
+          .map((section) => section.section_id)
+      : [],
+  );
+  const handledSectionIds = new Set(
+    handledAssignmentRows
+      .map((row) => row.section_id)
+      .filter((id): id is number => id != null),
+  );
+
+  const neededSectionIds = new Set<number>();
+  if (canViewAll) {
+    for (const id of activeSectionIds) neededSectionIds.add(id);
+  }
+  for (const id of advisorySectionIds) neededSectionIds.add(id);
+  for (const id of handledSectionIds) neededSectionIds.add(id);
+
+  if (monitoredCurriculumSubjectIds.size > 0) {
+    const monitoredSubjects = activeSubjects.filter((subject) =>
+      monitoredCurriculumSubjectIds.has(subject.curriculumSubjectId),
+    );
+    const monitoredGradeIds = new Set(
+      monitoredSubjects.map((subject) => subject.gradeLevelId),
+    );
+    for (const section of sections) {
+      if (section.grade_level_id != null && monitoredGradeIds.has(section.grade_level_id)) {
+        neededSectionIds.add(section.section_id);
+      }
+    }
+  }
+
+  const neededSectionIdList = Array.from(neededSectionIds);
+  let assignmentRows: MonitoringAssignmentRow[] = [];
+  if (neededSectionIdList.length > 0) {
+    const { data, error } = await supabase
+      .from("teacher_class_assignments")
+      .select("section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)")
+      .in("section_id", neededSectionIdList)
+      .is("deleted_at", null);
+
+    if (error) {
+      logReportFetchError(
+        "fetchReportMonitoringTree assignments error",
+        error.message,
+      );
+    } else {
+      assignmentRows = (data ?? []) as MonitoringAssignmentRow[];
+    }
+  }
+
+  const examCards = await fetchReportExamCardsForContext(
+    activeContext.sy_id,
+    sectionsById,
+    neededSectionIdList,
+  );
+
   const assignmentByPair = new Map<string, { teacherId: string | null; teacherName: string | null }>();
-  for (const row of (assignmentResult.data ?? []) as MonitoringAssignmentRow[]) {
+  for (const row of assignmentRows) {
     if (row.section_id == null || row.curriculum_subject_id == null) continue;
     assignmentByPair.set(`${row.section_id}:${row.curriculum_subject_id}`, {
       teacherId: row.teacher_id ?? null,
@@ -1908,7 +2246,9 @@ export async function fetchReportMonitoringTree(
 
   const allRows: ReportMonitoringRow[] = [];
 
-  for (const section of sectionsById.values()) {
+  for (const sectionId of neededSectionIdList) {
+    const section = sectionsById.get(sectionId);
+    if (!section) continue;
     if (section.grade_level_id == null) continue;
     const gradeJoin = firstJoin(section.grade_levels);
     if (!gradeJoin) continue;
@@ -1954,37 +2294,39 @@ export async function fetchReportMonitoringTree(
   const userAdvisoryRows = userId
     ? allRows.filter((row) => row.adviserId === userId)
     : [];
-  const userCurriculumSubjectIds = new Set(
-    userHandledRows.map((row) => row.curriculumSubjectId),
-  );
-  const gradeMonitoringRows = userId
-    ? allRows.filter((row) => userCurriculumSubjectIds.has(row.curriculumSubjectId))
-    : [];
-  const subjectGroups = (groupsResult.data ?? []) as SubjectGroupMemberRow[];
-  const coordinatorRows = (coordinatorsResult.data ?? []) as SubjectCoordinatorRow[];
-
   const result: ReportMonitoringTree = {
     assigned: {
-      advisorySections: buildSectionGroups(userAdvisoryRows),
-      handledSections: buildSectionGroups(userHandledRows),
+      advisorySections: canViewAssigned ? buildSectionGroups(userAdvisoryRows) : [],
+      handledSections: canViewAssigned ? buildSectionGroups(userHandledRows) : [],
     },
-    gradeMonitoring: buildGradeGroups(gradeMonitoringRows),
-    subjectGroupMonitoring: buildSubjectGroupMonitoring(
-      allRows,
-      subjectGroups,
-      coordinatorRows,
-      userId,
-      false,
-    ),
+    gradeMonitoring: canMonitorGradeLevel
+      ? buildGradeSubjectLeaderGroups(
+          allRows,
+          gradeSubjectLeaderRows,
+          activeSubjects,
+          userId,
+        )
+      : [],
+    subjectGroupMonitoring: canMonitorSubjects
+      ? buildSubjectGroupMonitoring(
+          allRows,
+          subjectGroups,
+          coordinatorRows,
+          userId,
+          false,
+        )
+      : [],
     allMonitoring: {
-      gradeLevels: buildGradeGroups(allRows),
-      subjectGroups: buildSubjectGroupMonitoring(
-        allRows,
-        subjectGroups,
-        coordinatorRows,
-        userId,
-        true,
-      ),
+      gradeLevels: canViewAll ? buildGradeGroups(allRows) : [],
+      subjectGroups: canViewAll
+        ? buildSubjectGroupMonitoring(
+            allRows,
+            subjectGroups,
+            coordinatorRows,
+            userId,
+            true,
+          )
+        : [],
     },
   };
 

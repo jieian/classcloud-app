@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -24,6 +25,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useReportPermissions } from "@/hooks/useReportPermissions";
 import {
   fetchReportMonitoringTree,
+  invalidateReportsCache,
   type ReportMonitoringCoordinatorGroup,
   type ReportMonitoringGradeGroup,
   type ReportMonitoringRow,
@@ -42,6 +44,24 @@ const emptyTree: ReportMonitoringTree = {
 const reportAccordionStyles = {
   control: { backgroundColor: "#F5F5F5" },
   item: { border: "1px solid #e2edff" },
+};
+
+const subAccordionStyles = {
+  item: {
+    border: "1px solid #D6D9E0",
+    borderRadius: 6,
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
+  },
+  control: {
+    backgroundColor: "#ffffff",
+    padding: "12px 14px",
+    borderBottom: "1px solid #e5e7eb",
+    "&:hover": { backgroundColor: "#ffffff" },
+  },
+  label: { padding: 0 },
+  content: { padding: "0 12px 8px" },
+  panel: { padding: 0 },
 };
 
 const reportSegmentedStyles = {
@@ -85,14 +105,16 @@ function ProgressSummary({ rows }: { rows: ReportMonitoringRow[] }) {
 function RowLine({
   row,
   label,
+  isLast = false,
 }: {
   row: ReportMonitoringRow;
   label: string;
+  isLast?: boolean;
 }) {
   const router = useRouter();
   const href =
     row.latestExamId != null
-      ? `/assessment-reports/report-analytics/subject/${row.gradeLevelId}/${row.subjectId}/${row.latestExamId}`
+      ? `/reports/subject/${row.gradeLevelId}/${row.subjectId}/${row.latestExamId}`
       : null;
 
   return (
@@ -100,10 +122,18 @@ function RowLine({
       justify="space-between"
       gap="sm"
       py="xs"
-      px="sm"
+      pl={24}
+      pr={12}
       wrap="nowrap"
-      style={{ borderBottom: "1px dotted #d1d5db" }}
+      className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#8b919c] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#8b919c] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#9ca3af] ${
+        isLast ? "before:bottom-1/2" : "before:bottom-0"
+      }`}
+      style={{
+        borderBottom: "1px solid #e5e7eb",
+        marginRight: -12,
+      }}
     >
+      <span className="tree-node" aria-hidden="true" />
       <Group gap="xs" style={{ minWidth: 0, flex: 1 }} wrap="nowrap">
         <Text size="sm" lineClamp={1}>
           {label}
@@ -130,6 +160,82 @@ function RowLine({
   );
 }
 
+function TreeGuide({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      ml="sm"
+      pl="sm"
+      style={{
+        marginRight: -12,
+        paddingRight: 12,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function TreeBranchLine({
+  label,
+  rows,
+}: {
+  label: string;
+  rows: ReportMonitoringRow[];
+}) {
+  return (
+    <Box
+      style={{
+        borderBottom: "1px solid #e5e7eb",
+        marginRight: -12,
+        paddingRight: 12,
+      }}
+    >
+      <Group gap="xs" py={6} wrap="nowrap">
+        <Text fw={500} size="md" lineClamp={1}>
+          {label}
+        </Text>
+        <ProgressSummary rows={rows} />
+      </Group>
+      <Box ml="lg" pl="sm">
+        {rows.length === 0 ? (
+          <EmptyPanel message="No active sections found for this grade subject." />
+        ) : (
+          rows.map((row, index) => (
+            <RowLine
+              key={`${row.sectionId}-${row.curriculumSubjectId}`}
+              row={row}
+              label={row.sectionName}
+              isLast={index === rows.length - 1}
+            />
+          ))
+        )}
+      </Box>
+    </Box>
+  );
+}
+
+function SubjectTreeList({
+  subjects,
+  emptyMessage,
+}: {
+  subjects: ReportMonitoringSubjectGroup[];
+  emptyMessage: string;
+}) {
+  if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  return (
+    <TreeGuide>
+      {subjects.map((subject) => (
+        <TreeBranchLine
+          key={subject.curriculumSubjectId}
+          label={subject.subjectName}
+          rows={subject.rows}
+        />
+      ))}
+    </TreeGuide>
+  );
+}
+
 function EmptyPanel({ message }: { message: string }) {
   return (
     <Box py="md">
@@ -138,6 +244,14 @@ function EmptyPanel({ message }: { message: string }) {
       </Text>
     </Box>
   );
+}
+
+function keepClosedAccordionInView(event: MouseEvent<HTMLElement>) {
+  const item = event.currentTarget.closest(".mantine-Accordion-item");
+  const control = item?.querySelector(".mantine-Accordion-control");
+  window.setTimeout(() => {
+    (control ?? item)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, 220);
 }
 
 function SectionAccordion({
@@ -149,67 +263,51 @@ function SectionAccordion({
   rowLabel: (row: ReportMonitoringRow) => string;
   emptyMessage: string;
 }) {
+  const [openSections, setOpenSections] = useState<string[]>([]);
+
   if (sections.length === 0) return <EmptyPanel message={emptyMessage} />;
 
   return (
-    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+    <Accordion
+      multiple
+      value={openSections}
+      onChange={setOpenSections}
+      variant="separated"
+      styles={subAccordionStyles}
+    >
       {sections.map((section) => (
-        <Accordion.Item key={section.sectionId} value={`section-${section.sectionId}`}>
+        <Accordion.Item
+          key={section.sectionId}
+          value={`section-${section.sectionId}`}
+        >
           <Accordion.Control>
             <Group gap="xs">
-              <Text fw={700} size="sm">
-                {section.gradeDisplayName} • {section.sectionName}
+              <Text fw={700} size="md">
+                {section.gradeDisplayName}
+                {" \u2022 "}
+                {section.sectionName}
               </Text>
               <ProgressSummary rows={section.rows} />
             </Group>
           </Accordion.Control>
-          <Accordion.Panel>
-            {section.rows.map((row) => (
-              <RowLine
-                key={`${row.sectionId}-${row.curriculumSubjectId}`}
-                row={row}
-                label={rowLabel(row)}
-              />
-            ))}
-          </Accordion.Panel>
-        </Accordion.Item>
-      ))}
-    </Accordion>
-  );
-}
-
-function SubjectAccordion({
-  subjects,
-  emptyMessage,
-}: {
-  subjects: ReportMonitoringSubjectGroup[];
-  emptyMessage: string;
-}) {
-  if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
-
-  return (
-    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
-      {subjects.map((subject) => (
-        <Accordion.Item
-          key={subject.curriculumSubjectId}
-          value={`subject-${subject.curriculumSubjectId}`}
-        >
-          <Accordion.Control>
-            <Group gap="xs">
-              <Text fw={700} size="sm">
-                {subject.subjectName}
-              </Text>
-              <ProgressSummary rows={subject.rows} />
-            </Group>
-          </Accordion.Control>
-          <Accordion.Panel>
-            {subject.rows.map((row) => (
-              <RowLine
-                key={`${row.sectionId}-${row.curriculumSubjectId}`}
-                row={row}
-                label={row.sectionName}
-              />
-            ))}
+          <Accordion.Panel
+            onDoubleClick={(event) => {
+              setOpenSections((current) =>
+                current.filter((value) => value !== `section-${section.sectionId}`),
+              );
+              keepClosedAccordionInView(event);
+            }}
+          >
+            <TreeGuide>
+              {section.rows.map((row, index) => (
+                <RowLine
+                  key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                  row={row}
+                  label={rowLabel(row)}
+                  isLast={index === section.rows.length - 1}
+                />
+              ))}
+            </TreeGuide>
           </Accordion.Panel>
         </Accordion.Item>
       ))}
@@ -224,15 +322,23 @@ function GradeMonitoring({
   grades: ReportMonitoringGradeGroup[];
   emptyMessage: string;
 }) {
+  const [openGrades, setOpenGrades] = useState<string[]>([]);
+
   if (grades.length === 0) return <EmptyPanel message={emptyMessage} />;
 
   return (
-    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+    <Accordion
+      multiple
+      value={openGrades}
+      onChange={setOpenGrades}
+      variant="separated"
+      styles={subAccordionStyles}
+    >
       {grades.map((grade) => (
         <Accordion.Item key={grade.gradeLevelId} value={`grade-${grade.gradeLevelId}`}>
           <Accordion.Control>
             <Group gap="xs">
-              <Text fw={700} size="sm">
+              <Text fw={700} size="md">
                 {grade.gradeDisplayName}
               </Text>
               <Text span size="sm" c="dimmed">
@@ -240,8 +346,15 @@ function GradeMonitoring({
               </Text>
             </Group>
           </Accordion.Control>
-          <Accordion.Panel>
-            <SubjectAccordion
+          <Accordion.Panel
+            onDoubleClick={(event) => {
+              setOpenGrades((current) =>
+                current.filter((value) => value !== `grade-${grade.gradeLevelId}`),
+              );
+              keepClosedAccordionInView(event);
+            }}
+          >
+            <SubjectTreeList
               subjects={grade.subjects}
               emptyMessage="No subjects are available for this grade level."
             />
@@ -259,10 +372,18 @@ function SubjectGroupMonitoring({
   groups: ReportMonitoringCoordinatorGroup[];
   emptyMessage: string;
 }) {
+  const [openGroups, setOpenGroups] = useState<string[]>([]);
+
   if (groups.length === 0) return <EmptyPanel message={emptyMessage} />;
 
   return (
-    <Accordion multiple variant="separated" styles={reportAccordionStyles}>
+    <Accordion
+      multiple
+      value={openGroups}
+      onChange={setOpenGroups}
+      variant="separated"
+      styles={subAccordionStyles}
+    >
       {groups.map((group) => (
         <Accordion.Item
           key={group.subjectGroupId}
@@ -270,7 +391,7 @@ function SubjectGroupMonitoring({
         >
           <Accordion.Control>
             <Group gap="xs">
-              <Text fw={700} size="sm">
+              <Text fw={700} size="md">
                 {group.subjectGroupName}
               </Text>
               <Text span size="sm" c="dimmed">
@@ -278,8 +399,15 @@ function SubjectGroupMonitoring({
               </Text>
             </Group>
           </Accordion.Control>
-          <Accordion.Panel>
-            <SubjectAccordion
+          <Accordion.Panel
+            onDoubleClick={(event) => {
+              setOpenGroups((current) =>
+                current.filter((value) => value !== `subject-group-${group.subjectGroupId}`),
+              );
+              keepClosedAccordionInView(event);
+            }}
+          >
+            <SubjectTreeList
               subjects={group.subjects}
               emptyMessage="No subject rows are available for this group."
             />
@@ -395,16 +523,33 @@ function LoadingState() {
   );
 }
 
-export default function SubjectReportsBrowser() {
+export default function ReportsBrowser() {
   const { user } = useAuth();
   const reportScope = useReportPermissions();
   const [loading, setLoading] = useState(true);
   const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (forceRefresh = false) => {
     setLoading(true);
+    setLoadError(null);
     try {
-      setTree(await fetchReportMonitoringTree(user?.id ?? null));
+      if (forceRefresh) invalidateReportsCache();
+      setTree(
+        await fetchReportMonitoringTree(user?.id ?? null, {
+          canViewAll: reportScope.canViewAll,
+          canViewAssigned: reportScope.canViewAssigned,
+          canMonitorGradeLevel: reportScope.canMonitorGradeLevel,
+          canMonitorSubjects: reportScope.canMonitorSubjects,
+        }),
+      );
+    } catch (error) {
+      setTree(emptyTree);
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load reports. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -414,7 +559,13 @@ export default function SubjectReportsBrowser() {
     if (!user?.id) return;
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [
+    user?.id,
+    reportScope.canViewAll,
+    reportScope.canViewAssigned,
+    reportScope.canMonitorGradeLevel,
+    reportScope.canMonitorSubjects,
+  ]);
 
   const hasAnyVisibleSection = useMemo(
     () =>
@@ -442,7 +593,7 @@ export default function SubjectReportsBrowser() {
             color="#808898"
             size="lg"
             radius="xl"
-            onClick={() => void loadData()}
+            onClick={() => void loadData(true)}
             loading={loading}
             aria-label="Refresh reports"
           >
@@ -450,6 +601,21 @@ export default function SubjectReportsBrowser() {
           </ActionIcon>
         </Tooltip>
       </Group>
+
+      {loadError && (
+        <Box
+          p="sm"
+          style={{
+            border: "1px solid #fde68a",
+            backgroundColor: "#fffbeb",
+            borderRadius: 6,
+          }}
+        >
+          <Text size="sm" c="yellow.9">
+            {loadError}
+          </Text>
+        </Box>
+      )}
 
       <Accordion
         multiple
@@ -488,7 +654,7 @@ export default function SubjectReportsBrowser() {
           </Accordion.Item>
         )}
 
-        {reportScope.canMonitorGradeLevel && !reportScope.canViewAll && (
+        {reportScope.canMonitorGradeLevel && (
           <Accordion.Item value="grade-subject-monitoring">
             <Accordion.Control>
               <Text fw={700} size="md" c="#1f2937">
@@ -498,7 +664,7 @@ export default function SubjectReportsBrowser() {
             <Accordion.Panel>
               <GradeMonitoring
                 grades={tree.gradeMonitoring}
-                emptyMessage="No grade subject monitoring reports found."
+                emptyMessage="No active grade subject leader assignment found for this school year."
               />
             </Accordion.Panel>
           </Accordion.Item>

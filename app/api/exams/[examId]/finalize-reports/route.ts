@@ -6,7 +6,7 @@ import {
 } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
-import { REPORTS_CACHE_TAG } from "@/app/(app)/assessment-reports/_lib/reportServerService";
+import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 
 type FinalizeParams = { examId: string };
 

@@ -18,7 +18,8 @@ const _GET = async function () {
     .select("notification_id, reference_id")
     .eq("user_id", user.id)
     .eq("type", "new_signup")
-    .is("read_at", null);
+    .is("read_at", null)
+    .limit(200);
 
   if (error) return Response.json({ notifications: [] });
 

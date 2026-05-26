@@ -101,9 +101,18 @@ async function getFinalizedReportKeysCached(): Promise<Set<string>> {
   cacheTag(REPORTS_CACHE_TAG);
   cacheLife("minutes");
 
-  const { data, error } = await admin
-    .from("exam_results_reports")
-    .select("exam_id, section_id");
+  const { data: syData } = await admin
+    .from("school_years")
+    .select("sy_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const syId = (syData as { sy_id?: number } | null)?.sy_id ?? null;
+
+  let query = admin.from("exam_results_reports").select("exam_id, section_id");
+  if (syId != null) query = query.eq("sy_id", syId);
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("[reportServerService] getFinalizedReportKeysCached error:", error.message);
@@ -117,18 +126,29 @@ async function getFinalizedReportKeysCached(): Promise<Set<string>> {
   );
 }
 
-async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
+export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
   "use cache";
   cacheTag(REPORTS_CACHE_TAG);
   cacheTag("grade-levels");
   cacheLife("minutes");
 
-  const { data, error } = await admin
+  const { data: syData } = await admin
+    .from("school_years")
+    .select("sy_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+  const activeSyId = (syData as { sy_id?: number } | null)?.sy_id ?? null;
+
+  let q = admin
     .from("exam_assignments")
     .select(
       "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
     )
     .is("exams.deleted_at", null);
+  if (activeSyId != null) q = q.eq("sections.sy_id", activeSyId);
+
+  const { data, error } = await q;
 
   if (error) {
     console.error("[reportServerService] getReportExamCardsCached error:", error.message);
@@ -237,9 +257,14 @@ async function getSectionSubjectsCached(): Promise<Map<number, Map<number, strin
   cacheTag("teacher-assignments");
   cacheLife("minutes");
 
+  const activeSections = await getActiveSectionsCached();
+  const activeSectionIds = activeSections.map((s) => s.section_id);
+  if (activeSectionIds.length === 0) return new Map();
+
   const { data, error } = await admin
     .from("teacher_class_assignments")
     .select("section_id, curriculum_subjects!inner(subject_id, subjects(name))")
+    .in("section_id", activeSectionIds)
     .is("deleted_at", null);
 
   if (error) {
