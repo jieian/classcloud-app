@@ -384,6 +384,12 @@ function getSubjectInfo(exam: ExamJoin): {
   };
 }
 
+type BulkTeacherEntry = {
+  teacherName: string | null;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+};
+
 function compareSubjectType(a: "BOTH" | "SSES" | null, b: "BOTH" | "SSES" | null): number {
   if (a === b) return 0;
   return a === "SSES" ? -1 : 1;
@@ -534,6 +540,46 @@ async function fetchSectionSubjectsForReports(): Promise<Map<number, Map<number,
   }
 
   return result;
+}
+
+async function fetchAllTeacherAssignmentsWithNames(): Promise<Map<number, Map<number, BulkTeacherEntry>>> {
+  const cacheKey = "allTeacherAssignments";
+  const cached = cacheGet<Map<number, Map<number, BulkTeacherEntry>>>(cacheKey);
+  if (cached) return cached;
+
+  const { data, error } = await supabase
+    .from("teacher_class_assignments")
+    .select(
+      "section_id, curriculum_subjects!inner(subject_id, subjects(name, subject_type)), users!teacher_id(first_name, last_name)",
+    )
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("[reportsAnalysisService] fetchAllTeacherAssignmentsWithNames error:", error.message);
+    return new Map();
+  }
+
+  const result = new Map<number, Map<number, BulkTeacherEntry>>();
+
+  for (const row of (data ?? []) as RawSectionTeacherRow[]) {
+    const sectionId = row.section_id ?? null;
+    const curriculum = firstJoin(row.curriculum_subjects);
+    if (sectionId == null || !curriculum || curriculum.subject_id == null) continue;
+    const subjectId = curriculum.subject_id;
+    const subjectJoin = firstJoin(curriculum.subjects);
+    const teacherName = toTeacherName(row.users);
+
+    if (!result.has(sectionId)) result.set(sectionId, new Map());
+    if (!result.get(sectionId)!.has(subjectId)) {
+      result.get(sectionId)!.set(subjectId, {
+        teacherName,
+        subjectName: subjectJoin?.name ?? "Unknown Subject",
+        subjectType: subjectJoin?.subject_type ?? null,
+      });
+    }
+  }
+
+  return cacheSet(cacheKey, result);
 }
 
 export async function fetchReportExamsForSection(
@@ -925,65 +971,73 @@ export async function fetchReportSubjectCards(): Promise<ReportSubjectCard[]> {
   const cached = cacheGet<ReportSubjectCard[]>("subjectCards");
   if (cached) return cached;
 
-  const [sectionCards, examCards] = await Promise.all([
+  // Single parallel fetch — no per-section waterfall
+  const [sectionCards, examCards, teacherMap] = await Promise.all([
     fetchReportSectionCards(),
     fetchReportExamCards(),
+    fetchAllTeacherAssignmentsWithNames(),
   ]);
+
   const grouped = new Map<string, ReportSubjectCard>();
 
   for (const section of sectionCards) {
-    const overview = await fetchReportSectionOverview(section.sectionId);
-    for (const subject of overview?.subjects ?? []) {
-      const key = subjectGradeKey(section.gradeLevelId, subject.subjectId);
+    const sectionTeachers = teacherMap.get(section.sectionId) ?? new Map<number, BulkTeacherEntry>();
+    const sectionExams = examCards.filter((c) => c.sectionId === section.sectionId);
+
+    const subjectIds = new Set<number>([
+      ...sectionExams.map((c) => c.subjectId).filter((id): id is number => id != null),
+      ...Array.from(sectionTeachers.keys()),
+    ]);
+
+    for (const subjectId of subjectIds) {
+      const key = subjectGradeKey(section.gradeLevelId, subjectId);
+
+      const subjectExams = sectionExams.filter((c) => c.subjectId === subjectId);
+      const latestExam = subjectExams.reduce<ReportExamCard | null>((best, card) => {
+        if (!best) return card;
+        return getExamSortScore(card.examDate, card.examId) >=
+          getExamSortScore(best.examDate, best.examId)
+          ? card
+          : best;
+      }, null);
+
+      const teacherEntry = sectionTeachers.get(subjectId) ?? null;
+      const subjectName = latestExam?.subjectName ?? teacherEntry?.subjectName ?? "Unknown Subject";
+      const subjectType = latestExam?.subjectType ?? teacherEntry?.subjectType ?? null;
+      const teacherName = teacherEntry?.teacherName ?? null;
+      const isFinalized = latestExam?.isFinalized ?? false;
+
       const existing = grouped.get(key);
       if (!existing) {
         grouped.set(key, {
-          subjectId: subject.subjectId,
-          subjectName: subject.subjectName,
-          subjectType: subject.subjectType,
+          subjectId,
+          subjectName,
+          subjectType,
           gradeLevelId: section.gradeLevelId,
           gradeDisplayName: section.gradeDisplayName,
           gradeLevelNumber: section.gradeLevelNumber,
-          sectionCount: 0,
-          finalizedSections: 0,
+          sectionCount: 1,
+          finalizedSections: isFinalized ? 1 : 0,
           isFinalized: false,
-          teacherNames: [],
-          sectionNames: [],
-          latestExamId: null,
-          latestExamDate: null,
+          teacherNames: teacherName ? [teacherName] : [],
+          sectionNames: [section.sectionName],
+          latestExamId: latestExam?.examId ?? null,
+          latestExamDate: latestExam?.examDate ?? null,
         });
-      }
-
-      const current = grouped.get(key)!;
-      current.sectionCount += 1;
-      current.sectionNames.push(section.sectionName);
-      if (subject.teacherName && !current.teacherNames.includes(subject.teacherName)) {
-        current.teacherNames.push(subject.teacherName);
-      }
-      if (subject.status === "Finalized") current.finalizedSections += 1;
-
-      const latest = examCards
-        .filter(
-          (card) =>
-            card.gradeLevelId === section.gradeLevelId &&
-            card.sectionId === section.sectionId &&
-            card.subjectId === subject.subjectId,
-        )
-        .reduce<ReportExamCard | null>((hit, card) => {
-          if (!hit) return card;
-          return getExamSortScore(card.examDate, card.examId) >=
-            getExamSortScore(hit.examDate, hit.examId)
-            ? card
-            : hit;
-        }, null);
-
-      if (latest) {
-        if (
-          getExamSortScore(latest.examDate, latest.examId) >=
-          getExamSortScore(current.latestExamDate, current.latestExamId ?? 0)
-        ) {
-          current.latestExamId = latest.examId;
-          current.latestExamDate = latest.examDate;
+      } else {
+        existing.sectionCount += 1;
+        existing.sectionNames.push(section.sectionName);
+        if (teacherName && !existing.teacherNames.includes(teacherName)) {
+          existing.teacherNames.push(teacherName);
+        }
+        if (isFinalized) existing.finalizedSections += 1;
+        if (latestExam) {
+          const existingSort = getExamSortScore(existing.latestExamDate, existing.latestExamId ?? 0);
+          const candidateSort = getExamSortScore(latestExam.examDate, latestExam.examId);
+          if (candidateSort >= existingSort) {
+            existing.latestExamId = latestExam.examId;
+            existing.latestExamDate = latestExam.examDate;
+          }
         }
       }
     }
