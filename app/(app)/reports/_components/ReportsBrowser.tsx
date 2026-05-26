@@ -1,7 +1,7 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Accordion,
@@ -9,7 +9,9 @@ import {
   Badge,
   Box,
   Button,
+  Divider,
   Group,
+  Popover,
   SegmentedControl,
   Skeleton,
   Stack,
@@ -19,6 +21,7 @@ import {
 import {
   IconChevronRight,
   IconRefresh,
+  IconUserSquareRounded,
 } from "@tabler/icons-react";
 import EmptySearchState from "@/components/EmptySearchState";
 import { useAuth } from "@/context/AuthContext";
@@ -83,22 +86,388 @@ const reportSegmentedStyles = {
   },
 };
 
+const STATUS_COLORS = {
+  done: "#4EAE4A",
+  ongoing: "#fdba74",
+  notStarted: "#d1d5db",
+};
+
 function StatusBadge({ status }: { status: ReportMonitoringRow["status"] }) {
   const color =
-    status === "Finalized" ? "green" : status === "Not Finalized" ? "red" : "gray";
+    status === "Finalized" ? "green" : status === "Not Finalized" ? "orange" : "gray";
+  const label =
+    status === "Finalized"
+      ? "Done"
+      : status === "Not Finalized"
+        ? "Ongoing"
+        : "Not Started";
   return (
-    <Badge color={color} variant="light" miw={112} ta="center">
-      {status}
+    <Badge color={color} variant="light" w={108} ta="center" style={{ overflow: "visible" }}>
+      {label}
     </Badge>
   );
 }
 
-function ProgressSummary({ rows }: { rows: ReportMonitoringRow[] }) {
-  const finalized = rows.filter((row) => row.status === "Finalized").length;
+
+type StatusCounts = {
+  done: number;
+  ongoing: number;
+  notStarted: number;
+};
+
+function statusCountsTotal(counts: StatusCounts) {
+  return counts.done + counts.ongoing + counts.notStarted;
+}
+
+function getRowStatusCounts(rows: ReportMonitoringRow[]): StatusCounts {
+  const done = rows.filter((row) => row.status === "Finalized").length;
+  const ongoing = rows.filter((row) => row.status === "Not Finalized").length;
+  return {
+    done,
+    ongoing,
+    notStarted: Math.max(rows.length - done - ongoing, 0),
+  };
+}
+
+function getSubjectSubgroupStatusCounts(subjects: ReportMonitoringSubjectGroup[]): StatusCounts {
+  return subjects.reduce<StatusCounts>(
+    (counts, subject) => {
+      if (subject.rows.length === 0) {
+        counts.notStarted += 1;
+        return counts;
+      }
+
+      if (subject.rows.every((row) => row.status === "Finalized")) {
+        counts.done += 1;
+      } else if (subject.rows.every((row) => row.status === "No exam yet")) {
+        counts.notStarted += 1;
+      } else {
+        counts.ongoing += 1;
+      }
+
+      return counts;
+    },
+    { done: 0, ongoing: 0, notStarted: 0 },
+  );
+}
+
+
+function classifySubgroupFromRows(rows: ReportMonitoringRow[]): keyof StatusCounts {
+  if (rows.length === 0) return "notStarted";
+  if (rows.every((row) => row.status === "Finalized")) return "done";
+  if (rows.every((row) => row.status === "No exam yet")) return "notStarted";
+  return "ongoing";
+}
+
+function classifySubgroupFromCounts(counts: StatusCounts): keyof StatusCounts {
+  const total = statusCountsTotal(counts);
+  if (total === 0) return "notStarted";
+  if (counts.done === total) return "done";
+  if (counts.notStarted === total) return "notStarted";
+  return "ongoing";
+}
+
+function getSectionGroupStatusCounts(sections: ReportMonitoringSectionGroup[]): StatusCounts {
+  return sections.reduce<StatusCounts>(
+    (counts, section) => {
+      counts[classifySubgroupFromRows(section.rows)] += 1;
+      return counts;
+    },
+    { done: 0, ongoing: 0, notStarted: 0 },
+  );
+}
+
+function getGradeGroupStatusCounts(grades: ReportMonitoringGradeGroup[]): StatusCounts {
+  return grades.reduce<StatusCounts>(
+    (counts, grade) => {
+      counts[classifySubgroupFromCounts(getSubjectSubgroupStatusCounts(grade.subjects))] += 1;
+      return counts;
+    },
+    { done: 0, ongoing: 0, notStarted: 0 },
+  );
+}
+
+function getCoordinatorGroupStatusCounts(groups: ReportMonitoringCoordinatorGroup[]): StatusCounts {
+  return groups.reduce<StatusCounts>(
+    (counts, group) => {
+      counts[classifySubgroupFromCounts(getSubjectSubgroupStatusCounts(group.subjects))] += 1;
+      return counts;
+    },
+    { done: 0, ongoing: 0, notStarted: 0 },
+  );
+}
+
+
+function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }) {
+  const [opened, setOpened] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const total = statusCountsTotal(counts);
+  const doneDeg = total === 0 ? 0 : (counts.done / total) * 360;
+  const ongoingDeg = total === 0 ? 0 : (counts.ongoing / total) * 360;
+  const doneEnd = doneDeg;
+  const ongoingEnd = doneDeg + ongoingDeg;
+  const ringBackground =
+    total === 0
+      ? "#e5e7eb"
+      : `conic-gradient(${STATUS_COLORS.done} 0deg ${doneEnd}deg, ${STATUS_COLORS.ongoing} ${doneEnd}deg ${ongoingEnd}deg, ${STATUS_COLORS.notStarted} ${ongoingEnd}deg 360deg)`;
+
+  const isTouchDevice =
+    typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
+
+  function handleMouseEnter() {
+    if (isTouchDevice) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpened(true);
+  }
+
+  function handleMouseLeave() {
+    if (isTouchDevice) return;
+    closeTimer.current = setTimeout(() => setOpened(false), 80);
+  }
+
+  function handleClick(event: MouseEvent) {
+    event.stopPropagation();
+    if (isTouchDevice) setOpened((current) => !current);
+  }
+
+  const statusItems = [
+    { label: "Done", count: counts.done, color: STATUS_COLORS.done },
+    { label: "Ongoing", count: counts.ongoing, color: STATUS_COLORS.ongoing },
+    { label: "Not Started", count: counts.notStarted, color: STATUS_COLORS.notStarted },
+  ];
+
   return (
-    <Text span size="sm" c="dimmed" fw={500}>
-      ({finalized}/{rows.length})
-    </Text>
+    <Popover
+      opened={opened}
+      onClose={() => setOpened(false)}
+      width={220}
+      shadow="sm"
+      withinPortal
+      position="right"
+      closeOnClickOutside={isTouchDevice}
+    >
+      <Popover.Target>
+        <Box
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            flex: "0 0 auto",
+            background: ringBackground,
+            cursor: isTouchDevice ? "pointer" : "default",
+          }}
+        >
+          <Box
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              backgroundColor: "#ffffff",
+            }}
+          >
+            <Text size="11px" fw={700} c="#4b5563">
+              {counts.done}/{total}
+            </Text>
+          </Box>
+        </Box>
+      </Popover.Target>
+
+      <Popover.Dropdown
+        style={{ border: "1px solid #d3e9d0", borderRadius: 10, padding: "12px 14px" }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Text size="10px" fw={700} tt="uppercase" c="#4EAE4A" style={{ letterSpacing: "0.06em" }}>
+          {label}
+        </Text>
+        <Divider my={8} color="#e8f0e8" />
+        <Box style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {statusItems.map((item) => (
+            <Group key={item.label} gap={8} wrap="nowrap" align="center">
+              <Box
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  backgroundColor: item.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.4, flex: 1 }}>
+                {item.label}
+              </Text>
+              <Text size="sm" fw={700} c="#4b5563">
+                {item.count}
+              </Text>
+            </Group>
+          ))}
+        </Box>
+      </Popover.Dropdown>
+    </Popover>
+  );
+}
+
+function MainAccordionHeader({
+  title,
+  counts,
+}: {
+  title: string;
+  counts: StatusCounts;
+}) {
+  return (
+    <Group gap="sm" wrap="nowrap">
+      <StatusCircle counts={counts} label={title} />
+      <Text fw={700} size="md" c="#1f2937">
+        {title}
+      </Text>
+    </Group>
+  );
+}
+
+function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: string }) {
+  const [opened, setOpened] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const total = statusCountsTotal(counts);
+  const { done, ongoing, notStarted } = counts;
+  const statusItems = [
+    { label: "Done", count: done, color: STATUS_COLORS.done },
+    { label: "Ongoing", count: ongoing, color: STATUS_COLORS.ongoing },
+    { label: "Not Started", count: notStarted, color: STATUS_COLORS.notStarted },
+  ];
+
+  const isTouchDevice =
+    typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
+
+  function handleMouseEnter() {
+    if (isTouchDevice) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    setOpened(true);
+  }
+
+  function handleMouseLeave() {
+    if (isTouchDevice) return;
+    closeTimer.current = setTimeout(() => setOpened(false), 80);
+  }
+
+  function handleClick(event: MouseEvent) {
+    event.stopPropagation();
+    if (isTouchDevice) setOpened((current) => !current);
+  }
+
+  if (total === 0) {
+    return (
+      <Box
+        h={16}
+        style={{
+          flex: 1,
+          minWidth: 88,
+          maxWidth: 210,
+          border: "1px solid #D6D9E0",
+          borderRadius: 3,
+          backgroundColor: "#f3f4f6",
+        }}
+      />
+    );
+  }
+
+  const segments = [
+    { key: "done", count: done, color: STATUS_COLORS.done, label: "Done" },
+    { key: "ongoing", count: ongoing, color: STATUS_COLORS.ongoing, label: "Ongoing" },
+    { key: "not-started", count: notStarted, color: STATUS_COLORS.notStarted, label: "Not Started" },
+  ].filter((segment) => segment.count > 0);
+
+  return (
+    <Popover
+      opened={opened}
+      onClose={() => setOpened(false)}
+      width={220}
+      shadow="sm"
+      withinPortal
+      position="right"
+      closeOnClickOutside={isTouchDevice}
+    >
+      <Popover.Target>
+        <Box
+          h={16}
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          style={{
+            display: "flex",
+            flex: 1,
+            minWidth: 88,
+            maxWidth: 210,
+            overflow: "hidden",
+            border: "1px solid #D6D9E0",
+            borderRadius: 3,
+            backgroundColor: "#ffffff",
+            cursor: isTouchDevice ? "pointer" : "default",
+          }}
+        >
+          {segments.map((segment) => (
+            <Box
+              key={segment.key}
+              aria-label={`${segment.label}: ${segment.count}`}
+              style={{
+                width: `${(segment.count / total) * 100}%`,
+                backgroundColor: segment.color,
+              }}
+            />
+          ))}
+        </Box>
+      </Popover.Target>
+
+      <Popover.Dropdown
+        style={{
+          border: "1px solid #d3e9d0",
+          borderRadius: 10,
+          padding: "12px 14px",
+        }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <Text
+          size="10px"
+          fw={700}
+          tt="uppercase"
+          c="#4EAE4A"
+          style={{ letterSpacing: "0.06em" }}
+        >
+          {label}
+        </Text>
+        <Divider my={8} color="#e8f0e8" />
+        <Box style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {statusItems.map((item) => (
+            <Group key={item.label} gap={8} wrap="nowrap" align="center">
+              <Box
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: "50%",
+                  backgroundColor: item.color,
+                  flexShrink: 0,
+                }}
+              />
+              <Text size="sm" c="dimmed" style={{ lineHeight: 1.4, flex: 1 }}>
+                {item.label}
+              </Text>
+              <Text size="sm" fw={700} c="#4b5563">
+                {item.count}
+              </Text>
+            </Group>
+          ))}
+        </Box>
+      </Popover.Dropdown>
+    </Popover>
   );
 }
 
@@ -125,7 +494,7 @@ function RowLine({
       pl={24}
       pr={12}
       wrap="nowrap"
-      className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#8b919c] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#8b919c] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#9ca3af] ${
+      className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#d1d5db] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#d1d5db] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#d1d5db] ${
         isLast ? "before:bottom-1/2" : "before:bottom-0"
       }`}
       style={{
@@ -134,17 +503,29 @@ function RowLine({
       }}
     >
       <span className="tree-node" aria-hidden="true" />
-      <Group gap="xs" style={{ minWidth: 0, flex: 1 }} wrap="nowrap">
-        <Text size="sm" lineClamp={1}>
-          {label}
-        </Text>
-      </Group>
-      <StatusBadge status={row.status} />
-      <Group gap={6} wrap="nowrap" w={{ base: 150, sm: 230 }} style={{ minWidth: 0 }}>
-        <Text size="sm" lineClamp={1} c={row.teacherName ? undefined : "dimmed"}>
-          {row.teacherName ?? "Unassigned"}
-        </Text>
-      </Group>
+      <Box
+        style={{
+          display: "grid",
+          gridTemplateColumns: "90px 108px max-content",
+          alignItems: "center",
+          columnGap: 10,
+          minWidth: 0,
+          flex: "0 1 auto",
+        }}
+      >
+        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
+          <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
+            {label}
+          </Text>
+        </Tooltip>
+        <StatusBadge status={row.status} />
+        <Group gap={4} wrap="nowrap" ml={4}>
+          <IconUserSquareRounded size={15} stroke={1.7} color="#6b7280" />
+          <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
+            {row.teacherName ?? "Unassigned"}
+          </Text>
+        </Group>
+      </Box>
       <Button
         variant="subtle"
         color="#4EAE4A"
@@ -191,10 +572,12 @@ function TreeBranchLine({
       }}
     >
       <Group gap="xs" py={6} wrap="nowrap">
-        <Text fw={500} size="md" lineClamp={1}>
-          {label}
-        </Text>
-        <ProgressSummary rows={rows} />
+        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
+          <Text fw={500} size="md" truncate="end" maw={220}>
+            {label}
+          </Text>
+        </Tooltip>
+        <StatusStackedBar counts={getRowStatusCounts(rows)} label={label} />
       </Group>
       <Box ml="lg" pl="sm">
         {rows.length === 0 ? (
@@ -281,13 +664,20 @@ function SectionAccordion({
           value={`section-${section.sectionId}`}
         >
           <Accordion.Control>
-            <Group gap="xs">
-              <Text fw={700} size="md">
-                {section.gradeDisplayName}
-                {" \u2022 "}
-                {section.sectionName}
-              </Text>
-              <ProgressSummary rows={section.rows} />
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <StatusCircle counts={getRowStatusCounts(section.rows)} label={`${section.gradeDisplayName} • ${section.sectionName}`} />
+              <Tooltip
+                label={`${section.gradeDisplayName} \u2022 ${section.sectionName}`}
+                position="top-start"
+                withArrow
+                disabled={`${section.gradeDisplayName} ${section.sectionName}`.length < 24}
+              >
+                <Text fw={700} size="md" truncate="end" maw={260}>
+                  {section.gradeDisplayName}
+                  {" \u2022 "}
+                  {section.sectionName}
+                </Text>
+              </Tooltip>
             </Group>
           </Accordion.Control>
           <Accordion.Panel
@@ -337,13 +727,18 @@ function GradeMonitoring({
       {grades.map((grade) => (
         <Accordion.Item key={grade.gradeLevelId} value={`grade-${grade.gradeLevelId}`}>
           <Accordion.Control>
-            <Group gap="xs">
-              <Text fw={700} size="md">
-                {grade.gradeDisplayName}
-              </Text>
-              <Text span size="sm" c="dimmed">
-                ({grade.subjects.length})
-              </Text>
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <StatusCircle counts={getSubjectSubgroupStatusCounts(grade.subjects)} label={grade.gradeDisplayName} />
+              <Tooltip
+                label={grade.gradeDisplayName}
+                position="top-start"
+                withArrow
+                disabled={grade.gradeDisplayName.length < 24}
+              >
+                <Text fw={700} size="md" truncate="end" maw={260}>
+                  {grade.gradeDisplayName}
+                </Text>
+              </Tooltip>
             </Group>
           </Accordion.Control>
           <Accordion.Panel
@@ -390,13 +785,18 @@ function SubjectGroupMonitoring({
           value={`subject-group-${group.subjectGroupId}`}
         >
           <Accordion.Control>
-            <Group gap="xs">
-              <Text fw={700} size="md">
-                {group.subjectGroupName}
-              </Text>
-              <Text span size="sm" c="dimmed">
-                ({group.subjects.length})
-              </Text>
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <StatusCircle counts={getSubjectSubgroupStatusCounts(group.subjects)} label={group.subjectGroupName} />
+              <Tooltip
+                label={group.subjectGroupName}
+                position="top-start"
+                withArrow
+                disabled={group.subjectGroupName.length < 24}
+              >
+                <Text fw={700} size="md" truncate="end" maw={260}>
+                  {group.subjectGroupName}
+                </Text>
+              </Tooltip>
             </Group>
           </Accordion.Control>
           <Accordion.Panel
@@ -418,14 +818,21 @@ function SubjectGroupMonitoring({
   );
 }
 
-function AssignedReports({ tree }: { tree: ReportMonitoringTree }) {
-  const [view, setView] = useState<"advisory" | "assigned">("advisory");
+function AssignedReports({
+  tree,
+  view,
+  onViewChange,
+}: {
+  tree: ReportMonitoringTree;
+  view: "advisory" | "assigned";
+  onViewChange: (v: "advisory" | "assigned") => void;
+}) {
   const hasAdvisory = tree.assigned.advisorySections.length > 0;
   const hasHandled = tree.assigned.handledSections.length > 0;
 
   useEffect(() => {
-    if (!hasAdvisory && hasHandled) setView("assigned");
-    if (hasAdvisory && !hasHandled) setView("advisory");
+    if (!hasAdvisory && hasHandled) onViewChange("assigned");
+    if (hasAdvisory && !hasHandled) onViewChange("advisory");
   }, [hasAdvisory, hasHandled]);
 
   if (!hasAdvisory && !hasHandled) {
@@ -439,7 +846,7 @@ function AssignedReports({ tree }: { tree: ReportMonitoringTree }) {
       {showSegmented && (
         <SegmentedControl
           value={view}
-          onChange={(value) => setView(value as "advisory" | "assigned")}
+          onChange={(value) => onViewChange(value as "advisory" | "assigned")}
           data={[
             { value: "advisory", label: "Advisory" },
             { value: "assigned", label: "Assigned Subjects" },
@@ -469,14 +876,20 @@ function AssignedReports({ tree }: { tree: ReportMonitoringTree }) {
   );
 }
 
-function ReportsMonitoring({ tree }: { tree: ReportMonitoringTree }) {
-  const [view, setView] = useState<"grade" | "subject-group">("grade");
-
+function ReportsMonitoring({
+  tree,
+  view,
+  onViewChange,
+}: {
+  tree: ReportMonitoringTree;
+  view: "grade" | "subject-group";
+  onViewChange: (view: "grade" | "subject-group") => void;
+}) {
   return (
     <Stack gap="sm">
       <SegmentedControl
         value={view}
-        onChange={(value) => setView(value as "grade" | "subject-group")}
+        onChange={(value) => onViewChange(value as "grade" | "subject-group")}
         data={[
           { value: "grade", label: "Grade Level" },
           { value: "subject-group", label: "Subject Group" },
@@ -499,6 +912,28 @@ function ReportsMonitoring({ tree }: { tree: ReportMonitoringTree }) {
         />
       )}
     </Stack>
+  );
+}
+
+function ReportsMonitoringAccordionHeader({
+  tree,
+  view,
+}: {
+  tree: ReportMonitoringTree;
+  view: "grade" | "subject-group";
+}) {
+  const counts =
+    view === "grade"
+      ? getGradeGroupStatusCounts(tree.allMonitoring.gradeLevels)
+      : getCoordinatorGroupStatusCounts(tree.allMonitoring.subjectGroups);
+
+  return (
+    <Group gap="sm" wrap="nowrap">
+      <StatusCircle counts={counts} label={view === "grade" ? "Grade Level" : "Subject Group"} />
+      <Text fw={700} size="md" c="#1f2937">
+        Reports Monitoring
+      </Text>
+    </Group>
   );
 }
 
@@ -529,6 +964,9 @@ export default function ReportsBrowser() {
   const [loading, setLoading] = useState(true);
   const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [reportsMonitoringView, setReportsMonitoringView] =
+    useState<"grade" | "subject-group">("grade");
+  const [assignedView, setAssignedView] = useState<"advisory" | "assigned">("advisory");
 
   const loadData = async (forceRefresh = false) => {
     setLoading(true);
@@ -631,12 +1069,17 @@ export default function ReportsBrowser() {
         {reportScope.canViewAll && (
           <Accordion.Item value="reports-monitoring">
             <Accordion.Control>
-              <Text fw={700} size="md" c="#1f2937">
-                Reports Monitoring
-              </Text>
+              <ReportsMonitoringAccordionHeader
+                tree={tree}
+                view={reportsMonitoringView}
+              />
             </Accordion.Control>
             <Accordion.Panel>
-              <ReportsMonitoring tree={tree} />
+              <ReportsMonitoring
+                tree={tree}
+                view={reportsMonitoringView}
+                onViewChange={setReportsMonitoringView}
+              />
             </Accordion.Panel>
           </Accordion.Item>
         )}
@@ -644,12 +1087,20 @@ export default function ReportsBrowser() {
         {reportScope.canViewAssigned && (
           <Accordion.Item value="assigned">
             <Accordion.Control>
-              <Text fw={700} size="md" c="#1f2937">
-                Assigned
-              </Text>
+              <Group gap="sm" wrap="nowrap">
+                <StatusCircle
+                  counts={getSectionGroupStatusCounts(
+                    assignedView === "advisory"
+                      ? tree.assigned.advisorySections
+                      : tree.assigned.handledSections,
+                  )}
+                  label={assignedView === "advisory" ? "Advisory" : "Assigned Subjects"}
+                />
+                <Text fw={700} size="md" c="#1f2937">Assigned</Text>
+              </Group>
             </Accordion.Control>
             <Accordion.Panel>
-              <AssignedReports tree={tree} />
+              <AssignedReports tree={tree} view={assignedView} onViewChange={setAssignedView} />
             </Accordion.Panel>
           </Accordion.Item>
         )}
@@ -657,9 +1108,10 @@ export default function ReportsBrowser() {
         {reportScope.canMonitorGradeLevel && (
           <Accordion.Item value="grade-subject-monitoring">
             <Accordion.Control>
-              <Text fw={700} size="md" c="#1f2937">
-                Grade Subject Monitoring
-              </Text>
+              <MainAccordionHeader
+                title="Grade Subject Monitoring"
+                counts={getGradeGroupStatusCounts(tree.gradeMonitoring)}
+              />
             </Accordion.Control>
             <Accordion.Panel>
               <GradeMonitoring
@@ -673,9 +1125,10 @@ export default function ReportsBrowser() {
         {reportScope.canMonitorSubjects && (
           <Accordion.Item value="subject-group-monitoring">
             <Accordion.Control>
-              <Text fw={700} size="md" c="#1f2937">
-                Subject Group Monitoring
-              </Text>
+              <MainAccordionHeader
+                title="Subject Group Monitoring"
+                counts={getCoordinatorGroupStatusCounts(tree.subjectGroupMonitoring)}
+              />
             </Accordion.Control>
             <Accordion.Panel>
               <SubjectGroupMonitoring
