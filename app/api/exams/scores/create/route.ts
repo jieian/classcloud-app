@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -40,6 +40,11 @@ const _POST = async function(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const permissions = getPermissionsFromUser(user);
+  if (!permissions.includes("exams.limited_access")) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = (await request.json()) as CreateScoreBody;
   const enrollmentId = Number(body.enrollment_id);
   const examAssignmentId = Number(body.exam_assignment_id);
@@ -56,7 +61,7 @@ const _POST = async function(request: Request) {
   const { data: assignmentExamData, error: assignmentExamError } =
     await adminClient
       .from("exam_assignments")
-      .select("exam_id, exams!inner(is_locked, total_items, deleted_at)")
+      .select("exam_id, section_id, exams!inner(is_locked, total_items, deleted_at)")
       .eq("id", examAssignmentId)
       .is("exams.deleted_at", null)
       .maybeSingle();
@@ -74,6 +79,21 @@ const _POST = async function(request: Request) {
       { error: "Invalid exam assignment." },
       { status: 400 },
     );
+  }
+
+  // Verify the user is assigned to the section for this exam assignment
+  const assignmentSectionId = (assignmentExamData as { section_id: number | null }).section_id;
+  if (assignmentSectionId != null) {
+    const { count: teacherCount } = await adminClient
+      .from("teacher_class_assignments")
+      .select("section_id", { count: "exact", head: true })
+      .eq("teacher_id", user.id)
+      .eq("section_id", assignmentSectionId)
+      .is("deleted_at", null);
+
+    if ((teacherCount ?? 0) === 0) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const assignmentExam = assignmentExamData as AssignmentExamJoinRow;

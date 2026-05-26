@@ -11,7 +11,7 @@ export default async function SubjectReportDetailsPage({ params }: Props) {
   const parsedSubjectId = Number(subjectId);
 
   return (
-    <ProtectedRoute match="any" requiredPermissions={["reports.view_all"]}>
+    <ProtectedRoute match="any" requiredPermissions={["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"]}>
       <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Subject Report Details</h1>
       <SubjectReportDetailsClient
         gradeLevelId={Number.isFinite(parsedGradeLevelId) ? parsedGradeLevelId : 0}

@@ -22,6 +22,7 @@ import {
   type ReportSubjectOverview,
   type ReportSubjectStatus,
 } from "@/lib/services/reportsAnalysisService";
+import { useReportPermissions, isSubjectInScope, isPairInScope } from "@/hooks/useReportPermissions";
 
 interface Props {
   gradeLevelId: number;
@@ -62,6 +63,7 @@ export default function SubjectReportDetailsClient({ gradeLevelId, subjectId }: 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReportSubjectOverview | null>(null);
+  const reportScope = useReportPermissions();
 
   useEffect(() => {
     let mounted = true;
@@ -89,7 +91,7 @@ export default function SubjectReportDetailsClient({ gradeLevelId, subjectId }: 
     };
   }, [gradeLevelId, subjectId]);
 
-  if (loading) {
+  if (loading || reportScope.scopeLoading) {
     return (
       <Stack gap="md" maw={1000}>
         <Skeleton height={32} w={170} radius="md" />
@@ -105,6 +107,14 @@ export default function SubjectReportDetailsClient({ gradeLevelId, subjectId }: 
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} mt="md">
         {error ?? "Subject report not found."}
+      </Alert>
+    );
+  }
+
+  if (!isSubjectInScope(detail.subjectId, reportScope)) {
+    return (
+      <Alert color="orange" icon={<IconAlertCircle size={16} />} mt="md">
+        You do not have permission to view this subject&apos;s report.
       </Alert>
     );
   }
@@ -183,7 +193,9 @@ export default function SubjectReportDetailsClient({ gradeLevelId, subjectId }: 
           </Stack>
         ) : (
           <Stack gap="xs">
-            {detail.sections.map((section) => (
+            {detail.sections
+              .filter((section) => isPairInScope(section.sectionId, detail.curriculumSubjectId, reportScope))
+              .map((section) => (
               <Group key={section.sectionId} justify="space-between" align="center">
                 <Text size="sm" w="45%" lineClamp={1}>{section.sectionName}</Text>
                 <Group gap="xs" wrap="nowrap" w={180}>

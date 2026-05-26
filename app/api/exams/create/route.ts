@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -18,6 +18,11 @@ const _POST = async function(request: Request) {
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const permissions = getPermissionsFromUser(user);
+  if (!permissions.includes("exams.limited_access")) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { payload, sectionIds } = await request.json();
@@ -54,6 +59,25 @@ const _POST = async function(request: Request) {
     return Response.json({ error: "At least one section is required" }, { status: 400 });
   }
 
+  // Verify all selected sections are assigned to the authenticated teacher
+  const { data: myAssignments, error: myAssignmentsError } = await adminClient
+    .from("teacher_class_assignments")
+    .select("section_id")
+    .eq("teacher_id", user.id)
+    .is("deleted_at", null);
+
+  if (myAssignmentsError) {
+    return Response.json({ error: "Internal server error." }, { status: 500 });
+  }
+
+  const mySectionIds = new Set(
+    (myAssignments ?? []).map((a: { section_id: number | null }) => a.section_id).filter(Boolean),
+  );
+  const unauthorizedSection = selectedSectionIds.find((id) => !mySectionIds.has(id));
+  if (unauthorizedSection !== undefined) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const { data: sectionRows, error: sectionError } = await adminClient
     .from("sections")
     .select("section_id, name, grade_levels(level_number)")
@@ -81,7 +105,7 @@ const _POST = async function(request: Request) {
   const gradeLevelNumber = levelNumbers.size === 1 ? [...levelNumbers][0] : null;
   const resolvedTotalItems = getAutoTotalItems(gradeLevelNumber);
 
-  const creatorTeacherId = payload.creator_teacher_id ?? user.id;
+  const creatorTeacherId = user.id;
 
   // Ensure no duplicate (section + subject + term) exam already exists.
   if (!payload.curriculum_subject_id) {

@@ -12,7 +12,7 @@ export default async function SubjectReportAnalyticsByExamPage({ params }: Props
   const parsedExamId = Number(examId);
 
   return (
-    <ProtectedRoute match="any" requiredPermissions={["reports.view_all"]}>
+    <ProtectedRoute match="any" requiredPermissions={["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"]}>
       <ReportAnalyticsClient
         mode="subject"
         initialGradeLevelId={Number.isFinite(parsedGradeLevelId) ? parsedGradeLevelId : null}

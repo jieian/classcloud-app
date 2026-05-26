@@ -132,19 +132,19 @@ const navigationData: NavigationLink[] = [
     icon: IconFileText,
     label: "Assessment Reports",
     href: "/assessment-reports/grade",
-    requiredPermissions: ["reports.view_all"],
+    requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
     sublinks: [
       {
         label: "Grade Level Report",
         key: "grade-level-report",
         href: "/assessment-reports/grade",
-        requiredPermissions: ["reports.view_all"],
+        requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
       },
       {
         label: "Subject Report",
         key: "subject-report",
         href: "/assessment-reports/subject",
-        requiredPermissions: ["reports.view_all"],
+        requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
       },
     ],
   },

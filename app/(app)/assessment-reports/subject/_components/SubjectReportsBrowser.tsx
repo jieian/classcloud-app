@@ -27,6 +27,7 @@ import {
   fetchReportSubjectCards,
   type ReportSubjectCard,
 } from "@/lib/services/reportsAnalysisService";
+import { useReportPermissions, isSubjectInScope } from "@/hooks/useReportPermissions";
 
 type GradeGroup = {
   gradeLevelId: number;
@@ -80,6 +81,14 @@ export default function SubjectReportsBrowser() {
   const [loading, setLoading] = useState(true);
   const [cards, setCards] = useState<ReportSubjectCard[]>([]);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
+  const reportScope = useReportPermissions();
+  const scopedCards = useMemo(
+    () =>
+      reportScope.scopeLoading
+        ? []
+        : cards.filter((card) => isSubjectInScope(card.subjectId, reportScope)),
+    [cards, reportScope],
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
   const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
@@ -114,8 +123,8 @@ export default function SubjectReportsBrowser() {
 
   const searchableCards = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return cards;
-    return cards.filter((card) => {
+    if (!q) return scopedCards;
+    return scopedCards.filter((card) => {
       const haystack = `${card.subjectName} ${card.gradeDisplayName} ${card.sectionNames.join(
         " ",
       )} ${card.teacherNames.join(" ")}`.toLowerCase();
@@ -169,8 +178,9 @@ export default function SubjectReportsBrowser() {
   }, [groupedCards]);
 
   const totalVisibleCards = groupedCards.reduce((sum, group) => sum + group.cards.length, 0);
+  const visibleGroupsWithCards = groupedCards.filter((group) => group.cards.length > 0);
 
-  if (loading) {
+  if (loading || reportScope.scopeLoading) {
     return (
       <Stack gap="md">
         {[3, 2].map((count, idx) => (
@@ -238,90 +248,86 @@ export default function SubjectReportsBrowser() {
         />
       </Group>
 
-      <Accordion
-        multiple
-        value={visibleOpenGradeGroups}
-        onChange={setOpenGradeGroups}
-        variant="separated"
-        styles={{
-          control: { backgroundColor: "#e2edff" },
-          item: { border: "1px solid #e2edff" },
-        }}
-      >
-        {groupedCards.map((group) => (
-          <Accordion.Item key={group.gradeLevelId} value={group.accordionValue}>
-            <Accordion.Control>
-              <Group gap="xs">
-                <Text fw={700} size="md">{group.gradeLabel}</Text>
-                <Text span size="sm" c="dimmed" fw={500}>({group.cards.length})</Text>
-              </Group>
-            </Accordion.Control>
-            <Accordion.Panel>
-              {group.cards.length === 0 ? (
-                <div className="px-1 py-1">
-                  <EmptySearchState title="No subjects found." description="Try adjusting your search or filters." />
-                </div>
-              ) : (
-                <>
-                  <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p={{ base: 0, sm: "xs" }} spacing={{ base: "sm", sm: "md" }}>
-                    {group.cards
-                      .slice(
-                        ((pageMap.get(group.accordionValue) ?? 1) - 1) * CARDS_PAGE_SIZE,
-                        (pageMap.get(group.accordionValue) ?? 1) * CARDS_PAGE_SIZE,
-                      )
-                      .map((card) => (
-                        <Card
-                          key={`${card.gradeLevelId}-${card.subjectId}`}
-                          shadow="sm"
-                          padding="lg"
-                          radius="md"
-                          withBorder
-                          onClick={() => router.push(`/assessment-reports/subject-details/${card.gradeLevelId}/${card.subjectId}`)}
-                          style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
-                        >
-                          <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
-                            <Box style={{ flex: 1, minWidth: 0 }}>
-                              <SubjectNameWithSsesDot
-                                name={card.subjectName}
-                                isSses={card.subjectType === "SSES"}
-                              />
-                            </Box>
-                            <StatusBadge isFinalized={card.isFinalized} />
-                          </Group>
-                          <Divider my="sm" mb="lg" />
-                          <Text c="#969696" fw={550} mb="sm">About</Text>
-                          <Group mb="xs" gap="xs">
-                            <IconUsers size={16} color="gray" />
-                            <Text size="sm">Sections: {card.sectionCount}</Text>
-                          </Group>
-                          <Group mb="xs" gap="xs">
-                            <IconCheck size={16} color="gray" />
-                            <Text size="sm">Finalized: {card.finalizedSections}/{card.sectionCount}</Text>
-                          </Group>
-                        </Card>
-                      ))}
-                  </SimpleGrid>
-                  {group.cards.length > CARDS_PAGE_SIZE && (
-                    <Group justify="center" mt="sm">
-                      <Pagination
-                        total={Math.ceil(group.cards.length / CARDS_PAGE_SIZE)}
-                        value={pageMap.get(group.accordionValue) ?? 1}
-                        onChange={(page) =>
-                          setPageMap((prev) =>
-                            new Map(prev).set(group.accordionValue, page),
-                          )
-                        }
-                        size="sm"
-                        color="#4EAE4A"
-                      />
-                    </Group>
-                  )}
-                </>
-              )}
-            </Accordion.Panel>
-          </Accordion.Item>
-        ))}
-      </Accordion>
+      {totalVisibleCards === 0 ? (
+        <EmptySearchState />
+      ) : (
+        <Accordion
+          multiple
+          value={visibleOpenGradeGroups}
+          onChange={setOpenGradeGroups}
+          variant="separated"
+          styles={{
+            control: { backgroundColor: "#e2edff" },
+            item: { border: "1px solid #e2edff" },
+          }}
+        >
+          {visibleGroupsWithCards.map((group) => (
+            <Accordion.Item key={group.gradeLevelId} value={group.accordionValue}>
+              <Accordion.Control>
+                <Group gap="xs">
+                  <Text fw={700} size="md">{group.gradeLabel}</Text>
+                  <Text span size="sm" c="dimmed" fw={500}>({group.cards.length})</Text>
+                </Group>
+              </Accordion.Control>
+              <Accordion.Panel>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, xl: 4 }} p={{ base: 0, sm: "xs" }} spacing={{ base: "sm", sm: "md" }}>
+                  {group.cards
+                    .slice(
+                      ((pageMap.get(group.accordionValue) ?? 1) - 1) * CARDS_PAGE_SIZE,
+                      (pageMap.get(group.accordionValue) ?? 1) * CARDS_PAGE_SIZE,
+                    )
+                    .map((card) => (
+                      <Card
+                        key={`${card.gradeLevelId}-${card.subjectId}`}
+                        shadow="sm"
+                        padding="lg"
+                        radius="md"
+                        withBorder
+                        onClick={() => router.push(`/assessment-reports/subject-details/${card.gradeLevelId}/${card.subjectId}`)}
+                        style={{ cursor: "pointer", display: "flex", flexDirection: "column" }}
+                      >
+                        <Group justify="space-between" mt="md" mb="xs" align="flex-start" wrap="nowrap">
+                          <Box style={{ flex: 1, minWidth: 0 }}>
+                            <SubjectNameWithSsesDot
+                              name={card.subjectName}
+                              isSses={card.subjectType === "SSES"}
+                            />
+                          </Box>
+                          <StatusBadge isFinalized={card.isFinalized} />
+                        </Group>
+                        <Divider my="sm" mb="lg" />
+                        <Text c="#969696" fw={550} mb="sm">About</Text>
+                        <Group mb="xs" gap="xs">
+                          <IconUsers size={16} color="gray" />
+                          <Text size="sm">Sections: {card.sectionCount}</Text>
+                        </Group>
+                        <Group mb="xs" gap="xs">
+                          <IconCheck size={16} color="gray" />
+                          <Text size="sm">Finalized: {card.finalizedSections}/{card.sectionCount}</Text>
+                        </Group>
+                      </Card>
+                    ))}
+                </SimpleGrid>
+                {group.cards.length > CARDS_PAGE_SIZE && (
+                  <Group justify="center" mt="sm">
+                    <Pagination
+                      total={Math.ceil(group.cards.length / CARDS_PAGE_SIZE)}
+                      value={pageMap.get(group.accordionValue) ?? 1}
+                      onChange={(page) =>
+                        setPageMap((prev) =>
+                          new Map(prev).set(group.accordionValue, page),
+                        )
+                      }
+                      size="sm"
+                      color="#4EAE4A"
+                    />
+                  </Group>
+                )}
+              </Accordion.Panel>
+            </Accordion.Item>
+          ))}
+        </Accordion>
+      )}
     </div>
   );
 }

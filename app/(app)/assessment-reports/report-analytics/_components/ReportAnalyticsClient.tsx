@@ -19,7 +19,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconBook, IconChevronDown } from "@tabler/icons-react";
+import { IconBook, IconChevronDown, IconReportOff } from "@tabler/icons-react";
 import { useSearchParams } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import {
@@ -27,15 +27,19 @@ import {
   fetchReportSectionOverview,
   fetchReportSubjectOverview,
   fetchConsolidatedSubjectAnalytics,
+  fetchConsolidatedSubjectDiagnosticAnalytics,
   fetchSavedExamDetailsSummary,
   fetchSavedItemAnalysisSummary,
   fetchSavedProficiencyRows,
+  type ConsolidatedSubjectDiagnosticResult,
+  type ConsolidatedSubjectSectionResult,
   type ExamDetailsSummary,
   type ItemAnalysisSummary,
   type ProficiencyRow,
   type ReportExamCard,
   type ReportSubjectOverview,
 } from "@/lib/services/reportsAnalysisService";
+import { useReportPermissions, isSectionInScope } from "@/hooks/useReportPermissions";
 
 interface ReportAnalyticsClientProps {
   initialGradeLevelId?: number | null;
@@ -119,6 +123,13 @@ const PROFICIENCY_LEVELS = [
   "Low Proficient",
   "Not Proficient",
 ] as const;
+const PROFICIENCY_HEADER_LABELS: Record<(typeof PROFICIENCY_LEVELS)[number], React.ReactNode> = {
+  "Highly Proficient": <>Highly Proficient<br />Learners</>,
+  Proficient: <>Proficient<br />Learners</>,
+  "Nearly Proficient": <>Nearly Proficient<br />Learners</>,
+  "Low Proficient": <>Low Proficient<br />Learners</>,
+  "Not Proficient": <>Not Proficient<br />Learners</>,
+};
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
@@ -168,13 +179,77 @@ function TableColumnHeader({
   ...props
 }: React.ComponentProps<typeof TableTh>) {
   return (
+    <ReportHeaderCell {...props} style={style}>
+      {children}
+    </ReportHeaderCell>
+  );
+}
+
+function ReportTableShell({
+  children,
+  minWidth,
+  containerStyle = COLUMN_TABLE_CONTAINER_STYLE,
+}: {
+  children: React.ReactNode;
+  minWidth: number;
+  containerStyle?: React.CSSProperties;
+}) {
+  return (
+    <TableScrollContainer minWidth={minWidth} type="native" style={containerStyle}>
+      <Table
+        {...GRID_TABLE_PROPS}
+        verticalSpacing="sm"
+        striped={false}
+        highlightOnHover
+        style={{ width: "100%", minWidth, tableLayout: "fixed" }}
+      >
+        {children}
+      </Table>
+    </TableScrollContainer>
+  );
+}
+
+function ReportHeaderCell({
+  children,
+  style,
+  ...props
+}: React.ComponentProps<typeof TableTh>) {
+  return (
     <TableTh
       {...props}
       className={TABLE_HEADER_TEXT_SIZE}
-      style={{ color: "#ffffff", ...style }}
+      style={{
+        border: `1px solid ${TABLE_BORDER_COLOR}`,
+        backgroundColor: "#4EAE4A",
+        color: "#ffffff",
+        fontWeight: 700,
+        lineHeight: 1.2,
+        ...style,
+      }}
     >
       {children}
     </TableTh>
+  );
+}
+
+function ReportCell({
+  children,
+  style,
+  ...props
+}: React.ComponentProps<typeof TableTd>) {
+  return (
+    <TableTd
+      {...props}
+      className={TABLE_TEXT_SIZE}
+      style={{
+        border: `1px solid ${TABLE_BORDER_COLOR}`,
+        padding: "10px 8px",
+        backgroundColor: "#ffffff",
+        ...style,
+      }}
+    >
+      {children}
+    </TableTd>
   );
 }
 
@@ -184,12 +259,9 @@ function MatrixHeader({
   ...props
 }: React.ComponentProps<typeof TableTh>) {
   return (
-    <TableColumnHeader
-      {...props}
-      style={{ border: `1px solid ${TABLE_BORDER_COLOR}`, ...style }}
-    >
+    <ReportHeaderCell {...props} style={style}>
       {children}
-    </TableColumnHeader>
+    </ReportHeaderCell>
   );
 }
 
@@ -199,13 +271,9 @@ function MatrixCell({
   ...props
 }: React.ComponentProps<typeof TableTd>) {
   return (
-    <TableTd
-      {...props}
-      className={TABLE_TEXT_SIZE}
-      style={{ border: `1px solid ${TABLE_BORDER_COLOR}`, padding: "10px 8px", ...style }}
-    >
+    <ReportCell {...props} style={style}>
       {children}
-    </TableTd>
+    </ReportCell>
   );
 }
 
@@ -271,6 +339,598 @@ function getRankCellStyle(rank: number, totalItems: number): React.CSSProperties
   return undefined;
 }
 
+function formatDiagnosticNumber(value: number | null | undefined, digits = 0): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  return digits > 0 ? value.toFixed(digits) : String(Math.round(value));
+}
+
+function rankByValue(rows: { itemNo: number; value: number }[]): Map<number, number> {
+  return new Map(
+    [...rows]
+      .sort((a, b) => b.value - a.value || a.itemNo - b.itemNo)
+      .map((row, index) => [row.itemNo, index + 1]),
+  );
+}
+
+function getSectionItemValue(section: ConsolidatedSubjectSectionResult, itemNo: number): number | null {
+  if (!section.isFinalized) return null;
+  return section.itemAnalysis.rows.find((row) => row.itemNo === itemNo)?.correctResponses ?? 0;
+}
+
+function getRankingSummary(sections: ConsolidatedSubjectSectionResult[]) {
+  const grouped = new Map<number, number>();
+  for (const section of sections) {
+    if (!section.isFinalized) continue;
+    for (const row of section.itemAnalysis.rows) {
+      grouped.set(row.itemNo, (grouped.get(row.itemNo) ?? 0) + row.correctResponses);
+    }
+  }
+  const ranked = Array.from(grouped.entries())
+    .map(([itemNo, correctResponses]) => ({ itemNo, correctResponses }))
+    .sort((a, b) => b.correctResponses - a.correctResponses || a.itemNo - b.itemNo)
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+
+  return {
+    most: ranked.slice(0, 5),
+    least: [...ranked].reverse().slice(0, 5),
+  };
+}
+
+function countByProficiency(rows: ProficiencyRow[]) {
+  const result = new Map<string, { male: number; female: number; total: number }>();
+  for (const level of PROFICIENCY_LEVELS) result.set(level, { male: 0, female: 0, total: 0 });
+  for (const row of rows) {
+    const bucket = result.get(row.proficiencyLevel) ?? result.get(getProficiencyFallback(row.mpl));
+    if (!bucket) continue;
+    if (row.sex === "Male") bucket.male += 1;
+    if (row.sex === "Female") bucket.female += 1;
+    bucket.total += 1;
+  }
+  return result;
+}
+
+function getProficiencyFallback(mpl: number): string {
+  if (mpl >= 90) return "Highly Proficient";
+  if (mpl >= 75) return "Proficient";
+  if (mpl >= 50) return "Nearly Proficient";
+  if (mpl >= 25) return "Low Proficient";
+  return "Not Proficient";
+}
+
+function DiagnosticResultsTable({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const total = result.summary;
+  return (
+    <ReportTableShell minWidth={980} containerStyle={TABLE_CONTAINER_STYLE}>
+        <TableThead>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            {["Section", "No. of Items", "Number of Cases", "Total Score", "Mean", "Median", "PL", "MPS", "Highest Score", "Lowest Score", "SD"].map((label) => (
+              <PlainGreenHeader key={label} ta="center">
+                {label}
+              </PlainGreenHeader>
+            ))}
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {result.sections.map((section) => {
+            const summary = section.summary;
+            return (
+              <TableTr key={section.sectionId}>
+                <MatrixCell ta="center" fw={700}>{section.sectionName}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.totalItems : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.numberOfCases : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.totalScore : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.mean.toFixed(2) : "-"}</MatrixCell>
+                <MatrixCell ta="center">{formatDiagnosticNumber(section.median, 2)}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.pl.toFixed(2) : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.mps.toFixed(2) : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.highestScore : "-"}</MatrixCell>
+                <MatrixCell ta="center">{summary ? summary.lowestScore : "-"}</MatrixCell>
+                <MatrixCell ta="center">{formatDiagnosticNumber(section.sd, 2)}</MatrixCell>
+              </TableTr>
+            );
+          })}
+          <TableTr>
+            <MatrixCell ta="center" fw={800}>Total</MatrixCell>
+            <MatrixCell ta="center">{total ? total.totalItems : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.numberOfCases : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.totalScore : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.mean.toFixed(2) : "-"}</MatrixCell>
+            <MatrixCell ta="center">{formatDiagnosticNumber(result.median, 2)}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.pl.toFixed(2) : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.mps.toFixed(2) : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.highestScore : "-"}</MatrixCell>
+            <MatrixCell ta="center">{total ? total.lowestScore : "-"}</MatrixCell>
+            <MatrixCell ta="center">{formatDiagnosticNumber(result.sd, 2)}</MatrixCell>
+          </TableTr>
+        </TableTbody>
+    </ReportTableShell>
+  );
+}
+
+function PlainGreenHeader({
+  children,
+  ...props
+}: React.ComponentProps<typeof MatrixHeader>) {
+  return (
+    <MatrixHeader
+      {...props}
+      style={{
+        backgroundColor: "#4EAE4A",
+        color: "#ffffff",
+        fontWeight: 700,
+        lineHeight: 1.2,
+        ...props.style,
+      }}
+    >
+      {children}
+    </MatrixHeader>
+  );
+}
+
+function ConsolidatedItemAnalysisTables({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const regularSections = result.sections.filter((section) => !section.isSses);
+  const ssesSections = result.sections.filter((section) => section.isSses);
+  const itemNos = Array.from(
+    new Set(result.sections.flatMap((section) => section.itemAnalysis.rows.map((row) => row.itemNo))),
+  ).sort((a, b) => a - b);
+
+  const regularTotals = itemNos.map((itemNo) => ({
+    itemNo,
+    value: regularSections.reduce((sum, section) => sum + (getSectionItemValue(section, itemNo) ?? 0), 0),
+  }));
+  const ssesTotals = itemNos.map((itemNo) => ({
+    itemNo,
+    value: ssesSections.reduce((sum, section) => sum + (getSectionItemValue(section, itemNo) ?? 0), 0),
+  }));
+  const combinedTotals = itemNos.map((itemNo) => ({
+    itemNo,
+    value:
+      (regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0) +
+      (ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0),
+  }));
+  const regularRanks = rankByValue(regularTotals);
+  const ssesRanks = rankByValue(ssesTotals);
+  const combinedRanks = rankByValue(combinedTotals);
+  const isRegularCrowded = regularSections.length > 4;
+
+  if (itemNos.length === 0) return <SectionEmptyState message="-" />;
+
+  return (
+    <div className={`grid grid-cols-1 gap-4 ${isRegularCrowded ? "xl:grid-cols-2" : "2xl:grid-cols-3"}`}>
+      <div className={isRegularCrowded ? "xl:col-span-2 min-w-0" : "min-w-0"}>
+      <AnalysisMiniTable title="Regular" minWidth={Math.max(420, 160 + regularSections.length * 90)}>
+        <TableThead>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            <PlainGreenHeader ta="center">Item</PlainGreenHeader>
+            {regularSections.map((section) => (
+              <PlainGreenHeader key={section.sectionId} ta="center">
+                {section.sectionName}
+              </PlainGreenHeader>
+            ))}
+            <PlainGreenHeader ta="center">Total</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Rank</PlainGreenHeader>
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {itemNos.map((itemNo) => {
+            const total = regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const rank = regularRanks.get(itemNo) ?? 0;
+            return (
+              <TableTr key={`regular-${itemNo}`}>
+                <MatrixCell ta="center">{itemNo}</MatrixCell>
+                {regularSections.map((section) => (
+                  <MatrixCell key={section.sectionId} ta="center">
+                    {getSectionItemValue(section, itemNo) ?? "-"}
+                  </MatrixCell>
+                ))}
+                <MatrixCell ta="center">{total}</MatrixCell>
+                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+              </TableTr>
+            );
+          })}
+        </TableTbody>
+      </AnalysisMiniTable>
+      </div>
+
+      <AnalysisMiniTable title="SSES" minWidth={330}>
+        <TableThead>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            <PlainGreenHeader ta="center">Item</PlainGreenHeader>
+            <PlainGreenHeader ta="center">SSES</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Total</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Rank</PlainGreenHeader>
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {itemNos.map((itemNo) => {
+            const total = ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const rank = ssesRanks.get(itemNo) ?? 0;
+            return (
+              <TableTr key={`sses-${itemNo}`}>
+                <MatrixCell ta="center">{itemNo}</MatrixCell>
+                <MatrixCell ta="center">{total}</MatrixCell>
+                <MatrixCell ta="center">{total}</MatrixCell>
+                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+              </TableTr>
+            );
+          })}
+        </TableTbody>
+      </AnalysisMiniTable>
+
+      <AnalysisMiniTable title="Combined" minWidth={430}>
+        <TableThead>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            <PlainGreenHeader ta="center">Item</PlainGreenHeader>
+            <PlainGreenHeader ta="center">SSES</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Regular</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Total</PlainGreenHeader>
+            <PlainGreenHeader ta="center">Rank</PlainGreenHeader>
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {itemNos.map((itemNo) => {
+            const sses = ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const regular = regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const total = sses + regular;
+            const rank = combinedRanks.get(itemNo) ?? 0;
+            return (
+              <TableTr key={`combined-${itemNo}`}>
+                <MatrixCell ta="center">{itemNo}</MatrixCell>
+                <MatrixCell ta="center">{sses}</MatrixCell>
+                <MatrixCell ta="center">{regular}</MatrixCell>
+                <MatrixCell ta="center">{total}</MatrixCell>
+                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+              </TableTr>
+            );
+          })}
+        </TableTbody>
+      </AnalysisMiniTable>
+    </div>
+  );
+}
+
+function ConsolidatedItemRankingTables({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const ssesRanking = getRankingSummary(result.sections.filter((section) => section.isSses));
+  const regularRanking = getRankingSummary(result.sections.filter((section) => !section.isSses));
+  const hasData =
+    ssesRanking.most.length > 0 ||
+    ssesRanking.least.length > 0 ||
+    regularRanking.most.length > 0 ||
+    regularRanking.least.length > 0;
+
+  if (!hasData) return <SectionEmptyState message="-" />;
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
+      <RankingPairTable title="SSES" ranking={ssesRanking} />
+      <RankingPairTable title="Regular" ranking={regularRanking} />
+    </div>
+  );
+}
+
+function RankingPairTable({
+  title,
+  ranking,
+}: {
+  title: string;
+  ranking: ReturnType<typeof getRankingSummary>;
+}) {
+  const rows = Array.from({ length: 5 }).map((_, index) => ({
+    rank: index + 1,
+    most: ranking.most[index]?.itemNo ?? null,
+    leastRank: ranking.least[index]?.rank ?? null,
+    least: ranking.least[index]?.itemNo ?? null,
+  }));
+
+  return (
+    <div className="min-w-0">
+      <Text size="xl" fw={700} mb={10} c="#111827">{title}</Text>
+      <ReportTableShell minWidth={360}>
+          <TableThead>
+            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+              <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Most Learned</PlainGreenHeader>
+              <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Least Learned</PlainGreenHeader>
+            </TableTr>
+          </TableThead>
+          <TableTbody>
+            {rows.map((row) => (
+              <TableTr key={`${title}-${row.rank}`}>
+                <TableTd ta="center">{row.rank}</TableTd>
+                <TableTd ta="center">{row.most ?? "-"}</TableTd>
+                <TableTd ta="center">{row.leastRank ?? "-"}</TableTd>
+                <TableTd ta="center">{row.least ?? "-"}</TableTd>
+              </TableTr>
+            ))}
+          </TableTbody>
+      </ReportTableShell>
+    </div>
+  );
+}
+
+function AnalysisMiniTable({
+  title,
+  minWidth,
+  children,
+}: {
+  title: string;
+  minWidth: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <Text size="xl" fw={700} mb={10} c="#111827">{title}</Text>
+      <ReportTableShell minWidth={minWidth}>
+          {children}
+      </ReportTableShell>
+    </div>
+  );
+}
+
+function ConsolidatedProficiencyTable({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const ssesRows = result.sections.filter((section) => section.isSses).flatMap((section) => section.proficiencyRows);
+  const regularSections = result.sections.filter((section) => !section.isSses);
+  const regularRows = regularSections.flatMap((section) => section.proficiencyRows);
+  const rows: { label: string; values: ProficiencyRow[]; highlight?: boolean }[] = [];
+  if (ssesRows.length > 0 || result.sections.some((section) => section.isSses)) {
+    rows.push({ label: "SSES", values: ssesRows, highlight: true });
+  }
+  for (const section of regularSections) {
+    rows.push({ label: section.sectionName, values: section.proficiencyRows });
+  }
+  rows.push({ label: "Regular", values: regularRows, highlight: true });
+  if (ssesRows.length > 0 && regularSections.length > 0) {
+    rows.push({ label: "Combined", values: [...ssesRows, ...regularRows], highlight: true });
+  }
+
+  if (rows.every((row) => row.values.length === 0)) return <SectionEmptyState message="-" />;
+
+  return (
+    <ReportTableShell minWidth={980} containerStyle={TABLE_CONTAINER_STYLE}>
+        <TableThead>
+          <TableTr>
+            <PlainGreenHeader rowSpan={2} ta="center">
+              Level of Proficiency
+            </PlainGreenHeader>
+            {PROFICIENCY_LEVELS.map((level) => (
+              <PlainGreenHeader key={level} colSpan={3} ta="center">
+                {PROFICIENCY_HEADER_LABELS[level]}
+              </PlainGreenHeader>
+            ))}
+          </TableTr>
+          <TableTr>
+            {PROFICIENCY_LEVELS.flatMap((level) => [
+              <PlainGreenHeader key={`${level}-m`} ta="center">Male</PlainGreenHeader>,
+              <PlainGreenHeader key={`${level}-f`} ta="center">Female</PlainGreenHeader>,
+              <PlainGreenHeader key={`${level}-t`} ta="center">Total</PlainGreenHeader>,
+            ])}
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {rows.map((row) => {
+            const counts = countByProficiency(row.values);
+            return (
+              <TableTr key={row.label}>
+                <MatrixCell ta="center" fw={row.highlight ? 800 : undefined}>{row.label}</MatrixCell>
+                {PROFICIENCY_LEVELS.flatMap((level) => {
+                  const count = counts.get(level) ?? { male: 0, female: 0, total: 0 };
+                  return [
+                    <MatrixCell key={`${row.label}-${level}-m`} ta="center">{count.male}</MatrixCell>,
+                    <MatrixCell key={`${row.label}-${level}-f`} ta="center">{count.female}</MatrixCell>,
+                    <MatrixCell key={`${row.label}-${level}-t`} ta="center" fw={700}>{count.total}</MatrixCell>,
+                  ];
+                })}
+              </TableTr>
+            );
+          })}
+        </TableTbody>
+    </ReportTableShell>
+  );
+}
+
+function ConsolidatedLaemplTable({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const ssesRows = result.sections.filter((section) => section.isSses).flatMap((section) => section.proficiencyRows);
+  const regularSections = result.sections.filter((section) => !section.isSses);
+  const regularRows = regularSections.flatMap((section) => section.proficiencyRows);
+  const rows: { label: string; values: ProficiencyRow[]; highlight?: boolean }[] = [];
+
+  if (ssesRows.length > 0 || result.sections.some((section) => section.isSses)) {
+    rows.push({ label: "SSES", values: ssesRows, highlight: true });
+  }
+  for (const section of regularSections) {
+    rows.push({ label: section.sectionName, values: section.proficiencyRows });
+  }
+  rows.push({ label: "Regular", values: regularRows, highlight: true });
+
+  if (rows.every((row) => row.values.length === 0)) return <SectionEmptyState message="-" />;
+
+  const makeSummary = (values: ProficiencyRow[]) => {
+    const maleRows = values.filter((row) => row.sex === "Male");
+    const femaleRows = values.filter((row) => row.sex === "Female");
+    const maleAchieved = maleRows.filter((row) => row.mpl >= MPL_THRESHOLD).length;
+    const femaleAchieved = femaleRows.filter((row) => row.mpl >= MPL_THRESHOLD).length;
+    const totalAchieved = maleAchieved + femaleAchieved;
+    return {
+      enrolled: { male: maleRows.length, female: femaleRows.length, total: values.length },
+      testTakers: { male: maleRows.length, female: femaleRows.length, total: values.length },
+      achieved: { male: maleAchieved, female: femaleAchieved, total: totalAchieved },
+      percentage: {
+        male: formatPercentage(maleAchieved, maleRows.length),
+        female: formatPercentage(femaleAchieved, femaleRows.length),
+        total: formatPercentage(totalAchieved, values.length),
+      },
+      mean: average(values.map((row) => row.testScore)),
+      mps: average(values.map((row) => row.mpl)),
+    };
+  };
+
+  return (
+    <ReportTableShell minWidth={1040} containerStyle={TABLE_CONTAINER_STYLE}>
+        <TableThead>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            <PlainGreenHeader rowSpan={2} ta="center">Section</PlainGreenHeader>
+            <PlainGreenHeader colSpan={3} ta="center">Enrolled<br />Learners</PlainGreenHeader>
+            <PlainGreenHeader colSpan={3} ta="center">Test<br />Takers</PlainGreenHeader>
+            <PlainGreenHeader colSpan={3} ta="center">Attained or Exceeded<br />MPL (60%)</PlainGreenHeader>
+            <PlainGreenHeader colSpan={3} ta="center">Percentage<br />of LAEMPL</PlainGreenHeader>
+            <PlainGreenHeader rowSpan={2} ta="center">Mean</PlainGreenHeader>
+            <PlainGreenHeader rowSpan={2} ta="center">MPS</PlainGreenHeader>
+          </TableTr>
+          <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+            {Array.from({ length: 4 }).flatMap((_, i) => [
+              <PlainGreenHeader key={`claempl-m-${i}`} ta="center">Male</PlainGreenHeader>,
+              <PlainGreenHeader key={`claempl-f-${i}`} ta="center">Female</PlainGreenHeader>,
+              <PlainGreenHeader key={`claempl-t-${i}`} ta="center">Total</PlainGreenHeader>,
+            ])}
+          </TableTr>
+        </TableThead>
+        <TableTbody>
+          {rows.map((row) => {
+            const summary = makeSummary(row.values);
+            return (
+              <TableTr key={row.label}>
+                <MatrixCell ta="center" fw={row.highlight ? 800 : undefined}>{row.label}</MatrixCell>
+                <MatrixCell ta="center">{summary.enrolled.male}</MatrixCell>
+                <MatrixCell ta="center">{summary.enrolled.female}</MatrixCell>
+                <MatrixCell ta="center" fw={700}>{summary.enrolled.total}</MatrixCell>
+                <MatrixCell ta="center">{summary.testTakers.male}</MatrixCell>
+                <MatrixCell ta="center">{summary.testTakers.female}</MatrixCell>
+                <MatrixCell ta="center" fw={700}>{summary.testTakers.total}</MatrixCell>
+                <MatrixCell ta="center">{summary.achieved.male}</MatrixCell>
+                <MatrixCell ta="center">{summary.achieved.female}</MatrixCell>
+                <MatrixCell ta="center" fw={700}>{summary.achieved.total}</MatrixCell>
+                <MatrixCell ta="center">{summary.percentage.male}</MatrixCell>
+                <MatrixCell ta="center">{summary.percentage.female}</MatrixCell>
+                <MatrixCell ta="center" fw={700}>{summary.percentage.total}</MatrixCell>
+                <MatrixCell ta="center">{summary.mean.toFixed(2)}</MatrixCell>
+                <MatrixCell ta="center">{`${summary.mps.toFixed(2)}%`}</MatrixCell>
+              </TableTr>
+            );
+          })}
+        </TableTbody>
+    </ReportTableShell>
+  );
+}
+
+function ConsolidatedMplResults({
+  result,
+}: {
+  result: ConsolidatedSubjectDiagnosticResult;
+}) {
+  const ssesRows = result.sections.filter((section) => section.isSses).flatMap((section) => section.proficiencyRows);
+  const regularRows = result.sections.filter((section) => !section.isSses).flatMap((section) => section.proficiencyRows);
+  const groups = [
+    { label: "All Sections Combined", rows: [...ssesRows, ...regularRows] },
+    { label: "SSES Only", rows: ssesRows },
+    { label: "Regular", rows: regularRows },
+  ];
+
+  if (groups.every((group) => group.rows.length === 0)) {
+    return <SectionEmptyState message="No report data available." />;
+  }
+
+  return (
+    <div className="space-y-5">
+      {groups.map((group) => {
+        const makeRow = (label: "Male" | "Female" | "Total", rows: ProficiencyRow[]) => {
+          const testTakers = rows.length;
+          const achieved = rows.filter((row) => row.mpl >= MPL_THRESHOLD).length;
+          const failed = testTakers - achieved;
+          return {
+            label,
+            testTakers,
+            achieved,
+            failed,
+            achievedPercentage: formatPercentage(achieved, testTakers),
+            failedPercentage: formatPercentage(failed, testTakers),
+          };
+        };
+        const maleRows = group.rows.filter((row) => row.sex === "Male");
+        const femaleRows = group.rows.filter((row) => row.sex === "Female");
+        const summaryRows = [
+          makeRow("Male", maleRows),
+          makeRow("Female", femaleRows),
+          makeRow("Total", group.rows),
+        ];
+        return (
+          <div key={group.label} className="min-w-0">
+            <Text size="xl" fw={700} mb={10} c="#111827">{group.label}</Text>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div>
+                <Text size="xl" fw={700} mb={10} c="#111827">Achieved/Exceeded 60% MPL</Text>
+                <ReportTableShell minWidth={330}>
+                    <TableThead>
+                      <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                        <TableColumnHeader w={WIDTH.mplGroup} ta="center">Group</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplMetric} ta="center">Test Taker</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplMetric} ta="center">Achieved</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplPercent} ta="center">Percentage</TableColumnHeader>
+                      </TableTr>
+                    </TableThead>
+                    <TableTbody>
+                      {summaryRows.map((row) => (
+                        <TableTr key={`ach-${group.label}-${row.label}`}>
+                          <TableTd ta="center" fw={700}>{row.label}</TableTd>
+                          <TableTd ta="center">{row.testTakers}</TableTd>
+                          <TableTd ta="center">{row.achieved}</TableTd>
+                          <TableTd ta="center">{row.achievedPercentage}</TableTd>
+                        </TableTr>
+                      ))}
+                    </TableTbody>
+                </ReportTableShell>
+              </div>
+              <div>
+                <Text size="xl" fw={700} mb={10} c="#111827">Failed 30% MPL</Text>
+                <ReportTableShell minWidth={330}>
+                    <TableThead>
+                      <TableTr style={{ backgroundColor: "#4EAE4A" }}>
+                        <TableColumnHeader w={WIDTH.mplGroup} ta="center">Group</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplMetric} ta="center">Test Taker</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplMetric} ta="center">Failed</TableColumnHeader>
+                        <TableColumnHeader w={WIDTH.mplPercent} ta="center">Percentage</TableColumnHeader>
+                      </TableTr>
+                    </TableThead>
+                    <TableTbody>
+                      {summaryRows.map((row) => (
+                        <TableTr key={`fail-${group.label}-${row.label}`}>
+                          <TableTd ta="center" fw={700}>{row.label}</TableTd>
+                          <TableTd ta="center">{row.testTakers}</TableTd>
+                          <TableTd ta="center">{row.failed}</TableTd>
+                          <TableTd ta="center">{row.failedPercentage}</TableTd>
+                        </TableTr>
+                      ))}
+                    </TableTbody>
+                </ReportTableShell>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ReportAnalyticsClient({
   initialGradeLevelId = null,
   initialSectionId = null,
@@ -294,6 +954,14 @@ export default function ReportAnalyticsClient({
 
   const [cards, setCards] = useState<ReportExamCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const reportScope = useReportPermissions();
+  const scopedCards = useMemo(
+    () =>
+      reportScope.scopeLoading
+        ? []
+        : cards.filter((card) => isSectionInScope(card.sectionId, card.gradeLevelId, reportScope)),
+    [cards, reportScope],
+  );
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
@@ -313,6 +981,9 @@ export default function ReportAnalyticsClient({
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summary, setSummary] = useState<ExamDetailsSummary | null>(null);
   const [consolidatedSectionCount, setConsolidatedSectionCount] = useState(0);
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] =
+    useState<ConsolidatedSubjectDiagnosticResult | null>(null);
   const [proficiencyLoading, setProficiencyLoading] = useState(false);
   const [proficiencyRows, setProficiencyRows] = useState<ProficiencyRow[]>([]);
   const [itemAnalysisLoading, setItemAnalysisLoading] = useState(false);
@@ -426,7 +1097,7 @@ export default function ReportAnalyticsClient({
 
   const gradeOptions = useMemo(() => {
     const dedup = new Map<number, { value: string; label: string; level: number }>();
-    for (const card of cards) {
+    for (const card of scopedCards) {
       if (!dedup.has(card.gradeLevelId)) {
         dedup.set(card.gradeLevelId, {
           value: String(card.gradeLevelId),
@@ -438,24 +1109,24 @@ export default function ReportAnalyticsClient({
     return Array.from(dedup.values())
       .sort((a, b) => a.level - b.level)
       .map(({ value, label }) => ({ value, label }));
-  }, [cards]);
+  }, [scopedCards]);
 
   useEffect(() => {
-    if (cards.length === 0) {
+    if (scopedCards.length === 0) {
       setSelectedGradeId(null);
       return;
     }
     const hasCurrent =
-      selectedGradeId != null && cards.some((card) => card.gradeLevelId === selectedGradeId);
+      selectedGradeId != null && scopedCards.some((card) => card.gradeLevelId === selectedGradeId);
     if (hasCurrent) return;
 
     const queryMatch =
       Number.isFinite(gradeParam) &&
-      cards.some((card) => card.gradeLevelId === gradeParam)
+      scopedCards.some((card) => card.gradeLevelId === gradeParam)
         ? gradeParam
         : null;
-    setSelectedGradeId(queryMatch ?? cards[0].gradeLevelId);
-  }, [cards, gradeParam, selectedGradeId]);
+    setSelectedGradeId(queryMatch ?? scopedCards[0].gradeLevelId);
+  }, [scopedCards, gradeParam, selectedGradeId]);
 
   useEffect(() => {
     if (mode !== "subject") return;
@@ -493,7 +1164,7 @@ export default function ReportAnalyticsClient({
       ];
     }
 
-    const rows = cards.filter((card) =>
+    const rows = scopedCards.filter((card) =>
       selectedGradeId == null ? true : card.gradeLevelId === selectedGradeId,
     );
     const dedup = new Map<number, { value: string; label: string }>();
@@ -505,7 +1176,7 @@ export default function ReportAnalyticsClient({
     return Array.from(dedup.values()).sort((a, b) =>
       a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
     );
-  }, [cards, mode, selectedGradeId, subjectOverview]);
+  }, [scopedCards, mode, selectedGradeId, subjectOverview]);
 
   useEffect(() => {
     if (mode === "subject") {
@@ -822,6 +1493,34 @@ export default function ReportAnalyticsClient({
 
   useEffect(() => {
     let mounted = true;
+    const loadDiagnostic = async () => {
+      if (!isConsolidatedSubjectView || !selectedCard || selectedSubjectId == null) {
+        setDiagnosticResult(null);
+        return;
+      }
+
+      setDiagnosticLoading(true);
+      try {
+        const result = await fetchConsolidatedSubjectDiagnosticAnalytics(
+          selectedCard.gradeLevelId,
+          selectedSubjectId,
+          selectedCard.examId,
+          selectedCard.title,
+        );
+        if (!mounted) return;
+        setDiagnosticResult(result);
+      } finally {
+        if (mounted) setDiagnosticLoading(false);
+      }
+    };
+    void loadDiagnostic();
+    return () => {
+      mounted = false;
+    };
+  }, [isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
+
+  useEffect(() => {
+    let mounted = true;
     const loadSummary = async () => {
       if (!selectedCard) {
         setSummary(null);
@@ -835,7 +1534,7 @@ export default function ReportAnalyticsClient({
           const consolidated = await fetchConsolidatedSubjectAnalytics(
             selectedCard.gradeLevelId,
             selectedSubjectId ?? 0,
-            selectedCard.examId,
+            null,
           );
           if (!mounted) return;
           setSummary(consolidated.summary);
@@ -878,7 +1577,7 @@ export default function ReportAnalyticsClient({
               await fetchConsolidatedSubjectAnalytics(
                 selectedCard.gradeLevelId,
                 selectedSubjectId ?? 0,
-                selectedCard.examId,
+                null,
               )
             ).proficiencyRows
           : await fetchSavedProficiencyRows(selectedCard.examId, selectedCard.sectionId);
@@ -913,7 +1612,7 @@ export default function ReportAnalyticsClient({
               await fetchConsolidatedSubjectAnalytics(
                 selectedCard.gradeLevelId,
                 selectedSubjectId ?? 0,
-                selectedCard.examId,
+                null,
               )
             ).itemAnalysis
           : await fetchSavedItemAnalysisSummary(selectedCard.examId, selectedCard.sectionId);
@@ -930,7 +1629,7 @@ export default function ReportAnalyticsClient({
   }, [isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
 
-  if (loading) {
+  if (loading || reportScope.scopeLoading) {
     return (
       <Stack gap="md">
         <Skeleton height={26} width={260} radius="sm" />
@@ -1012,15 +1711,9 @@ export default function ReportAnalyticsClient({
           w={{ base: "100%", sm: 260 }}
           disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
           clearable={mode !== "subject"}
-          nothingFoundMessage="No Data available"
+          nothingFoundMessage="-"
         />
       </Group>
-
-      {isConsolidatedSubjectView && consolidatedSectionCount > 0 && (
-        <Text size="sm" c="dimmed">
-          Consolidated from {consolidatedSectionCount} section{consolidatedSectionCount === 1 ? "" : "s"}.
-        </Text>
-      )}
 
       <div className="space-y-3 min-w-0">
         <div className="sticky top-0 z-20 w-full bg-white/95 pb-1 backdrop-blur">
@@ -1071,24 +1764,44 @@ export default function ReportAnalyticsClient({
           <>
             <Accordion.Item value="details">
               <Accordion.Control>
-                <SectionTitle>Details</SectionTitle>
+                <SectionTitle>{isConsolidatedSubjectView ? "Diagnostic Test" : "Details"}</SectionTitle>
               </Accordion.Control>
               <Accordion.Panel>
-                <SectionSubtitle>An examination summary shows the key result metrics for the selected grade, section, and examination.</SectionSubtitle>
-                {summaryLoading ? (
+                {isConsolidatedSubjectView ? (
+                  <Stack gap="xs">
+                    <SectionSubtitle>
+                      Diagnostic Test summarizes the finalized section results for the selected examination.
+                    </SectionSubtitle>
+                    {diagnosticLoading ? (
+                      <Stack gap="xs">
+                        <Skeleton height={42} radius="sm" />
+                        <Skeleton height={220} radius="sm" />
+                      </Stack>
+                    ) : !diagnosticResult ? (
+                      <SectionEmptyState message="-" />
+                    ) : diagnosticResult.finalizedSectionCount === 0 ? (
+                      <SectionEmptyState message="-" />
+                    ) : (
+                      <DiagnosticResultsTable result={diagnosticResult} />
+                    )}
+                  </Stack>
+                ) : (
+                <>
+                  <SectionSubtitle>An examination summary shows the key result metrics for the selected grade, section, and examination.</SectionSubtitle>
+                  {summaryLoading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {Array.from({ length: 8 }).map((_, idx) => (
                     <Skeleton key={idx} height={82} radius="sm" />
                   ))}
                 </div>
               ) : !selectedCard ? (
-                <SectionEmptyState message="No Data available." />
+                <SectionEmptyState message="-" />
               ) : !selectedSubject ? (
                 <SectionEmptyState message="Select a subject to view proficiency results." />
               ) : !selectedCard.isFinalized ? (
                 <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
               ) : !summary ? (
-                <SectionEmptyState message="No Data available." />
+                <SectionEmptyState message="-" />
               ) : (
                 <Stack gap="xs">
                   <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1125,7 +1838,9 @@ export default function ReportAnalyticsClient({
                     </Text>
                   )}
                 </Stack>
-              )}
+                  )}
+                </>
+                )}
               </Accordion.Panel>
             </Accordion.Item>
 
@@ -1135,10 +1850,21 @@ export default function ReportAnalyticsClient({
               </Accordion.Control>
               <Accordion.Panel>
                 <SectionSubtitle>An MPL summary shows the minimum proficiency level results for the selected grade, section, and subject.</SectionSubtitle>
-                {!selectedSubject ? (
+                {isConsolidatedSubjectView ? (
+                  diagnosticLoading ? (
+                    <Stack gap="xs">
+                      <Skeleton height={38} radius="sm" />
+                      <Skeleton height={180} radius="sm" />
+                    </Stack>
+                  ) : !diagnosticResult ? (
+                    <SectionEmptyState message="-" />
+                  ) : (
+                    <ConsolidatedMplResults result={diagnosticResult} />
+                  )
+                ) : !selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
                 ) : proficiencyLoading ? (
@@ -1147,13 +1873,12 @@ export default function ReportAnalyticsClient({
                     <Skeleton height={130} radius="sm" />
                   </Stack>
                 ) : proficiencyRows.length === 0 ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <div>
                       <Text size="xl" fw={700} mb={10} c="#111827">Achieved/Exceeded 60% MPL</Text>
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 330, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={330}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.mplGroup} ta="center" >Group</TableColumnHeader>
@@ -1172,13 +1897,11 @@ export default function ReportAnalyticsClient({
                               </TableTr>
                             ))}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                     <div>
                       <Text size="xl" fw={700} mb={10} c="#111827">Failed 30% MPL</Text>
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 330, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={330}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.mplGroup} ta="center" >Group</TableColumnHeader>
@@ -1197,15 +1920,14 @@ export default function ReportAnalyticsClient({
                               </TableTr>
                             ))}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                   </div>
                 )}
               </Accordion.Panel>
             </Accordion.Item>
 
-            <Accordion.Item value="proficiency">
+            {!isConsolidatedSubjectView && <Accordion.Item value="proficiency">
               <Accordion.Control>
                 <SectionTitle>Proficiency Level Obtained</SectionTitle>
               </Accordion.Control>
@@ -1214,7 +1936,7 @@ export default function ReportAnalyticsClient({
                 {!selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
                 ) : proficiencyLoading ? (
@@ -1225,12 +1947,11 @@ export default function ReportAnalyticsClient({
                     ))}
                   </Stack>
                 ) : proficiencyRows.length === 0 ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <div className="min-w-0">
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 520, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={520}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.profNo} ta="center" >No.</TableColumnHeader>
@@ -1277,13 +1998,12 @@ export default function ReportAnalyticsClient({
                               </TableTr>
                             ))}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                   </div>
                 )}
               </Accordion.Panel>
-            </Accordion.Item>
+            </Accordion.Item>}
           </>
         )}
 
@@ -1295,18 +2015,30 @@ export default function ReportAnalyticsClient({
               </Accordion.Control>
               <Accordion.Panel>
                 <SectionSubtitle>An item ranking summary shows the strongest and least mastered items for the selected grade, section, and subject.</SectionSubtitle>
-                {!selectedSubject ? (
+                {isConsolidatedSubjectView ? (
+                  diagnosticLoading ? (
+                    <Stack gap="xs">
+                      <Skeleton height={38} radius="sm" />
+                      <Skeleton height={180} radius="sm" />
+                    </Stack>
+                  ) : !diagnosticResult ? (
+                    <SectionEmptyState message="-" />
+                  ) : (
+                    <ConsolidatedItemRankingTables result={diagnosticResult} />
+                  )
+                ) : !selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
+                ) : itemAnalysis.rows.length === 0 ? (
+                  <SectionEmptyState message="-" />
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
                     <div className="min-w-0">
                       <Text size="xl" fw={700} mb={10} c="#111827">Top 5 Most Learned</Text>
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 300, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={300}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.rankingRank} ta="center" >Rank</TableColumnHeader>
@@ -1317,27 +2049,26 @@ export default function ReportAnalyticsClient({
                           <TableTbody>
                             {itemAnalysisLoading ? (
                               <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
-                            ) : itemAnalysis.topMostLearned.length === 0 ? (
-                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
                             ) : (
-                              itemAnalysis.topMostLearned.map((row) => (
-                                <TableTr key={`most-${row.itemNo}`}>
-                                  <TableTd ta="center">{row.rank}</TableTd>
-                                  <TableTd ta="center">{row.itemNo}</TableTd>
-                                  <TableTd>
-                                    <EllipsisTooltipText text={row.objective} />
-                                  </TableTd>
-                                </TableTr>
-                              ))
+                              Array.from({ length: 5 }).map((_, index) => {
+                                const row = itemAnalysis.topMostLearned[index] ?? null;
+                                return (
+                                  <TableTr key={`most-${index + 1}`}>
+                                    <TableTd ta="center">{row?.rank ?? index + 1}</TableTd>
+                                    <TableTd ta="center">{row?.itemNo ?? "-"}</TableTd>
+                                    <TableTd>
+                                      {row ? <EllipsisTooltipText text={row.objective} /> : "-"}
+                                    </TableTd>
+                                  </TableTr>
+                                );
+                              })
                             )}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                     <div className="min-w-0">
                       <Text size="xl" fw={700} mb={10} c="#111827">Top 5 Least Learned</Text>
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 300, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={300}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.rankingRank} ta="center" >Rank</TableColumnHeader>
@@ -1348,22 +2079,22 @@ export default function ReportAnalyticsClient({
                           <TableTbody>
                             {itemAnalysisLoading ? (
                               <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
-                            ) : itemAnalysis.topLeastLearned.length === 0 ? (
-                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
                             ) : (
-                              itemAnalysis.topLeastLearned.map((row) => (
-                                <TableTr key={`least-${row.itemNo}`}>
-                                  <TableTd ta="center">{row.rank}</TableTd>
-                                  <TableTd ta="center">{row.itemNo}</TableTd>
-                                  <TableTd>
-                                    <EllipsisTooltipText text={row.objective} />
-                                  </TableTd>
-                                </TableTr>
-                              ))
+                              Array.from({ length: 5 }).map((_, index) => {
+                                const row = itemAnalysis.topLeastLearned[index] ?? null;
+                                return (
+                                  <TableTr key={`least-${index + 1}`}>
+                                    <TableTd ta="center">{row?.rank ?? index + 1}</TableTd>
+                                    <TableTd ta="center">{row?.itemNo ?? "-"}</TableTd>
+                                    <TableTd>
+                                      {row ? <EllipsisTooltipText text={row.objective} /> : "-"}
+                                    </TableTd>
+                                  </TableTr>
+                                );
+                              })
                             )}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                   </div>
                 )}
@@ -1376,17 +2107,27 @@ export default function ReportAnalyticsClient({
               </Accordion.Control>
               <Accordion.Panel>
                 <SectionSubtitle>An item analysis summary shows the most learned and least learned items for the selected grade, section, and subject.</SectionSubtitle>
-                {!selectedSubject ? (
+                {isConsolidatedSubjectView ? (
+                  diagnosticLoading ? (
+                    <Stack gap="xs">
+                      <Skeleton height={38} radius="sm" />
+                      <Skeleton height={260} radius="sm" />
+                    </Stack>
+                  ) : !diagnosticResult ? (
+                    <SectionEmptyState message="-" />
+                  ) : (
+                    <ConsolidatedItemAnalysisTables result={diagnosticResult} />
+                  )
+                ) : !selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                     <div className="min-w-0">
-                      <TableScrollContainer minWidth={0} type="native" style={COLUMN_TABLE_CONTAINER_STYLE}>
-                        <Table {...GRID_TABLE_PROPS} verticalSpacing="sm" striped={false} highlightOnHover style={{ width: "100%", minWidth: 300, tableLayout: "fixed" }}>
+                      <ReportTableShell minWidth={300}>
                           <TableThead>
                             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                               <TableColumnHeader w={WIDTH.itemAnalysisItem} ta="center" >Item</TableColumnHeader>
@@ -1401,7 +2142,7 @@ export default function ReportAnalyticsClient({
                             {itemAnalysisLoading ? (
                               <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
                             ) : itemAnalysis.rows.length === 0 ? (
-                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">No Data available.</Text></TableTd></TableTr>
+                              <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">-</Text></TableTd></TableTr>
                             ) : (
                               itemAnalysis.rows.map((row) => (
                                 <TableTr key={`row-${row.itemNo}`}>
@@ -1412,8 +2153,7 @@ export default function ReportAnalyticsClient({
                               ))
                             )}
                           </TableTbody>
-                        </Table>
-                      </TableScrollContainer>
+                      </ReportTableShell>
                     </div>
                   </div>
                 )}
@@ -1434,10 +2174,21 @@ export default function ReportAnalyticsClient({
               </Accordion.Control>
               <Accordion.Panel>
                 <SectionSubtitle>This section shows the proficiency level matrix.</SectionSubtitle>
-                {!selectedSubject ? (
+                {isConsolidatedSubjectView ? (
+                  diagnosticLoading ? (
+                    <Stack gap="xs">
+                      <Skeleton height={38} radius="sm" />
+                      <Skeleton height={180} radius="sm" />
+                    </Stack>
+                  ) : !diagnosticResult ? (
+                    <SectionEmptyState message="-" />
+                  ) : (
+                    <ConsolidatedProficiencyTable result={diagnosticResult} />
+                  )
+                ) : !selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
                 ) : proficiencyLoading ? (
@@ -1446,10 +2197,9 @@ export default function ReportAnalyticsClient({
                     <Skeleton height={74} radius="sm" />
                   </Stack>
                 ) : proficiencyRows.length === 0 ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : (
-                  <TableScrollContainer minWidth={920} type="native" style={TABLE_CONTAINER_STYLE}>
-                    <Table {...GRID_TABLE_PROPS} verticalSpacing={0} striped={false} highlightOnHover style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
+                  <ReportTableShell minWidth={920} containerStyle={TABLE_CONTAINER_STYLE}>
                       <TableThead>
                         <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                           <MatrixHeader colSpan={3} ta="center">Number of Highly Proficient Learners</MatrixHeader>
@@ -1479,8 +2229,7 @@ export default function ReportAnalyticsClient({
                           </MatrixCell>
                         </TableTr>
                       </TableTbody>
-                    </Table>
-                  </TableScrollContainer>
+                  </ReportTableShell>
                 )}
               </Accordion.Panel>
             </Accordion.Item>
@@ -1491,10 +2240,21 @@ export default function ReportAnalyticsClient({
               </Accordion.Control>
               <Accordion.Panel>
                 <SectionSubtitle>This section shows the LAEMPL matrix.</SectionSubtitle>
-                {!selectedSubject ? (
+                {isConsolidatedSubjectView ? (
+                  diagnosticLoading ? (
+                    <Stack gap="xs">
+                      <Skeleton height={38} radius="sm" />
+                      <Skeleton height={180} radius="sm" />
+                    </Stack>
+                  ) : !diagnosticResult ? (
+                    <SectionEmptyState message="-" />
+                  ) : (
+                    <ConsolidatedLaemplTable result={diagnosticResult} />
+                  )
+                ) : !selectedSubject ? (
                   <SectionEmptyState message="Select a subject to view proficiency results." />
                 ) : !selectedCard ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : !selectedCard.isFinalized ? (
                   <SectionEmptyState message="This examination is not finalized yet. Proficiency results will appear after Proceed to Reports." />
                 ) : proficiencyLoading ? (
@@ -1503,10 +2263,9 @@ export default function ReportAnalyticsClient({
                     <Skeleton height={74} radius="sm" />
                   </Stack>
                 ) : proficiencyRows.length === 0 ? (
-                  <SectionEmptyState message="No Data available." />
+                  <SectionEmptyState message="-" />
                 ) : (
-                  <TableScrollContainer minWidth={920} type="native" style={TABLE_CONTAINER_STYLE}>
-                    <Table {...GRID_TABLE_PROPS} verticalSpacing={0} striped={false} highlightOnHover style={{ width: "100%", minWidth: 920, borderCollapse: "collapse" }}>
+                  <ReportTableShell minWidth={920} containerStyle={TABLE_CONTAINER_STYLE}>
                       <TableThead>
                         <TableTr style={{ backgroundColor: "#4EAE4A" }}>
                           <MatrixHeader colSpan={3} ta="center">Number of Enrolled Learners</MatrixHeader>
@@ -1542,8 +2301,7 @@ export default function ReportAnalyticsClient({
                           <MatrixCell ta="center">{`${laemplSummary.mps.toFixed(2)}%`}</MatrixCell>
                         </TableTr>
                       </TableTbody>
-                    </Table>
-                  </TableScrollContainer>
+                  </ReportTableShell>
                 )}
               </Accordion.Panel>
             </Accordion.Item>
@@ -1556,10 +2314,22 @@ export default function ReportAnalyticsClient({
 }
 
 function SectionEmptyState({ message }: { message: string }) {
+  const title = message === "-" ? "No report data available." : message;
+  const description =
+    message === "-"
+      ? "Report data will appear here after reports are finalized."
+      : "Report data will appear here once the required report status is available.";
+
   return (
-    <div className="min-h-[180px] flex items-center justify-center py-8">
-      <Text size="sm" c="dimmed" ta="center">
-        {message}
+    <div className="min-h-[180px] flex flex-col items-center justify-center px-4 py-8 text-center">
+      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#EEF0F4]">
+        <IconReportOff size={24} color="#6B7280" stroke={1.8} />
+      </div>
+      <Text size="sm" c="#111827" ta="center">
+        {title}
+      </Text>
+      <Text size="sm" c="dimmed" ta="center" mt={4}>
+        {description}
       </Text>
     </div>
   );

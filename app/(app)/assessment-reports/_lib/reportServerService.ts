@@ -8,6 +8,12 @@ export const REPORTS_CACHE_TAG = "reports";
 type RawGradeJoin = { display_name: string; level_number: number | null };
 type RawSubjectJoin = { name: string | null; subject_type?: "BOTH" | "SSES" | null };
 type RawCurriculumSubjectJoin = { subject_id: number | null; subjects: RawSubjectJoin | RawSubjectJoin[] | null };
+type ActiveCurriculumSubject = {
+  subjectId: number;
+  subjectName: string;
+  subjectType: "BOTH" | "SSES" | null;
+  gradeLevelId: number;
+};
 type RawSectionJoin = {
   section_id: number;
   name: string;
@@ -76,7 +82,14 @@ function getExamSortScore(examDate: string | null, examId: number): number {
 }
 
 function isSsesSectionName(name: string): boolean {
-  return name.trim().toUpperCase() === "SSES";
+  return /\bSSES\b/i.test(name.trim());
+}
+
+function isSubjectApplicableToSection(
+  subject: { subjectType: "BOTH" | "SSES" | null },
+  sectionName: string,
+): boolean {
+  return subject.subjectType !== "SSES" || isSsesSectionName(sectionName);
 }
 
 function reportKey(examId: number, sectionId: number): string {
@@ -252,13 +265,69 @@ async function getSectionSubjectsCached(): Promise<Map<number, Map<number, strin
   return result;
 }
 
+async function getActiveCurriculumSubjectsCached(): Promise<ActiveCurriculumSubject[]> {
+  "use cache";
+  cacheTag(REPORTS_CACHE_TAG);
+  cacheTag("curriculum");
+  cacheTag("school-years");
+  cacheLife("minutes");
+
+  const { data: syData, error: syError } = await admin
+    .from("school_years")
+    .select("curriculum_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (syError) {
+    console.error("[reportServerService] getActiveCurriculumSubjectsCached sy error:", syError.message);
+    return [];
+  }
+
+  const curriculumId = (syData as { curriculum_id?: number | null } | null)?.curriculum_id ?? null;
+  if (curriculumId == null) return [];
+
+  const { data, error } = await admin
+    .from("curriculum_subjects")
+    .select("subject_id, grade_level_id, subjects!inner(name, subject_type, deleted_at)")
+    .eq("curriculum_id", curriculumId)
+    .is("deleted_at", null);
+
+  if (error) {
+    console.error("[reportServerService] getActiveCurriculumSubjectsCached error:", error.message);
+    return [];
+  }
+
+  return ((data ?? []) as {
+    subject_id: number | null;
+    grade_level_id: number | null;
+    subjects: RawSubjectJoin | RawSubjectJoin[] | null;
+  }[])
+    .map((row) => {
+      const subjectJoin = firstJoin(row.subjects);
+      if (row.subject_id == null || row.grade_level_id == null || !subjectJoin) return null;
+      return {
+        subjectId: row.subject_id,
+        subjectName: subjectJoin.name ?? "Unknown Subject",
+        subjectType: subjectJoin.subject_type ?? null,
+        gradeLevelId: row.grade_level_id,
+      };
+    })
+    .filter((row): row is ActiveCurriculumSubject => row != null);
+}
+
 function buildSectionCards(
   examCards: ReportExamCard[],
   activeSections: RawSectionRow[],
-  sectionSubjects: Map<number, Map<number, string>>,
+  activeSubjects: ActiveCurriculumSubject[],
 ): ReportSectionCard[] {
   const grouped = new Map<number, ReportSectionCard>();
   const latestBySectionSubject = new Map<string, ReportExamCard>();
+  const subjectsByGrade = new Map<number, ActiveCurriculumSubject[]>();
+  for (const subject of activeSubjects) {
+    if (!subjectsByGrade.has(subject.gradeLevelId)) subjectsByGrade.set(subject.gradeLevelId, []);
+    subjectsByGrade.get(subject.gradeLevelId)!.push(subject);
+  }
 
   for (const card of examCards) {
     if (!grouped.has(card.sectionId)) {
@@ -286,13 +355,6 @@ function buildSectionCards(
     }
 
     if (card.subjectId != null) {
-      if (!sectionSubjects.has(card.sectionId)) {
-        sectionSubjects.set(card.sectionId, new Map());
-      }
-      sectionSubjects.get(card.sectionId)!.set(card.subjectId, card.subjectName);
-    }
-
-    if (card.subjectId != null) {
       const subjectKey = `${card.sectionId}-${card.subjectId}`;
       const latest = latestBySectionSubject.get(subjectKey);
       if (!latest) {
@@ -309,6 +371,12 @@ function buildSectionCards(
   for (const latestCard of latestBySectionSubject.values()) {
     const current = grouped.get(latestCard.sectionId);
     if (!current) continue;
+    const activeSectionSubjects = subjectsByGrade
+      .get(current.gradeLevelId)
+      ?.filter((subject) => isSubjectApplicableToSection(subject, current.sectionName)) ?? [];
+    if (!activeSectionSubjects.some((subject) => subject.subjectId === latestCard.subjectId)) {
+      continue;
+    }
     current.totalExams += 1;
     if (latestCard.isFinalized) current.finalizedExams += 1;
   }
@@ -335,13 +403,14 @@ function buildSectionCards(
 
   const cards = Array.from(grouped.values()).map((card) => ({
     ...card,
-    subjectNames: Array.from(sectionSubjects.get(card.sectionId)?.values() ?? []).sort((a, b) =>
-      a.localeCompare(b, undefined, { sensitivity: "base" }),
-    ),
-    totalExams: sectionSubjects.get(card.sectionId)?.size ?? 0,
-    isFinalized:
-      (sectionSubjects.get(card.sectionId)?.size ?? 0) > 0 &&
-      card.finalizedExams === (sectionSubjects.get(card.sectionId)?.size ?? 0),
+    subjectNames: (subjectsByGrade.get(card.gradeLevelId) ?? [])
+      .filter((subject) => isSubjectApplicableToSection(subject, card.sectionName))
+      .map((subject) => subject.subjectName)
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })),
+  })).map((card) => ({
+    ...card,
+    totalExams: card.subjectNames.length,
+    isFinalized: card.subjectNames.length > 0 && card.finalizedExams === card.subjectNames.length,
   }));
 
   return cards.sort((a, b) => {
@@ -361,13 +430,13 @@ export type ReportInitData = {
 };
 
 export async function getReportInitData(): Promise<ReportInitData> {
-  const [examCards, activeSections, gradeLevels, sectionSubjects] = await Promise.all([
+  const [examCards, activeSections, gradeLevels, activeSubjects] = await Promise.all([
     getReportExamCardsCached(),
     getActiveSectionsCached(),
     getGradeLevelsCached(),
-    getSectionSubjectsCached(),
+    getActiveCurriculumSubjectsCached(),
   ]);
 
-  const sectionCards = buildSectionCards(examCards, activeSections, sectionSubjects);
+  const sectionCards = buildSectionCards(examCards, activeSections, activeSubjects);
   return { sectionCards, gradeLevels };
 }

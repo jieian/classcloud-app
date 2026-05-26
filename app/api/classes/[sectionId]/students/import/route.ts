@@ -100,7 +100,8 @@ const _POST = async function(
       if (s.action === "new") {
         const lastName = (s.last_name ?? "").trim();
         const firstName = (s.first_name ?? "").trim();
-        const middleName = (s.middle_name ?? "").trim();
+        const rawMiddleName = (s.middle_name ?? "").trim();
+        const middleName = /^[-–—]+$/.test(rawMiddleName) ? "" : rawMiddleName;
         const sex = s.sex ?? "M";
 
         if (!lastName || !firstName || !sex)

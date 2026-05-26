@@ -28,6 +28,7 @@ import {
   fetchReportSectionOverview,
   type ReportSectionOverview,
 } from "@/lib/services/reportsAnalysisService";
+import { useReportPermissions, isSectionInScope, isPairInScope } from "@/hooks/useReportPermissions";
 
 interface Props {
   sectionId: number;
@@ -57,6 +58,7 @@ export default function GradeReportDetailsClient({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReportSectionOverview | null>(null);
+  const reportScope = useReportPermissions();
 
   useEffect(() => {
     let mounted = true;
@@ -86,7 +88,7 @@ export default function GradeReportDetailsClient({
 
   const backHref = "/assessment-reports/grade";
 
-  if (loading) {
+  if (loading || reportScope.scopeLoading) {
     return (
       <Stack gap="md" maw={1000}>
         <Skeleton height={32} w={170} radius="md" />
@@ -102,6 +104,14 @@ export default function GradeReportDetailsClient({
     return (
       <Alert color="red" icon={<IconAlertCircle size={16} />} mt="md">
         {error ?? "Section reports not found."}
+      </Alert>
+    );
+  }
+
+  if (!isSectionInScope(detail.sectionId, detail.gradeLevelId, reportScope)) {
+    return (
+      <Alert color="orange" icon={<IconAlertCircle size={16} />} mt="md">
+        You do not have permission to view this section&apos;s report.
       </Alert>
     );
   }
@@ -196,7 +206,9 @@ export default function GradeReportDetailsClient({
           </Stack>
         ) : (
           <Stack gap="xs">
-            {detail.subjects.map((subject) => (
+            {detail.subjects
+              .filter((subject) => isPairInScope(detail.sectionId, subject.curriculumSubjectId, reportScope))
+              .map((subject) => (
               <Group key={subject.subjectId} justify="space-between" align="center">
                 <Text size="sm" w="45%" lineClamp={1}>
                   {subject.subjectName}

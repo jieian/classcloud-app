@@ -33,6 +33,7 @@ import {
   type ReportSectionCard,
 } from "@/lib/services/reportsAnalysisService";
 import type { ReportInitData } from "@/app/(app)/assessment-reports/_lib/reportServerService";
+import { useReportPermissions, isSectionInScope } from "@/hooks/useReportPermissions";
 
 type GradeGroup = {
   gradeLevelId: number;
@@ -74,6 +75,14 @@ export default function GradeReportsBrowser({
   const [loading, setLoading] = useState(!initialData);
   const [cards, setCards] = useState<ReportSectionCard[]>(initialData?.sectionCards ?? []);
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>(initialData?.gradeLevels ?? []);
+  const reportScope = useReportPermissions();
+  const scopedCards = useMemo(
+    () =>
+      reportScope.scopeLoading
+        ? []
+        : cards.filter((card) => isSectionInScope(card.sectionId, card.gradeLevelId, reportScope)),
+    [cards, reportScope],
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [gradeLevelFilter, setGradeLevelFilter] = useState<number | null>(null);
   const [openGradeGroups, setOpenGradeGroups] = useState<string[]>([]);
@@ -170,8 +179,8 @@ export default function GradeReportsBrowser({
 
   const searchableCards = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return cards;
-    return cards.filter((card) => {
+    if (!q) return scopedCards;
+    return scopedCards.filter((card) => {
       const subjects = card.subjectNames.join(" ");
       const haystack = `${card.sectionName} ${card.gradeDisplayName} ${subjects}`.toLowerCase();
       return haystack.includes(q);
@@ -246,8 +255,9 @@ export default function GradeReportsBrowser({
 
 
   const totalVisibleCards = groupedCards.reduce((sum, group) => sum + group.cards.length, 0);
+  const visibleGroupsWithCards = groupedCards.filter((group) => group.cards.length > 0);
 
-  if (loading) {
+  if (loading || reportScope.scopeLoading) {
     return (
       <Stack gap="md">
         {[
@@ -332,8 +342,8 @@ export default function GradeReportsBrowser({
         </Group>
       </div>
 
-      {groupedCards.length === 0 ? (
-        <Text c="dimmed">No grade levels available yet.</Text>
+      {totalVisibleCards === 0 ? (
+        <EmptySearchState />
       ) : (
         <Accordion
           multiple
@@ -345,7 +355,7 @@ export default function GradeReportsBrowser({
             item: { border: "1px solid #e2edff" },
           }}
         >
-          {groupedCards.map((group) => (
+          {visibleGroupsWithCards.map((group) => (
             <Accordion.Item key={group.gradeLevelId} value={group.accordionValue}>
               <Accordion.Control>
                 <Group gap="xs">
@@ -358,15 +368,7 @@ export default function GradeReportsBrowser({
                 </Group>
               </Accordion.Control>
               <Accordion.Panel>
-                {group.cards.length === 0 ? (
-                  <div className="px-1 py-1">
-                    <EmptySearchState
-                      title="No reports found."
-                      description="Try adjusting your search or filters."
-                    />
-                  </div>
-                ) : (
-                  <>
+                <>
                     <SimpleGrid
                       cols={{ base: 1, sm: 2, md: 3, xl: 4 }}
                       p={{ base: 0, sm: "xs" }}
@@ -431,8 +433,7 @@ export default function GradeReportsBrowser({
                         />
                       </Group>
                     )}
-                  </>
-                )}
+                </>
               </Accordion.Panel>
             </Accordion.Item>
           ))}
