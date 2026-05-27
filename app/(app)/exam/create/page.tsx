@@ -156,7 +156,7 @@ function ObjectiveChip({ objective, color }: {
 export default function CreateExamPage() {
   const router = useRouter();
   const { user, permissions } = useAuth();
-  const hasFullAccess = permissions.includes('exams.full_access');
+  const hasLimitedAccess = permissions.includes('exams.limited_access');
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   // Load once on first render — does not re-run on re-renders
@@ -185,11 +185,8 @@ export default function CreateExamPage() {
   const [allOccupiedPairs, setAllOccupiedPairs] = useState<Map<number, Set<number>>>(new Map());
   const [allowedSectionIds, setAllowedSectionIds] = useState<Set<number> | null>(null);
   const [allowedSubjectIds, setAllowedSubjectIds] = useState<Set<number> | null>(null);
-  const [isFacultyView] = useState(() =>
-    typeof window !== "undefined" && localStorage.getItem("examViewMode") === "faculty",
-  );
-  // An admin in faculty view is treated as restricted — only their assigned sections/subjects.
-  const isRestricted = !hasFullAccess || isFacultyView;
+  // Teachers always see only their assigned sections/subjects.
+  const isRestricted = true;
   const [teacherAssignments, setTeacherAssignments] = useState<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]>([]);
   // Step 0 — Exam Details
   const [selectedGradeLevelId, setSelectedGradeLevelId] = useState<string | null>(d?.gradeLevelId ?? null);
@@ -1281,6 +1278,14 @@ export default function CreateExamPage() {
       stickyMobile
     />
   );
+
+  if (!hasLimitedAccess) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-500 font-medium">You do not have permission to create examinations.</p>
+      </div>
+    );
+  }
 
   if (!dataLoading && (hasActiveSchoolYear === false || !quarters.some((q) => q.is_active))) {
     return (

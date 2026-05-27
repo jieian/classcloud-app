@@ -98,15 +98,37 @@ const _GET = async function (
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);
-  const hasAccess =
-    permissions.includes("exams.full_access") ||
-    permissions.includes("exams.limited_access");
-  if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
+  const hasFullAccess = permissions.includes("exams.full_access");
+  const hasLimitedAccess = permissions.includes("exams.limited_access");
+  if (!hasFullAccess && !hasLimitedAccess)
+    return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { examId: examIdRaw } = await params;
   const examId = Number(examIdRaw);
   if (!examId || Number.isNaN(examId))
     return Response.json({ error: "Invalid exam ID." }, { status: 400 });
+
+  // For limited_access (teachers): verify the exam belongs to one of their sections
+  if (hasLimitedAccess && !hasFullAccess) {
+    const { data: examSections } = await admin
+      .from("exam_assignments")
+      .select("section_id")
+      .eq("exam_id", examId);
+
+    const examSectionIds = (examSections ?? []).map((a: { section_id: number }) => a.section_id);
+
+    if (examSectionIds.length > 0) {
+      const { count } = await admin
+        .from("teacher_class_assignments")
+        .select("section_id", { count: "exact", head: true })
+        .eq("teacher_id", user.id)
+        .in("section_id", examSectionIds)
+        .is("deleted_at", null);
+
+      if ((count ?? 0) === 0)
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
 
   // ── Fetch the logged-in user's display name ────────────────────────────────
   const { data: userRow } = await admin

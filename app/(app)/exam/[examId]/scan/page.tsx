@@ -50,7 +50,7 @@ import { SearchBar } from '@/components/searchBar/SearchBar';
 import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/VerticalWizardLayout';
 import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
 import { resolveExamParams } from '@/lib/exam-supabase';
-import { invalidateReportsCache } from '@/lib/services/reportsAnalysisService';
+import { invalidateReportsCache, fetchMyAssignedScope } from '@/lib/services/reportsAnalysisService';
 import { notify } from '@/components/notificationIcon/notificationIcon';
 
 // â"€â"€â"€ Types â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -261,11 +261,12 @@ function StudentMobileRow({
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
-  const { permissions } = useAuth();
+  const { user, permissions } = useAuth();
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
   const [examLoading, setExamLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   const [step, setStep] = useState<Step>('students');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
@@ -411,6 +412,27 @@ export default function ScanPapersPage() {
         if (!hydratedFromCache) setExamLoading(false);
       });
   }, [examId, persistScanPageCache]);
+
+  // Scope-check: teachers (limited_access only) must be assigned to one of the exam's sections
+  useEffect(() => {
+    const hasFullAccess = permissions.includes("exams.full_access");
+    const hasLimitedAccess = permissions.includes("exams.limited_access");
+    if (!exam || !user?.id || hasFullAccess || !hasLimitedAccess) {
+      setAccessDenied(false);
+      return;
+    }
+    const examSectionIds = exam.exam_assignments
+      .map((a) => a.sections?.section_id)
+      .filter((id): id is number => id != null);
+    if (examSectionIds.length === 0) {
+      setAccessDenied(false);
+      return;
+    }
+    fetchMyAssignedScope(user.id).then((scope) => {
+      const hasAccess = examSectionIds.some((id) => scope.sectionIds.includes(id));
+      setAccessDenied(!hasAccess);
+    });
+  }, [exam, user?.id, permissions]);
 
   const { totalItems, numChoices } = resolveExamParams(exam);
   const choices = CHOICES.slice(0, numChoices);
@@ -1360,6 +1382,15 @@ export default function ScanPapersPage() {
     return (
       <div className="text-center py-20">
         <p className="text-gray-500 font-medium">You do not have permission to access this page.</p>
+        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
+      </div>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-500 font-medium">You do not have permission to access this exam.</p>
         <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
       </div>
     );

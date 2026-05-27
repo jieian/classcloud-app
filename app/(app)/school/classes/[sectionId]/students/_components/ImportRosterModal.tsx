@@ -167,6 +167,11 @@ function ReviewSkeleton() {
 
 // ─── Inline row editor ────────────────────────────────────────────────────────
 
+function normalizeOptionalMiddleName(value: string | null | undefined): string {
+  const trimmed = (value ?? "").trim();
+  return /^[-–—]+$/.test(trimmed) ? "" : trimmed;
+}
+
 interface EditDraft {
   lrn: string;
   last_name: string;
@@ -192,7 +197,7 @@ function EditableRow({
     lrn: row.lrn.replace(/\D/g, ""),
     last_name: row.last_name ?? "",
     first_name: row.first_name ?? "",
-    middle_name: row.middle_name ?? "",
+    middle_name: normalizeOptionalMiddleName(row.middle_name),
     sex: row.sex ?? "M",
   });
   const [checking, setChecking] = useState(false);
@@ -301,7 +306,7 @@ function EditableRow({
         errorMessage,
         last_name: draft.last_name,
         first_name: draft.first_name,
-        middle_name: draft.middle_name,
+        middle_name: normalizeOptionalMiddleName(draft.middle_name),
         sex: draft.sex,
       });
     } catch {
@@ -320,7 +325,9 @@ function EditableRow({
       lrn: draft.lrn,
       last_name: draft.last_name ? toTitleCase(draft.last_name) : draft.last_name,
       first_name: draft.first_name ? toTitleCase(draft.first_name) : draft.first_name,
-      middle_name: draft.middle_name ? toTitleCase(draft.middle_name) : draft.middle_name,
+      middle_name: normalizeOptionalMiddleName(draft.middle_name)
+        ? toTitleCase(normalizeOptionalMiddleName(draft.middle_name))
+        : "",
       sex: draft.sex,
     };
     onSave(updated);
@@ -452,7 +459,7 @@ function ReadOnlyRow({
 }) {
   const displayName =
     row.dbName ||
-    [row.last_name, row.first_name, row.middle_name]
+    [row.last_name, row.first_name, normalizeOptionalMiddleName(row.middle_name)]
       .filter(Boolean)
       .join(", ") ||
     row.rawName;
@@ -694,7 +701,7 @@ export default function ImportRosterModal({
           ...base,
           last_name: r.last_name,
           first_name: r.first_name,
-          middle_name: r.middle_name ?? "",
+          middle_name: normalizeOptionalMiddleName(r.middle_name),
           sex: r.sex,
         };
       }
@@ -792,7 +799,7 @@ export default function ImportRosterModal({
       onClose={handleClose}
       title="Import Roster"
       centered
-      size={step === "review" || step === "reviewing" ? "xl" : "md"}
+      size={step === "review" || step === "reviewing" ? "min(96vw, 1160px)" : "md"}
       closeOnClickOutside={!isBusy}
       closeOnEscape={!isBusy && step !== "review"}
       withCloseButton={!isBusy}
@@ -1006,17 +1013,21 @@ export default function ImportRosterModal({
               No rows found in the uploaded file.
             </Text>
           ) : (
-            <ScrollArea mah={440} type="auto">
-              <TableScrollContainer minWidth={640}>
-                <Table verticalSpacing={6} withColumnBorders={false}>
+            <ScrollArea.Autosize mah="62vh" type="auto" offsetScrollbars scrollbarSize={8}>
+              <TableScrollContainer minWidth={1040} type="native">
+                <Table
+                  verticalSpacing={6}
+                  withColumnBorders={false}
+                  style={{ width: "100%", minWidth: 1040, tableLayout: "fixed" }}
+                >
                   <TableThead>
                     <TableTr>
-                      <TableTh w={40}>Row</TableTh>
-                      <TableTh w={130}>LRN</TableTh>
+                      <TableTh w={56}>Row</TableTh>
+                      <TableTh w={150}>LRN</TableTh>
                       <TableTh>Name</TableTh>
-                      <TableTh w={70}>Sex</TableTh>
-                      <TableTh w={170}>Status</TableTh>
-                      <TableTh w={72} />
+                      <TableTh w={96}>Sex</TableTh>
+                      <TableTh w={260}>Status</TableTh>
+                      <TableTh w={88} />
                     </TableTr>
                   </TableThead>
                   <TableTbody>
@@ -1042,7 +1053,7 @@ export default function ImportRosterModal({
                   </TableTbody>
                 </Table>
               </TableScrollContainer>
-            </ScrollArea>
+            </ScrollArea.Autosize>
           )}
 
           {actionableCount === 0 && rows.length > 0 && (

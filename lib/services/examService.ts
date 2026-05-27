@@ -219,7 +219,8 @@ export async function fetchOccupiedSectionSubjectPairs(
     .from('exam_assignments')
     .select('section_id, exams!inner(curriculum_subject_id, quarter_id, deleted_at)')
     .eq('exams.quarter_id', quarterId)
-    .is('exams.deleted_at', null);
+    .is('exams.deleted_at', null)
+    .limit(2000);
 
   if (error) return new Map();
 

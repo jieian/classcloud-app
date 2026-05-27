@@ -65,10 +65,11 @@ function parseName(
 ): { last_name: string; first_name: string; middle_name: string } | null {
   const parts = raw.split(",").map((p) => p.trim());
   if (parts.length < 2 || !parts[0] || !parts[1]) return null;
+  const middleName = parts[2] ?? "";
   return {
     last_name: parts[0],
     first_name: parts[1],
-    middle_name: parts[2] ?? "",
+    middle_name: /^[-–—]+$/.test(middleName) ? "" : middleName,
   };
 }
 
