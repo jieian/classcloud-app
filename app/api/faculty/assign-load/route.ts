@@ -23,10 +23,19 @@ const _POST = async function (request: Request) {
 
   const parsed = parseBody(AssignAcademicLoadSchema, await request.json());
   if (!parsed.success) return parsed.response;
-  const { faculty_id, advisory_section_id, subject_assignments, subject_group_id } = parsed.data;
+  const {
+    faculty_id,
+    advisory_section_id,
+    subject_assignments,
+    subject_group_id,
+    gsl_curriculum_subject_id,
+    gsl_grade_level_id,
+  } = parsed.data;
 
   // subject_group_id presence (even if null) means add mode — manage coordinator
   const manageCoordinator = subject_group_id !== undefined;
+  // gsl_curriculum_subject_id presence (even if null) means add mode — manage GSL
+  const manageGSL = gsl_curriculum_subject_id !== undefined;
 
   const { error } = await adminClient.rpc("assign_faculty_academic_load", {
     p_faculty_id: faculty_id,
@@ -34,6 +43,9 @@ const _POST = async function (request: Request) {
     p_subject_assignments: subject_assignments,
     p_manage_coordinator: manageCoordinator,
     p_subject_group_id: subject_group_id ?? null,
+    p_manage_gsl: manageGSL,
+    p_gsl_curriculum_subject_id: gsl_curriculum_subject_id ?? null,
+    p_gsl_grade_level_id: gsl_grade_level_id ?? null,
   });
 
   if (error) {
@@ -41,6 +53,12 @@ const _POST = async function (request: Request) {
     if (isRpcError(error, RpcError.COORDINATOR_GROUP_TAKEN)) {
       return Response.json(
         { error: "This subject group already has a coordinator." },
+        { status: 409 },
+      );
+    }
+    if (isRpcError(error, RpcError.GSL_SLOT_TAKEN)) {
+      return Response.json(
+        { error: "This grade subject leader slot is already filled. Please choose a different subject or grade level." },
         { status: 409 },
       );
     }
@@ -82,6 +100,22 @@ const _POST = async function (request: Request) {
         entity_type: "faculty",
         entity_id: faculty_id,
         new_values: { subject_group_id: subject_group_id ?? null },
+      });
+    }
+
+    if (manageGSL) {
+      await insertAuditLog({
+        actor_id: caller.id,
+        category: "ACADEMIC",
+        action: gsl_curriculum_subject_id != null
+          ? "grade_subject_leader_assigned"
+          : "grade_subject_leader_removed",
+        entity_type: "faculty",
+        entity_id: faculty_id,
+        new_values: {
+          gsl_curriculum_subject_id: gsl_curriculum_subject_id ?? null,
+          gsl_grade_level_id: gsl_grade_level_id ?? null,
+        },
       });
     }
   });

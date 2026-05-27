@@ -6,6 +6,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 import AddFacultyDrawer from "./AddFacultyDrawer";
 import SubjectCoordinatorsSection from "./SubjectCoordinatorsSection";
+import GradeSubjectLeadersSection from "./GradeSubjectLeadersSection";
 import {
   TeachingStaffSection,
   type TeachingStaffSectionRef,
@@ -16,7 +17,10 @@ interface FacultySectionProps {
   highlightCoordinators?: boolean;
 }
 
-export function FacultySection({ isActive, highlightCoordinators = false }: FacultySectionProps) {
+export function FacultySection({
+  isActive,
+  highlightCoordinators = false,
+}: FacultySectionProps) {
   const isMobile = useMediaQuery("(max-width: 767.9px)");
   const [facultyCount, setFacultyCount] = useState<number | null>(null);
   const [drawerOpened, setDrawerOpened] = useState(false);
@@ -59,7 +63,8 @@ export function FacultySection({ isActive, highlightCoordinators = false }: Facu
           )}
         </Group>
         <p className="text-sm text-[#808898] sm:max-w-2xl">
-          The collective body of educators. A faculty member can be a class adviser, a subject teacher, a coordinator, or a combination of these.
+          The collective body of educators. A faculty member can be a class
+          adviser, a subject teacher, a coordinator, or a combination of these.
         </p>
       </div>
 
@@ -72,6 +77,9 @@ export function FacultySection({ isActive, highlightCoordinators = false }: Facu
             defaultOpen={highlightCoordinators}
             glowOnMount={highlightCoordinators}
           />
+
+          <Divider my="lg" />
+          <GradeSubjectLeadersSection />
 
           <Divider my="lg" />
           <TeachingStaffSection

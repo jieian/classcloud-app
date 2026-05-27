@@ -146,6 +146,20 @@ CREATE TABLE public.grade_levels (
   display_name character varying NOT NULL,
   CONSTRAINT grade_levels_pkey PRIMARY KEY (grade_level_id)
 );
+CREATE TABLE public.grade_subject_leaders (
+  gsl_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  curriculum_subject_id integer NOT NULL,
+  grade_level_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT grade_subject_leaders_pkey PRIMARY KEY (gsl_id),
+  CONSTRAINT grade_subject_leaders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT grade_subject_leaders_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT grade_subject_leaders_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT grade_subject_leaders_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
 CREATE TABLE public.item_analysis_reports (
   report_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
   exam_id integer NOT NULL,

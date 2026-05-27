@@ -8,15 +8,19 @@ import {
   Pagination,
   Skeleton,
   Text,
-  TextInput,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
 import { useMemo, useState, useEffect } from "react";
+import { useMediaQuery } from "@mantine/hooks";
+import { IconAlertTriangle, IconUserCog } from "@tabler/icons-react";
 import type { CreateUserForm } from "../_lib/types";
 import type { Role } from "../_lib/userRolesService";
 import { checkPrincipalExists } from "../_lib/userRolesService";
 import { sortRoles } from "@/lib/roleUtils";
+import { SearchBar } from "@/components/searchBar/SearchBar";
+import EmptySearchState from "@/components/EmptySearchState";
 
 interface StepAssignRoleProps {
   form: UseFormReturnType<CreateUserForm>;
@@ -35,11 +39,14 @@ export default function StepAssignRole({
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [rolesExpanded, setRolesExpanded] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
   const [principalWarning, setPrincipalWarning] = useState(false);
 
   useEffect(() => {
     const hasPrincipal = form.values.role_ids.some(
-      (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name === "Principal",
+      (id) =>
+        availableRoles.find((r) => r.role_id.toString() === id)?.name ===
+        "Principal",
     );
     if (!hasPrincipal) {
       setPrincipalWarning(false);
@@ -51,7 +58,10 @@ export default function StepAssignRole({
   }, [form.values.role_ids]);
 
   // Sort then filter
-  const sortedRoles = useMemo(() => sortRoles(availableRoles), [availableRoles]);
+  const sortedRoles = useMemo(
+    () => sortRoles(availableRoles),
+    [availableRoles],
+  );
 
   const filteredRoles = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -60,7 +70,10 @@ export default function StepAssignRole({
       : sortedRoles;
   }, [sortedRoles, searchQuery]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredRoles.length / ROLES_PER_PAGE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredRoles.length / ROLES_PER_PAGE),
+  );
   const safePage = Math.min(currentPage, totalPages);
   const displayedRoles = filteredRoles.slice(
     (safePage - 1) * ROLES_PER_PAGE,
@@ -77,7 +90,9 @@ export default function StepAssignRole({
   const selectedRoleNames = useMemo(
     () =>
       form.values.role_ids
-        .map((id) => availableRoles.find((r) => r.role_id.toString() === id)?.name)
+        .map(
+          (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name,
+        )
         .filter((n): n is string => Boolean(n)),
     [form.values.role_ids, availableRoles],
   );
@@ -89,28 +104,33 @@ export default function StepAssignRole({
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
-        Assign Role
+      <Text size="xl" fw={700} mb="md" c="#298925">
+        Configure Role Assignment
       </Text>
 
       {/* Card wrapper */}
       <Box
         p="lg"
+        w="100%"
         style={{
-          border: "1px solid #e0e0e0",
+          border: "1px solid #B8B8B8",
           borderRadius: "8px",
+          minWidth: 0,
         }}
       >
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">
-          Assign Role
+        <Text size="lg" fw={700} mb="xs" c="#298925">
+          Roles Assignment
         </Text>
 
-        <Text size="sm" fw={600} mb="md">
-          Roles
+        <Text size="sm" fw={700} c="gray.7" mb="sm">
+          Roles{" "}
+          <Text span c="red">
+            *
+          </Text>
         </Text>
 
-        <TextInput
-          placeholder="Search"
+        <SearchBar
+          placeholder="Search roles..."
           value={searchQuery}
           onChange={(e) => handleSearch(e.target.value)}
           mb="md"
@@ -128,6 +148,12 @@ export default function StepAssignRole({
             <Divider />
             <Skeleton height={24} my="sm" />
           </>
+        ) : availableRoles.length === 0 ? (
+          <EmptySearchState
+            icon={IconUserCog}
+            title="No roles available"
+            description="No roles have been created yet. Add roles before assigning them to users."
+          />
         ) : (
           <>
             {displayedRoles.length > 0 ? (
@@ -146,22 +172,21 @@ export default function StepAssignRole({
                               withArrow
                               multiline
                               w={260}
+                              events={
+                                isMobile
+                                  ? { hover: false, focus: false, touch: true }
+                                  : { hover: true, focus: false, touch: false }
+                              }
                             >
-                              <Box
-                                style={{
-                                  width: 16,
-                                  height: 16,
-                                  borderRadius: "50%",
-                                  backgroundColor: "#f59e0b",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  flexShrink: 0,
-                                  cursor: "default",
-                                }}
+                              <ThemeIcon
+                                size={18}
+                                radius="xl"
+                                color="yellow.6"
+                                variant="filled"
+                                style={{ flexShrink: 0, cursor: "default" }}
                               >
-                                <Text size="xs" fw={700} c="white" lh={1}>!</Text>
-                              </Box>
+                                <IconAlertTriangle size={11} stroke={2} />
+                              </ThemeIcon>
                             </Tooltip>
                           )}
                         </Group>
@@ -172,9 +197,7 @@ export default function StepAssignRole({
                 ))}
               </Checkbox.Group>
             ) : (
-              <Text size="sm" c="dimmed" mt="md">
-                No roles found{searchQuery && ` matching "${searchQuery}"`}
-              </Text>
+              <EmptySearchState />
             )}
 
             {totalPages > 1 && (
@@ -184,6 +207,7 @@ export default function StepAssignRole({
                 onChange={setCurrentPage}
                 size="sm"
                 mt="md"
+                color="#4EAE4A"
               />
             )}
 

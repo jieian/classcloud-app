@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   Alert,
   Button,
@@ -122,6 +123,15 @@ export default function AddStudentModal({
   const [lrn, setLrn] = useState("");
   const [lrnError, setLrnError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>({ tag: "input" });
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
   const [saving, setSaving] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -252,7 +262,6 @@ export default function AddStudentModal({
     if (isDirty) {
       modals.openConfirmModal({
         title: "Discard unsaved changes?",
-        centered: true,
         children: (
           <Text size="sm">
             You have unsaved changes. Are you sure you want to close?
@@ -264,6 +273,7 @@ export default function AddStudentModal({
           form.reset();
           onClose();
         },
+        ...confirmModalProps,
       });
     } else {
       onClose();
@@ -275,7 +285,6 @@ export default function AddStudentModal({
   function handleEnrollActive(student: LrnCheckStudent) {
     modals.openConfirmModal({
       title: "Add to roster?",
-      centered: true,
       children: (
         <Text size="sm">
           Add <strong>{student.full_name.toUpperCase()}</strong> to this class?
@@ -284,13 +293,13 @@ export default function AddStudentModal({
       labels: { confirm: "Add", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitAction("enroll", student.lrn),
+      ...confirmModalProps,
     });
   }
 
   function handleRestoreEnroll(student: LrnCheckStudent) {
     modals.openConfirmModal({
       title: "Restore & add to roster?",
-      centered: true,
       children: (
         <Text size="sm">
           This will restore the deleted record for{" "}
@@ -301,6 +310,7 @@ export default function AddStudentModal({
       labels: { confirm: "Restore & Add", cancel: "Cancel" },
       confirmProps: { color: "orange" },
       onConfirm: () => void submitAction("restore_enroll", student.lrn),
+      ...confirmModalProps,
     });
   }
 
@@ -319,7 +329,6 @@ export default function AddStudentModal({
 
     modals.openConfirmModal({
       title: "Move student to this class?",
-      centered: true,
       children: (
         <Stack gap="xs">
           <Text size="sm">
@@ -339,6 +348,7 @@ export default function AddStudentModal({
       labels: { confirm: "Move", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitAction("move", student.lrn),
+      ...confirmModalProps,
     });
   }
 
@@ -349,7 +359,6 @@ export default function AddStudentModal({
   ) {
     modals.openConfirmModal({
       title: "Send transfer request?",
-      centered: true,
       children: (
         <Stack gap="xs">
           <Text size="sm">
@@ -369,6 +378,7 @@ export default function AddStudentModal({
       labels: { confirm: "Send Request", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitTransferRequest(student, currentSection),
+      ...confirmModalProps,
     });
   }
 
@@ -419,7 +429,6 @@ export default function AddStudentModal({
         const studentDisplay = `${toTitleCase(form.values.last_name)}, ${toTitleCase(form.values.first_name)}`.toUpperCase();
         modals.openConfirmModal({
           title: "Save & send transfer request?",
-          centered: true,
           children: (
             <Stack gap="xs">
               <Text size="sm">
@@ -435,6 +444,7 @@ export default function AddStudentModal({
           labels: { confirm: "Save & Send Request", cancel: "Cancel" },
           confirmProps: { color: "#4EAE4A" },
           onConfirm: () => void submitEditAndRequest(phase),
+          ...confirmModalProps,
         });
         return;
       }
@@ -466,7 +476,6 @@ export default function AddStudentModal({
 
     modals.openConfirmModal({
       title: isDirectMove ? "Move student?" : "Add student?",
-      centered: true,
       children: (
         <Stack gap="xs">
           <Text size="sm">
@@ -500,6 +509,7 @@ export default function AddStudentModal({
       },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitForm(action),
+      ...confirmModalProps,
     });
   }
 

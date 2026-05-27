@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Alert,
   Box,
   Button,
   Center,
@@ -12,6 +13,7 @@ import {
   Progress,
   Text,
   TextInput,
+  ThemeIcon,
   Tooltip,
   ActionIcon,
   Skeleton,
@@ -20,6 +22,7 @@ import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import {
+  IconAlertTriangle,
   IconCheck,
   IconX,
   IconInfoCircle,
@@ -296,12 +299,47 @@ export default function EditUserDrawer({
       return;
     }
 
+    const removedRoles = user.roles.filter(
+      (r) => !form.values.role_ids.includes(r.role_id.toString()),
+    );
+    const hasCascade = removedRoles.some(
+      (r) =>
+        r.is_faculty ||
+        r.name === "Grade Subject Leader" ||
+        r.name === "Subject Coordinator",
+    );
+
     modals.openConfirmModal({
       title: "Confirm updates?",
       children: (
-        <Text size="sm">
-          Changes cannot be reverted. Are you sure you want to update this user?
-        </Text>
+        <>
+          <Text size="sm">
+            Changes cannot be reverted. Are you sure you want to update this user?
+          </Text>
+          {hasCascade && (
+            <Alert
+              variant="filled"
+              radius="md"
+              mt="sm"
+              styles={{
+                root: { backgroundColor: "#fae173" },
+                icon: { alignSelf: "center", marginTop: 0 },
+              }}
+              icon={
+                <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
+                  <IconAlertTriangle size={20} />
+                </ThemeIcon>
+              }
+            >
+              <Text fw={700} size="sm" c="#2A2A2A">
+                Role removal will affect existing assignments
+              </Text>
+              <Text size="sm" fs="italic" c="#2A2A2A">
+                Their related assignments (if any) will also be removed.
+              </Text>
+            </Alert>
+          )}
+        </>
       ),
       labels: { confirm: "Confirm", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
@@ -397,11 +435,12 @@ export default function EditUserDrawer({
       position="bottom"
       size="lg"
       overlayProps={{ backgroundOpacity: 0.5, blur: 4 }}
+      styles={{ body: { overflowY: "auto" } }}
     >
       <form>
         <Grid gutter="lg">
           {/* Column I: User Info */}
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <Text size="sm" fw={600} mb="md">
               User Information
             </Text>
@@ -487,7 +526,7 @@ export default function EditUserDrawer({
           </Grid.Col>
 
           {/* Column II: Password */}
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <Text size="sm" fw={600} mb="md">
               Password
             </Text>
@@ -539,7 +578,7 @@ export default function EditUserDrawer({
           </Grid.Col>
 
           {/* Column III: Roles */}
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <Text size="sm" fw={600} mb="md">
               Roles
             </Text>
@@ -565,22 +604,20 @@ export default function EditUserDrawer({
                             withArrow
                             multiline
                             w={260}
+                            events={isMobile
+                              ? { hover: false, focus: false, touch: true }
+                              : { hover: true, focus: false, touch: false }
+                            }
                           >
-                            <Box
-                              style={{
-                                width: 16,
-                                height: 16,
-                                borderRadius: "50%",
-                                backgroundColor: "#f59e0b",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                flexShrink: 0,
-                                cursor: "default",
-                              }}
+                            <ThemeIcon
+                              size={18}
+                              radius="xl"
+                              color="yellow.6"
+                              variant="filled"
+                              style={{ flexShrink: 0, cursor: "default" }}
                             >
-                              <Text size="xs" fw={700} c="white" lh={1}>!</Text>
-                            </Box>
+                              <IconAlertTriangle size={11} stroke={2} />
+                            </ThemeIcon>
                           </Tooltip>
                         )}
                       </Group>
@@ -594,26 +631,57 @@ export default function EditUserDrawer({
         </Grid>
 
         {/* Action Buttons */}
-        <Group justify="flex-end" mt="xl">
-          <Button variant="default" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => form.reset()}
-            disabled={!form.isDirty()}
+        {isMobile ? (
+          <div
+            style={{
+              position: "sticky",
+              bottom: 0,
+              backgroundColor: "#fff",
+              borderTop: "1px solid #e9ecef",
+              padding: "12px 0",
+              paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+              marginTop: "var(--mantine-spacing-xl)",
+            }}
           >
-            Revert Changes
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={!form.isDirty() || !form.isValid()}
-            loading={loading}
-            color="#4EAE4A"
-          >
-            Save
-          </Button>
-        </Group>
+            <Group justify="flex-end" wrap="nowrap">
+              <Button variant="default" onClick={handleClose}>Cancel</Button>
+              <Button
+                variant="outline"
+                onClick={() => form.reset()}
+                disabled={!form.isDirty()}
+              >
+                Revert
+              </Button>
+              <Button
+                onClick={handleSave}
+                disabled={!form.isDirty() || !form.isValid()}
+                loading={loading}
+                color="#4EAE4A"
+              >
+                Save
+              </Button>
+            </Group>
+          </div>
+        ) : (
+          <Group justify="flex-end" mt="xl">
+            <Button variant="default" onClick={handleClose}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={() => form.reset()}
+              disabled={!form.isDirty()}
+            >
+              Revert Changes
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!form.isDirty() || !form.isValid()}
+              loading={loading}
+              color="#4EAE4A"
+            >
+              Save
+            </Button>
+          </Group>
+        )}
       </form>
     </Drawer>
   );

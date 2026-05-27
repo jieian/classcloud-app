@@ -21,6 +21,7 @@ import StepAssignAdvisory from "./StepAssignAdvisory";
 import StepAssignGradeSection from "./StepAssignGradeSection";
 import StepAssignSubject from "./StepAssignSubject";
 import StepAssignCoordinator from "./StepAssignCoordinator";
+import StepAssignGSL from "./StepAssignGSL";
 import StepReview from "./StepReview";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import MobileStepIndicator from "@/components/MobileStepIndicator";
@@ -52,7 +53,7 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
       }
     : {};
 
-  const TOTAL_STEPS = isAddMode ? 5 : 4;
+  const TOTAL_STEPS = isAddMode ? 6 : 4;
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -75,6 +76,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
       selected_sections: currentSections,
       subject_assignments: currentSubjectAssignments,
       subject_group_id: null,
+      gsl_curriculum_subject_id: null,
+      gsl_grade_level_id: null,
     },
   });
 
@@ -219,6 +222,15 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         )
       : null;
 
+    const gslSlot = isAddMode && form.values.gsl_curriculum_subject_id !== null
+      ? initialData.gsl_data
+          .flatMap((g) => g.subjects)
+          .find((s) => s.curriculum_subject_id === form.values.gsl_curriculum_subject_id)
+      : null;
+    const gslGrade = gslSlot
+      ? initialData.gsl_data.find((g) => g.grade_level_id === gslSlot.grade_level_id)
+      : null;
+
     modals.openConfirmModal({
       title: isAddMode ? "Add Faculty?" : "Save Changes?",
       children: (
@@ -230,6 +242,9 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
               <strong>{totalSubjects} subject(s)</strong>
               {form.values.advisory_section_id ? ", an advisory class" : ""}
               {coordinatorGroup ? `, and the Subject Coordinator role for ${coordinatorGroup.name}` : ""}
+              {gslSlot && gslGrade
+                ? `, and the Grade Subject Leader role for ${gslSlot.subject_name} in ${gslGrade.display_name}`
+                : ""}
               .
             </>
           ) : (
@@ -279,8 +294,14 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         faculty_id: facultyUid,
         advisory_section_id: form.values.advisory_section_id,
         subject_assignments: flatSubjectAssignments,
-        // Only pass subject_group_id in add mode (undefined omits it in edit mode)
-        ...(isAddMode ? { subject_group_id: form.values.subject_group_id } : {}),
+        // Only pass coordinator + GSL fields in add mode (undefined omits them in edit mode)
+        ...(isAddMode
+          ? {
+              subject_group_id: form.values.subject_group_id,
+              gsl_curriculum_subject_id: form.values.gsl_curriculum_subject_id,
+              gsl_grade_level_id: form.values.gsl_grade_level_id,
+            }
+          : {}),
       });
 
       notify({
@@ -362,6 +383,7 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     gradeLevels: initialData.grade_levels,
     sections: initialData.sections,
     subjectsByGradeLevel: initialData.subjects_by_grade_level,
+    gslData: initialData.gsl_data,
   };
 
   const stepContent = (() => {
@@ -399,9 +421,9 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
         );
       case 3:
         return isAddMode ? (
-          <StepAssignCoordinator
+          <StepAssignGSL
             form={form}
-            coordinatorGroups={initialData.coordinator_groups}
+            gslData={initialData.gsl_data}
             facultyUid={facultyUid}
           />
         ) : (
@@ -412,13 +434,21 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
           />
         );
       case 4:
-        return (
+        return isAddMode ? (
+          <StepAssignCoordinator
+            form={form}
+            coordinatorGroups={initialData.coordinator_groups}
+            facultyUid={facultyUid}
+          />
+        ) : null;
+      case 5:
+        return isAddMode ? (
           <StepReview
             {...reviewProps}
             isAddMode={true}
             coordinatorGroups={initialData.coordinator_groups}
           />
-        );
+        ) : null;
       default:
         return null;
     }
@@ -428,7 +458,9 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     { description: "Advisory Class" },
     { description: "Grade & Section" },
     { description: "Assign Subjects" },
-    ...(isAddMode ? [{ description: "Subject Coordinator" }] : []),
+    ...(isAddMode
+      ? [{ description: "Grade Subject Leader" }, { description: "Subject Coordinator" }]
+      : []),
     { description: isAddMode ? "Review & Confirm" : "Review & Save" },
   ];
 
@@ -442,6 +474,7 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
       primaryLabel={isFinalStep ? "Assign Teaching Load" : "Next"}
       primaryDisabled={isFinalStep ? !initialData.active_sy_id : false}
       primaryLoading={isFinalStep ? submitting : false}
+      stickyMobile
     />
   );
 
@@ -470,10 +503,13 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
               <Stepper.Step label="Step 2" description="Grade & Section" />
               <Stepper.Step label="Step 3" description="Assign Subjects" />
               {isAddMode && (
-                <Stepper.Step label="Step 4" description="Subject Coordinator" />
+                <Stepper.Step label="Step 4" description="Grade Subject Leader" />
+              )}
+              {isAddMode && (
+                <Stepper.Step label="Step 5" description="Subject Coordinator" />
               )}
               <Stepper.Step
-                label={isAddMode ? "Step 5" : "Step 4"}
+                label={isAddMode ? "Step 6" : "Step 4"}
                 description={isAddMode ? "Review & Confirm" : "Review & Save"}
               />
             </Stepper>

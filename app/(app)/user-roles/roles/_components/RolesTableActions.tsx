@@ -36,7 +36,6 @@ export default function RolesTableActions({
   const [checking, setChecking] = useState(false);
   const [affectedCounts, setAffectedCounts] = useState<{ active: number; pending: number } | null>(null);
 
-  const isAdmin = role.role_id === 1;
   const isProtectedRole = role.is_protected;
 
   const handleTrashClick = async () => {
@@ -91,9 +90,9 @@ export default function RolesTableActions({
   return (
     <>
       <Group gap={0} justify="flex-end">
-        {isAdmin ? (
+        {isProtectedRole ? (
           <Tooltip
-            label="The Administrator role is locked and cannot be modified"
+            label="This role is protected and cannot be edited."
             events={{ hover: true, touch: true, focus: true }}
           >
             <ActionIcon variant="subtle" color="gray" aria-label="Locked role">
@@ -116,11 +115,7 @@ export default function RolesTableActions({
               </ActionIcon>
             </Tooltip>
             <Tooltip
-              label={
-                isProtectedRole
-                  ? "This is a protected role and cannot be deleted"
-                  : "Delete Role"
-              }
+              label="Delete Role"
               events={{ hover: true, touch: true, focus: true }}
             >
               <ActionIcon
@@ -129,7 +124,6 @@ export default function RolesTableActions({
                 aria-label={`Delete ${role.name}`}
                 onClick={handleTrashClick}
                 loading={checking}
-                disabled={isProtectedRole}
               >
                 <IconTrash size={16} stroke={1.5} />
               </ActionIcon>

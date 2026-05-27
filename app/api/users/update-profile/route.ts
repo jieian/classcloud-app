@@ -35,7 +35,7 @@ const _PATCH = async function (request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 4. Update profile + roles atomically (RPC returns old values for audit)
+  // 4. Update profile + roles + cascade assignment cleanup atomically via RPC
   const { data: result, error: rpcError } = await adminClient.rpc(
     "update_user_atomic",
     {

@@ -12,6 +12,7 @@ import StepAcademicPeriod from "./StepAcademicPeriod";
 import StepSelectCurriculum from "./StepSelectCurriculum";
 import StepDefineClasses from "./StepDefineClasses";
 import StepFacultyAssignment from "./StepFacultyAssignment";
+import StepGradeSubjectLeaders from "./StepGradeSubjectLeaders";
 import StepSubjectCoordinators from "./StepSubjectCoordinators";
 import StepReviewCreate from "./StepReviewCreate";
 import MobileStepIndicator from "@/components/MobileStepIndicator";
@@ -20,12 +21,15 @@ import type {
   CreateSchoolYearForm,
   CreateSchoolYearFullPayload,
   FacultyCellKey,
+  GslDraftMap,
   PreviousSySnapshot,
   QuarterCount,
   WizardCurriculumDetail,
+  WizardFacultyOption,
   WizardInitialData,
 } from "../_lib/types";
 import { fetchPreviousSySnapshot, fetchWizardCurriculumDetail } from "../_lib/wizardService";
+import { fetchActiveUsersWithRoles } from "@/app/(app)/user-roles/users/_lib";
 
 interface CreateSchoolYearWizardProps {
   initialData: WizardInitialData;
@@ -54,11 +58,27 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
   const snapshotRef = useRef<PreviousSySnapshot | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 
+  // ── Faculty list — fetched client-side on mount to bypass server cache ────────
+  const [faculty, setFaculty] = useState<WizardFacultyOption[]>(initialData.faculty);
+  useEffect(() => {
+    fetchActiveUsersWithRoles().then((users) =>
+      setFaculty(
+        users
+          .map((u) => ({ uid: u.uid, first_name: u.first_name, last_name: u.last_name }))
+          .sort((a, b) => a.first_name.localeCompare(b.first_name) || a.last_name.localeCompare(b.last_name))
+      )
+    ).catch(() => {/* keep faculty on error */});
+  }, []);
+
   // ── Faculty draft (Step 4) — Map avoids O(n) re-renders per cell ───────────
   const [facultyDraft, setFacultyDraft] = useState<Map<FacultyCellKey, string | null>>(new Map());
   const [extraFacultyNames, setExtraFacultyNames] = useState<Map<string, string>>(new Map());
 
-  // ── Coordinator draft (Step 5) ──────────────────────────────────────────────
+  // ── GSL draft (Step 5) ──────────────────────────────────────────────────────
+  const [gslDraft, setGslDraft] = useState<GslDraftMap>(new Map());
+  const [extraGslNames, setExtraGslNames] = useState<Map<string, string>>(new Map());
+
+  // ── Coordinator draft (Step 6) ──────────────────────────────────────────────
   const [coordinatorDraft, setCoordinatorDraft] = useState<CoordinatorDraftMap>(new Map());
   const [extraCoordinatorNames, setExtraCoordinatorNames] = useState<Map<string, string>>(new Map());
 
@@ -75,12 +95,13 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       step3Mode: initialData.prevSy ? null : "scratch",
       step4Mode: initialData.prevSy ? null : "scratch",
       step5Mode: initialData.prevSy ? null : "scratch",
+      step6Mode: initialData.prevSy ? null : "scratch",
       activeStep: 0,
     },
   });
 
   const isDirty =
-    form.isDirty() || facultyDraft.size > 0 || coordinatorDraft.size > 0;
+    form.isDirty() || facultyDraft.size > 0 || gslDraft.size > 0 || coordinatorDraft.size > 0;
 
   // ── Load curriculum detail when curriculum_id changes ──────────────────────
   const prevCurriculumIdRef = useRef<number | null>(null);
@@ -95,9 +116,12 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         step3Mode: initialData.prevSy ? null : "scratch",
         step4Mode: initialData.prevSy ? null : "scratch",
         step5Mode: initialData.prevSy ? null : "scratch",
+        step6Mode: initialData.prevSy ? null : "scratch",
       });
       setFacultyDraft(new Map());
       setExtraFacultyNames(new Map());
+      setGslDraft(new Map());
+      setExtraGslNames(new Map());
       setCoordinatorDraft(new Map());
       setExtraCoordinatorNames(new Map());
     }
@@ -349,6 +373,32 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         notify({
           type: "error",
           title: "No Setup Mode Selected",
+          message: "Please choose how to assign grade subject leaders — start fresh or replicate from the previous school year.",
+        });
+        return false;
+      }
+      for (const gl of curriculumDetail.grade_levels) {
+        for (const sub of gl.subjects) {
+          const key = `gsl:${gl.grade_level_id}:${sub.curriculum_subject_id}`;
+          if (!gslDraft.get(key)) {
+            notify({
+              type: "error",
+              title: "Incomplete Assignments",
+              message: "All subjects must have a grade subject leader assigned before proceeding.",
+            });
+            return false;
+          }
+        }
+      }
+      return true;
+    }
+
+    if (step === 5) {
+      if (!curriculumDetail) return false;
+      if (initialData.prevSy && form.values.step6Mode === null) {
+        notify({
+          type: "error",
+          title: "No Setup Mode Selected",
           message: "Please choose how to assign coordinators — start fresh or replicate from the previous school year.",
         });
         return false;
@@ -495,6 +545,16 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       coordinators: Array.from(coordinatorDraft.entries())
         .filter(([, uid]) => uid !== null)
         .map(([sgId, uid]) => ({ subject_group_id: sgId, user_id: uid! })),
+      grade_subject_leaders: Array.from(gslDraft.entries())
+        .filter(([, uid]) => uid !== null)
+        .map(([key, uid]) => {
+          const [, glId, csId] = key.split(":");
+          return {
+            grade_level_id: parseInt(glId, 10),
+            curriculum_subject_id: parseInt(csId, 10),
+            user_id: uid!,
+          };
+        }),
     };
 
     try {
@@ -525,6 +585,8 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       form.reset();
       setFacultyDraft(new Map());
       setExtraFacultyNames(new Map());
+      setGslDraft(new Map());
+      setExtraGslNames(new Map());
       setCoordinatorDraft(new Map());
       setExtraCoordinatorNames(new Map());
       router.replace("/school/year");
@@ -570,7 +632,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         <StepFacultyAssignment
           form={form}
           curriculumDetail={curriculumDetail}
-          faculty={initialData.faculty}
+          faculty={faculty}
           prevSy={initialData.prevSy}
           snapshot={snapshotRef.current}
           snapshotLoading={snapshotLoading}
@@ -584,10 +646,25 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         />
       )}
       {form.values.activeStep === 4 && curriculumDetail && (
+        <StepGradeSubjectLeaders
+          form={form}
+          curriculumDetail={curriculumDetail}
+          faculty={faculty}
+          prevSy={initialData.prevSy}
+          snapshot={snapshotRef.current}
+          snapshotLoading={snapshotLoading}
+          onSnapshotNeeded={loadSnapshot}
+          gslDraft={gslDraft}
+          setGslDraft={setGslDraft}
+          extraGslNames={extraGslNames}
+          setExtraGslNames={setExtraGslNames}
+        />
+      )}
+      {form.values.activeStep === 5 && curriculumDetail && (
         <StepSubjectCoordinators
           form={form}
           curriculumDetail={curriculumDetail}
-          faculty={initialData.faculty}
+          faculty={faculty}
           prevSy={initialData.prevSy}
           snapshot={snapshotRef.current}
           snapshotLoading={snapshotLoading}
@@ -598,22 +675,24 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           setExtraCoordinatorNames={setExtraCoordinatorNames}
         />
       )}
-      {form.values.activeStep === 5 && curriculumDetail && (
+      {form.values.activeStep === 6 && curriculumDetail && (
         <StepReviewCreate
           form={form}
           curriculumDetail={curriculumDetail}
-          faculty={initialData.faculty}
+          faculty={faculty}
           facultyDraft={facultyDraft}
           coordinatorDraft={coordinatorDraft}
+          gslDraft={gslDraft}
           extraFacultyNames={extraFacultyNames}
           extraCoordinatorNames={extraCoordinatorNames}
+          extraGslNames={extraGslNames}
           submitError={submitError}
         />
       )}
     </>
   );
 
-  const isLastStep = form.values.activeStep === 5;
+  const isLastStep = form.values.activeStep === 6;
 
   const navButtons = (
     <WizardNavigationButtons
@@ -624,6 +703,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
       onPrimary={isLastStep ? handleCreate : nextStep}
       primaryLabel={isLastStep ? "Create School Year" : "Next"}
       primaryLoading={isLastStep ? submitting : checkingYear}
+      stickyMobile
     />
   );
 
@@ -632,8 +712,9 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     { label: "Step 2", description: "Select Curriculum" },
     { label: "Step 3", description: "Define Classes" },
     { label: "Step 4", description: "Faculty Assignment" },
-    { label: "Step 5", description: "Subject Coordinators" },
-    { label: "Step 6", description: "Review & Create" },
+    { label: "Step 5", description: "Grade Subject Leaders" },
+    { label: "Step 6", description: "Subject Coordinators" },
+    { label: "Step 7", description: "Review & Create" },
   ];
 
   return (

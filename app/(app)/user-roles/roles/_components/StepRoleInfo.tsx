@@ -45,18 +45,20 @@ function SwitchLabel({ label, tooltip }: { label: string; tooltip: string }) {
 export default function StepRoleInfo({ form }: StepRoleInfoProps) {
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Specify Role Information and Configuration
       </Text>
 
       <Box
         p="lg"
+        w="100%"
         style={{
-          border: "1px solid #e0e0e0",
+          border: "1px solid #B8B8B8",
           borderRadius: "8px",
+          minWidth: 0,
         }}
       >
-        <Text size="md" fw={700} mb="xs" c="#4EAE4A">
+        <Text size="lg" fw={700} mb="xs" c="#298925">
           Role Information
         </Text>
 
@@ -77,7 +79,7 @@ export default function StepRoleInfo({ form }: StepRoleInfoProps) {
           mb="xl"
         />
 
-        <Text size="md" fw={700} mb="xs" c="#4EAE4A">
+        <Text size="lg" fw={700} mb="xs" c="#298925">
           Role Configuration
         </Text>
         <Text size="sm" c="#808898" mb="md">

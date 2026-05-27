@@ -1278,6 +1278,7 @@ export default function CreateExamPage() {
       primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
       primaryDisabled={false}
       primaryLoading={isFinalStep ? saving : false}
+      stickyMobile
     />
   );
 
@@ -1296,7 +1297,7 @@ export default function CreateExamPage() {
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
         {isMobile ? (
           <>
-            <Stack gap="md" pb={80}>
+            <Stack gap="md">
               <MobileStepIndicator
                 activeStep={activeStep}
                 totalSteps={stepDescriptions.length}
@@ -1304,27 +1305,7 @@ export default function CreateExamPage() {
               />
               {stepContent[activeStep]()}
             </Stack>
-            <div style={{
-              position: 'fixed',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              backgroundColor: 'white',
-              borderTop: '1px solid #e5e7eb',
-              padding: '12px 16px',
-              zIndex: 200,
-            }}>
-              <WizardNavigationButtons
-                onCancel={handleCancel}
-                showPrevious={activeStep > 0}
-                onPrevious={prevStep}
-                onPrimary={isFinalStep ? handleConfirmFinalSave : handleNext}
-                primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
-                primaryDisabled={false}
-                primaryLoading={isFinalStep ? saving : false}
-                mt={0}
-              />
-            </div>
+            {navigationButtons}
           </>
         ) : (
           <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>

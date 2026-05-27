@@ -59,7 +59,7 @@ export interface WizardCurriculumDetail {
   subject_groups: WizardSubjectGroup[];
 }
 
-// ── Steps 4 & 5: Faculty and coordinator data ─────────────────────────────────
+// ── Steps 4, 5 & 6: Faculty, GSL and coordinator data ────────────────────────
 
 export interface WizardFacultyOption {
   uid: string;
@@ -70,6 +70,9 @@ export interface WizardFacultyOption {
 // Faculty draft — Map<FacultyCellKey, uid | null> stored outside Mantine form
 // Key formats: "adviser:{tempId}" | "subject:{tempId}:{csId}"
 export type FacultyCellKey = string;
+
+// GSL draft — Map<"gsl:{grade_level_id}:{curriculum_subject_id}", uid | null>
+export type GslDraftMap = Map<string, string | null>;
 
 // Coordinator draft — subject_group_id → faculty uid | null
 export type CoordinatorDraftMap = Map<number, string | null>;
@@ -92,8 +95,11 @@ export interface CreateSchoolYearForm {
   // Step 4
   step4Mode: "scratch" | "replicate" | null;
 
-  // Step 5
+  // Step 5 (Grade Subject Leaders)
   step5Mode: "scratch" | "replicate" | null;
+
+  // Step 6 (Subject Coordinators)
+  step6Mode: "scratch" | "replicate" | null;
 
   // Wizard progress
   activeStep: number;
@@ -122,12 +128,20 @@ export interface PrevSyCoordinator {
   user_id: string;
 }
 
+export interface PrevSyGsl {
+  curriculum_subject_id: number;
+  subject_id: number; // for cross-curriculum matching
+  grade_level_id: number;
+  user_id: string;
+}
+
 export interface PreviousSySnapshot {
   sy_id: number;
   curriculum_id: number | null;
   sections: PrevSySection[];
   assignments: PrevSyAssignment[];
   coordinators: PrevSyCoordinator[];
+  gsl_assignments: PrevSyGsl[];
 }
 
 // ── Server prefetch shape (passed from page.tsx to wizard) ────────────────────
@@ -162,6 +176,12 @@ export interface RpcCoordinatorPayload {
   user_id: string;
 }
 
+export interface RpcGslPayload {
+  curriculum_subject_id: number;
+  grade_level_id: number;
+  user_id: string;
+}
+
 export interface CreateSchoolYearFullPayload {
   start_year: number;
   end_year: number;
@@ -169,4 +189,5 @@ export interface CreateSchoolYearFullPayload {
   num_quarters: number;
   sections: RpcSectionPayload[];
   coordinators: RpcCoordinatorPayload[];
+  grade_subject_leaders: RpcGslPayload[];
 }

@@ -16,7 +16,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconDots, IconPencil, IconSend, IconX } from "@tabler/icons-react";
@@ -40,6 +40,15 @@ export default function AdminInviteTableActions({
 }: AdminInviteTableActionsProps) {
   const [editOpened, { open: openEdit, close: closeEdit }] =
     useDisclosure(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   // Edit form state
   const [email, setEmail] = useState("");
@@ -189,6 +198,7 @@ export default function AdminInviteTableActions({
           setResending(false);
         }
       },
+      ...confirmModalProps,
     });
   };
 
@@ -230,6 +240,7 @@ export default function AdminInviteTableActions({
           setCancelling(false);
         }
       },
+      ...confirmModalProps,
     });
   };
 

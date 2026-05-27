@@ -1,6 +1,7 @@
 import type {
   FacultyCellKey,
   CoordinatorDraftMap,
+  GslDraftMap,
   PreviousSySnapshot,
   WizardCurriculumDetail,
   WizardSection,
@@ -107,7 +108,36 @@ export function replicateFacultyDraft(
 }
 
 /**
- * Step 5 replication — O(g) where g = new subject groups
+ * Step 5 (GSL) replication — O(g × s) where g = grade levels, s = subjects per grade
+ * Matches by subject_id for cross-curriculum compatibility.
+ * Pre-initialises every slot to null so the wizard knows which cells exist.
+ */
+export function replicateGslDraft(
+  snapshot: PreviousSySnapshot,
+  curriculumDetail: WizardCurriculumDetail
+): GslDraftMap {
+  // O(1) lookup: "subject_id:grade_level_id" → user_id from prev SY
+  const oldGslByKey = new Map(
+    snapshot.gsl_assignments.map((g) => [
+      `${g.subject_id}:${g.grade_level_id}`,
+      g.user_id,
+    ])
+  );
+
+  const draft: GslDraftMap = new Map();
+  for (const gl of curriculumDetail.grade_levels) {
+    for (const sub of gl.subjects) {
+      const draftKey = `gsl:${gl.grade_level_id}:${sub.curriculum_subject_id}`;
+      const userId =
+        oldGslByKey.get(`${sub.subject_id}:${gl.grade_level_id}`) ?? null;
+      draft.set(draftKey, userId);
+    }
+  }
+  return draft;
+}
+
+/**
+ * Step 6 replication — O(g) where g = new subject groups
  * Matches by subject group name (case-insensitive trim).
  */
 export function replicateCoordinatorDraft(

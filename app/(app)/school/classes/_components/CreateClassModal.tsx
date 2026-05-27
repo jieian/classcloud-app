@@ -14,6 +14,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
+import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconChevronDown, IconInfoCircle } from "@tabler/icons-react";
@@ -46,6 +47,15 @@ export default function CreateClassModal({
   const [gradeLevelsExpanded, setGradeLevelsExpanded] = useState(false);
   const [checking, setChecking] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const form = useForm({
     initialValues: {
@@ -141,7 +151,6 @@ export default function CreateClassModal({
 
     modals.openConfirmModal({
       title: "Create Class?",
-      centered: true,
       children: (
         <Text size="sm">
           This will create a <strong>{sectionTypeLabel}</strong> class named{" "}
@@ -151,6 +160,7 @@ export default function CreateClassModal({
       labels: { confirm: "Create", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: submitForm,
+      ...confirmModalProps,
     });
   }
 

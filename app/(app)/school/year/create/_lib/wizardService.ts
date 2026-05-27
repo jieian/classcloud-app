@@ -153,30 +153,24 @@ export async function fetchWizardCurriculumDetail(
 export async function fetchWizardFaculty(): Promise<WizardFacultyOption[]> {
   const supabase = getSupabase();
 
-  // Get all active users with at least one faculty role
+  // All active, non-deleted users — no role filter so newly added users are immediately assignable
   const { data, error } = await supabase
     .from("users")
-    .select(
-      "uid, first_name, last_name, user_roles!inner(roles!inner(is_faculty))"
-    )
+    .select("uid, first_name, last_name")
     .eq("active_status", 1)
-    .is("deleted_at", null)
-    .eq("user_roles.roles.is_faculty", true);
+    .is("deleted_at", null);
 
   if (error) throw new Error(error.message);
 
-  // De-duplicate (a user could have multiple faculty roles)
-  const seen = new Set<string>();
-  const result: WizardFacultyOption[] = [];
-  for (const row of data ?? []) {
-    const r = row as any;
-    if (seen.has(r.uid)) continue;
-    seen.add(r.uid);
-    result.push({ uid: r.uid, first_name: r.first_name, last_name: r.last_name });
-  }
-  return result.sort((a, b) =>
-    a.first_name.localeCompare(b.first_name) || a.last_name.localeCompare(b.last_name)
-  );
+  return (data ?? [])
+    .map((r: { uid: string; first_name: string; last_name: string }) => ({
+      uid: r.uid,
+      first_name: r.first_name,
+      last_name: r.last_name,
+    }))
+    .sort((a: WizardFacultyOption, b: WizardFacultyOption) =>
+      a.first_name.localeCompare(b.first_name) || a.last_name.localeCompare(b.last_name)
+    );
 }
 
 // ── Previous SY snapshot (for "Replicate" mode) ───────────────────────────────
@@ -218,11 +212,12 @@ export async function fetchPreviousSySnapshot(
       sections: [],
       assignments: [],
       coordinators: [],
+      gsl_assignments: [],
     };
   }
 
-  // Round 2: assignments + coordinators in parallel
-  const [assignmentsRes, coordinatorsRes, syRes] = await Promise.all([
+  // Round 2: assignments + coordinators + GSLs in parallel
+  const [assignmentsRes, coordinatorsRes, gslRes, syRes] = await Promise.all([
     supabase
       .from("teacher_class_assignments")
       .select(
@@ -240,6 +235,14 @@ export async function fetchPreviousSySnapshot(
       .is("deleted_at", null),
 
     supabase
+      .from("grade_subject_leaders")
+      .select(
+        "curriculum_subject_id, grade_level_id, user_id, curriculum_subjects!inner(subject_id)"
+      )
+      .eq("sy_id", prevSyId)
+      .is("deleted_at", null),
+
+    supabase
       .from("school_years")
       .select("curriculum_id")
       .eq("sy_id", prevSyId)
@@ -248,6 +251,7 @@ export async function fetchPreviousSySnapshot(
 
   if (assignmentsRes.error) throw new Error(assignmentsRes.error.message);
   if (coordinatorsRes.error) throw new Error(coordinatorsRes.error.message);
+  if (gslRes.error) throw new Error(gslRes.error.message);
 
   const assignments = (assignmentsRes.data ?? []).map((a: any) => ({
     section_id: a.section_id as number,
@@ -262,11 +266,19 @@ export async function fetchPreviousSySnapshot(
     user_id: c.user_id as string,
   }));
 
+  const gsl_assignments = (gslRes.data ?? []).map((g: any) => ({
+    curriculum_subject_id: g.curriculum_subject_id as number,
+    subject_id: g.curriculum_subjects.subject_id as number,
+    grade_level_id: g.grade_level_id as number,
+    user_id: g.user_id as string,
+  }));
+
   return {
     sy_id: prevSyId,
     curriculum_id: (syRes.data as any)?.curriculum_id ?? null,
     sections,
     assignments,
     coordinators,
+    gsl_assignments,
   };
 }

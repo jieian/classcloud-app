@@ -26,6 +26,12 @@ const CoordinatorSchema = z.object({
   user_id: z.string().uuid(),
 });
 
+const GslAssignmentSchema = z.object({
+  curriculum_subject_id: z.number().int().positive(),
+  grade_level_id: z.number().int().positive(),
+  user_id: z.string().uuid(),
+});
+
 const PayloadSchema = z.object({
   start_year: z.number().int().min(2026),
   end_year: z.number().int().min(2027),
@@ -33,6 +39,7 @@ const PayloadSchema = z.object({
   num_quarters: z.number().int().min(2).max(4),
   sections: z.array(SectionSchema).min(1),
   coordinators: z.array(CoordinatorSchema),
+  grade_subject_leaders: z.array(GslAssignmentSchema),
 });
 
 // ── Route handler ──────────────────────────────────────────────────────────────
@@ -69,7 +76,7 @@ const _POST = async function (request: Request) {
     );
   }
 
-  const { start_year, end_year, curriculum_id, num_quarters, sections, coordinators } =
+  const { start_year, end_year, curriculum_id, num_quarters, sections, coordinators, grade_subject_leaders } =
     parsed.data;
 
   // 4. Completeness guard — every section must have an adviser + all applicable subjects
@@ -107,6 +114,7 @@ const _POST = async function (request: Request) {
       p_num_quarters: num_quarters,
       p_sections: sections,
       p_coordinators: coordinators,
+      p_grade_subject_leaders: grade_subject_leaders,
     }
   );
 

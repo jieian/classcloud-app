@@ -130,13 +130,16 @@ export default function CreateRoleWizard() {
 
     if (form.values.activeStep === 0) {
       const validation = form.validate();
-      const step1HasErrors = validation.errors.name;
+      const nameError = validation.errors.name;
 
-      if (step1HasErrors) {
+      if (nameError) {
+        const isEmpty = !form.values.name.trim();
         notify({
           type: "error",
-          title: "Validation Error",
-          message: "Please fix all errors before proceeding.",
+          title: isEmpty ? "Missing Role Name" : "Invalid Role Name",
+          message: isEmpty
+            ? "Enter a role name to continue."
+            : "Fix the role name error before proceeding.",
         });
         return;
       }
@@ -178,8 +181,8 @@ export default function CreateRoleWizard() {
       if (validation.errors.permission_ids) {
         notify({
           type: "error",
-          title: "Validation Error",
-          message: "Please select at least one permission.",
+          title: "No Permissions Selected",
+          message: "Select at least one permission to continue.",
         });
         return;
       }
@@ -272,18 +275,6 @@ export default function CreateRoleWizard() {
     }
   };
 
-  const isNextDisabled = (() => {
-    if (form.values.activeStep === 0) {
-      const hasRequiredFields = form.values.name.trim() !== "";
-      const hasErrors = !!form.errors.name;
-      return !hasRequiredFields || hasErrors;
-    }
-    if (form.values.activeStep === 1) {
-      return form.values.permission_ids.length === 0;
-    }
-    return false;
-  })();
-
   const isMobile = useMediaQuery("(max-width: 768px)");
   const confirmModalProps = isMobile
     ? {
@@ -299,29 +290,9 @@ export default function CreateRoleWizard() {
     : {};
 
   const wizardSteps: VerticalWizardStep[] = [
-    {
-      label: "Step 1",
-      description: "Specify Role Information and Configuration",
-      content: <StepRoleInfo form={form} />,
-    },
-    {
-      label: "Step 2",
-      description: "Assign Permissions",
-      content: (
-        <StepAssignPerms
-          form={form}
-          availablePermissions={availablePermissions}
-          loadingPermissions={loadingPermissions}
-        />
-      ),
-    },
-    {
-      label: "Step 3",
-      description: "Review and Create Role",
-      content: (
-        <StepReview form={form} availablePermissions={availablePermissions} />
-      ),
-    },
+    { label: "Step 1", description: "Role Information and Configuration" },
+    { label: "Step 2", description: "Permissions Assignment" },
+    { label: "Step 3", description: "Review and Create" },
   ];
 
   const activeContent = (() => {
@@ -352,8 +323,8 @@ export default function CreateRoleWizard() {
         onPrevious={prevStep}
         onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateRole}
         primaryLabel={form.values.activeStep < 2 ? "Next" : "Create Role"}
-        primaryDisabled={form.values.activeStep < 2 ? isNextDisabled : false}
         primaryLoading={form.values.activeStep < 2 ? checkingName : loading}
+        stickyMobile
       />
     </Container>
   );

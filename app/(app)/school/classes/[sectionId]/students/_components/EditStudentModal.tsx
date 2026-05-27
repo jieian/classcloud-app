@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   ActionIcon,
   Button,
@@ -79,6 +80,15 @@ export default function EditStudentModal({
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [checkingLrn, setCheckingLrn] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const form = useForm<FormValues>({
     validateInputOnChange: true,
@@ -169,7 +179,6 @@ export default function EditStudentModal({
     if (form.isDirty()) {
       modals.openConfirmModal({
         title: "Discard unsaved changes?",
-        centered: true,
         children: (
           <Text size="sm">
             You have unsaved changes. Are you sure you want to close?
@@ -181,6 +190,7 @@ export default function EditStudentModal({
           form.reset();
           onClose();
         },
+        ...confirmModalProps,
       });
     } else {
       onClose();
@@ -220,7 +230,6 @@ export default function EditStudentModal({
 
     modals.openConfirmModal({
       title: "Save changes?",
-      centered: true,
       children: (
         <Text size="sm">
           Are you sure you want to update this student&apos;s information?
@@ -236,6 +245,7 @@ export default function EditStudentModal({
       labels: { confirm: "Save", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitForm(),
+      ...confirmModalProps,
     });
   };
 

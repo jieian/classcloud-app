@@ -23,6 +23,7 @@ import {
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconCheck, IconMailCheck, IconMailForward, IconX } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
+import MobileStepIndicator from "@/components/MobileStepIndicator";
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
 import classes from "@/components/loginPage/LoginPage.module.css";
@@ -575,22 +576,25 @@ export default function SignUpPage() {
                   </div>
 
                   {/* ── Step indicator ── */}
-                  <Stepper
-                    active={step}
-                    color="#4EAE4A"
-                    size="sm"
-                    mt="md"
-                    mb="xl"
-                  >
-                    <Stepper.Step
-                      label="Account"
-                      description="Email & password"
+                  <Box visibleFrom="sm">
+                    <Stepper
+                      active={step}
+                      color="#4EAE4A"
+                      size="sm"
+                      mt="md"
+                      mb="xl"
+                    >
+                      <Stepper.Step label="Email & Password" />
+                      <Stepper.Step label="Information & Roles" />
+                    </Stepper>
+                  </Box>
+                  <Box hiddenFrom="sm" mt="md" mb="xl">
+                    <MobileStepIndicator
+                      activeStep={step}
+                      totalSteps={2}
+                      stepDescription={step === 0 ? "Email & Password" : "Info & Roles"}
                     />
-                    <Stepper.Step
-                      label="Profile"
-                      description="Your info & roles"
-                    />
-                  </Stepper>
+                  </Box>
 
                   {/* ══════════════ STEP 1 ══════════════ */}
                   {step === 0 && (
@@ -645,7 +649,7 @@ export default function SignUpPage() {
                       />
 
                       {/* Password */}
-                      <SimpleGrid cols={2} mt="md" mb="xs">
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md" mb="xs">
                         <div>
                           <PasswordInput
                             label="Password"
@@ -659,20 +663,24 @@ export default function SignUpPage() {
                               input: classes.greenInputBorder,
                             }}
                           />
-                          <Group gap={5} grow mt="xs" mb={4}>
-                            {passwordBars}
-                          </Group>
-                          <PasswordRequirement
-                            label="Has at least 6 characters"
-                            meets={meetsLength}
-                          />
-                          {passwordRequirements.map((req, i) => (
-                            <PasswordRequirement
-                              key={i}
-                              label={req.label}
-                              meets={req.re.test(password)}
-                            />
-                          ))}
+                          {password.length > 0 && (
+                            <>
+                              <Group gap={5} grow mt="xs" mb={4}>
+                                {passwordBars}
+                              </Group>
+                              <PasswordRequirement
+                                label="Has at least 6 characters"
+                                meets={meetsLength}
+                              />
+                              {passwordRequirements.map((req, i) => (
+                                <PasswordRequirement
+                                  key={i}
+                                  label={req.label}
+                                  meets={req.re.test(password)}
+                                />
+                              ))}
+                            </>
+                          )}
                         </div>
 
                         <div>
@@ -740,7 +748,7 @@ export default function SignUpPage() {
                       <Text fw={600} c="#45903B" size="sm" mb="xs">
                         Demographic Profile
                       </Text>
-                      <SimpleGrid cols={3} mb="lg">
+                      <SimpleGrid cols={{ base: 1, sm: 3 }} mb={{ base: "sm", sm: "lg" }}>
                         <TextInput
                           label="First Name"
                           placeholder="Juan"
@@ -800,7 +808,7 @@ export default function SignUpPage() {
                           *
                         </Text>
                       </Text>
-                      <p className="mb-3 text-sm text-[#808898]">
+                      <p className="mb-2 text-sm text-[#808898]">
                         Select the role(s) you are requesting. Final role(s)
                         assignment is at the administrator's discretion.
                       </p>
@@ -842,7 +850,7 @@ export default function SignUpPage() {
                           return (
                             <>
                               <Box
-                                p="md"
+                                p={{ base: "xs", sm: "md" }}
                                 style={{
                                   border: rolesError
                                     ? "1px solid var(--mantine-color-red-5)"
@@ -946,7 +954,7 @@ export default function SignUpPage() {
 
                       <Turnstile
                         ref={turnstileRef}
-                        style={{ marginTop: "1.5rem" }}
+                        style={{ marginTop: "0.75rem" }}
                         siteKey={process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY!}
                         onSuccess={(token) => setTurnstileToken(token)}
                         onError={() => setTurnstileToken(null)}
@@ -954,7 +962,7 @@ export default function SignUpPage() {
                         options={{ appearance: "interaction-only", theme: "light" }}
                       />
 
-                      <Group justify="space-between" mt="lg">
+                      <Group justify="space-between" mt={{ base: "sm", sm: "lg" }}>
                         <Button
                           variant="default"
                           radius="md"

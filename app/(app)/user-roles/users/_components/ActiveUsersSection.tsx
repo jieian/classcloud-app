@@ -8,6 +8,8 @@ import {
   Button,
   Group,
   Select,
+  Text,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
 import { IconRefresh, IconList, IconAlertTriangle } from "@tabler/icons-react";
@@ -89,14 +91,26 @@ export function ActiveUsersSection() {
       </Group>
       {principalCount > 1 && (
         <Alert
-          icon={<IconAlertTriangle size={14} />}
-          color="yellow"
-          title="Multiple Principals Detected"
+          variant="filled"
+          radius="md"
           mb="md"
-          styles={{ title: { fontSize: "var(--mantine-font-size-sm)" }, message: { fontSize: "var(--mantine-font-size-xs)" } }}
+          styles={{
+            root: { backgroundColor: "#fae173" },
+            icon: { alignSelf: "center", marginTop: 0 },
+          }}
+          icon={
+            <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
+              <IconAlertTriangle size={20} />
+            </ThemeIcon>
+          }
         >
-          There are currently <strong>{principalCount} users</strong> with the{" "}
-          <strong>Principal</strong> role. Only one Principal is expected.
+          <Text fw={700} size="sm" c="#2A2A2A">
+            Multiple Principals Detected
+          </Text>
+          <Text size="sm" fs="italic" c="#2A2A2A">
+            There are currently <strong>{principalCount} users</strong> with the{" "}
+            <strong>Principal</strong> role. Only one Principal is expected.
+          </Text>
         </Alert>
       )}
       <UsersTableWrapper

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import BackButton from "@/components/BackButton";
 import {
   Accordion,
@@ -642,6 +643,15 @@ export default function TransferRequestsClient() {
 
   const canSeeIncoming = permissions.includes("students.full_access");
   const canSeeOutgoing = permissions.includes("students.limited_access");
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const [incoming, setIncoming] = useState<TransferRequestItem[]>([]);
   const [outgoing, setOutgoing] = useState<TransferRequestItem[]>([]);
@@ -712,7 +722,6 @@ export default function TransferRequestsClient() {
   function handleApprove(item: TransferRequestItem) {
     modals.openConfirmModal({
       title: "Approve transfer?",
-      centered: true,
       children: (
         <Stack gap="xs">
           <Text size="sm">
@@ -735,6 +744,7 @@ export default function TransferRequestsClient() {
       labels: { confirm: "Approve", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitApprove(item),
+      ...confirmModalProps,
     });
   }
 
@@ -850,7 +860,6 @@ export default function TransferRequestsClient() {
   function handleCancel(item: TransferRequestItem) {
     modals.openConfirmModal({
       title: "Cancel transfer request?",
-      centered: true,
       children: (
         <Text size="sm">
           Cancel the transfer request for{" "}
@@ -861,6 +870,7 @@ export default function TransferRequestsClient() {
       labels: { confirm: "Cancel Request", cancel: "Keep" },
       confirmProps: { color: "red" },
       onConfirm: () => void submitCancel(item),
+      ...confirmModalProps,
     });
   }
 

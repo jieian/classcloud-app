@@ -254,7 +254,7 @@ export function PermissionsPanel({
         </Text>
       ) : (
         <>
-          <Text size="md" fw={700} mb={4} c="#4EAE4A">
+          <Text size="lg" fw={700} mb="xs" c="#298925">
             Permissions{" "}
             <Text span c="red" fw={700}>
               *

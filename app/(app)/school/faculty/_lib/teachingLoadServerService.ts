@@ -6,6 +6,8 @@ import type {
   SubjectCoordinatorGroup,
   TeacherAssignment,
   SubjectForGradeLevel,
+  WizardGSLGrade,
+  WizardGSLSlot,
 } from "./teachingLoadService";
 
 export async function fetchWizardDataServer(
@@ -75,8 +77,8 @@ export async function fetchWizardDataServer(
 
   const sectionIds = sections.map((s) => s.section_id);
 
-  // Round 2: 3 parallel — assignments, curriculum_subjects, and (when add mode) coordinator groups
-  const [{ data: allAssignmentsRaw }, { data: csRaw }, { data: coordinatorGroupsRaw }] = await Promise.all([
+  // Round 2: 4 parallel — assignments, curriculum_subjects, coordinator groups, and (add mode) GSL data
+  const [{ data: allAssignmentsRaw }, { data: csRaw }, { data: coordinatorGroupsRaw }, { data: gslRaw }] = await Promise.all([
     sectionIds.length > 0
       ? supabase
           .from("teacher_class_assignments")
@@ -95,6 +97,9 @@ export async function fetchWizardDataServer(
       : Promise.resolve({ data: [] }),
     isAddMode
       ? adminClient.rpc("get_subject_coordinator_groups")
+      : Promise.resolve({ data: [] }),
+    isAddMode
+      ? adminClient.rpc("get_grade_subject_leader_data")
       : Promise.resolve({ data: [] }),
   ]);
 
@@ -143,6 +148,32 @@ export async function fetchWizardDataServer(
     subjects_by_grade_level: subjectsByGradeLevel,
     all_assignments: allAssignments,
     coordinator_groups: ((coordinatorGroupsRaw ?? []) as any[]) as SubjectCoordinatorGroup[],
+    gsl_data: (() => {
+      const gradeMap = new Map<number, WizardGSLGrade>();
+      for (const row of ((gslRaw ?? []) as any[])) {
+        let grade = gradeMap.get(row.grade_level_id);
+        if (!grade) {
+          grade = {
+            grade_level_id: row.grade_level_id,
+            level_number: row.level_number,
+            display_name: row.display_name,
+            subjects: [],
+          };
+          gradeMap.set(row.grade_level_id, grade);
+        }
+        grade.subjects.push({
+          curriculum_subject_id: row.curriculum_subject_id,
+          grade_level_id: row.grade_level_id,
+          subject_name: row.subject_name,
+          subject_type: row.subject_type as "BOTH" | "SSES",
+          leader_uid: row.leader_uid ?? null,
+          leader_name: row.leader_uid
+            ? `${row.leader_first_name} ${row.leader_last_name}`
+            : null,
+        } satisfies WizardGSLSlot);
+      }
+      return [...gradeMap.values()].sort((a, b) => a.level_number - b.level_number);
+    })(),
     current_advisory_section_id:
       sections.find((s) => s.adviser_id === facultyUid)?.section_id ?? null,
     current_teaching_assignments: (() => {

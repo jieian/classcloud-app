@@ -27,6 +27,7 @@ import type {
   SectionWithAdviser,
   SubjectCoordinatorGroup,
   SubjectForGradeLevel,
+  WizardGSLGrade,
 } from "../_lib/teachingLoadService";
 import SubjectBadge from "./SubjectBadge";
 import SubjectOverflowCard from "./SubjectOverflowCard";
@@ -39,6 +40,7 @@ interface StepReviewProps {
   subjectsByGradeLevel: SubjectForGradeLevel[];
   isAddMode: boolean;
   coordinatorGroups: SubjectCoordinatorGroup[];
+  gslData: WizardGSLGrade[];
 }
 
 const MAX_VISIBLE_SUBJECTS = 3;
@@ -287,6 +289,7 @@ export default function StepReview({
   subjectsByGradeLevel,
   isAddMode,
   coordinatorGroups,
+  gslData,
 }: StepReviewProps) {
   // O(1) lookup maps
   const sectionMap = useMemo(
@@ -352,6 +355,28 @@ export default function StepReview({
           ) ?? null)
         : null,
     [form.values.subject_group_id, coordinatorGroups],
+  );
+
+  // Selected GSL slot
+  const selectedGSLSlot = useMemo(() => {
+    if (!isAddMode || form.values.gsl_curriculum_subject_id === null) return null;
+    return (
+      gslData
+        .flatMap((g) => g.subjects)
+        .find(
+          (s) =>
+            s.curriculum_subject_id === form.values.gsl_curriculum_subject_id &&
+            s.grade_level_id === form.values.gsl_grade_level_id,
+        ) ?? null
+    );
+  }, [isAddMode, form.values.gsl_curriculum_subject_id, form.values.gsl_grade_level_id, gslData]);
+
+  const selectedGSLGrade = useMemo(
+    () =>
+      selectedGSLSlot
+        ? (gslData.find((g) => g.grade_level_id === selectedGSLSlot.grade_level_id) ?? null)
+        : null,
+    [selectedGSLSlot, gslData],
   );
 
   return (
@@ -496,6 +521,47 @@ export default function StepReview({
                     members={selectedGroup.members}
                   />
                 </div>
+              </>
+            )}
+          </Box>
+        )}
+
+        {/* Grade Subject Leader — add mode only */}
+        {isAddMode && (
+          <Box
+            p="lg"
+            mb="md"
+            style={{ border: "1px solid #B8B8B8", borderRadius: "10px" }}
+          >
+            <Text size="lg" fw={700} mb="md" c="#298925">
+              Grade Subject Leader
+            </Text>
+
+            {selectedGSLSlot === null ? (
+              <Text size="sm" c="dimmed" fs="italic">
+                No Grade Subject Leader Role assigned.
+              </Text>
+            ) : (
+              <>
+                <Text size="sm" fw={700} c="gray.7" mb={2}>
+                  Grade Level &amp; Subject
+                </Text>
+                <Group gap={6} wrap="nowrap" align="center">
+                  <Text size="sm">
+                    {selectedGSLGrade?.display_name ?? "—"} &bull;{" "}
+                    {selectedGSLSlot.subject_name}
+                  </Text>
+                  {selectedGSLSlot.subject_type === "SSES" && (
+                    <Badge
+                      size="xs"
+                      variant="filled"
+                      radius="xl"
+                      style={{ backgroundColor: "#70A2FF", color: "#fff" }}
+                    >
+                      SSES
+                    </Badge>
+                  )}
+                </Group>
               </>
             )}
           </Box>

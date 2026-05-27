@@ -8,8 +8,10 @@ import {
   useMemo,
 } from "react";
 import { Alert } from "@mantine/core";
+import { IconUserCog } from "@tabler/icons-react";
 import RolesTable from "./RolesTable";
 import RolesTableSkeleton from "./RolesTableSkeleton";
+import EmptySearchState from "@/components/EmptySearchState";
 import {
   fetchRolesWithPermissions,
   type RoleWithPermissions,
@@ -85,6 +87,40 @@ export default forwardRef<RolesTableWrapperRef, RolesTableWrapperProps>(
           {error}
         </Alert>
       );
+    }
+
+    if (roles.length === 0) {
+      return (
+        <EmptySearchState
+          icon={IconUserCog}
+          title="No roles available"
+          description="No roles have been created yet. Create a role to get started."
+        />
+      );
+    }
+
+    if (filteredRoles.length === 0) {
+      if (search.trim()) {
+        return <EmptySearchState />;
+      }
+      if (filter === "faculty") {
+        return (
+          <EmptySearchState
+            icon={IconUserCog}
+            title="No faculty roles"
+            description="There are no roles marked as faculty roles."
+          />
+        );
+      }
+      if (filter === "non-faculty") {
+        return (
+          <EmptySearchState
+            icon={IconUserCog}
+            title="No non-faculty roles"
+            description="There are no roles marked as non-faculty roles."
+          />
+        );
+      }
     }
 
     return <RolesTable roles={filteredRoles} onUpdate={loadRoles} />;

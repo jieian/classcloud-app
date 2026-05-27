@@ -11,9 +11,11 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { Alert, Group, Pagination } from "@mantine/core";
+import { IconUserOff } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
 import UsersTable from "./UsersTable";
 import UsersTableSkeleton from "./UsersTableSkeleton";
+import EmptySearchState from "../../../../../components/EmptySearchState";
 import { fetchActiveUsersWithRoles, type UserWithRoles } from "../_lib";
 
 const PAGE_SIZE = 10;
@@ -249,6 +251,37 @@ export default forwardRef<UsersTableWrapperRef, UsersTableWrapperProps>(
         <Alert color="red" title="Error">
           {error}
         </Alert>
+      );
+    }
+
+    if (filteredAndSorted.length === 0) {
+      if (search.trim()) {
+        return <EmptySearchState />;
+      }
+      if (filter === "faculty") {
+        return (
+          <EmptySearchState
+            icon={IconUserOff}
+            title="No faculty users"
+            description="There are no active users with a faculty role."
+          />
+        );
+      }
+      if (filter === "non-faculty") {
+        return (
+          <EmptySearchState
+            icon={IconUserOff}
+            title="No non-faculty users"
+            description="There are no active users with a non-faculty role."
+          />
+        );
+      }
+      return (
+        <EmptySearchState
+          icon={IconUserOff}
+          title="No active users"
+          description="There are no active users yet."
+        />
       );
     }
 

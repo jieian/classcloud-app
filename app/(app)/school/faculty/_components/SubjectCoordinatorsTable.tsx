@@ -277,7 +277,7 @@ export default function SubjectCoordinatorsTable({
               <Tooltip label="No coordinator assigned" withArrow position="top">
                 <IconAlertTriangle
                   size={14}
-                  color="#EF4444"
+                  color="#c4a827"
                   style={{ flexShrink: 0 }}
                 />
               </Tooltip>

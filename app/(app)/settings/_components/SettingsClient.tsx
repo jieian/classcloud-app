@@ -71,6 +71,15 @@ const NAME_REGEX = /^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/;
 export default function SettingsClient() {
   const { refreshUserName } = useAuth();
   const isMobile = useMediaQuery("(max-width: 640px)");
+  const isMobileModal = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobileModal
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -191,7 +200,6 @@ export default function SettingsClient() {
     if (formIsDirty) {
       modals.openConfirmModal({
         title: "Discard changes?",
-        centered: true,
         children: (
           <Text size="sm">
             Are you sure you want to discard your unsaved changes?
@@ -203,6 +211,7 @@ export default function SettingsClient() {
           form.reset();
           setEditModalOpened(false);
         },
+        ...confirmModalProps,
       });
     } else {
       form.reset();

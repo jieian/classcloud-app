@@ -94,7 +94,7 @@ export default function SchoolYearSection() {
             radius="md"
             size={isMobile ? "sm" : "sm"}
             px={isMobile ? "md" : undefined}
-            disabled={!canCreate.allowed}
+            // disabled={!canCreate.allowed}
             onClick={() => router.push("/school/year/create")}
             style={isMobile ? { flexShrink: 0 } : undefined}
           >

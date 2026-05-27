@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   ActionIcon,
   Alert,
@@ -540,6 +541,15 @@ export default function ImportRosterModal({
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<ReviewRow[]>([]);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
   const [editingRowNum, setEditingRowNum] = useState<number | null>(null);
   const [results, setResults] = useState<ImportResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -727,7 +737,6 @@ export default function ImportRosterModal({
     if (step === "review" || step === "reviewing") {
       modals.openConfirmModal({
         title: "Discard import?",
-        centered: true,
         children: (
           <Text size="sm">
             The review data will be lost. Are you sure you want to close?
@@ -736,6 +745,7 @@ export default function ImportRosterModal({
         labels: { confirm: "Discard", cancel: "Keep reviewing" },
         confirmProps: { color: "red" },
         onConfirm: onClose,
+        ...confirmModalProps,
       });
       return;
     }

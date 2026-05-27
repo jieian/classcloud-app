@@ -817,7 +817,7 @@ function FacultyGrid({
           assignmentLabel={pickerState?.assignmentLabel ?? ""}
           assignedAdviserUids={assignedAdviserUids}
           teachingLoadByTeacher={masterlistTeachingLoad}
-          filterAdvisers={hasPrevSy}
+          filterAdvisers={false}
           onClose={() => setPickerState(null)}
           onAssign={(uid, name) => {
             if (!pickerState) return;

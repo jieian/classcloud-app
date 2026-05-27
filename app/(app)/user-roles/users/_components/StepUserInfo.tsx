@@ -91,29 +91,31 @@ export default function StepUserInfo({
 
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#298925">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Specify User Information
       </Text>
 
       {/* Card wrapper */}
       <Box
         p="lg"
+        w="100%"
         style={{
           border: "1px solid #B8B8B8",
           borderRadius: "8px",
+          minWidth: 0,
         }}
       >
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">
+        <Text size="lg" fw={700} mb="xs" c="#298925">
           User Information
         </Text>
 
         {/* Demographic Profile */}
-        <Text size="sm" fw={600} mb="md">
+        <Text size="sm" fw={700} c="gray.7" mb="sm">
           Demographic Profile
         </Text>
 
-        <Grid gutter="md">
-          <Grid.Col span={4}>
+        <Grid gutter="md" mb="lg">
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput
               label="First Name"
               placeholder="First Name"
@@ -131,7 +133,7 @@ export default function StepUserInfo({
             />
           </Grid.Col>
 
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput
               label="Middle Name"
               placeholder="Optional"
@@ -151,7 +153,7 @@ export default function StepUserInfo({
             />
           </Grid.Col>
 
-          <Grid.Col span={4}>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
             <TextInput
               label="Last Name"
               placeholder="Last Name"
@@ -171,7 +173,7 @@ export default function StepUserInfo({
         </Grid>
 
         {/* Account Information */}
-        <Text size="sm" fw={600} mt="xl" mb="md">
+        <Text size="sm" fw={700} c="gray.7" mb="sm">
           Account Information
         </Text>
 

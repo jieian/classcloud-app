@@ -22,27 +22,23 @@ import {
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconRefresh, IconUser } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import EmptySearchState from "@/components/EmptySearchState";
-import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
-  fetchCoordinatorCandidates,
-  assignSubjectCoordinator,
+  fetchFaculty,
+  assignGradeSubjectLeader,
   type FacultyMember,
+  type SubjectLeaderEntry,
 } from "../_lib/facultyService";
 
 const PAGE_SIZE = 5;
 
-interface EditCoordinatorModalProps {
+interface EditGradeSubjectLeaderModalProps {
   opened: boolean;
-  subjectGroupId: number;
-  subjectGroupName: string;
-  currentCoordinator: {
-    uid: string;
-    first_name: string;
-    last_name: string;
-  } | null;
+  entry: SubjectLeaderEntry | null;
+  assignedLeaderUids: Set<string>;
   onClose: () => void;
   onAssigned: () => Promise<void> | void;
 }
@@ -56,12 +52,7 @@ function TableSkeleton() {
           <Skeleton height={20} width={160} radius="sm" />
         </TableTd>
         <TableTd w={120} ta="right">
-          <Skeleton
-            height={28}
-            width={64}
-            radius="md"
-            style={{ marginLeft: "auto" }}
-          />
+          <Skeleton height={28} width={64} radius="md" style={{ marginLeft: "auto" }} />
         </TableTd>
       </TableTr>
     ));
@@ -79,14 +70,13 @@ function TableSkeleton() {
   );
 }
 
-export default function EditCoordinatorModal({
+export default function EditGradeSubjectLeaderModal({
   opened,
-  subjectGroupId,
-  subjectGroupName,
-  currentCoordinator,
+  entry,
+  assignedLeaderUids,
   onClose,
   onAssigned,
-}: EditCoordinatorModalProps) {
+}: EditGradeSubjectLeaderModalProps) {
   const [candidates, setCandidates] = useState<FacultyMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [assigningUid, setAssigningUid] = useState<string | null>(null);
@@ -122,13 +112,13 @@ export default function EditCoordinatorModal({
     try {
       setLoading(true);
       setError(null);
-      const data = await fetchCoordinatorCandidates();
+      const data = await fetchFaculty();
       setCandidates(data);
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
-          : "Failed to load faculty candidates. Please try again.",
+          : "Failed to load faculty. Please try again.",
       );
     } finally {
       setLoading(false);
@@ -136,38 +126,39 @@ export default function EditCoordinatorModal({
   }
 
   async function handleAssign(candidate: FacultyMember) {
-    const candidateName = `${candidate.first_name} ${candidate.last_name}`;
+    if (!entry) return;
     try {
       setAssigningUid(candidate.uid);
-      await assignSubjectCoordinator(subjectGroupId, candidate.uid);
-      await onAssigned();
-      onClose();
+      await assignGradeSubjectLeader(
+        entry.curriculum_subject_id,
+        entry.grade_level_id,
+        candidate.uid,
+      );
       notify({
         type: "success",
-        title: "Subject Coordinator Assigned",
-        message: `${candidateName} has been assigned as subject coordinator for ${subjectGroupName}.`,
+        message: `${candidate.first_name} ${candidate.last_name} assigned as Grade Subject Leader for ${entry.subject_name}.`,
       });
+      await onAssigned();
     } catch (e) {
-      const message =
+      setError(
         e instanceof Error
           ? e.message
-          : "Failed to assign coordinator. Please try again.";
-      setError(message);
-      notify({
-        type: "error",
-        title: "Assignment Failed",
-        message,
-      });
+          : "Failed to assign grade subject leader. Please try again.",
+      );
     } finally {
       setAssigningUid(null);
     }
   }
 
   const filtered = useMemo(() => {
+    // Exclude anyone already assigned as a GSL elsewhere (they can only hold the role once).
+    // The current slot's leader is excluded too — they're shown in the info card above.
+    const available = candidates.filter((c) => !assignedLeaderUids.has(c.uid));
+
     const list = search.trim()
       ? (() => {
           const query = search.toLowerCase().trim();
-          return candidates.filter((c) => {
+          return available.filter((c) => {
             const fullName = [c.first_name, c.middle_name ?? "", c.last_name]
               .join(" ")
               .replace(/\s+/g, " ")
@@ -176,7 +167,7 @@ export default function EditCoordinatorModal({
             return fullName.includes(query);
           });
         })()
-      : candidates;
+      : available;
 
     return [...list].sort(
       (a, b) =>
@@ -186,24 +177,22 @@ export default function EditCoordinatorModal({
   }, [candidates, search]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const pagedCandidates = filtered.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
-  );
+  const pagedCandidates = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   useEffect(() => {
     if (totalPages > 0 && page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  const currentCoordinatorName = currentCoordinator
-    ? `${currentCoordinator.first_name} ${currentCoordinator.last_name}`
+  const currentLeaderName = entry?.leader
+    ? `${entry.leader.first_name} ${entry.leader.last_name}`
     : null;
 
   function openConfirm(candidate: FacultyMember) {
+    if (!entry) return;
     const candidateName = `${candidate.first_name} ${candidate.last_name}`;
 
     modals.openConfirmModal({
-      title: "Confirm Coordinator Assignment",
+      title: "Confirm Assignment",
       styles: confirmModalStyles,
       labels: { confirm: "Confirm", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
@@ -213,17 +202,17 @@ export default function EditCoordinatorModal({
           <Text span fw={600}>
             {candidateName}
           </Text>{" "}
-          as coordinator for{" "}
+          as Grade Subject Leader for{" "}
           <Text span fw={600}>
-            {subjectGroupName}
+            {entry.subject_name}
           </Text>
           ?
-          {currentCoordinatorName && (
+          {currentLeaderName && (
             <>
               {" "}
-              This will replace the current coordinator,{" "}
+              This will replace the current leader,{" "}
               <Text span fw={600}>
-                {currentCoordinatorName}
+                {currentLeaderName}
               </Text>
               .
             </>
@@ -242,22 +231,33 @@ export default function EditCoordinatorModal({
       onClose={onClose}
       transitionProps={{
         onEntered: () =>
-          document.getElementById("search-edit-coordinator")?.focus(),
+          document.getElementById("search-edit-gsl")?.focus(),
       }}
-      title="Edit Subject Coordinator"
+      title="Edit Grade Subject Leader"
       centered
       size="lg"
+      vars={() => ({
+        root: {},
+        inner: {
+          "--modal-y-offset": isMobile ? "16px" : "5dvh",
+          "--modal-x-offset": isMobile ? "16px" : "10px",
+        },
+      })}
+      styles={{
+        content: { maxHeight: "85dvh" },
+        body: { overflowY: "auto" },
+      }}
     >
       <Text size="sm" c="dimmed" mb="md">
-        Select a faculty member to assign as subject coordinator for{" "}
+        Select a faculty member to assign as Grade Subject Leader for{" "}
         <Text span fw={600}>
-          {subjectGroupName}
+          {entry?.subject_name ?? ""}
         </Text>
         .
       </Text>
 
       {/* Current assignment card */}
-      {currentCoordinator && currentCoordinatorName && (
+      {entry?.leader && currentLeaderName && (
         <Box
           mb="md"
           px="md"
@@ -280,13 +280,13 @@ export default function EditCoordinatorModal({
             </ThemeIcon>
             <div>
               <Text fw={700} size="sm">
-                Current Subject Coordinator
+                Current Grade Subject Leader
               </Text>
               <Text size="sm" c="dimmed">
-                {subjectGroupName}
+                {entry.subject_name}
               </Text>
               <Text size="sm" mt={2}>
-                {currentCoordinatorName}
+                {currentLeaderName}
               </Text>
             </div>
           </Group>
@@ -295,9 +295,9 @@ export default function EditCoordinatorModal({
 
       <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
         <SearchBar
-          id="search-edit-coordinator"
+          id="search-edit-gsl"
           placeholder="Search faculty..."
-          ariaLabel="Search faculty candidates"
+          ariaLabel="Search faculty"
           style={{ flex: 1, minWidth: 0 }}
           maw={700}
           value={search}
@@ -310,7 +310,7 @@ export default function EditCoordinatorModal({
             color="#808898"
             size="lg"
             radius="xl"
-            aria-label="Refresh faculty candidates"
+            aria-label="Refresh faculty list"
             loading={loading}
             onClick={loadCandidates}
           >
@@ -325,10 +325,8 @@ export default function EditCoordinatorModal({
         </Alert>
       )}
 
-      {/* Skeleton while loading */}
       {!error && loading && <TableSkeleton />}
 
-      {/* Empty states */}
       {!error && !loading && filtered.length === 0 && search.trim() && (
         <EmptySearchState />
       )}
@@ -336,11 +334,10 @@ export default function EditCoordinatorModal({
       {!error && !loading && filtered.length === 0 && !search.trim() && (
         <EmptySearchState
           title="No eligible faculty available."
-          description="All faculty members are already assigned as coordinators."
+          description="All faculty members are already assigned as grade subject leaders."
         />
       )}
 
-      {/* Candidate table */}
       {!error && !loading && filtered.length > 0 && (
         <>
           <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>

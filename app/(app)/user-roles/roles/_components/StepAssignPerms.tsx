@@ -19,7 +19,7 @@ export default function StepAssignPerms({
 }: StepAssignPermsProps) {
   return (
     <Box>
-      <Text size="lg" fw={700} mb="md" c="#4EAE4A">
+      <Text size="xl" fw={700} mb="md" c="#298925">
         Assign Permissions
       </Text>
       <PermissionsPanel

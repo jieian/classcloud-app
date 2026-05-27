@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -23,7 +23,7 @@ import {
   ThemeIcon,
   Tooltip,
 } from "@mantine/core";
-import { useDisclosure, useMediaQuery } from "@mantine/hooks";
+import { useClickOutside, useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import {
   IconExclamationCircle,
@@ -36,7 +36,6 @@ import {
 import type { UseFormReturnType } from "@mantine/form";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import EmptySearchState from "@/components/EmptySearchState";
-import { fetchActiveUsersWithRoles, type UserWithRoles } from "@/app/(app)/user-roles/users/_lib";
 import SubjectBadge from "@/app/(app)/school/faculty/_components/SubjectBadge";
 import SubjectOverflowCard from "@/app/(app)/school/faculty/_components/SubjectOverflowCard";
 import type {
@@ -97,7 +96,7 @@ export default function StepSubjectCoordinators({
   setExtraCoordinatorNames,
 }: StepSubjectCoordinatorsProps) {
   const hasPrevSy = prevSy !== null;
-  const mode = form.values.step5Mode;
+  const mode = form.values.step6Mode;
 
   if (hasPrevSy && mode === null) {
     return (
@@ -106,7 +105,7 @@ export default function StepSubjectCoordinators({
           if (selected === "replicate") {
             await onSnapshotNeeded();
           }
-          form.setFieldValue("step5Mode", selected);
+          form.setFieldValue("step6Mode", selected);
           if (selected === "replicate" && snapshot) {
             const draft = replicateCoordinatorDraft(
               snapshot,
@@ -132,7 +131,7 @@ export default function StepSubjectCoordinators({
       setExtraCoordinatorNames={setExtraCoordinatorNames}
       hasPrevSy={hasPrevSy}
       onResetMode={() => {
-        form.setFieldValue("step5Mode", null);
+        form.setFieldValue("step6Mode", null);
         setCoordinatorDraft(new Map());
       }}
     />
@@ -297,6 +296,22 @@ function CoordinatorTable({
     });
   }
 
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const tableRef = useClickOutside(() => setSelectedGroupId(null));
+
+  // Deselect after every assignment
+  useEffect(() => {
+    setSelectedGroupId(null);
+  }, [coordinatorDraft]);
+
+  function handleRowClick(sgId: number) {
+    if (selectedGroupId === sgId) {
+      setEditingGroup({ id: sgId, name: curriculumDetail.subject_groups.find((sg) => sg.subject_group_id === sgId)?.name ?? "" });
+    } else {
+      setSelectedGroupId(sgId);
+    }
+  }
+
   return (
     <Box>
       <Text size="xl" fw={700} mb="md" c="#298925">
@@ -344,7 +359,7 @@ function CoordinatorTable({
 
         {/* Desktop table */}
         <div className="hidden sm:block">
-          <TableScrollContainer minWidth={600} type="native">
+          <TableScrollContainer minWidth={600} type="native" ref={tableRef}>
             <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
               <TableThead>
                 <TableTr>
@@ -359,8 +374,20 @@ function CoordinatorTable({
                 {sortedGroups.map((sg) => {
                   const uid = coordinatorDraft.get(sg.subject_group_id) ?? null;
                   const isEmpty = !uid;
+                  const isSelected = selectedGroupId === sg.subject_group_id;
                   return (
-                    <TableTr key={sg.subject_group_id}>
+                    <TableTr
+                      key={sg.subject_group_id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRowClick(sg.subject_group_id);
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        backgroundColor: isSelected ? "#f0f7ee" : undefined,
+                        transition: "background-color 0.15s ease",
+                      }}
+                    >
                       <TableTd>
                         <Group gap={6} wrap="nowrap" align="center">
                           <Text size="sm" fw={500}>
@@ -399,7 +426,7 @@ function CoordinatorTable({
                         )}
                       </TableTd>
                       <TableTd w={40}>
-                        <Group justify="flex-end">
+                        <Group justify="flex-end" onClick={(e) => e.stopPropagation()}>
                           <Tooltip
                             label="Edit subject coordinator"
                             withArrow
@@ -496,7 +523,6 @@ function CoordinatorTable({
             : null
         }
         faculty={faculty}
-        hasPrevSy={hasPrevSy}
         assignedCoordinatorUids={assignedCoordinatorUids}
         onClose={() => setEditingGroup(null)}
         onAssign={(uid, name) => {
@@ -664,7 +690,6 @@ interface WizardCoordinatorModalProps {
   currentCoordinatorUid: string | null;
   currentCoordinatorName: string | null;
   faculty: WizardFacultyOption[];
-  hasPrevSy: boolean;
   assignedCoordinatorUids: Set<string>;
   onClose: () => void;
   onAssign: (uid: string | null, name: string | null) => void;
@@ -676,32 +701,18 @@ function WizardCoordinatorModal({
   currentCoordinatorUid,
   currentCoordinatorName,
   faculty,
-  hasPrevSy,
   assignedCoordinatorUids,
   onClose,
   onAssign,
 }: WizardCoordinatorModalProps) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [allUsers, setAllUsers] = useState<UserWithRoles[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const loadAllUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const users = await fetchActiveUsersWithRoles();
-      setAllUsers(users);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!opened) return;
     setSearch("");
     setPage(1);
-    if (!hasPrevSy) loadAllUsers();
-  }, [opened]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [opened]);
 
   useEffect(() => {
     setPage(1);
@@ -710,13 +721,9 @@ function WizardCoordinatorModal({
   const filtered = useMemo(() => {
     const query = search.toLowerCase().trim();
 
-    // When no prev SY: all active users; otherwise faculty-role only
-    // Either way: exclude the current coordinator of this group and anyone already coordinating another group
-    const candidates: { uid: string; first_name: string; last_name: string }[] = hasPrevSy
-      ? faculty.filter((f) => f.uid !== currentCoordinatorUid && !assignedCoordinatorUids.has(f.uid))
-      : allUsers
-          .filter((u) => u.uid !== currentCoordinatorUid && !assignedCoordinatorUids.has(u.uid))
-          .map((u) => ({ uid: u.uid, first_name: u.first_name, last_name: u.last_name }));
+    const candidates = faculty.filter(
+      (f) => f.uid !== currentCoordinatorUid && !assignedCoordinatorUids.has(f.uid),
+    );
 
     const list = query
       ? candidates.filter((c) =>
@@ -729,7 +736,7 @@ function WizardCoordinatorModal({
         a.first_name.localeCompare(b.first_name) ||
         a.last_name.localeCompare(b.last_name),
     );
-  }, [faculty, allUsers, hasPrevSy, search, currentCoordinatorUid, assignedCoordinatorUids]);
+  }, [faculty, search, currentCoordinatorUid, assignedCoordinatorUids]);
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -744,7 +751,7 @@ function WizardCoordinatorModal({
       transitionProps={{ onEntered: () => document.getElementById("search-wizard-coordinator")?.focus() }}
     >
       <Text size="sm" c="dimmed" mb="md">
-        Select a{hasPrevSy ? " faculty member" : " user"} to assign as subject coordinator for{" "}
+        Select a user to assign as subject coordinator for{" "}
         <Text span fw={600}>
           {subjectGroupName}
         </Text>
@@ -786,7 +793,7 @@ function WizardCoordinatorModal({
               </div>
             </Group>
             <Button
-              variant="subtle"
+              variant="filled"
               color="red"
               size="xs"
               onClick={() => onAssign(null, null)}
@@ -799,7 +806,7 @@ function WizardCoordinatorModal({
 
       <SearchBar
         id="search-wizard-coordinator"
-        placeholder={hasPrevSy ? "Search faculty..." : "Search users..."}
+        placeholder="Search users..."
         ariaLabel="Search"
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
@@ -807,7 +814,7 @@ function WizardCoordinatorModal({
         autoFocus
       />
 
-      {!loading && filtered.length === 0 && (
+      {filtered.length === 0 && (
         <EmptySearchState
           title={search.trim() ? "No results found." : "No available users."}
           description={
@@ -818,7 +825,7 @@ function WizardCoordinatorModal({
         />
       )}
 
-      {!loading && filtered.length > 0 && (
+      {filtered.length > 0 && (
         <>
           <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
             <TableThead>

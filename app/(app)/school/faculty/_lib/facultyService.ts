@@ -101,6 +101,63 @@ export async function assignSubjectCoordinator(
   }
 }
 
+export interface SubjectLeaderEntry {
+  curriculum_subject_id: number;
+  grade_level_id: number;
+  subject_name: string;
+  subject_description: string | null;
+  subject_type: "BOTH" | "SSES";
+  leader: {
+    uid: string;
+    first_name: string;
+    last_name: string;
+  } | null;
+}
+
+export interface GradeSubjectLeaderRow {
+  grade_level_id: number;
+  level_number: number;
+  display_name: string;
+  subjects: SubjectLeaderEntry[];
+}
+
+export async function fetchGradeSubjectLeaderData(): Promise<GradeSubjectLeaderRow[]> {
+  const response = await fetch("/api/faculty/grade-subject-leaders", {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Failed to fetch grade subject leader data.");
+  }
+
+  return (result?.data as GradeSubjectLeaderRow[]) ?? [];
+}
+
+export async function assignGradeSubjectLeader(
+  curriculumSubjectId: number,
+  gradeLevelId: number,
+  userId: string,
+): Promise<void> {
+  const response = await fetch("/api/faculty/grade-subject-leaders/assign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      curriculum_subject_id: curriculumSubjectId,
+      grade_level_id: gradeLevelId,
+      user_id: userId,
+    }),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Failed to assign grade subject leader.");
+  }
+}
+
 export async function removeAcademicLoad(facultyId: string): Promise<void> {
   const response = await fetch("/api/faculty/remove-load", {
     method: "POST",

@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Collapse,
   Divider,
   Group,
@@ -32,6 +33,7 @@ import type {
   CoordinatorDraftMap,
   CreateSchoolYearForm,
   FacultyCellKey,
+  GslDraftMap,
   WizardCurriculumDetail,
   WizardFacultyOption,
   WizardSection,
@@ -44,8 +46,10 @@ interface StepReviewCreateProps {
   faculty: WizardFacultyOption[];
   facultyDraft: Map<FacultyCellKey, string | null>;
   coordinatorDraft: CoordinatorDraftMap;
+  gslDraft: GslDraftMap;
   extraFacultyNames: Map<string, string>;
   extraCoordinatorNames: Map<string, string>;
+  extraGslNames: Map<string, string>;
   submitError: string | null;
 }
 
@@ -55,8 +59,10 @@ export default function StepReviewCreate({
   faculty,
   facultyDraft,
   coordinatorDraft,
+  gslDraft,
   extraFacultyNames,
   extraCoordinatorNames,
+  extraGslNames,
   submitError,
 }: StepReviewCreateProps) {
   const startYear = parseInt(form.values.start_year, 10);
@@ -69,14 +75,17 @@ export default function StepReviewCreate({
     return "2 Terms (T1–T2)";
   })();
 
+  const [showCoordinators, setShowCoordinators] = useState(false);
+
   const facultyNames = useMemo(() => {
     const map = new Map(
       faculty.map((f) => [f.uid, `${f.first_name} ${f.last_name}`]),
     );
     for (const [uid, name] of extraFacultyNames) map.set(uid, name);
     for (const [uid, name] of extraCoordinatorNames) map.set(uid, name);
+    for (const [uid, name] of extraGslNames) map.set(uid, name);
     return map;
-  }, [faculty, extraFacultyNames, extraCoordinatorNames]);
+  }, [faculty, extraFacultyNames, extraCoordinatorNames, extraGslNames]);
 
   function getCellValue(key: FacultyCellKey): string | null {
     return facultyDraft.get(key) ?? null;
@@ -142,7 +151,7 @@ export default function StepReviewCreate({
             </Group>
           </Box>
 
-          {/* Subject Coordinators */}
+          {/* Grade Subject Leaders / Subject Coordinators (shared box with toggle) */}
           <Box
             mt="md"
             p="lg"
@@ -151,101 +160,188 @@ export default function StepReviewCreate({
               borderRadius: "10px",
             }}
           >
-            <Text size="lg" fw={700} mb="md" c="#298925">
-              Subject Coordinators
-            </Text>
-            {/* Desktop */}
+            {/* Desktop: title + button side-by-side; Mobile: button below title */}
             <div className="hidden sm:block">
-              <TableScrollContainer minWidth={400}>
-                <Table
-                  withColumnBorders
-                  withTableBorder
-                  fz="0.9375rem"
-                  style={
-                    {
-                      "--table-border-color": "#ced4da",
-                    } as React.CSSProperties
-                  }
+              <Group justify="space-between" align="center" mb="md" wrap="nowrap">
+                <Text size="lg" fw={700} c="#298925">
+                  {showCoordinators ? "Subject Coordinators" : "Grade Subject Leaders"}
+                </Text>
+                <Button
+                  variant="outline"
+                  color="#5f646e"
+                  size="xs"
+                  style={{ flexShrink: 0 }}
+                  onClick={() => setShowCoordinators((v) => !v)}
                 >
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th style={{ ...reviewTh }}>Subject Group</Table.Th>
-                      <Table.Th style={{ ...reviewTh }}>Members</Table.Th>
-                      <Table.Th style={{ ...reviewTh }}>
-                        Subject Coordinator
-                      </Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {curriculumDetail.subject_groups.map((sg) => {
-                      const uid =
-                        coordinatorDraft.get(sg.subject_group_id) ?? null;
-                      const visible = sg.members.slice(0, MAX_VISIBLE_MEMBERS);
-                      const overflow = sg.members.slice(MAX_VISIBLE_MEMBERS);
-                      return (
-                        <Table.Tr key={sg.subject_group_id}>
-                          <Table.Td>
-                            <Text size="sm" fw={500}>
-                              {sg.name}
-                            </Text>
-                          </Table.Td>
-                          <Table.Td>
-                            {sg.members.length === 0 ? (
-                              <Text size="sm" c="dimmed">
-                                —
-                              </Text>
-                            ) : (
-                              <Group gap={6} wrap="nowrap">
-                                {visible.map((m) => (
-                                  <SubjectBadge
-                                    key={m.curriculum_subject_id}
-                                    code={m.code}
-                                    subject_type={m.subject_type}
-                                    subjectName={m.name}
-                                    palette="coordinator"
-                                  />
-                                ))}
-                                {overflow.length > 0 && (
-                                  <SubjectOverflowCard subjects={overflow} />
-                                )}
-                              </Group>
-                            )}
-                          </Table.Td>
-                          <Table.Td>
-                            {uid ? (
-                              <Text size="sm">
-                                {facultyNames.get(uid) ?? "—"}
-                              </Text>
-                            ) : (
-                              <Text size="sm" c="dimmed" fs="italic">
-                                Not assigned
-                              </Text>
-                            )}
-                          </Table.Td>
-                        </Table.Tr>
-                      );
-                    })}
-                  </Table.Tbody>
-                </Table>
-              </TableScrollContainer>
+                  {showCoordinators ? "← Grade Subject Leaders" : "Subject Coordinators →"}
+                </Button>
+              </Group>
+            </div>
+            <div className="sm:hidden" style={{ marginBottom: "var(--mantine-spacing-md)" }}>
+              <Text size="lg" fw={700} c="#298925" mb="xs">
+                {showCoordinators ? "Subject Coordinators" : "Grade Subject Leaders"}
+              </Text>
+              <Button
+                variant="outline"
+                color="#5f646e"
+                size="xs"
+                onClick={() => setShowCoordinators((v) => !v)}
+              >
+                {showCoordinators ? "← Grade Subject Leaders" : "Subject Coordinators →"}
+              </Button>
             </div>
 
-            {/* Mobile */}
-            <div className="sm:hidden">
-              {curriculumDetail.subject_groups.map((sg) => {
-                const uid = coordinatorDraft.get(sg.subject_group_id) ?? null;
-                return (
-                  <CoordinatorMobileReviewRow
-                    key={sg.subject_group_id}
-                    name={sg.name}
-                    members={sg.members}
-                    coordinatorName={
-                      uid ? (facultyNames.get(uid) ?? null) : null
-                    }
-                  />
-                );
-              })}
-            </div>
+            {/* ── Grade Subject Leaders view ─────────────────────────── */}
+            {!showCoordinators && (
+              <Stack gap="sm">
+                {curriculumDetail.grade_levels.map((gl) => (
+                  <GradeLevelCollapsible key={gl.grade_level_id} title={gl.display_name}>
+                    {/* Desktop */}
+                    <div className="hidden sm:block">
+                      <TableScrollContainer minWidth={400}>
+                        <Table
+                          withColumnBorders
+                          withTableBorder
+                          fz="0.9375rem"
+                          style={{ "--table-border-color": "#ced4da" } as React.CSSProperties}
+                        >
+                          <Table.Thead>
+                            <Table.Tr>
+                              <Table.Th style={{ ...reviewTh }}>Subject</Table.Th>
+                              <Table.Th style={{ ...reviewTh }}>Grade Subject Leader</Table.Th>
+                            </Table.Tr>
+                          </Table.Thead>
+                          <Table.Tbody>
+                            {gl.subjects.map((sub) => {
+                              const key = `gsl:${gl.grade_level_id}:${sub.curriculum_subject_id}`;
+                              const uid = gslDraft.get(key) ?? null;
+                              return (
+                                <Table.Tr key={sub.curriculum_subject_id}>
+                                  <Table.Td>
+                                    <Group gap={6} wrap="nowrap" align="center">
+                                      <Text size="sm" fw={500}>{sub.name}</Text>
+                                      {sub.subject_type === "SSES" && (
+                                        <Badge color="#70A2FF" variant="filled" size="xs">
+                                          SSES
+                                        </Badge>
+                                      )}
+                                    </Group>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    {uid ? (
+                                      <Text size="sm">{facultyNames.get(uid) ?? "—"}</Text>
+                                    ) : (
+                                      <Text size="sm" c="dimmed" fs="italic">Not assigned</Text>
+                                    )}
+                                  </Table.Td>
+                                </Table.Tr>
+                              );
+                            })}
+                          </Table.Tbody>
+                        </Table>
+                      </TableScrollContainer>
+                    </div>
+
+                    {/* Mobile */}
+                    <div className="sm:hidden">
+                      {gl.subjects.map((sub) => {
+                        const key = `gsl:${gl.grade_level_id}:${sub.curriculum_subject_id}`;
+                        const uid = gslDraft.get(key) ?? null;
+                        return (
+                          <GslSubjectMobileRow
+                            key={sub.curriculum_subject_id}
+                            subjectName={sub.name}
+                            subjectType={sub.subject_type}
+                            gslName={uid ? (facultyNames.get(uid) ?? null) : null}
+                          />
+                        );
+                      })}
+                    </div>
+                  </GradeLevelCollapsible>
+                ))}
+              </Stack>
+            )}
+
+            {/* ── Subject Coordinators view ──────────────────────────── */}
+            {showCoordinators && (
+              <>
+                {/* Desktop */}
+                <div className="hidden sm:block">
+                  <TableScrollContainer minWidth={400}>
+                    <Table
+                      withColumnBorders
+                      withTableBorder
+                      fz="0.9375rem"
+                      style={{ "--table-border-color": "#ced4da" } as React.CSSProperties}
+                    >
+                      <Table.Thead>
+                        <Table.Tr>
+                          <Table.Th style={{ ...reviewTh }}>Subject Group</Table.Th>
+                          <Table.Th style={{ ...reviewTh }}>Members</Table.Th>
+                          <Table.Th style={{ ...reviewTh }}>Subject Coordinator</Table.Th>
+                        </Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {curriculumDetail.subject_groups.map((sg) => {
+                          const uid = coordinatorDraft.get(sg.subject_group_id) ?? null;
+                          const visible = sg.members.slice(0, MAX_VISIBLE_MEMBERS);
+                          const overflow = sg.members.slice(MAX_VISIBLE_MEMBERS);
+                          return (
+                            <Table.Tr key={sg.subject_group_id}>
+                              <Table.Td>
+                                <Text size="sm" fw={500}>{sg.name}</Text>
+                              </Table.Td>
+                              <Table.Td>
+                                {sg.members.length === 0 ? (
+                                  <Text size="sm" c="dimmed">—</Text>
+                                ) : (
+                                  <Group gap={6} wrap="nowrap">
+                                    {visible.map((m) => (
+                                      <SubjectBadge
+                                        key={m.curriculum_subject_id}
+                                        code={m.code}
+                                        subject_type={m.subject_type}
+                                        subjectName={m.name}
+                                        palette="coordinator"
+                                      />
+                                    ))}
+                                    {overflow.length > 0 && (
+                                      <SubjectOverflowCard subjects={overflow} />
+                                    )}
+                                  </Group>
+                                )}
+                              </Table.Td>
+                              <Table.Td>
+                                {uid ? (
+                                  <Text size="sm">{facultyNames.get(uid) ?? "—"}</Text>
+                                ) : (
+                                  <Text size="sm" c="dimmed" fs="italic">Not assigned</Text>
+                                )}
+                              </Table.Td>
+                            </Table.Tr>
+                          );
+                        })}
+                      </Table.Tbody>
+                    </Table>
+                  </TableScrollContainer>
+                </div>
+
+                {/* Mobile */}
+                <div className="sm:hidden">
+                  {curriculumDetail.subject_groups.map((sg) => {
+                    const uid = coordinatorDraft.get(sg.subject_group_id) ?? null;
+                    return (
+                      <CoordinatorMobileReviewRow
+                        key={sg.subject_group_id}
+                        name={sg.name}
+                        members={sg.members}
+                        coordinatorName={uid ? (facultyNames.get(uid) ?? null) : null}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </Box>
 
           {/* Classes, Advisory, and Faculty Assignments */}
@@ -599,6 +695,73 @@ function CoordinatorMobileReviewRow({
             fs={coordinatorName ? undefined : "italic"}
           >
             {coordinatorName ?? "Not assigned"}
+          </Text>
+        </Box>
+      </Collapse>
+      <Divider />
+    </>
+  );
+}
+
+// ── GSL subject mobile review row ─────────────────────────────────────────────
+
+function GslSubjectMobileRow({
+  subjectName,
+  subjectType,
+  gslName,
+}: {
+  subjectName: string;
+  subjectType: "BOTH" | "SSES";
+  gslName: string | null;
+}) {
+  const [opened, { toggle }] = useDisclosure(false);
+  return (
+    <>
+      <div onClick={toggle} style={{ cursor: "pointer", padding: "12px 4px" }}>
+        <Group gap="xs" wrap="nowrap">
+          <IconChevronRight
+            size={16}
+            style={{
+              transform: opened ? "rotate(90deg)" : "rotate(0deg)",
+              transition: "transform 200ms ease",
+              flexShrink: 0,
+              color: "#808898",
+            }}
+          />
+          <Group gap={6} wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
+            <Text
+              fw={500}
+              fz="sm"
+              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+            >
+              {subjectName}
+            </Text>
+            {subjectType === "SSES" && (
+              <Badge color="#70A2FF" variant="filled" size="xs" style={{ flexShrink: 0 }}>
+                SSES
+              </Badge>
+            )}
+          </Group>
+        </Group>
+      </div>
+      <Collapse in={opened}>
+        <Box pb="md" pl={28} pr={4}>
+          <Text
+            size="xs"
+            c="dimmed"
+            fw={600}
+            tt="uppercase"
+            mb={2}
+            style={{ letterSpacing: "0.04em" }}
+          >
+            Grade Subject Leader
+          </Text>
+          <Text
+            fz="md"
+            c={gslName ? undefined : "dimmed"}
+            fs={gslName ? undefined : "italic"}
+          >
+            {gslName ?? "Not assigned"}
           </Text>
         </Box>
       </Collapse>

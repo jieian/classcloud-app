@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import { Button, Group, Modal, Text, TextInput } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
@@ -37,6 +38,15 @@ export default function EditSectionNameModal({
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
 
   const form = useForm({
     initialValues: { name: currentName },
@@ -93,7 +103,6 @@ export default function EditSectionNameModal({
 
     modals.openConfirmModal({
       title: "Rename Class?",
-      centered: true,
       children: (
         <Text size="sm">
           Rename <strong>{currentName}</strong> to <strong>{titled}</strong>?
@@ -102,6 +111,7 @@ export default function EditSectionNameModal({
       labels: { confirm: "Rename", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitRename(titled),
+      ...confirmModalProps,
     });
   };
 

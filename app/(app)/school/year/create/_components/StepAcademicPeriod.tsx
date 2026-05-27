@@ -51,7 +51,7 @@ export default function StepAcademicPeriod({
             *
           </Text>
         </Text>
-        <Group align="flex-end" gap="xs" mt="xs" mb="xl" wrap="wrap">
+        <Group align="flex-end" gap="xs" mt="xs" mb="xl" wrap="nowrap">
           {/* Start Year */}
           <TextInput
             label="Start Year"
@@ -88,11 +88,11 @@ export default function StepAcademicPeriod({
                 </ActionIcon>
               </Tooltip>
             }
-            style={{ width: 150 }}
+            style={{ flex: 1, maxWidth: 150, minWidth: 0 }}
             maxLength={4}
           />
 
-          <Text pb={6} c="dimmed" size="sm">
+          <Text pb={6} c="dimmed" size="sm" style={{ flexShrink: 0 }}>
             —
           </Text>
 
@@ -101,7 +101,7 @@ export default function StepAcademicPeriod({
             label="End Year"
             value={endYear}
             disabled
-            style={{ width: 150 }}
+            style={{ flex: 1, maxWidth: 150, minWidth: 0 }}
             rightSection={
               <Tooltip label="Always a year after the start year">
                 <ActionIcon variant="transparent" color="gray" size="sm">

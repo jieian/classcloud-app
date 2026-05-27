@@ -7,6 +7,7 @@ import {
   Box,
   Button,
   Checkbox,
+  Collapse,
   Drawer,
   Group,
   Modal,
@@ -19,6 +20,7 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 import { IconCheck, IconLock, IconX } from "@tabler/icons-react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notify } from "@/components/notificationIcon/notificationIcon";
@@ -59,6 +61,9 @@ export default function PendingTableActions({
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [rolePage, setRolePage] = useState(1);
   const [rolesExpanded, setRolesExpanded] = useState(false);
+  const [openSection, setOpenSection] = useState<"profile" | "roles" | null>("profile");
+  const toggleSection = (section: "profile" | "roles") =>
+    setOpenSection((prev) => (prev === section ? null : section));
   const [principalWarning, setPrincipalWarning] = useState(false);
   const [approving, setApproving] = useState(false);
 
@@ -84,6 +89,7 @@ export default function PendingTableActions({
       setLastName(user.last_name);
       setSelectedRoles((user.requested_role_ids ?? []).map(String));
       setRolePage(1);
+      setOpenSection("profile");
     }
   }, [approveOpened]);
 
@@ -229,14 +235,16 @@ export default function PendingTableActions({
         opened={approveOpened}
         onClose={closeApprove}
         title="Approve Registration"
-        centered
+        centered={!isMobile}
         size="md"
+        styles={isMobile ? {
+          inner: { paddingTop: 72, alignItems: "flex-start" },
+          content: { maxHeight: "calc(100dvh - 72px)", display: "flex", flexDirection: "column" },
+          body: { overflowY: "auto", flex: 1 },
+        } : undefined}
       >
-        <Stack gap="xs">
-          <div>
-            <Text size="sm" fw={600} mb="xs">
-              Demographic Profile
-            </Text>
+        {(() => {
+          const profileFields = (
             <Stack gap="xs">
               <Tooltip label="Email is locked and cannot be changed" position="top" withArrow>
                 <Box>
@@ -272,22 +280,16 @@ export default function PendingTableActions({
                 required
               />
             </Stack>
-          </div>
+          );
 
-          <div>
-            <Text size="sm" fw={600} mb="xs">
-              Roles{" "}
-              <Text span c="red" inherit>
-                *
-              </Text>
-            </Text>
-            {user.requested_role_ids.length === 0 && (
-              <Alert color="yellow" mb="xs" p="xs">
-                This user's originally requested role(s) may have been deleted.
-                Please assign at least one role before approving.
-              </Alert>
-            )}
-<>
+          const rolesFields = (
+            <Stack gap="xs">
+              {user.requested_role_ids.length === 0 && (
+                <Alert color="yellow" mb="xs" p="xs">
+                  This user's originally requested role(s) may have been deleted.
+                  Please assign at least one role before approving.
+                </Alert>
+              )}
               <Box
                 p="md"
                 style={{
@@ -296,20 +298,12 @@ export default function PendingTableActions({
                   backgroundColor: "#f0f7ee",
                 }}
               >
-                <Checkbox.Group
-                  value={selectedRoles}
-                  onChange={setSelectedRoles}
-                >
+                <Checkbox.Group value={selectedRoles} onChange={setSelectedRoles}>
                   <Stack gap={4} style={{ minHeight: 95 }}>
                     {sortedRoles
-                      .slice(
-                        (rolePage - 1) * ROLES_PER_PAGE,
-                        rolePage * ROLES_PER_PAGE,
-                      )
+                      .slice((rolePage - 1) * ROLES_PER_PAGE, rolePage * ROLES_PER_PAGE)
                       .map((role) => {
-                        const isSelected = selectedRoles.includes(
-                          role.role_id.toString(),
-                        );
+                        const isSelected = selectedRoles.includes(role.role_id.toString());
                         return (
                           <Box
                             key={role.role_id}
@@ -317,9 +311,7 @@ export default function PendingTableActions({
                             py={6}
                             style={{
                               borderRadius: "var(--mantine-radius-sm)",
-                              backgroundColor: isSelected
-                                ? "#d3e9d0"
-                                : "transparent",
+                              backgroundColor: isSelected ? "#d3e9d0" : "transparent",
                               transition: "background-color 0.15s",
                             }}
                           >
@@ -361,7 +353,6 @@ export default function PendingTableActions({
                       })}
                   </Stack>
                 </Checkbox.Group>
-
                 {sortedRoles.length > ROLES_PER_PAGE && (
                   <Group justify="center" mt="sm">
                     <Pagination
@@ -374,7 +365,6 @@ export default function PendingTableActions({
                   </Group>
                 )}
               </Box>
-
               {(() => {
                 const selectedRoleNames = selectedRoles
                   .map((id) => roles.find((r) => r.role_id.toString() === id)?.name)
@@ -382,9 +372,7 @@ export default function PendingTableActions({
                 if (selectedRoleNames.length === 0) return null;
                 const MAX_VISIBLE = 2;
                 const hiddenCount = selectedRoleNames.length - MAX_VISIBLE;
-                const visibleNames = rolesExpanded
-                  ? selectedRoleNames
-                  : selectedRoleNames.slice(0, MAX_VISIBLE);
+                const visibleNames = rolesExpanded ? selectedRoleNames : selectedRoleNames.slice(0, MAX_VISIBLE);
                 return (
                   <Text size="sm" c="dimmed" mt="sm">
                     <strong style={{ color: "#1a1a1a" }}>
@@ -392,60 +380,96 @@ export default function PendingTableActions({
                     </strong>{" "}
                     {visibleNames.join(", ")}
                     {!rolesExpanded && hiddenCount > 0 && (
-                      <>
-                        {" "}
-                        <Text
-                          component="span"
-                          size="sm"
-                          c="#4EAE4A"
-                          style={{ cursor: "pointer", textDecoration: "underline" }}
-                          onClick={() => setRolesExpanded(true)}
-                        >
-                          +{hiddenCount} more
-                        </Text>
-                      </>
+                      <> <Text component="span" size="sm" c="#4EAE4A" style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setRolesExpanded(true)}>+{hiddenCount} more</Text></>
                     )}
                     {rolesExpanded && hiddenCount > 0 && (
-                      <>
-                        {" "}
-                        <Text
-                          component="span"
-                          size="sm"
-                          c="#4EAE4A"
-                          style={{ cursor: "pointer", textDecoration: "underline" }}
-                          onClick={() => setRolesExpanded(false)}
-                        >
-                          Show less
-                        </Text>
-                      </>
+                      <> <Text component="span" size="sm" c="#4EAE4A" style={{ cursor: "pointer", textDecoration: "underline" }} onClick={() => setRolesExpanded(false)}>Show less</Text></>
                     )}
                   </Text>
                 );
               })()}
-            </>
-          </div>
-        </Stack>
+            </Stack>
+          );
 
-        <Group justify="flex-end" mt="lg">
-          <Button variant="default" onClick={closeApprove}>
-            Cancel
-          </Button>
-          <Button variant="outline" disabled={!isDirty} onClick={handleRevert}>
-            Revert Changes
-          </Button>
-          <Button
-            color="green"
-            disabled={
-              selectedRoles.length === 0 ||
-              !firstName.trim() ||
-              !lastName.trim()
-            }
-            loading={approving}
-            onClick={handleApprove}
-          >
-            Approve
-          </Button>
-        </Group>
+          if (isMobile) {
+            return (
+              <Stack gap={0}>
+                {/* Profile accordion */}
+                <Box onClick={() => toggleSection("profile")} style={{ cursor: "pointer", userSelect: "none" }} py="sm">
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" fw={600}>Demographic Profile</Text>
+                    <IconChevronDown size={16} style={{ color: "#808898", transform: openSection === "profile" ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 200ms ease" }} />
+                  </Group>
+                </Box>
+                <Collapse in={openSection === "profile"}>
+                  <Box pb="sm">{profileFields}</Box>
+                </Collapse>
+
+                <Box style={{ borderTop: "1px solid #e9ecef" }} />
+
+                {/* Roles accordion */}
+                <Box onClick={() => toggleSection("roles")} style={{ cursor: "pointer", userSelect: "none" }} py="sm">
+                  <Group justify="space-between" align="center">
+                    <Group gap={4}>
+                      <Text size="sm" fw={600}>Roles</Text>
+                      <Text size="sm" c="red">*</Text>
+                    </Group>
+                    <IconChevronDown size={16} style={{ color: "#808898", transform: openSection === "roles" ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 200ms ease" }} />
+                  </Group>
+                </Box>
+                <Collapse in={openSection === "roles"}>
+                  <Box pb="sm">{rolesFields}</Box>
+                </Collapse>
+              </Stack>
+            );
+          }
+
+          return (
+            <Stack gap="xs">
+              <div>
+                <Text size="sm" fw={600} mb="xs">Demographic Profile</Text>
+                {profileFields}
+              </div>
+              <div>
+                <Text size="sm" fw={600} mb="xs">
+                  Roles <Text span c="red" inherit>*</Text>
+                </Text>
+                {rolesFields}
+              </div>
+            </Stack>
+          );
+        })()}
+
+        {isMobile ? (
+          <Stack mt="lg" gap="xs">
+            <Group grow>
+              <Button variant="default" onClick={closeApprove}>Cancel</Button>
+              <Button variant="outline" disabled={!isDirty} onClick={handleRevert}>Revert Changes</Button>
+            </Group>
+            <Button
+              fullWidth
+              color="green"
+              disabled={selectedRoles.length === 0 || !firstName.trim() || !lastName.trim()}
+              loading={approving}
+              onClick={handleApprove}
+            >
+              Approve
+            </Button>
+          </Stack>
+        ) : (
+          <Group justify="flex-end" mt="lg">
+            <Button variant="default" onClick={closeApprove}>Cancel</Button>
+            <Button variant="outline" disabled={!isDirty} onClick={handleRevert}>Revert Changes</Button>
+            <Button
+              color="green"
+              disabled={selectedRoles.length === 0 || !firstName.trim() || !lastName.trim()}
+              loading={approving}
+              onClick={handleApprove}
+            >
+              Approve
+            </Button>
+          </Group>
+        )}
       </Modal>
 
       {/* Approve Confirmation Drawer */}

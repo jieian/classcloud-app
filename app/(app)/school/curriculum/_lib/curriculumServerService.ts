@@ -1,5 +1,5 @@
 import { cacheTag, cacheLife } from "next/cache";
-import { createClient } from "@supabase/supabase-js";
+import { adminClient as supabase } from "@/lib/supabase/admin";
 import type {
   Curriculum,
   CurriculumDetail,
@@ -10,20 +10,10 @@ import type { GradeLevel } from "../create/_lib/types";
 
 export const CURRICULUM_CACHE_TAG = "curriculums";
 
-function getAdminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
-
 export async function getCurriculumsCached(): Promise<Curriculum[]> {
   "use cache";
   cacheTag(CURRICULUM_CACHE_TAG);
   cacheLife("minutes");
-  const supabase = getAdminClient();
-
   const [curriculumsRes, activeYearRes] = await Promise.all([
     supabase
       .from("curriculums")
@@ -56,7 +46,7 @@ export async function getGradeLevelsCached(): Promise<GradeLevel[]> {
   "use cache";
   cacheTag("grade-levels");
   cacheLife("days");
-  const { data, error } = await getAdminClient()
+  const { data, error } = await supabase
     .from("grade_levels")
     .select("grade_level_id, level_number, display_name")
     .order("level_number");
@@ -73,7 +63,6 @@ export async function getSubjectLockInfo(curriculumId: number): Promise<{
   examLockedIds: number[];
   importedIds: number[];
 }> {
-  const supabase = getAdminClient();
 
   const { data: csRows } = await supabase
     .from("curriculum_subjects")
@@ -123,7 +112,6 @@ export async function getSubjectLockInfo(curriculumId: number): Promise<{
 
 /** Non-cached: checks whether a curriculum can be edited or deleted (no active school year references it). */
 export async function isCurriculumDeletable(curriculumId: number): Promise<boolean> {
-  const supabase = getAdminClient();
 
   const { data: syRow } = await supabase
     .from("school_years")
@@ -140,7 +128,6 @@ export async function getCurriculumDetailCached(curriculumId: number): Promise<C
   "use cache";
   cacheTag(CURRICULUM_CACHE_TAG);
   cacheLife("minutes");
-  const supabase = getAdminClient();
 
     const [metaRes, groupsRes, subjectsRes] = await Promise.all([
       supabase

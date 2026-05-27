@@ -446,8 +446,24 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
               borderRadius: "10px",
             }}
           >
-            <Group justify="space-between" mb="md" align="center">
-              <Text size="lg" fw={700} c="#298925">
+            {/* Desktop: title + button side-by-side; Mobile: button below title */}
+            <div className="hidden sm:block">
+              <Group justify="space-between" mb="md" align="center">
+                <Text size="lg" fw={700} c="#298925">
+                  {showGroups ? "Subject Groups" : "Subjects per Grade Level"}
+                </Text>
+                <Button
+                  variant="outline"
+                  color="#5f646e"
+                  size="xs"
+                  onClick={() => setShowGroups((v) => !v)}
+                >
+                  {showGroups ? "← Subjects per Grade Level" : "Subject Groups →"}
+                </Button>
+              </Group>
+            </div>
+            <div className="sm:hidden" style={{ marginBottom: "var(--mantine-spacing-md)" }}>
+              <Text size="lg" fw={700} c="#298925" mb="xs">
                 {showGroups ? "Subject Groups" : "Subjects per Grade Level"}
               </Text>
               <Button
@@ -458,7 +474,7 @@ export default function StepCurriculumReview({ form, gradeLevels }: Props) {
               >
                 {showGroups ? "← Subjects per Grade Level" : "Subject Groups →"}
               </Button>
-            </Group>
+            </div>
 
             {/* Subjects per grade level */}
             {!showGroups && (

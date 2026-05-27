@@ -97,10 +97,19 @@ export const AssignAcademicLoadSchema = z.object({
   ),
   // undefined = edit mode (don't manage coordinator); null = add mode, no role; number = assign role
   subject_group_id: z.number().int().positive().nullable().optional(),
+  // undefined = edit mode (don't manage GSL); null = add mode, no role; number = assign role (paired with gsl_grade_level_id)
+  gsl_curriculum_subject_id: z.number().int().positive().nullable().optional(),
+  gsl_grade_level_id: z.number().int().positive().nullable().optional(),
 });
 
 export const AssignSubjectCoordinatorSchema = z.object({
   subject_group_id: z.number().int().positive("Invalid subject group ID."),
+  user_id: z.string().uuid("Invalid user ID."),
+});
+
+export const AssignGradeSubjectLeaderSchema = z.object({
+  curriculum_subject_id: z.number().int().positive("Invalid curriculum subject ID."),
+  grade_level_id: z.number().int().positive("Invalid grade level ID."),
   user_id: z.string().uuid("Invalid user ID."),
 });
 

@@ -27,7 +27,7 @@ const _DELETE = async function(request: Request) {
   if (data?.success === false)
     return Response.json({ error: data.message ?? "Failed to delete curriculum." }, { status: 409 });
 
-  revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
+  revalidateTag(CURRICULUM_CACHE_TAG, "max");
   return Response.json({ success: true }, { status: 200 });
 }
 

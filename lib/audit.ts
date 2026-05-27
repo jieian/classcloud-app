@@ -36,6 +36,8 @@ export type AuditAction =
   | "advisory_class_removed"
   | "subject_coordinator_assigned"
   | "subject_coordinator_removed"
+  | "grade_subject_leader_assigned"
+  | "grade_subject_leader_removed"
   | "masterlist_saved"
   | "faculty_load_removed"
   // ── Security events ──────────────────────────────────────────────────────

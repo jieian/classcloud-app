@@ -403,6 +403,7 @@ export default function CreateCurriculumWizard() {
       primaryLabel={isFinalStep ? "Create Curriculum" : "Next"}
       primaryDisabled={false}
       primaryLoading={isFinalStep ? loading : checkingName}
+      stickyMobile
     />
   );
 
