@@ -25,6 +25,7 @@ import {
   Pagination,
   Center,
   ThemeIcon,
+  SegmentedControl,
 } from "@mantine/core";
 import {
   IconDownload,
@@ -472,12 +473,40 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
 	  const subjectOptions = useMemo(() => {
     if (!effectiveFullAccess) {
-      const assignedSubjectIds = new Set(
-        teacherAssignments.map((assignment) => assignment.curriculum_subject_id),
-      );
       const selectedGradeLevelId = allGradeLevels.find(
         (grade) => grade.display_name === selectedGradeLevel,
       )?.grade_level_id;
+
+      // If a section is selected, narrow subjects to only those the teacher is
+      // assigned to teach in that specific section (mirrors Create Exam behaviour).
+      if (selectedSection) {
+        const selectedSectionId = allSections.find(
+          (s) => s.name === selectedSection &&
+            (!selectedGradeLevelId || s.grade_level_id === selectedGradeLevelId),
+        )?.section_id;
+
+        const sectionSubjectIds = new Set(
+          teacherAssignments
+            .filter((a) => a.section_id === selectedSectionId)
+            .map((a) => a.curriculum_subject_id),
+        );
+
+        return Array.from(
+          new Map(
+            subjectCatalog
+              .filter((subject) => sectionSubjectIds.has(subject.curriculum_subject_id))
+              .map((subject) => [subject.name, subject] as const),
+          ).values(),
+        )
+          .map((subject) => subject.name)
+          .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      }
+
+      // No section selected — show all subjects the teacher handles, optionally
+      // filtered to the selected grade level.
+      const assignedSubjectIds = new Set(
+        teacherAssignments.map((assignment) => assignment.curriculum_subject_id),
+      );
 
       return Array.from(
         new Map(
@@ -632,7 +661,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           (a, b) => Number(a.is_locked) - Number(b.is_locked),
         ),
       }))
-      .filter((g) => !isFiltering || g.exams.length > 0)
+      .filter((g) => g.exams.length > 0)
       .sort((a, b) => a.levelNumber - b.levelNumber);
 	  }, [filteredExams, allGradeLevels, facultyVisibleGradeGroups, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
@@ -779,26 +808,38 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
   };
 
   const viewToggleButton =
-    showViewToggleVisible && !loading && !authLoading ? (
-      <Button
-        variant="outline"
-        color={viewMode === "admin" ? "#298925" : "#4A72AE"}
-        radius="md"
-        size={isMobile ? "xs" : "sm"}
+    showViewToggleVisible ? (
+      <SegmentedControl
+        value={viewMode}
+        onChange={(value) => setViewMode(value as "admin" | "faculty")}
+        data={[
+          { value: "admin", label: "Admin View" },
+          { value: "faculty", label: "Faculty View" },
+        ]}
+        color={viewMode === "admin" ? "#4A72AE" : "#4EAE4A"}
+        radius="sm"
+        size="sm"
+        transitionDuration={180}
         fullWidth={isMobile}
-        leftSection={<IconBinoculars size={16} stroke={1.5} />}
-        onClick={() =>
-          setViewMode(viewMode === "admin" ? "faculty" : "admin")
-        }
-      >
-        {isMobile
-          ? viewMode === "admin"
-            ? "Switch to Faculty View"
-            : "Switch to Admin View"
-          : viewMode === "admin"
-            ? "Switch to Faculty View"
-            : "Switch to Admin View"}
-      </Button>
+        disabled={loading || authLoading}
+        styles={{
+          root: {
+            backgroundColor: "#ffffff",
+            border: "1px solid #D6D9E0",
+            padding: 3,
+            minWidth: 230,
+          },
+          label: {
+            fontWeight: 600,
+            fontSize: 14,
+            padding: "6px 14px",
+            whiteSpace: "nowrap",
+          },
+          indicator: {
+            border: `1px solid ${viewMode === "admin" ? "#4A72AE" : "#4EAE4A"}`,
+          },
+        }}
+      />
     ) : null;
 
   const createExamButton =
@@ -845,24 +886,41 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   return (
     <>
-      <Group justify="space-between" mb="xs" align="flex-start" wrap="nowrap">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-[#597D37]">
-            Examinations{" "}
-            {!loading && hasActiveSchoolYear && hasActiveTerm && (
-              <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
-            )}
-          </h1>
-          <p className="text-sm text-[#808898]">
+      {isMobile ? (
+        <>
+          <Group justify="space-between" align="center" mb="xs" wrap="nowrap">
+            <h1 className="text-2xl font-bold text-[#597D37] mb-0 leading-tight">
+              Examinations{" "}
+              {!loading && hasActiveSchoolYear && hasActiveTerm && (
+                <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
+              )}
+            </h1>
+            {createExamButton}
+          </Group>
+          <p className="mb-3 text-sm text-[#808898]">
             Manage and track all examinations
           </p>
-        </div>
-
-        <Group gap="xs">
-          {!isMobile && viewToggleButton}
-          {createExamButton}
-        </Group>
-      </Group>
+          {viewToggleButton && <Box mb="md">{viewToggleButton}</Box>}
+        </>
+      ) : (
+        <Box className="relative mb-3">
+          <div className="pr-60">
+            <h1 className="text-2xl md:text-3xl font-bold text-[#597D37] mb-3">
+              Examinations{" "}
+              {!loading && hasActiveSchoolYear && hasActiveTerm && (
+                <span className="text-[#808898] text-xl font-semibold">({filteredExams.length})</span>
+              )}
+            </h1>
+            <p className="text-sm text-[#808898]">
+              Manage and track all examinations
+            </p>
+          </div>
+          <Stack gap="md" align="flex-end" className="absolute right-0 top-0">
+            {viewToggleButton}
+            {createExamButton}
+          </Stack>
+        </Box>
+      )}
 
       {/* Error */}
       {dbError && (
@@ -889,18 +947,13 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
       ) : (
         <>
       {/* Filters */}
-	      <div>
-        {isMobile && viewToggleButton && (
-          <Group mb="md">
-            {viewToggleButton}
-          </Group>
-        )}
+        <div>
         <Group mb="md" wrap="nowrap" align="flex-end" gap="sm">
           <SearchBar
             id="search-exams"
             placeholder="Search examinations..."
             ariaLabel="Search examinations"
-	            style={{ flex: "1 1 260px", minWidth: 0 }}
+            style={{ flex: "1 1 260px", minWidth: 0 }}
             maw={700}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.currentTarget.value)}
@@ -1010,8 +1063,11 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
               <IconClipboardOff size={28} stroke={1.5} color="#3D4147" />
             </ThemeIcon>
             <Stack gap={4} align="center">
-              <Text size="md" fw={700} c="#111827" mb="sm">
-                No examination found.
+              <Text size="sm" fw={500} c="#111827">
+                No examinations yet.
+              </Text>
+              <Text size="sm" c="dimmed" ta="center">
+                Create an examination to get started.
               </Text>
             </Stack>
             {!effectiveFullAccess && (

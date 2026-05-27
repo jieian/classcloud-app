@@ -1701,12 +1701,14 @@ export type ReportMonitoringGradeGroup = {
   gradeLevelId: number;
   gradeDisplayName: string;
   gradeLevelNumber: number | null;
+  leaderName: string | null;
   subjects: ReportMonitoringSubjectGroup[];
 };
 
 export type ReportMonitoringCoordinatorGroup = {
   subjectGroupId: number;
   subjectGroupName: string;
+  coordinatorName: string | null;
   subjects: ReportMonitoringSubjectGroup[];
 };
 
@@ -1764,12 +1766,14 @@ type SubjectGroupMemberRow = {
 type SubjectCoordinatorRow = {
   user_id: string | null;
   subject_group_id: number | null;
+  users: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null;
 };
 
 type GradeSubjectLeaderRow = {
   user_id: string | null;
   curriculum_subject_id: number | null;
   grade_level_id: number | null;
+  users: { first_name: string | null; last_name: string | null } | { first_name: string | null; last_name: string | null }[] | null;
 };
 
 function compareMonitoringRows(a: ReportMonitoringRow, b: ReportMonitoringRow): number {
@@ -1830,7 +1834,10 @@ function buildSectionGroups(rows: ReportMonitoringRow[]): ReportMonitoringSectio
     });
 }
 
-function buildGradeGroups(rows: ReportMonitoringRow[]): ReportMonitoringGradeGroup[] {
+function buildGradeGroups(
+  rows: ReportMonitoringRow[],
+  leadersByGrade?: Map<number, string | null>,
+): ReportMonitoringGradeGroup[] {
   const gradeMap = new Map<number, Map<number, ReportMonitoringSubjectGroup>>();
 
   for (const row of rows) {
@@ -1864,6 +1871,7 @@ function buildGradeGroups(rows: ReportMonitoringRow[]): ReportMonitoringGradeGro
         gradeLevelId,
         gradeDisplayName: first?.gradeDisplayName ?? `Grade ${gradeLevelId}`,
         gradeLevelNumber: first?.gradeLevelNumber ?? null,
+        leaderName: leadersByGrade?.get(gradeLevelId) ?? null,
         subjects,
       };
     })
@@ -1885,17 +1893,26 @@ function buildGradeSubjectLeaderGroups(
 ): ReportMonitoringGradeGroup[] {
   if (!userId) return [];
 
+  const myLeaderRows = leaderRows.filter((row) => row.user_id === userId);
   const leaderSubjectIds = new Set(
-    leaderRows
-      .filter((row) => row.user_id === userId)
+    myLeaderRows
       .map((row) => row.curriculum_subject_id)
       .filter((id): id is number => id != null),
   );
 
   if (leaderSubjectIds.size === 0) return [];
 
+  // Build leaderName from current user's name (first matching row)
+  const myName = myLeaderRows.length > 0 ? toTeacherName(myLeaderRows[0].users) : null;
+  const leadersByGrade = new Map<number, string | null>(
+    myLeaderRows
+      .filter((r): r is typeof r & { grade_level_id: number } => r.grade_level_id != null)
+      .map((r) => [r.grade_level_id, myName]),
+  );
+
   const groups = buildGradeGroups(
     rows.filter((row) => leaderSubjectIds.has(row.curriculumSubjectId)),
+    leadersByGrade,
   );
 
   const existingSubjectIds = new Set(
@@ -1917,6 +1934,7 @@ function buildGradeSubjectLeaderGroups(
         gradeLevelId: subject.gradeLevelId,
         gradeDisplayName: `Grade ${subject.gradeLevelId}`,
         gradeLevelNumber: null,
+        leaderName: myName,
         subjects: [],
       };
       groups.push(gradeGroup);
@@ -1967,6 +1985,14 @@ function buildSubjectGroupMonitoring(
     }
   }
 
+  // Build map: subject_group_id → coordinatorName
+  const coordinatorNameByGroupId = new Map<number, string | null>();
+  for (const coord of coordinatorRows) {
+    if (coord.subject_group_id != null && !coordinatorNameByGroupId.has(coord.subject_group_id)) {
+      coordinatorNameByGroupId.set(coord.subject_group_id, toTeacherName(coord.users));
+    }
+  }
+
   const byCurriculumSubjectId = new Map(rows.map((row) => [row.curriculumSubjectId, row]));
   const result: ReportMonitoringCoordinatorGroup[] = [];
 
@@ -1990,6 +2016,7 @@ function buildSubjectGroupMonitoring(
     result.push({
       subjectGroupId: group.subject_group_id,
       subjectGroupName: group.name,
+      coordinatorName: coordinatorNameByGroupId.get(group.subject_group_id) ?? null,
       subjects: gradeSubjects,
     });
   }
@@ -2065,12 +2092,12 @@ export async function fetchReportMonitoringTree(
       .is("subject_group_members.deleted_at", null),
     supabase
       .from("subject_coordinators")
-      .select("user_id, subject_group_id")
+      .select("user_id, subject_group_id, users!user_id(first_name, last_name)")
       .eq("sy_id", activeContext.sy_id)
       .is("deleted_at", null),
     supabase
       .from("grade_subject_leaders")
-      .select("user_id, curriculum_subject_id, grade_level_id")
+      .select("user_id, curriculum_subject_id, grade_level_id, users!user_id(first_name, last_name)")
       .eq("sy_id", activeContext.sy_id)
       .is("deleted_at", null),
   ]);
@@ -2317,7 +2344,15 @@ export async function fetchReportMonitoringTree(
         )
       : [],
     allMonitoring: {
-      gradeLevels: canViewAll ? buildGradeGroups(allRows) : [],
+      gradeLevels: canViewAll ? buildGradeGroups(allRows, (() => {
+        const map = new Map<number, string | null>();
+        for (const r of gradeSubjectLeaderRows) {
+          if (r.grade_level_id != null && !map.has(r.grade_level_id)) {
+            map.set(r.grade_level_id, toTeacherName(r.users));
+          }
+        }
+        return map;
+      })()) : [],
       subjectGroups: canViewAll
         ? buildSubjectGroupMonitoring(
             allRows,

@@ -19,10 +19,12 @@ import {
   Tooltip,
 } from "@mantine/core";
 import {
-  IconChevronRight,
+  IconChalkboardTeacher,
   IconRefresh,
-  IconUserSquareRounded,
+  IconUserCog,
+  IconUserEdit,
 } from "@tabler/icons-react";
+import { useMediaQuery } from "@mantine/hooks";
 import EmptySearchState from "@/components/EmptySearchState";
 import { useAuth } from "@/context/AuthContext";
 import { useReportPermissions } from "@/hooks/useReportPermissions";
@@ -91,6 +93,83 @@ const STATUS_COLORS = {
   ongoing: "#fdba74",
   notStarted: "#d1d5db",
 };
+
+/** Single-slot registry — only one popover/tooltip open at a time on touch */
+const activePopover = { close: null as (() => void) | null };
+
+function useClickTooltip() {
+  const [opened, setOpened] = useState(false);
+
+  useEffect(() => {
+    if (!opened) return;
+    function handleOutside() {
+      setOpened(false);
+      activePopover.close = null;
+    }
+    // Defer so the opening click doesn't immediately close
+    const id = setTimeout(() => {
+      document.addEventListener("pointerdown", handleOutside, { once: true });
+    }, 0);
+    return () => {
+      clearTimeout(id);
+      document.removeEventListener("pointerdown", handleOutside);
+    };
+  }, [opened]);
+
+  function toggle(e: React.MouseEvent | React.TouchEvent) {
+    e.stopPropagation();
+    if (opened) {
+      setOpened(false);
+      activePopover.close = null;
+    } else {
+      activePopover.close?.();
+      setOpened(true);
+      activePopover.close = () => setOpened(false);
+    }
+  }
+
+  return { opened, toggle };
+}
+
+function StatusDot({ status }: { status: ReportMonitoringRow["status"] }) {
+  const { opened, toggle } = useClickTooltip();
+  const color =
+    status === "Finalized"
+      ? STATUS_COLORS.done
+      : status === "Not Finalized"
+        ? STATUS_COLORS.ongoing
+        : STATUS_COLORS.notStarted;
+  const label =
+    status === "Finalized" ? "Done" : status === "Not Finalized" ? "Ongoing" : "Not Started";
+
+  return (
+    <Tooltip label={label} withArrow position="top" opened={opened}>
+      <Box
+        onClick={toggle}
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          backgroundColor: color,
+          flexShrink: 0,
+          cursor: "pointer",
+        }}
+      />
+    </Tooltip>
+  );
+}
+
+function TeacherIcon({ name }: { name: string | null }) {
+  const { opened, toggle } = useClickTooltip();
+
+  return (
+    <Tooltip label={name ?? "Unassigned"} withArrow position="top" opened={opened}>
+      <ActionIcon variant="subtle" color="gray" size="sm" onClick={toggle}>
+        <IconChalkboardTeacher size={16} stroke={1.7} />
+      </ActionIcon>
+    </Tooltip>
+  );
+}
 
 function StatusBadge({ status }: { status: ReportMonitoringRow["status"] }) {
   const color =
@@ -214,6 +293,19 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
   const isTouchDevice =
     typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
 
+  // On touch: close when tapping anywhere outside
+  useEffect(() => {
+    if (!opened || !isTouchDevice) return;
+    const id = setTimeout(() => {
+      function handleOutside() {
+        setOpened(false);
+        activePopover.close = null;
+      }
+      document.addEventListener("pointerdown", handleOutside, { once: true });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [opened, isTouchDevice]);
+
   function handleMouseEnter() {
     if (isTouchDevice) return;
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -227,7 +319,15 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
 
   function handleClick(event: MouseEvent) {
     event.stopPropagation();
-    if (isTouchDevice) setOpened((current) => !current);
+    if (!isTouchDevice) return;
+    if (opened) {
+      setOpened(false);
+      activePopover.close = null;
+    } else {
+      activePopover.close?.();
+      setOpened(true);
+      activePopover.close = () => setOpened(false);
+    }
   }
 
   const statusItems = [
@@ -239,7 +339,7 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
   return (
     <Popover
       opened={opened}
-      onClose={() => setOpened(false)}
+      onClose={() => { setOpened(false); activePopover.close = null; }}
       width={220}
       shadow="sm"
       withinPortal
@@ -335,6 +435,7 @@ function MainAccordionHeader({
 function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: string }) {
   const [opened, setOpened] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMobileBar = useMediaQuery("(max-width: 600px)");
   const total = statusCountsTotal(counts);
   const { done, ongoing, notStarted } = counts;
   const statusItems = [
@@ -345,6 +446,19 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
 
   const isTouchDevice =
     typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
+
+  // On touch: close when tapping anywhere outside (deferred so the opening tap doesn't immediately close)
+  useEffect(() => {
+    if (!opened || !isTouchDevice) return;
+    const id = setTimeout(() => {
+      function handleOutside() {
+        setOpened(false);
+        activePopover.close = null;
+      }
+      document.addEventListener("pointerdown", handleOutside, { once: true });
+    }, 0);
+    return () => clearTimeout(id);
+  }, [opened, isTouchDevice]);
 
   function handleMouseEnter() {
     if (isTouchDevice) return;
@@ -359,17 +473,27 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
 
   function handleClick(event: MouseEvent) {
     event.stopPropagation();
-    if (isTouchDevice) setOpened((current) => !current);
+    if (!isTouchDevice) return;
+    if (opened) {
+      setOpened(false);
+      activePopover.close = null;
+    } else {
+      activePopover.close?.();
+      setOpened(true);
+      activePopover.close = () => setOpened(false);
+    }
   }
+
+  const barStyle = isMobileBar
+    ? { width: 60, flexShrink: 0 }
+    : { flex: 1, minWidth: 88, maxWidth: 210 };
 
   if (total === 0) {
     return (
       <Box
         h={16}
         style={{
-          flex: 1,
-          minWidth: 88,
-          maxWidth: 210,
+          ...barStyle,
           border: "1px solid #D6D9E0",
           borderRadius: 3,
           backgroundColor: "#f3f4f6",
@@ -387,12 +511,12 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
   return (
     <Popover
       opened={opened}
-      onClose={() => setOpened(false)}
+      onClose={() => { setOpened(false); activePopover.close = null; }}
       width={220}
       shadow="sm"
       withinPortal
-      position="right"
-      closeOnClickOutside={isTouchDevice}
+      position="top"
+      closeOnClickOutside
     >
       <Popover.Target>
         <Box
@@ -402,9 +526,7 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
           onClick={handleClick}
           style={{
             display: "flex",
-            flex: 1,
-            minWidth: 88,
-            maxWidth: 210,
+            ...barStyle,
             overflow: "hidden",
             border: "1px solid #D6D9E0",
             borderRadius: 3,
@@ -481,10 +603,59 @@ function RowLine({
   isLast?: boolean;
 }) {
   const router = useRouter();
+  const isMobile = useMediaQuery("(max-width: 600px)");
   const href =
     row.latestExamId != null
       ? `/reports/subject/${row.gradeLevelId}/${row.subjectId}/${row.latestExamId}`
       : null;
+
+  const viewButton = (
+    <Button
+      variant="subtle"
+      color="#4EAE4A"
+      size="compact-sm"
+      px={6}
+      onClick={() => href && router.push(href)}
+      style={!href ? { backgroundColor: "#ffffff", color: "#adb5bd", cursor: "default" } : undefined}
+    >
+      View
+    </Button>
+  );
+
+  if (isMobile) {
+    return (
+      <Box
+        py="xs"
+        pl={24}
+        pr={12}
+        className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#d1d5db] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#d1d5db] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#d1d5db] ${
+          isLast ? "before:bottom-1/2" : "before:bottom-0"
+        }`}
+        style={{
+          borderBottom: "1px solid #e5e7eb",
+          marginRight: -12,
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
+          alignItems: "center",
+          columnGap: 8,
+        }}
+      >
+        <span className="tree-node" aria-hidden="true" />
+        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
+          <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
+            {label}
+          </Text>
+        </Tooltip>
+        <Group gap={6} wrap="nowrap" justify="center">
+          <StatusDot status={row.status} />
+          <TeacherIcon name={row.teacherName} />
+        </Group>
+        <Box style={{ display: "flex", justifyContent: "flex-end" }}>
+          {viewButton}
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Group
@@ -520,23 +691,15 @@ function RowLine({
         </Tooltip>
         <StatusBadge status={row.status} />
         <Group gap={4} wrap="nowrap" ml={4}>
-          <IconUserSquareRounded size={15} stroke={1.7} color="#6b7280" />
+          <Tooltip label="Subject Teacher" withArrow position="top">
+            <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" />
+          </Tooltip>
           <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
             {row.teacherName ?? "Unassigned"}
           </Text>
         </Group>
       </Box>
-      <Button
-        variant="subtle"
-        color="#4EAE4A"
-        size="compact-sm"
-        px={6}
-        disabled={!href}
-        onClick={() => href && router.push(href)}
-        rightSection={<IconChevronRight size={14} />}
-      >
-        View
-      </Button>
+      {viewButton}
     </Group>
   );
 }
@@ -556,12 +719,56 @@ function TreeGuide({ children }: { children: ReactNode }) {
   );
 }
 
+function RoleIconButton({
+  personName,
+  roleLabel,
+  roleIcon,
+}: {
+  personName?: string | null;
+  roleLabel?: string;
+  roleIcon?: ReactNode;
+}) {
+  const { opened, toggle } = useClickTooltip();
+  const isMobile = useMediaQuery("(max-width: 600px)");
+
+  if (roleIcon === undefined) return null;
+
+  if (isMobile) {
+    return (
+      <Tooltip label={personName ?? "Unassigned"} withArrow position="top" opened={opened}>
+        <ActionIcon variant="subtle" color="gray" size="sm" onClick={toggle}>
+          {roleIcon}
+        </ActionIcon>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+      <Tooltip label={roleLabel ?? ""} withArrow position="top">
+        <span style={{ display: "flex", alignItems: "center", color: "#6b7280" }}>
+          {roleIcon}
+        </span>
+      </Tooltip>
+      <Text size="sm" c={personName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
+        {personName ?? "Unassigned"}
+      </Text>
+    </Group>
+  );
+}
+
 function TreeBranchLine({
   label,
   rows,
+  personName,
+  roleLabel,
+  roleIcon,
 }: {
   label: string;
   rows: ReportMonitoringRow[];
+  personName?: string | null;
+  roleLabel?: string;
+  roleIcon?: ReactNode;
 }) {
   return (
     <Box
@@ -578,6 +785,7 @@ function TreeBranchLine({
           </Text>
         </Tooltip>
         <StatusStackedBar counts={getRowStatusCounts(rows)} label={label} />
+        <RoleIconButton personName={personName} roleLabel={roleLabel} roleIcon={roleIcon} />
       </Group>
       <Box ml="lg" pl="sm">
         {rows.length === 0 ? (
@@ -600,9 +808,15 @@ function TreeBranchLine({
 function SubjectTreeList({
   subjects,
   emptyMessage,
+  personName,
+  roleLabel,
+  roleIcon,
 }: {
   subjects: ReportMonitoringSubjectGroup[];
   emptyMessage: string;
+  personName?: string | null;
+  roleLabel?: string;
+  roleIcon?: ReactNode;
 }) {
   if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
 
@@ -613,6 +827,9 @@ function SubjectTreeList({
           key={subject.curriculumSubjectId}
           label={subject.subjectName}
           rows={subject.rows}
+          personName={personName}
+          roleLabel={roleLabel}
+          roleIcon={roleIcon}
         />
       ))}
     </TreeGuide>
@@ -752,6 +969,9 @@ function GradeMonitoring({
             <SubjectTreeList
               subjects={grade.subjects}
               emptyMessage="No subjects are available for this grade level."
+              personName={grade.leaderName}
+              roleLabel="Grade Subject Leader"
+              roleIcon={<IconUserEdit size={14} stroke={1.7} />}
             />
           </Accordion.Panel>
         </Accordion.Item>
@@ -810,6 +1030,9 @@ function SubjectGroupMonitoring({
             <SubjectTreeList
               subjects={group.subjects}
               emptyMessage="No subject rows are available for this group."
+              personName={group.coordinatorName}
+              roleLabel="Subject Coordinator"
+              roleIcon={<IconUserCog size={14} stroke={1.7} />}
             />
           </Accordion.Panel>
         </Accordion.Item>
