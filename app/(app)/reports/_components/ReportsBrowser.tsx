@@ -29,7 +29,6 @@ import EmptySearchState from "@/components/EmptySearchState";
 import { useAuth } from "@/context/AuthContext";
 import { useReportPermissions } from "@/hooks/useReportPermissions";
 import {
-  fetchReportMonitoringTree,
   invalidateReportsCache,
   type ReportMonitoringCoordinatorGroup,
   type ReportMonitoringGradeGroup,
@@ -38,6 +37,20 @@ import {
   type ReportMonitoringSubjectGroup,
   type ReportMonitoringTree,
 } from "@/lib/services/reportsAnalysisService";
+
+async function fetchReportMonitoringTreeFromApi(): Promise<ReportMonitoringTree> {
+  const response = await fetch("/api/reports/monitoring-tree", {
+    credentials: "include",
+    cache: "no-store",
+  });
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result?.error || "Failed to load reports.");
+  }
+
+  return result as ReportMonitoringTree;
+}
 
 const emptyTree: ReportMonitoringTree = {
   assigned: { advisorySections: [], handledSections: [] },
@@ -827,7 +840,7 @@ function SubjectTreeList({
           key={subject.curriculumSubjectId}
           label={subject.subjectName}
           rows={subject.rows}
-          personName={personName}
+          personName={subject.leaderName ?? personName}
           roleLabel={roleLabel}
           roleIcon={roleIcon}
         />
@@ -969,7 +982,6 @@ function GradeMonitoring({
             <SubjectTreeList
               subjects={grade.subjects}
               emptyMessage="No subjects are available for this grade level."
-              personName={grade.leaderName}
               roleLabel="Grade Subject Leader"
               roleIcon={<IconUserEdit size={14} stroke={1.7} />}
             />
@@ -1196,14 +1208,7 @@ export default function ReportsBrowser() {
     setLoadError(null);
     try {
       if (forceRefresh) invalidateReportsCache();
-      setTree(
-        await fetchReportMonitoringTree(user?.id ?? null, {
-          canViewAll: reportScope.canViewAll,
-          canViewAssigned: reportScope.canViewAssigned,
-          canMonitorGradeLevel: reportScope.canMonitorGradeLevel,
-          canMonitorSubjects: reportScope.canMonitorSubjects,
-        }),
-      );
+      setTree(await fetchReportMonitoringTreeFromApi());
     } catch (error) {
       setTree(emptyTree);
       setLoadError(

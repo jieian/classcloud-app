@@ -1,5 +1,7 @@
 import { supabase } from "@/lib/exam-supabase";
 
+type SupabaseQueryClient = typeof supabase;
+
 // ─── In-memory session cache ──────────────────────────────────────────────────
 // Keyed by a string derived from function arguments. Cleared on full page reload.
 const _cache = new Map<string, unknown>();
@@ -560,10 +562,11 @@ async function fetchFinalizedReportKeys(syId: number | null): Promise<Set<string
 async function fetchFinalizedReportKeysForContext(
   syId: number,
   sectionIds: number[],
+  db: SupabaseQueryClient = supabase,
 ): Promise<Set<string>> {
   if (sectionIds.length === 0) return new Set();
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("exam_results_reports")
     .select("exam_id, section_id")
     .eq("sy_id", syId)
@@ -616,8 +619,9 @@ async function fetchActiveSectionsForReports(): Promise<RawSectionOnly[]> {
 
 async function fetchActiveSectionsForReportsBySy(
   syId: number,
+  db: SupabaseQueryClient = supabase,
 ): Promise<RawSectionOnly[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("sections")
     .select("section_id, name, grade_level_id, sy_id, adviser_id, grade_levels(display_name, level_number)")
     .eq("sy_id", syId)
@@ -778,8 +782,9 @@ async function fetchActiveCurriculumSubjectsForReports(): Promise<ActiveCurricul
 
 async function fetchActiveCurriculumSubjectsForReportsByCurriculum(
   curriculumId: number,
+  db: SupabaseQueryClient = supabase,
 ): Promise<ActiveCurriculumSubject[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("curriculum_subjects")
     .select("curriculum_subject_id, subject_id, grade_level_id, subjects!inner(name, subject_type, deleted_at)")
     .eq("curriculum_id", curriculumId)
@@ -894,14 +899,16 @@ async function fetchReportExamCardsForContext(
   syId: number,
   sectionsById: Map<number, RawSectionOnly>,
   sectionIds: number[],
+  db: SupabaseQueryClient = supabase,
 ): Promise<ReportExamCard[]> {
   if (sectionIds.length === 0) return [];
 
+  const useCache = db === supabase;
   const cacheKey = `examCards:sy:${syId}:sections:${sectionIds.slice().sort((a, b) => a - b).join(",")}`;
-  const cached = cacheGet<ReportExamCard[]>(cacheKey);
+  const cached = useCache ? cacheGet<ReportExamCard[]>(cacheKey) : undefined;
   if (cached) return cached;
 
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("exam_assignments")
     .select(
       "id, exam_id, section_id, exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
@@ -911,10 +918,10 @@ async function fetchReportExamCardsForContext(
 
   if (error) {
     logReportFetchError("fetchReportExamCardsForContext error", error.message);
-    return cacheSet(cacheKey, []);
+    return useCache ? cacheSet(cacheKey, []) : [];
   }
 
-  const finalizedKeys = await fetchFinalizedReportKeysForContext(syId, sectionIds);
+  const finalizedKeys = await fetchFinalizedReportKeysForContext(syId, sectionIds, db);
   const grouped = new Map<string, ReportExamCard>();
 
   for (const row of (data ?? []) as RawAssignmentRow[]) {
@@ -953,7 +960,7 @@ async function fetchReportExamCardsForContext(
     });
   }
 
-  return cacheSet(cacheKey, Array.from(grouped.values()).sort((a, b) => {
+  const cards = Array.from(grouped.values()).sort((a, b) => {
     const ga = a.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     const gb = b.gradeLevelNumber ?? Number.MAX_SAFE_INTEGER;
     if (ga !== gb) return ga - gb;
@@ -963,7 +970,9 @@ async function fetchReportExamCardsForContext(
     if (tb !== ta) return tb - ta;
 
     return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
-  }));
+  });
+
+  return useCache ? cacheSet(cacheKey, cards) : cards;
 }
 
 export async function fetchReportSectionCards(): Promise<ReportSectionCard[]> {
@@ -1694,6 +1703,7 @@ export type ReportMonitoringSubjectGroup = {
   gradeLevelId: number;
   gradeDisplayName: string;
   gradeLevelNumber: number | null;
+  leaderName: string | null;
   rows: ReportMonitoringRow[];
 };
 
@@ -1837,6 +1847,7 @@ function buildSectionGroups(rows: ReportMonitoringRow[]): ReportMonitoringSectio
 function buildGradeGroups(
   rows: ReportMonitoringRow[],
   leadersByGrade?: Map<number, string | null>,
+  leadersBySubject?: Map<string, string | null>,
 ): ReportMonitoringGradeGroup[] {
   const gradeMap = new Map<number, Map<number, ReportMonitoringSubjectGroup>>();
 
@@ -1852,6 +1863,9 @@ function buildGradeGroups(
         gradeLevelId: row.gradeLevelId,
         gradeDisplayName: row.gradeDisplayName,
         gradeLevelNumber: row.gradeLevelNumber,
+        leaderName:
+          leadersBySubject?.get(`${row.gradeLevelId}:${row.curriculumSubjectId}`) ??
+          null,
         rows: [],
       });
     }
@@ -1894,13 +1908,18 @@ function buildGradeSubjectLeaderGroups(
   if (!userId) return [];
 
   const myLeaderRows = leaderRows.filter((row) => row.user_id === userId);
-  const leaderSubjectIds = new Set(
+  const leaderSubjectKeys = new Set(
     myLeaderRows
-      .map((row) => row.curriculum_subject_id)
-      .filter((id): id is number => id != null),
+      .filter(
+        (row): row is typeof row & {
+          curriculum_subject_id: number;
+          grade_level_id: number;
+        } => row.curriculum_subject_id != null && row.grade_level_id != null,
+      )
+      .map((row) => `${row.grade_level_id}:${row.curriculum_subject_id}`),
   );
 
-  if (leaderSubjectIds.size === 0) return [];
+  if (leaderSubjectKeys.size === 0) return [];
 
   // Build leaderName from current user's name (first matching row)
   const myName = myLeaderRows.length > 0 ? toTeacherName(myLeaderRows[0].users) : null;
@@ -1909,22 +1928,37 @@ function buildGradeSubjectLeaderGroups(
       .filter((r): r is typeof r & { grade_level_id: number } => r.grade_level_id != null)
       .map((r) => [r.grade_level_id, myName]),
   );
-
-  const groups = buildGradeGroups(
-    rows.filter((row) => leaderSubjectIds.has(row.curriculumSubjectId)),
-    leadersByGrade,
+  const leadersBySubject = new Map<string, string | null>(
+    myLeaderRows
+      .filter(
+        (r): r is typeof r & {
+          curriculum_subject_id: number;
+          grade_level_id: number;
+        } => r.curriculum_subject_id != null && r.grade_level_id != null,
+      )
+      .map((r) => [`${r.grade_level_id}:${r.curriculum_subject_id}`, myName]),
   );
 
-  const existingSubjectIds = new Set(
+  const groups = buildGradeGroups(
+    rows.filter((row) =>
+      leaderSubjectKeys.has(`${row.gradeLevelId}:${row.curriculumSubjectId}`),
+    ),
+    leadersByGrade,
+    leadersBySubject,
+  );
+
+  const existingSubjectKeys = new Set(
     groups.flatMap((group) =>
-      group.subjects.map((subject) => subject.curriculumSubjectId),
+      group.subjects.map(
+        (subject) => `${subject.gradeLevelId}:${subject.curriculumSubjectId}`,
+      ),
     ),
   );
 
   const missingSubjects = activeSubjects.filter(
     (subject) =>
-      leaderSubjectIds.has(subject.curriculumSubjectId) &&
-      !existingSubjectIds.has(subject.curriculumSubjectId),
+      leaderSubjectKeys.has(`${subject.gradeLevelId}:${subject.curriculumSubjectId}`) &&
+      !existingSubjectKeys.has(`${subject.gradeLevelId}:${subject.curriculumSubjectId}`),
   );
 
   for (const subject of missingSubjects) {
@@ -1940,16 +1974,17 @@ function buildGradeSubjectLeaderGroups(
       groups.push(gradeGroup);
     }
 
-    gradeGroup.subjects.push({
-      curriculumSubjectId: subject.curriculumSubjectId,
-      subjectId: subject.subjectId,
-      subjectName: subject.subjectName,
-      subjectType: subject.subjectType,
-      gradeLevelId: subject.gradeLevelId,
-      gradeDisplayName: gradeGroup.gradeDisplayName,
-      gradeLevelNumber: gradeGroup.gradeLevelNumber,
-      rows: [],
-    });
+      gradeGroup.subjects.push({
+        curriculumSubjectId: subject.curriculumSubjectId,
+        subjectId: subject.subjectId,
+        subjectName: subject.subjectName,
+        subjectType: subject.subjectType,
+        gradeLevelId: subject.gradeLevelId,
+        gradeDisplayName: gradeGroup.gradeDisplayName,
+        gradeLevelNumber: gradeGroup.gradeLevelNumber,
+        leaderName: myName,
+        rows: [],
+      });
   }
 
   return groups
@@ -2031,6 +2066,7 @@ function buildSubjectGroupMonitoring(
 export async function fetchReportMonitoringTree(
   userId: string | null,
   options: ReportMonitoringTreeOptions = {},
+  db: SupabaseQueryClient = supabase,
 ): Promise<ReportMonitoringTree> {
   const canViewAll = options.canViewAll === true;
   const canViewAssigned = options.canViewAssigned === true;
@@ -2043,7 +2079,8 @@ export async function fetchReportMonitoringTree(
     canMonitorGradeLevel ? "grade" : "",
     canMonitorSubjects ? "subjects" : "",
   ].join(":");
-  const cached = cacheGet<ReportMonitoringTree>(cacheKey);
+  const useCache = db === supabase;
+  const cached = useCache ? cacheGet<ReportMonitoringTree>(cacheKey) : undefined;
   if (cached) return cached;
 
   const empty: ReportMonitoringTree = {
@@ -2053,7 +2090,7 @@ export async function fetchReportMonitoringTree(
     allMonitoring: { gradeLevels: [], subjectGroups: [] },
   };
 
-  const { data: activeContextData, error: activeContextError } = await supabase
+  const { data: activeContextData, error: activeContextError } = await db
     .from("school_years")
     .select("sy_id, curriculum_id")
     .eq("is_active", true)
@@ -2065,12 +2102,12 @@ export async function fetchReportMonitoringTree(
       "[reportsAnalysisService] fetchReportMonitoringTree active context error:",
       activeContextError.message,
     );
-    return cacheSet(cacheKey, empty);
+    return useCache ? cacheSet(cacheKey, empty) : empty;
   }
 
   const activeContext = activeContextData as ActiveContextRow | null;
   if (!activeContext?.sy_id || activeContext.curriculum_id == null) {
-    return cacheSet(cacheKey, empty);
+    return useCache ? cacheSet(cacheKey, empty) : empty;
   }
 
   const [
@@ -2080,9 +2117,9 @@ export async function fetchReportMonitoringTree(
     coordinatorsResult,
     gradeSubjectLeadersResult,
   ] = await Promise.all([
-    fetchActiveSectionsForReportsBySy(activeContext.sy_id),
-    fetchActiveCurriculumSubjectsForReportsByCurriculum(activeContext.curriculum_id),
-    supabase
+    fetchActiveSectionsForReportsBySy(activeContext.sy_id, db),
+    fetchActiveCurriculumSubjectsForReportsByCurriculum(activeContext.curriculum_id, db),
+    db
       .from("subject_groups")
       .select(
         "subject_group_id, name, subject_group_members(curriculum_subject_id)",
@@ -2090,12 +2127,12 @@ export async function fetchReportMonitoringTree(
       .eq("curriculum_id", activeContext.curriculum_id)
       .is("deleted_at", null)
       .is("subject_group_members.deleted_at", null),
-    supabase
+    db
       .from("subject_coordinators")
       .select("user_id, subject_group_id, users!user_id(first_name, last_name)")
       .eq("sy_id", activeContext.sy_id)
       .is("deleted_at", null),
-    supabase
+    db
       .from("grade_subject_leaders")
       .select("user_id, curriculum_subject_id, grade_level_id, users!user_id(first_name, last_name)")
       .eq("sy_id", activeContext.sy_id)
@@ -2140,12 +2177,17 @@ export async function fetchReportMonitoringTree(
   const gradeSubjectLeaderRows =
     (gradeSubjectLeadersResult.data ?? []) as GradeSubjectLeaderRow[];
 
-  const userGradeLeaderSubjectIds = new Set(
+  const userGradeLeaderSubjectKeys = new Set(
     canMonitorGradeLevel && userId
       ? gradeSubjectLeaderRows
           .filter((row) => row.user_id === userId)
-          .map((row) => row.curriculum_subject_id)
-          .filter((id): id is number => id != null)
+          .filter(
+            (row): row is typeof row & {
+              curriculum_subject_id: number;
+              grade_level_id: number;
+            } => row.curriculum_subject_id != null && row.grade_level_id != null,
+          )
+          .map((row) => `${row.grade_level_id}:${row.curriculum_subject_id}`)
       : [],
   );
   const userCoordinatorGroupIds = new Set(
@@ -2166,13 +2208,18 @@ export async function fetchReportMonitoringTree(
     }
   }
   const monitoredCurriculumSubjectIds = new Set<number>([
-    ...userGradeLeaderSubjectIds,
     ...userSubjectGroupMemberIds,
   ]);
+  for (const key of userGradeLeaderSubjectKeys) {
+    const curriculumSubjectId = Number(key.split(":")[1]);
+    if (Number.isFinite(curriculumSubjectId)) {
+      monitoredCurriculumSubjectIds.add(curriculumSubjectId);
+    }
+  }
 
   let handledAssignmentRows: MonitoringAssignmentRow[] = [];
   if (canViewAssigned && userId && activeSectionIds.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("teacher_class_assignments")
       .select("section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)")
       .eq("teacher_id", userId)
@@ -2209,9 +2256,11 @@ export async function fetchReportMonitoringTree(
   for (const id of advisorySectionIds) neededSectionIds.add(id);
   for (const id of handledSectionIds) neededSectionIds.add(id);
 
-  if (monitoredCurriculumSubjectIds.size > 0) {
-    const monitoredSubjects = activeSubjects.filter((subject) =>
-      monitoredCurriculumSubjectIds.has(subject.curriculumSubjectId),
+  if (monitoredCurriculumSubjectIds.size > 0 || userGradeLeaderSubjectKeys.size > 0) {
+    const monitoredSubjects = activeSubjects.filter(
+      (subject) =>
+        monitoredCurriculumSubjectIds.has(subject.curriculumSubjectId) ||
+        userGradeLeaderSubjectKeys.has(`${subject.gradeLevelId}:${subject.curriculumSubjectId}`),
     );
     const monitoredGradeIds = new Set(
       monitoredSubjects.map((subject) => subject.gradeLevelId),
@@ -2226,7 +2275,7 @@ export async function fetchReportMonitoringTree(
   const neededSectionIdList = Array.from(neededSectionIds);
   let assignmentRows: MonitoringAssignmentRow[] = [];
   if (neededSectionIdList.length > 0) {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("teacher_class_assignments")
       .select("section_id, teacher_id, curriculum_subject_id, users!teacher_id(first_name, last_name)")
       .in("section_id", neededSectionIdList)
@@ -2246,6 +2295,7 @@ export async function fetchReportMonitoringTree(
     activeContext.sy_id,
     sectionsById,
     neededSectionIdList,
+    db,
   );
 
   const assignmentByPair = new Map<string, { teacherId: string | null; teacherName: string | null }>();
@@ -2344,15 +2394,30 @@ export async function fetchReportMonitoringTree(
         )
       : [],
     allMonitoring: {
-      gradeLevels: canViewAll ? buildGradeGroups(allRows, (() => {
-        const map = new Map<number, string | null>();
-        for (const r of gradeSubjectLeaderRows) {
-          if (r.grade_level_id != null && !map.has(r.grade_level_id)) {
-            map.set(r.grade_level_id, toTeacherName(r.users));
+      gradeLevels: canViewAll ? buildGradeGroups(
+        allRows,
+        (() => {
+          const map = new Map<number, string | null>();
+          for (const r of gradeSubjectLeaderRows) {
+            if (r.grade_level_id != null && !map.has(r.grade_level_id)) {
+              map.set(r.grade_level_id, toTeacherName(r.users));
+            }
           }
-        }
-        return map;
-      })()) : [],
+          return map;
+        })(),
+        (() => {
+          const map = new Map<string, string | null>();
+          for (const r of gradeSubjectLeaderRows) {
+            if (r.grade_level_id != null && r.curriculum_subject_id != null) {
+              map.set(
+                `${r.grade_level_id}:${r.curriculum_subject_id}`,
+                toTeacherName(r.users),
+              );
+            }
+          }
+          return map;
+        })(),
+      ) : [],
       subjectGroups: canViewAll
         ? buildSubjectGroupMonitoring(
             allRows,
@@ -2365,12 +2430,16 @@ export async function fetchReportMonitoringTree(
     },
   };
 
-  return cacheSet(cacheKey, result);
+  return useCache ? cacheSet(cacheKey, result) : result;
 }
 
-export async function fetchMyAssignedScope(userId: string): Promise<AssignedScope> {
+export async function fetchMyAssignedScope(
+  userId: string,
+  db: SupabaseQueryClient = supabase,
+): Promise<AssignedScope> {
   const cacheKey = `assignedScope:${userId}`;
-  const cached = cacheGet<AssignedScope>(cacheKey);
+  const useCache = db === supabase;
+  const cached = useCache ? cacheGet<AssignedScope>(cacheKey) : undefined;
   if (cached) return cached;
 
   const empty: AssignedScope = {
@@ -2388,7 +2457,42 @@ export async function fetchMyAssignedScope(userId: string): Promise<AssignedScop
     curriculum_subjects: { subject_id: number | null; grade_level_id: number | null } | { subject_id: number | null; grade_level_id: number | null }[] | null;
   };
 
-  const { data: myData, error: myError } = await supabase
+  if (useCache && typeof window !== "undefined") {
+    try {
+      const response = await fetch("/api/reports/assigned-scope", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (response.ok) {
+        return cacheSet(cacheKey, (await response.json()) as AssignedScope);
+      }
+    } catch (error) {
+      console.error(
+        "[reportsAnalysisService] fetchMyAssignedScope api error:",
+        error instanceof Error ? error.message : "fetch failed",
+      );
+    }
+  }
+
+  const { data: activeContextData, error: activeContextError } = await db
+    .from("school_years")
+    .select("sy_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (activeContextError) {
+    console.error(
+      "[reportsAnalysisService] fetchMyAssignedScope active context error:",
+      activeContextError.message,
+    );
+    return useCache ? cacheSet(cacheKey, empty) : empty;
+  }
+
+  const activeSyId =
+    (activeContextData as { sy_id?: number | null } | null)?.sy_id ?? null;
+
+  const { data: myData, error: myError } = await db
     .from("teacher_class_assignments")
     .select("section_id, curriculum_subject_id, curriculum_subjects!inner(subject_id, grade_level_id)")
     .eq("teacher_id", userId)
@@ -2396,7 +2500,23 @@ export async function fetchMyAssignedScope(userId: string): Promise<AssignedScop
 
   if (myError) {
     console.error("[reportsAnalysisService] fetchMyAssignedScope error:", myError.message);
-    return cacheSet(cacheKey, empty);
+    return useCache ? cacheSet(cacheKey, empty) : empty;
+  }
+
+  const { data: gslData, error: gslError } = activeSyId == null
+    ? { data: [], error: null }
+    : await db
+        .from("grade_subject_leaders")
+        .select("curriculum_subject_id, grade_level_id, curriculum_subjects!inner(subject_id, grade_level_id)")
+        .eq("user_id", userId)
+        .eq("sy_id", activeSyId)
+        .is("deleted_at", null);
+
+  if (gslError) {
+    console.error(
+      "[reportsAnalysisService] fetchMyAssignedScope grade subject leaders error:",
+      gslError.message,
+    );
   }
 
   const mySectionIds = new Set<number>();
@@ -2416,8 +2536,25 @@ export async function fetchMyAssignedScope(userId: string): Promise<AssignedScop
     if (cs?.grade_level_id != null) myGradeLevelIds.add(cs.grade_level_id);
   }
 
-  if (myCurriculumSubjectIds.size === 0) {
-    return cacheSet(cacheKey, empty);
+  type GslScopeRow = {
+    curriculum_subject_id: number | null;
+    grade_level_id: number | null;
+    curriculum_subjects:
+      | { subject_id: number | null; grade_level_id: number | null }
+      | { subject_id: number | null; grade_level_id: number | null }[]
+      | null;
+  };
+
+  for (const row of (gslData ?? []) as GslScopeRow[]) {
+    if (row.curriculum_subject_id != null) myCurriculumSubjectIds.add(row.curriculum_subject_id);
+    if (row.grade_level_id != null) myGradeLevelIds.add(row.grade_level_id);
+    const cs = firstJoin(row.curriculum_subjects);
+    if (cs?.subject_id != null) mySubjectIds.add(cs.subject_id);
+    if (cs?.grade_level_id != null) myGradeLevelIds.add(cs.grade_level_id);
+  }
+
+  if (myCurriculumSubjectIds.size === 0 && mySubjectIds.size === 0 && myGradeLevelIds.size === 0) {
+    return useCache ? cacheSet(cacheKey, empty) : empty;
   }
 
   type AllRow = {
@@ -2432,11 +2569,11 @@ export async function fetchMyAssignedScope(userId: string): Promise<AssignedScop
   };
 
   const [allResult, glResult] = await Promise.all([
-    supabase
+    db
       .from("teacher_class_assignments")
       .select("section_id, curriculum_subjects!inner(subject_id, grade_level_id)")
       .is("deleted_at", null),
-    supabase
+    db
       .from("teacher_class_assignments")
       .select("section_id, curriculum_subject_id, curriculum_subjects!inner(grade_level_id)")
       .in("curriculum_subject_id", Array.from(myCurriculumSubjectIds))
@@ -2470,14 +2607,16 @@ export async function fetchMyAssignedScope(userId: string): Promise<AssignedScop
     ),
   ];
 
-  return cacheSet(cacheKey, {
+  const scope = {
     sectionIds: Array.from(mySectionIds),
     subjectIds: Array.from(mySubjectIds),
     curriculumSubjectIds: Array.from(myCurriculumSubjectIds),
     assignedPairs,
     glSectionIds,
     subjectSectionIds,
-  });
+  };
+
+  return useCache ? cacheSet(cacheKey, scope) : scope;
 }
 
 export async function fetchConsolidatedSubjectDiagnosticAnalytics(

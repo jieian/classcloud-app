@@ -6,6 +6,7 @@ import { parseBody, AssignGradeSubjectLeaderSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { invalidateReportsCache } from "@/lib/services/reportsAnalysisService";
 
 const _POST = async function (request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -79,6 +80,7 @@ const _POST = async function (request: Request) {
       console.error("syncUserPermissions failed for displaced grade subject leader:", err),
     );
   }
+  invalidateReportsCache();
 
   after(async () => {
     await insertAuditLog({
