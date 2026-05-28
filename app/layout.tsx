@@ -8,6 +8,8 @@ import "./globals.css";
 
 import "@mantine/notifications/styles.css";
 import DynamicNotifications from "@/app/(app)/exam/_components/ExamNotificationsPosition";
+import { SpeedInsights } from "@vercel/speed-insights/next";
+import { Analytics } from "@vercel/analytics/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +50,8 @@ export default function RootLayout({
           <ModalsProvider>
             <DynamicNotifications />
             {children}
+            <SpeedInsights />
+            <Analytics />
           </ModalsProvider>
         </MantineProvider>
       </body>
