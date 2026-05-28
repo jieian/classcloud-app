@@ -1433,6 +1433,9 @@ export default function ScanPapersPage() {
     );
   }
 
+  // Still loading — exam not yet available; return null to avoid rendering with null exam.
+  if (!exam) return null;
+
   // Navigation buttons — call with mt=0 for the fixed mobile bar
   const getNavButtons = (mt?: number | string) => {
     if (step === 'capture') return (
