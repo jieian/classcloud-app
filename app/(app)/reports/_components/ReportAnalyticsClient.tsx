@@ -47,6 +47,7 @@ interface ReportAnalyticsClientProps {
   initialSectionId?: number | null;
   initialExamId?: number | null;
   initialSubjectId?: number | null;
+  initialFrom?: string | null;
   mode?: "section" | "subject";
 }
 
@@ -372,8 +373,8 @@ function getRankingSummary(sections: ConsolidatedSubjectSectionResult[]) {
     .map((row, index) => ({ ...row, rank: index + 1 }));
 
   return {
-    most: ranked.slice(0, 5),
-    least: [...ranked].reverse().slice(0, 5),
+    most: ranked.slice(0, 10),
+    least: [...ranked].reverse().slice(0, 10),
   };
 }
 
@@ -416,7 +417,7 @@ function DiagnosticResultsTable({
           </TableTr>
         </TableThead>
         <TableTbody>
-          {result.sections.map((section) => {
+          {[...result.sections].sort((a, b) => (a.isSses === b.isSses ? 0 : a.isSses ? -1 : 1)).map((section) => {
             const summary = section.summary;
             return (
               <TableTr key={section.sectionId}>
@@ -628,11 +629,12 @@ function RankingPairTable({
   title: string;
   ranking: ReturnType<typeof getRankingSummary>;
 }) {
-  const rows = Array.from({ length: 5 }).map((_, index) => ({
+  const count = Math.max(ranking.most.length, ranking.least.length);
+  const rows = Array.from({ length: count }).map((_, index) => ({
     rank: index + 1,
-    most: ranking.most[index]?.itemNo ?? null,
+    mostItem: ranking.most[index]?.itemNo ?? null,
     leastRank: ranking.least[index]?.rank ?? null,
-    least: ranking.least[index]?.itemNo ?? null,
+    leastItem: ranking.least[index]?.itemNo ?? null,
   }));
 
   return (
@@ -640,20 +642,24 @@ function RankingPairTable({
       <Text size="xl" fw={700} mb={10} c="#111827">{title}</Text>
       <ReportTableShell minWidth={360}>
           <TableThead>
+            <TableTr>
+              <th colSpan={2} style={{ ...CORRECT_HIGHLIGHT_STYLE, textAlign: "center", padding: "6px 8px" }}>Most Learned</th>
+              <th colSpan={2} style={{ ...WRONG_HIGHLIGHT_STYLE, textAlign: "center", padding: "6px 8px" }}>Least Learned</th>
+            </TableTr>
             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
               <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
-              <PlainGreenHeader ta="center">Most Learned</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Item</PlainGreenHeader>
               <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
-              <PlainGreenHeader ta="center">Least Learned</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Item</PlainGreenHeader>
             </TableTr>
           </TableThead>
           <TableTbody>
             {rows.map((row) => (
               <TableTr key={`${title}-${row.rank}`}>
                 <TableTd ta="center">{row.rank}</TableTd>
-                <TableTd ta="center">{row.most ?? "-"}</TableTd>
+                <TableTd ta="center">{row.mostItem ?? "-"}</TableTd>
                 <TableTd ta="center">{row.leastRank ?? "-"}</TableTd>
-                <TableTd ta="center">{row.least ?? "-"}</TableTd>
+                <TableTd ta="center">{row.leastItem ?? "-"}</TableTd>
               </TableTr>
             ))}
           </TableTbody>
@@ -937,6 +943,7 @@ export default function ReportAnalyticsClient({
   initialSectionId = null,
   initialExamId = null,
   initialSubjectId = null,
+  initialFrom = null,
   mode = "section",
 }: ReportAnalyticsClientProps) {
   const router = useRouter();
@@ -944,7 +951,7 @@ export default function ReportAnalyticsClient({
   const queryGradeParam = Number(searchParams.get("gradeLevelId"));
   const querySectionParam = Number(searchParams.get("sectionId"));
   const queryExamParam = Number(searchParams.get("examId"));
-  const fromParam = searchParams.get("from");
+  const fromParam = searchParams.get("from") ?? initialFrom;
   const assignedSectionIdsFromQuery = useMemo(
     () =>
       (searchParams.get("sections") ?? "")
@@ -958,6 +965,7 @@ export default function ReportAnalyticsClient({
     if (fromParam === "grade") return "Grade Subject Monitoring";
     if (fromParam === "subject") return "Subject Group Monitoring";
     if (fromParam === "all") return "All Reports";
+    if (fromParam === "exam") return "Report Analytics";
     return "Report Analytics";
   })();
   const gradeParam = Number.isFinite(initialGradeLevelId)
@@ -1233,10 +1241,18 @@ export default function ReportAnalyticsClient({
         reportScope.canViewAssigned &&
         allSections.some((s) => scopedAssignedSectionIds.has(s.sectionId));
 
+      const ssesFirst = <T extends { sectionName: string }>(arr: T[]) =>
+        [...arr].sort((a, b) => {
+          const aS = /\bSSES\b/i.test(a.sectionName.trim());
+          const bS = /\bSSES\b/i.test(b.sectionName.trim());
+          if (aS !== bS) return aS ? -1 : 1;
+          return a.sectionName.localeCompare(b.sectionName, undefined, { sensitivity: "base" });
+        });
+
       if (fromParam === "subject") {
         return [
           { value: "all", label: "Consolidated (All Sections)", disabled: false },
-          ...subjectGroupSections.map(toItem),
+          ...ssesFirst(subjectGroupSections).map(toItem),
         ];
       }
 
@@ -1245,24 +1261,24 @@ export default function ReportAnalyticsClient({
         const otherSections = allSections.filter((s) => !scopedAssignedSectionIds.has(s.sectionId));
 
         if (fromParam === "assigned") {
-          return assignedSections.map(toAssignedItem);
+          return ssesFirst(assignedSections).map(toAssignedItem);
         }
 
         // My Advisory & Subjects context: only show sections the teacher handles for this subject.
         if (fromParam === "advisory") {
-          return assignedSections.map(toItem);
+          return ssesFirst(assignedSections).map(toItem);
         }
 
         return [
           { group: "Summary", items: [{ value: "all", label: "Consolidated (All Sections)", disabled: false }] },
-          { group: "My Sections", items: assignedSections.map(toItem) },
-          ...(otherSections.length > 0 ? [{ group: "Other Sections", items: otherSections.map(toItem) }] : []),
+          { group: "My Sections", items: ssesFirst(assignedSections).map(toItem) },
+          ...(otherSections.length > 0 ? [{ group: "Other Sections", items: ssesFirst(otherSections).map(toItem) }] : []),
         ];
       }
 
       return [
         { value: "all", label: "Consolidated (All Sections)", disabled: false },
-        ...allSections.map(toItem),
+        ...ssesFirst(allSections).map(toItem),
       ];
     }
 
@@ -1275,9 +1291,12 @@ export default function ReportAnalyticsClient({
         dedup.set(row.sectionId, { value: String(row.sectionId), label: row.sectionName });
       }
     }
-    return Array.from(dedup.values()).sort((a, b) =>
-      a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
-    );
+    return Array.from(dedup.values()).sort((a, b) => {
+      const aIsSses = /\bSSES\b/i.test(a.label.trim());
+      const bIsSses = /\bSSES\b/i.test(b.label.trim());
+      if (aIsSses !== bIsSses) return aIsSses ? -1 : 1;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: "base" });
+    });
   }, [scopedCards, mode, selectedGradeId, subjectOverview, finalizedSectionIds, reportScope, fromParam, assignedSectionIdsFromQuery]);
 
   // Flat list of all leaf section items (value+label) from sectionOptions (handles grouped/flat structures)
@@ -1438,6 +1457,12 @@ export default function ReportAnalyticsClient({
       });
     }
 
+    if (fromParam === "exam" && Number.isFinite(examParam) && Number.isFinite(sectionParam)) {
+      return cards.filter(
+        (card) => card.examId === examParam && card.sectionId === sectionParam,
+      );
+    }
+
     if (!selectedSubject) {
       if (!Number.isFinite(examParam)) return [];
       return cards.filter((card) => {
@@ -1476,6 +1501,17 @@ export default function ReportAnalyticsClient({
       setSelectedSubject(subjectOverview?.subjectName ?? null);
       setSubjectHydrated(true);
       return;
+    }
+
+    if (fromParam === "exam" && Number.isFinite(examParam) && Number.isFinite(sectionParam)) {
+      const card = cards.find(
+        (c) => c.examId === examParam && c.sectionId === sectionParam,
+      );
+      if (card?.subjectName) {
+        setSelectedSubject(card.subjectName);
+        setSubjectHydrated(true);
+        return;
+      }
     }
 
     if (sectionSubjectOptions.length === 0) {
@@ -1539,6 +1575,8 @@ export default function ReportAnalyticsClient({
   }, [
     cards,
     examParam,
+    sectionParam,
+    fromParam,
     sectionSubjectOptions,
     selectedGradeId,
     selectedSectionId,
@@ -1610,7 +1648,7 @@ export default function ReportAnalyticsClient({
 
   useEffect(() => {
     if (examOptions.length === 0) {
-      setSelectedKey(null);
+      if (fromParam !== "exam") setSelectedKey(null);
       return;
     }
     const hasCurrent =
@@ -1629,8 +1667,10 @@ export default function ReportAnalyticsClient({
           : null
         : null;
 
+    // When coming from a specific exam, never fall back to a different exam.
+    if (fromParam === "exam" && queryMatch == null) return;
     setSelectedKey(queryMatch ?? examOptions[0].value);
-  }, [examOptions, selectedKey, examParam, mode, selectedSectionId, sectionParam]);
+  }, [examOptions, fromParam, selectedKey, examParam, mode, selectedSectionId, sectionParam]);
 
   const selectedCard = useMemo(() => {
     if (!selectedKey) return null;
@@ -1850,20 +1890,29 @@ export default function ReportAnalyticsClient({
     <div className="space-y-5 min-w-0">
       <div>
         <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-[#597D37]">{pageTitle}</h1>
-        <BackButton onClick={() => router.back()} size="sm" mb="md">
-          Back to Reports
+        <BackButton
+          onClick={() => fromParam === "exam" && Number.isFinite(examParam)
+            ? router.push(`/exam/${examParam}/scan`)
+            : router.back()
+          }
+          size="sm"
+          mb="md"
+        >
+          {fromParam === "exam" ? "Back to Exam" : "Back to Reports"}
         </BackButton>
         <Text size="lg" fw={700} c="black">
           {mode === "subject" && subjectOverview
             ? selectedSectionId == null && !selectedConsolidated
               ? `${selectedGradeLabel} • ${subjectOverview.subjectName}`
               : `${selectedGradeLabel} • ${subjectOverview.subjectName} • ${selectedSectionLabel}`
-            : `${selectedGradeLabel} • ${selectedSectionLabel}`}
+            : selectedSubject
+              ? `${selectedGradeLabel} • ${selectedSectionLabel} • ${selectedSubject}`
+              : `${selectedGradeLabel} • ${selectedSectionLabel}`}
         </Text>
       </div>
 
       <Group mb="md" align="flex-end" gap="sm">
-        <Select
+        {fromParam !== "exam" && <Select
           placeholder={mode === "subject" ? "Select Section" : "Select Subject"}
           data={mode === "subject" ? sectionOptions : sectionSubjectOptions}
           value={
@@ -1964,7 +2013,7 @@ export default function ReportAnalyticsClient({
           disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
           clearable
           nothingFoundMessage="-"
-        />
+        />}
         {individualDownloadHref && (
           <Button
             component="a"
@@ -2001,7 +2050,7 @@ export default function ReportAnalyticsClient({
           <SegmentedControl
             fullWidth
             value={activeTab}
-            onChange={(value) => setActiveTab(value as typeof activeTab)}
+            onChange={(value) => { setActiveTab(value as typeof activeTab); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             color="#4EAE4A"
             radius="lg"
             size="sm"
@@ -2099,7 +2148,7 @@ export default function ReportAnalyticsClient({
                       value={formatSummaryValue("int", summary.totalScore)}
                     />
                     <DetailCard label="Mean" value={formatSummaryValue("mean", summary.mean)} />
-                    <DetailCard label="PL" value={formatSummaryValue("pl", summary.pl)} />
+                    <DetailCard label="Performance Level (PL)" value={formatSummaryValue("pl", summary.pl)} />
                     <DetailCard
                       label="Highest Score"
                       value={formatSummaryValue("int", summary.highestScore)}
@@ -2109,8 +2158,8 @@ export default function ReportAnalyticsClient({
                       value={formatSummaryValue("int", summary.lowestScore)}
                     />
                     <DetailCard
-                      label="Mean Percentage Score"
-                      value={formatSummaryValue("mps", summary.mps)}
+                      label="Standard Deviation (SD)"
+                      value={Math.sqrt(summary.mean).toFixed(2)}
                     />
                   </div>
                   {summary.numberOfCases === 0 && (
@@ -2257,8 +2306,8 @@ export default function ReportAnalyticsClient({
                               <TableTr key={`male-${row.enrollmentId}`}>
                                 <TableTd ta="center">{idx + 1}</TableTd>
                                 <TableTd>{row.pupilName}</TableTd>
-                                <TableTd ta="center" style={getScoreCellStyle(row.testScore, row.totalItems)}>{`${row.testScore}/${row.totalItems}`}</TableTd>
-                                <TableTd ta="center" style={getMplCellStyle(row.mpl)}>{`${row.mpl.toFixed(2)}%`}</TableTd>
+                                <TableTd ta="center" style={getScoreCellStyle(row.testScore, row.totalItems)}>{row.testScore}</TableTd>
+                                <TableTd ta="center" style={getMplCellStyle(row.mpl)}>{`${row.mpl.toFixed(1)}%`}</TableTd>
                                 <TableTd ta="center">{row.proficiencyLevel}</TableTd>
                               </TableTr>
                             ))}
@@ -2273,8 +2322,8 @@ export default function ReportAnalyticsClient({
                               <TableTr key={`female-${row.enrollmentId}`}>
                                 <TableTd ta="center">{idx + 1}</TableTd>
                                 <TableTd>{row.pupilName}</TableTd>
-                                <TableTd ta="center" style={getScoreCellStyle(row.testScore, row.totalItems)}>{`${row.testScore}/${row.totalItems}`}</TableTd>
-                                <TableTd ta="center" style={getMplCellStyle(row.mpl)}>{`${row.mpl.toFixed(2)}%`}</TableTd>
+                                <TableTd ta="center" style={getScoreCellStyle(row.testScore, row.totalItems)}>{row.testScore}</TableTd>
+                                <TableTd ta="center" style={getMplCellStyle(row.mpl)}>{`${row.mpl.toFixed(1)}%`}</TableTd>
                                 <TableTd ta="center">{row.proficiencyLevel}</TableTd>
                               </TableTr>
                             ))}
@@ -2318,28 +2367,26 @@ export default function ReportAnalyticsClient({
                 ) : (
                   <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 w-full">
                     <div className="min-w-0">
-                      <Text size="xl" fw={700} mb={10} c="#111827">Top 5 Most Learned</Text>
+                      <Text size="xl" fw={700} mb={10} c="#111827">Top 10 Most Learned</Text>
                       <ReportTableShell minWidth={300}>
                           <TableThead>
-                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                              <TableColumnHeader w={WIDTH.rankingRank} ta="center" >Rank</TableColumnHeader>
-                              <TableColumnHeader w={WIDTH.rankingItem} ta="center" >Item</TableColumnHeader>
-                              <TableColumnHeader >Objectives</TableColumnHeader>
+                            <TableTr>
+                              <TableColumnHeader w={WIDTH.rankingRank} ta="center" style={{ backgroundColor: CORRECT_HIGHLIGHT_STYLE.backgroundColor, color: CORRECT_HIGHLIGHT_STYLE.color }}>Rank</TableColumnHeader>
+                              <TableColumnHeader w={WIDTH.rankingItem} ta="center" style={{ backgroundColor: CORRECT_HIGHLIGHT_STYLE.backgroundColor, color: CORRECT_HIGHLIGHT_STYLE.color }}>Item</TableColumnHeader>
+                              <TableColumnHeader style={{ backgroundColor: CORRECT_HIGHLIGHT_STYLE.backgroundColor, color: CORRECT_HIGHLIGHT_STYLE.color }}>Objectives</TableColumnHeader>
                             </TableTr>
                           </TableThead>
                           <TableTbody>
                             {itemAnalysisLoading ? (
                               <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
                             ) : (
-                              Array.from({ length: 5 }).map((_, index) => {
+                              Array.from({ length: 10 }).map((_, index) => {
                                 const row = itemAnalysis.topMostLearned[index] ?? null;
                                 return (
                                   <TableTr key={`most-${index + 1}`}>
-                                    <TableTd ta="center">{row?.rank ?? index + 1}</TableTd>
+                                    <TableTd ta="center">{row?.rank ?? "-"}</TableTd>
                                     <TableTd ta="center">{row?.itemNo ?? "-"}</TableTd>
-                                    <TableTd>
-                                      {row ? <EllipsisTooltipText text={row.objective} /> : "-"}
-                                    </TableTd>
+                                    <TableTd>{row ? <EllipsisTooltipText text={row.objective} /> : "-"}</TableTd>
                                   </TableTr>
                                 );
                               })
@@ -2348,28 +2395,26 @@ export default function ReportAnalyticsClient({
                       </ReportTableShell>
                     </div>
                     <div className="min-w-0">
-                      <Text size="xl" fw={700} mb={10} c="#111827">Top 5 Least Learned</Text>
+                      <Text size="xl" fw={700} mb={10} c="#111827">Top 10 Least Learned</Text>
                       <ReportTableShell minWidth={300}>
                           <TableThead>
-                            <TableTr style={{ backgroundColor: "#4EAE4A" }}>
-                              <TableColumnHeader w={WIDTH.rankingRank} ta="center" >Rank</TableColumnHeader>
-                              <TableColumnHeader w={WIDTH.rankingItem} ta="center" >Item</TableColumnHeader>
-                              <TableColumnHeader >Objectives</TableColumnHeader>
+                            <TableTr>
+                              <TableColumnHeader w={WIDTH.rankingRank} ta="center" style={{ backgroundColor: WRONG_HIGHLIGHT_STYLE.backgroundColor, color: WRONG_HIGHLIGHT_STYLE.color }}>Rank</TableColumnHeader>
+                              <TableColumnHeader w={WIDTH.rankingItem} ta="center" style={{ backgroundColor: WRONG_HIGHLIGHT_STYLE.backgroundColor, color: WRONG_HIGHLIGHT_STYLE.color }}>Item</TableColumnHeader>
+                              <TableColumnHeader style={{ backgroundColor: WRONG_HIGHLIGHT_STYLE.backgroundColor, color: WRONG_HIGHLIGHT_STYLE.color }}>Objectives</TableColumnHeader>
                             </TableTr>
                           </TableThead>
                           <TableTbody>
                             {itemAnalysisLoading ? (
                               <TableTr><TableTd colSpan={3}><Skeleton height={28} radius="sm" /></TableTd></TableTr>
                             ) : (
-                              Array.from({ length: 5 }).map((_, index) => {
+                              Array.from({ length: 10 }).map((_, index) => {
                                 const row = itemAnalysis.topLeastLearned[index] ?? null;
                                 return (
                                   <TableTr key={`least-${index + 1}`}>
-                                    <TableTd ta="center">{row?.rank ?? index + 1}</TableTd>
+                                    <TableTd ta="center">{row?.rank ?? "-"}</TableTd>
                                     <TableTd ta="center">{row?.itemNo ?? "-"}</TableTd>
-                                    <TableTd>
-                                      {row ? <EllipsisTooltipText text={row.objective} /> : "-"}
-                                    </TableTd>
+                                    <TableTd>{row ? <EllipsisTooltipText text={row.objective} /> : "-"}</TableTd>
                                   </TableTr>
                                 );
                               })
@@ -2425,13 +2470,19 @@ export default function ReportAnalyticsClient({
                             ) : itemAnalysis.rows.length === 0 ? (
                               <TableTr><TableTd colSpan={3} ta="center"><Text size="sm" c="dimmed">-</Text></TableTd></TableTr>
                             ) : (
-                              itemAnalysis.rows.map((row) => (
-                                <TableTr key={`row-${row.itemNo}`}>
-                                  <TableTd ta="center">{row.itemNo}</TableTd>
-                                  <TableTd ta="center">{row.correctResponses}</TableTd>
-                                  <TableTd ta="center" style={getRankCellStyle(row.rank, itemAnalysis.rows.length || selectedCard.totalItems)}>{row.rank}</TableTd>
-                                </TableTr>
-                              ))
+                              itemAnalysis.rows.map((row) => {
+                                const total = itemAnalysis.rows.length || selectedCard.totalItems;
+                                const isMost = row.rank >= 1 && row.rank <= 10;
+                                const isLeast = row.rank >= total - 9 && row.rank <= total;
+                                const rankStyle = isMost ? CORRECT_HIGHLIGHT_STYLE : isLeast ? WRONG_HIGHLIGHT_STYLE : undefined;
+                                return (
+                                  <TableTr key={`row-${row.itemNo}`}>
+                                    <TableTd ta="center">{row.itemNo}</TableTd>
+                                    <TableTd ta="center">{row.correctResponses}</TableTd>
+                                    <TableTd ta="center" style={rankStyle}>{row.rank}</TableTd>
+                                  </TableTr>
+                                );
+                              })
                             )}
                           </TableTbody>
                       </ReportTableShell>

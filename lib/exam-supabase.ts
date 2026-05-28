@@ -87,6 +87,7 @@ export interface ExamWithRelations extends Exam {
       section_id: number;
       name: string;
       sy_id?: number | null;
+      grade_level_id?: number | null;
       grade_levels: { display_name: string; level_number?: number } | null;
     } | null;
   }[];

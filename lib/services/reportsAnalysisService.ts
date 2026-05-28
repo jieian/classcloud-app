@@ -513,8 +513,8 @@ function aggregateItemAnalysis(summaries: ItemAnalysisSummary[]): ItemAnalysisSu
 
   return {
     rows,
-    topMostLearned: ranked.slice(0, 5),
-    topLeastLearned: [...ranked].reverse().slice(0, 5),
+    topMostLearned: ranked.slice(0, 10),
+    topLeastLearned: [...ranked].reverse().slice(0, 10),
   };
 }
 

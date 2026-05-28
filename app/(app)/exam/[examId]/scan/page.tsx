@@ -6,6 +6,7 @@ import {
   Alert,
   Box,
   Button,
+  Center,
   Collapse,
   Container,
   Divider,
@@ -37,6 +38,7 @@ import {
   IconChevronRight,
   IconX,
   IconBolt,
+  IconLock,
   IconBoltOff,
 } from '@tabler/icons-react';
 import { detectDocumentInCanvas, processAnswerSheet, type DetectionResult, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
@@ -266,6 +268,7 @@ export default function ScanPapersPage() {
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
   const [examLoading, setExamLoading] = useState(true);
+  const [reportsUrl, setReportsUrl] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
   const [step, setStep] = useState<Step>('students');
@@ -1280,9 +1283,10 @@ export default function ScanPapersPage() {
       }
 
       invalidateReportsCache();
-      router.push(
-        `/assessment-reports/report-analytics/${gradeLevelId}/${sectionId}/${finalizedExamId}`,
-      );
+      const url = `/reports/${gradeLevelId}/${sectionId}/${finalizedExamId}?from=exam&examId=${finalizedExamId}`;
+      setReportsUrl(url);
+      setExam((prev) => prev ? { ...prev, is_locked: true } : prev);
+      notify({ type: 'success', title: 'Reports Ready', message: 'Examination finalized successfully.' });
     } catch (error) {
       console.error("Failed to finalize examination:", error);
       notify({ type: 'error', title: 'Finalization Failed', message: 'Unable to finalize examination for reports. Please try again.' });
@@ -1380,28 +1384,52 @@ export default function ScanPapersPage() {
 
   if (!canAccessExams) {
     return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 font-medium">You do not have permission to access this page.</p>
-        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
-      </div>
+      <Center h="70vh">
+        <Stack align="center" gap="md">
+          <IconLock size={48} color="#808898" stroke={1.5} />
+          <Title order={2} c="#597D37">Access Denied</Title>
+          <Text c="#808898" ta="center" maw={400}>
+            You don&apos;t have permission to access this examination. Contact your administrator if you think this is a mistake.
+          </Text>
+          <Button variant="outline" color="#4EAE4A" onClick={() => router.push('/exam')}>
+            Back to Examinations
+          </Button>
+        </Stack>
+      </Center>
     );
   }
 
-  if (accessDenied) {
+  if (!examLoading && accessDenied) {
     return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 font-medium">You do not have permission to access this exam.</p>
-        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
-      </div>
+      <Center h="70vh">
+        <Stack align="center" gap="md">
+          <IconLock size={48} color="#808898" stroke={1.5} />
+          <Title order={2} c="#597D37">Access Denied</Title>
+          <Text c="#808898" ta="center" maw={400}>
+            You don&apos;t have permission to access this examination. Contact your administrator if you think this is a mistake.
+          </Text>
+          <Button variant="outline" color="#4EAE4A" onClick={() => router.push('/exam')}>
+            Back to Examinations
+          </Button>
+        </Stack>
+      </Center>
     );
   }
 
-  if (!exam) {
+  if (!examLoading && !exam) {
     return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 font-medium">Exam not found.</p>
-        <BackButton mt="md" size="sm" onClick={() => router.push('/exam')}>Back to Examinations</BackButton>
-      </div>
+      <Center h="70vh">
+        <Stack align="center" gap="md">
+          <IconLock size={48} color="#808898" stroke={1.5} />
+          <Title order={2} c="#597D37">Access Denied</Title>
+          <Text c="#808898" ta="center" maw={400}>
+            You don&apos;t have permission to access this examination. Contact your administrator if you think this is a mistake.
+          </Text>
+          <Button variant="outline" color="#4EAE4A" onClick={() => router.push('/exam')}>
+            Back to Examinations
+          </Button>
+        </Stack>
+      </Center>
     );
   }
 
@@ -1449,19 +1477,33 @@ export default function ScanPapersPage() {
               >
                 {isMobile ? 'Download' : 'Download Results'}
               </Button>
-              {exam.is_locked ? (
-                <Tooltip label="This examination has already been proceeded." withArrow>
+              {exam.is_locked ? (() => {
+                const firstAssignment = exam.exam_assignments?.[0];
+                const sid = firstAssignment?.sections?.section_id;
+                const gid = firstAssignment?.sections?.grade_level_id;
+                const fallbackUrl = sid && gid
+                  ? `/reports/${gid}/${sid}/${exam.exam_id}?from=exam&examId=${exam.exam_id}`
+                  : null;
+                const viewUrl = reportsUrl ?? fallbackUrl;
+                return viewUrl ? (
                   <Button
-                    variant="outline"
-                    color="gray"
+                    component="a"
+                    href={viewUrl}
+                    variant="filled"
                     size="sm"
                     w={isMobile ? undefined : 180}
-                    disabled
+                    styles={{ root: { backgroundColor: '#4EAE4A', '--button-hover': '#3D9B39' } }}
                   >
-                    Proceed to Reports
+                    View Reports
                   </Button>
-                </Tooltip>
-              ) : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+                ) : (
+                  <Tooltip label="This examination has already been proceeded." withArrow>
+                    <Button variant="outline" color="gray" size="sm" w={isMobile ? undefined : 180} disabled>
+                      View Reports
+                    </Button>
+                  </Tooltip>
+                );
+              })() : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
                 <Button
                   variant="filled"
                   size="sm"

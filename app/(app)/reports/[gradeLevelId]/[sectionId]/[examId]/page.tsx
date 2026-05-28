@@ -3,10 +3,12 @@ import ReportAnalyticsClient from "../../../_components/ReportAnalyticsClient";
 
 interface Props {
   params: Promise<{ gradeLevelId: string; sectionId: string; examId: string }>;
+  searchParams: Promise<{ from?: string }>;
 }
 
-export default async function ReportAnalyticsByExamPage({ params }: Props) {
+export default async function ReportAnalyticsByExamPage({ params, searchParams }: Props) {
   const { gradeLevelId, sectionId, examId } = await params;
+  const { from } = await searchParams;
   const parsedGradeLevelId = Number(gradeLevelId);
   const parsedSectionId = Number(sectionId);
   const parsedExamId = Number(examId);
@@ -20,6 +22,7 @@ export default async function ReportAnalyticsByExamPage({ params }: Props) {
         initialGradeLevelId={Number.isFinite(parsedGradeLevelId) ? parsedGradeLevelId : null}
         initialSectionId={Number.isFinite(parsedSectionId) ? parsedSectionId : null}
         initialExamId={Number.isFinite(parsedExamId) ? parsedExamId : null}
+        initialFrom={from ?? null}
       />
     </ProtectedRoute>
   );

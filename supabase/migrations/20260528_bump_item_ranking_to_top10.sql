@@ -1,10 +1,6 @@
--- Fix timeout issues in finalize_exam_reports_atomic:
--- 1. Add index on scores for the DISTINCT ON query (was doing full sort without it)
--- 2. Add indexes on temporary tables used inside the loop
--- 3. Replace N correlated subqueries per exam item with a single CROSS JOIN aggregation
-
-CREATE INDEX IF NOT EXISTS idx_scores_exam_assignment_enrollment
-  ON public.scores (exam_assignment_id, enrollment_id, graded_at DESC);
+-- Bump most_learned / least_learned from top 5 to top 10 in finalize_exam_reports_atomic.
+-- The previous migration (20260525) already has LIMIT 10 in the file but was already applied
+-- with LIMIT 5, so this re-deploys the full updated function.
 
 CREATE OR REPLACE FUNCTION public.finalize_exam_reports_atomic(
   p_exam_id integer,
@@ -154,7 +150,6 @@ BEGIN
   JOIN tmp_finalize_assignments a ON a.assignment_id = s.exam_assignment_id
   ORDER BY s.enrollment_id, s.exam_assignment_id, s.graded_at DESC, s.score_id DESC;
 
-  -- Index speeds up the per-assignment JOINs inside the loop below
   CREATE INDEX ON tmp_finalize_scores (enrollment_id, exam_assignment_id);
 
   SELECT COUNT(*)
@@ -210,7 +205,6 @@ BEGIN
      AND s.exam_assignment_id = v_assignment.assignment_id
     WHERE e.section_id = v_assignment.section_id;
 
-    -- Index needed for item analysis CROSS JOIN aggregation below
     CREATE INDEX ON tmp_report_students (enrollment_id);
 
     SELECT
@@ -476,9 +470,6 @@ BEGIN
       generated_at = EXCLUDED.generated_at,
       generated_by = EXCLUDED.generated_by;
 
-    -- Item analysis: one CROSS JOIN pass replaces 2*v_total_items correlated subqueries.
-    -- v_total_cases already holds COUNT(*) FROM tmp_report_students so no subquery needed
-    -- for correct_percent either.
     DROP TABLE IF EXISTS tmp_item_analysis;
     CREATE TEMP TABLE tmp_item_analysis ON COMMIT DROP AS
     WITH response_agg AS (

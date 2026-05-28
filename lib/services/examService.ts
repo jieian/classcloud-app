@@ -126,6 +126,7 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
           section_id,
           name,
           sy_id,
+          grade_level_id,
           grade_levels ( display_name, level_number )
         )
       )
@@ -178,6 +179,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
         sections (
           section_id,
           name,
+          grade_level_id,
           grade_levels ( display_name, level_number )
         )
       )

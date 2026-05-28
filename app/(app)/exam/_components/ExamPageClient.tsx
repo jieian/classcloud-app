@@ -661,7 +661,6 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           (a, b) => Number(a.is_locked) - Number(b.is_locked),
         ),
       }))
-      .filter((g) => g.exams.length > 0)
       .sort((a, b) => a.levelNumber - b.levelNumber);
 	  }, [filteredExams, allGradeLevels, facultyVisibleGradeGroups, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
@@ -1331,8 +1330,8 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                 )}
                 {group.exams.length === 0 && (
                   <EmptySearchState
-                    title="No examinations found."
-                    description="No examinations are currently available."
+                    title="No examinations yet."
+                    description="No examinations have been created for this grade level."
                   />
                 )}
               </Accordion.Panel>
