@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Accordion,
+  ActionIcon,
   Button,
   Card,
   Group,
@@ -22,6 +23,7 @@ import {
 } from "@mantine/core";
 import { IconBook, IconChevronDown, IconDownload, IconReportOff, IconUsersGroup } from "@tabler/icons-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useMediaQuery } from "@mantine/hooks";
 import BackButton from "@/components/BackButton";
 import {
   fetchReportExamCards,
@@ -947,6 +949,7 @@ export default function ReportAnalyticsClient({
   mode = "section",
 }: ReportAnalyticsClientProps) {
   const router = useRouter();
+  const isMobile = useMediaQuery("(max-width: 600px)");
   const searchParams = useSearchParams();
   const queryGradeParam = Number(searchParams.get("gradeLevelId"));
   const querySectionParam = Number(searchParams.get("sectionId"));
@@ -2009,36 +2012,56 @@ export default function ReportAnalyticsClient({
             );
           }}
           leftSection={mode === "subject" ? <IconUsersGroup size={16} /> : <IconBook size={16} />}
-          w={{ base: "100%", sm: 260 }}
+          style={{ flex: 1 }}
+          w={{ sm: 260 }}
           disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
           clearable
           nothingFoundMessage="-"
         />}
-        {individualDownloadHref && (
-          <Button
-            component="a"
-            href={individualDownloadHref}
-            leftSection={<IconDownload size={16} />}
-            color="#4EAE4A"
-            variant="filled"
-            radius="sm"
-            size="sm"
-          >
-            Download Excel
-          </Button>
-        )}
-        {consolidatedDownloadHref && (
-          <Button
-            component="a"
-            href={consolidatedDownloadHref}
-            leftSection={<IconDownload size={16} />}
-            color="#4EAE4A"
-            variant="filled"
-            radius="sm"
-            size="sm"
-          >
-            Download Excel
-          </Button>
+        {(individualDownloadHref || consolidatedDownloadHref) && (
+          isMobile ? (
+            <Tooltip label="Download Excel" withArrow position="bottom">
+              <ActionIcon
+                component="a"
+                href={(individualDownloadHref ?? consolidatedDownloadHref)!}
+                color="#4EAE4A"
+                variant="filled"
+                radius="sm"
+                size="lg"
+              >
+                <IconDownload size={18} />
+              </ActionIcon>
+            </Tooltip>
+          ) : (
+            <>
+              {individualDownloadHref && (
+                <Button
+                  component="a"
+                  href={individualDownloadHref}
+                  leftSection={<IconDownload size={16} />}
+                  color="#4EAE4A"
+                  variant="filled"
+                  radius="sm"
+                  size="sm"
+                >
+                  Download Excel
+                </Button>
+              )}
+              {consolidatedDownloadHref && (
+                <Button
+                  component="a"
+                  href={consolidatedDownloadHref}
+                  leftSection={<IconDownload size={16} />}
+                  color="#4EAE4A"
+                  variant="filled"
+                  radius="sm"
+                  size="sm"
+                >
+                  Download Excel
+                </Button>
+              )}
+            </>
+          )
         )}
       </Group>
 

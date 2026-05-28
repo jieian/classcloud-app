@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -24,6 +25,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import {
   IconAlertCircle,
   IconCheck,
+  IconExternalLink,
   IconPencil,
   IconX,
 } from "@tabler/icons-react";
@@ -126,8 +128,9 @@ export default function SettingsClient() {
     initialValues: { old_password: "", new_password: "", confirm_password: "" },
     validate: {
       old_password: (v) => (!v.trim() ? "Current password is required" : null),
-      new_password: (v) => {
+      new_password: (v, vals) => {
         if (!v) return "New password is required";
+        if (v === vals.old_password) return "New password must be different from your current password";
         if (v.length < 8) return "Password must be at least 8 characters";
         if (!/[0-9]/.test(v)) return "Password must include a number";
         if (!/[a-z]/.test(v)) return "Password must include a lowercase letter";
@@ -476,18 +479,17 @@ export default function SettingsClient() {
 
       {/* ── About ─────────────────────────────────────────────────────────── */}
       <Paper withBorder p="md" radius="md">
-        <Group justify="space-between" mb="sm" align="flex-start" wrap="wrap">
+        <Group justify="space-between" mb="sm" align="center" wrap="nowrap">
           <Text fw={700} c="#298925">
             About
           </Text>
           <Button
             size="xs"
             variant="default"
-            leftSection={<IconPencil size={14} />}
+            leftSection={<IconPencil size={13} />}
             onClick={openEditModal}
-            fullWidth={isMobile}
           >
-            Edit Profile
+            {isMobile ? "Edit" : "Edit Profile"}
           </Button>
         </Group>
 

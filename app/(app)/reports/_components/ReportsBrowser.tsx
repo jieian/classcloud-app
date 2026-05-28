@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -24,7 +25,7 @@ import {
   IconUserCog,
   IconUserEdit,
 } from "@tabler/icons-react";
-import { useMediaQuery } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import EmptySearchState from "@/components/EmptySearchState";
 import { useAuth } from "@/context/AuthContext";
 import { useReportPermissions } from "@/hooks/useReportPermissions";
@@ -105,6 +106,25 @@ const STATUS_COLORS = {
 /** Single-slot registry — only one popover/tooltip open at a time on touch */
 const activePopover = { close: null as (() => void) | null };
 
+function EllipsisTooltip({ label, children, ...props }: { label: string; children: React.ReactElement } & Omit<React.ComponentProps<typeof Tooltip>, "label" | "children" | "disabled">) {
+  const ref = useRef<HTMLElement>(null);
+  const [truncated, setTruncated] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setTruncated(el.scrollWidth > el.clientWidth);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [label]);
+  return (
+    <Tooltip label={label} disabled={!truncated} events={{ hover: true, focus: true, touch: true }} {...props}>
+      {React.cloneElement(children as React.ReactElement<{ ref?: React.Ref<HTMLElement> }>, { ref })}
+    </Tooltip>
+  );
+}
+
 function useClickTooltip() {
   const [opened, setOpened] = useState(false);
 
@@ -140,17 +160,35 @@ function useClickTooltip() {
 }
 
 
-function StatusBadge({ status }: { status: ReportMonitoringRow["status"] }) {
+function StatusBadge({ status, dotOnly = false, onClick }: { status: ReportMonitoringRow["status"]; dotOnly?: boolean; onClick?: (e: React.MouseEvent) => void }) {
   const color =
-    status === "Finalized" ? "green" : status === "Not Finalized" ? "orange" : "gray";
+    status === "Finalized" ? "#22c55e" : status === "Not Finalized" ? "#f59e0b" : "#9ca3af";
   const label =
     status === "Finalized"
       ? "Done"
       : status === "Not Finalized"
         ? "Ongoing"
         : "Not Started";
+  if (dotOnly) {
+    return (
+      <span
+        onClick={onClick}
+        style={{
+          display: "inline-block",
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          backgroundColor: color,
+          flexShrink: 0,
+          cursor: "pointer",
+        }}
+      />
+    );
+  }
+  const badgeColor =
+    status === "Finalized" ? "green" : status === "Not Finalized" ? "orange" : "gray";
   return (
-    <Badge color={color} variant="light" w={108} ta="center" style={{ overflow: "visible" }}>
+    <Badge color={badgeColor} variant="light" w={108} ta="center" style={{ overflow: "visible" }}>
       {label}
     </Badge>
   );
@@ -357,7 +395,8 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
   );
 }
 
-function StatusProgressBar({ counts, label }: { counts: StatusCounts; label: string }) {
+function StatusProgressBar({ counts, label, fullWidth = false }: { counts: StatusCounts; label: string; fullWidth?: boolean }) {
+  const isMobile = useMediaQuery("(max-width: 600px)");
   const [opened, setOpened] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const total = statusCountsTotal(counts);
@@ -416,7 +455,7 @@ function StatusProgressBar({ counts, label }: { counts: StatusCounts; label: str
       width={220}
       shadow="sm"
       withinPortal
-      position="right"
+      position={isMobile ? "bottom" : "right"}
       closeOnClickOutside={isTouchDevice}
     >
       <Popover.Target>
@@ -426,10 +465,10 @@ function StatusProgressBar({ counts, label }: { counts: StatusCounts; label: str
           onMouseLeave={handleMouseLeave}
           onClick={handleClick}
           style={{
-            width: 210,
-            maxWidth: "32vw",
-            minWidth: 90,
-            height: 14,
+            width: fullWidth ? "100%" : isMobile ? 80 : 210,
+            maxWidth: fullWidth ? "100%" : isMobile ? "22vw" : "32vw",
+            minWidth: fullWidth ? undefined : isMobile ? 50 : 90,
+            height: isMobile ? 8 : 14,
             borderRadius: 4,
             backgroundColor: STATUS_COLORS.notStarted,
             display: "flex",
@@ -562,6 +601,15 @@ function SubjectSectionStatusRow({
   isLast?: boolean;
   showTeacher?: boolean;
 }) {
+  const isMobile = useMediaQuery("(max-width: 600px)");
+  const [dotOpened, { toggle: toggleDot, close: closeDot }] = useDisclosure(false);
+  const [teacherOpened, { toggle: toggleTeacher, close: closeTeacher }] = useDisclosure(false);
+  useEffect(() => {
+    if (!dotOpened && !teacherOpened) return;
+    const handler = () => { closeDot(); closeTeacher(); };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [dotOpened, teacherOpened, closeDot, closeTeacher]);
   return (
     <Group
       justify="space-between"
@@ -579,28 +627,45 @@ function SubjectSectionStatusRow({
       <Box
         style={{
           display: "grid",
-          gridTemplateColumns: showTeacher ? "150px 108px max-content" : "150px 108px",
+          gridTemplateColumns: isMobile
+            ? "1fr max-content"
+            : showTeacher ? "150px 108px max-content" : "150px 108px",
           alignItems: "center",
           columnGap: 10,
           minWidth: 0,
           flex: "0 1 auto",
         }}
       >
-        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
+        <EllipsisTooltip label={label} position="top-start" withArrow>
           <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
             {label}
           </Text>
-        </Tooltip>
-        <StatusBadge status={row.status} />
-        {showTeacher && (
-          <Group gap={4} wrap="nowrap" ml={4}>
-            <Tooltip label="Subject Teacher" withArrow position="top">
-              <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" />
+        </EllipsisTooltip>
+        {isMobile ? (
+          <Group gap={6} wrap="nowrap" align="center">
+            <Tooltip label={row.status === "Finalized" ? "Done" : row.status === "Not Finalized" ? "Ongoing" : "Not Started"} withArrow position="top" opened={dotOpened}>
+              <StatusBadge status={row.status} dotOnly onClick={(e) => { e.stopPropagation(); closeTeacher(); toggleDot(); }} />
             </Tooltip>
-            <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
-              {row.teacherName ?? "Unassigned"}
-            </Text>
+            {showTeacher && (
+              <Tooltip label={row.teacherName ?? "Unassigned"} withArrow position="top" opened={teacherOpened}>
+                <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" style={{ cursor: "pointer" }} onClick={(e) => { e.stopPropagation(); closeDot(); toggleTeacher(); }} />
+              </Tooltip>
+            )}
           </Group>
+        ) : (
+          <>
+            <StatusBadge status={row.status} />
+            {showTeacher && (
+              <Group gap={4} wrap="nowrap" ml={4}>
+                <Tooltip label="Subject Teacher" withArrow position="top">
+                  <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" style={{ cursor: "default" }} />
+                </Tooltip>
+                <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
+                  {row.teacherName ?? "Unassigned"}
+                </Text>
+              </Group>
+            )}
+          </>
         )}
       </Box>
     </Group>
@@ -625,6 +690,7 @@ function SubjectMonitoringList({
   subjectStatusDisplay?: "circle" | "bar";
 }) {
   const router = useRouter();
+  const isMobile = useMediaQuery("(max-width: 600px)");
   const [openSubjects, setOpenSubjects] = useState<string[]>([]);
 
   if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
@@ -667,11 +733,11 @@ function SubjectMonitoringList({
                     ) : (
                       <StatusCircle counts={getRowStatusCounts(subject.rows)} label={label} />
                     )}
-                    <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                    <EllipsisTooltip label={label} position="top-start" withArrow>
                       <Text fw={700} size="md" truncate="end" maw={220}>
                         {label}
                       </Text>
-                    </Tooltip>
+                    </EllipsisTooltip>
                     <RoleIconButton
                       personName={subject.leaderName}
                       roleLabel="Subject Leader"
@@ -751,57 +817,38 @@ function SubjectMonitoringList({
             }}
           >
             {/* Subject header — always visible, no toggle */}
-            <Group
-              justify="space-between"
-              wrap="nowrap"
-              px={14}
-              py={10}
-              style={{ borderBottom: "1px solid #e5e7eb", minWidth: 0 }}
-            >
-              <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
-                {subjectStatusDisplay === "bar" ? (
-                  <>
-                    <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
-                      <Text fw={700} size="md" truncate="end" maw={220}>
-                        {label}
-                      </Text>
-                    </Tooltip>
-                    <StatusProgressBar counts={getRowStatusCounts(subject.rows)} label={label} />
-                    <RoleIconButton
-                      personName={subject.leaderName}
-                      roleLabel="Subject Leader"
-                      roleIcon={<IconUserEdit size={14} stroke={1.7} />}
-                    />
-                  </>
-                ) : (
-                  <StatusCircle counts={getRowStatusCounts(subject.rows)} label={label} />
-                )}
-                {subjectStatusDisplay !== "bar" && (
-                  <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+            <Box px={14} py={10} style={{ borderBottom: "1px solid #e5e7eb", minWidth: 0 }}>
+              <Group justify="space-between" wrap="nowrap" style={{ minWidth: 0 }}>
+                <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                  {subjectStatusDisplay !== "bar" && (
+                    <StatusCircle counts={getRowStatusCounts(subject.rows)} label={label} />
+                  )}
+                  <EllipsisTooltip label={label} position="top-start" withArrow>
                     <Text fw={700} size="md" truncate="end" maw={220}>
                       {label}
                     </Text>
-                  </Tooltip>
-                )}
-                {subjectStatusDisplay !== "bar" && (
+                  </EllipsisTooltip>
+                  {subjectStatusDisplay === "bar" && !isMobile && (
+                    <StatusProgressBar counts={getRowStatusCounts(subject.rows)} label={label} />
+                  )}
                   <RoleIconButton
                     personName={subject.leaderName}
                     roleLabel="Subject Leader"
                     roleIcon={<IconUserEdit size={14} stroke={1.7} />}
                   />
-                )}
+                </Group>
+                <Tooltip label="View report" position="top" withArrow withinPortal>
+                  <Button size="compact-sm" color="#4EAE4A" px={6} onClick={() => router.push(href)}>
+                    View
+                  </Button>
+                </Tooltip>
               </Group>
-              <Tooltip label="View report" position="top" withArrow withinPortal>
-                <Button
-                  size="compact-sm"
-                  color="#4EAE4A"
-                  px={6}
-                  onClick={() => router.push(href)}
-                >
-                  View
-                </Button>
-              </Tooltip>
-            </Group>
+              {subjectStatusDisplay === "bar" && isMobile && (
+                <Box mt={6}>
+                  <StatusProgressBar counts={getRowStatusCounts(subject.rows)} label={label} fullWidth />
+                </Box>
+              )}
+            </Box>
             {/* Section rows — always visible */}
             <Box px={12} pb={8}>
               <TreeGuide>
@@ -866,9 +913,9 @@ function SectionAccordion({
             <Group justify="space-between" wrap="nowrap" style={{ minWidth: 0, paddingRight: 4 }}>
               <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
                 <StatusCircle counts={getRowStatusCounts(section.rows)} label={label} />
-                <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                <EllipsisTooltip label={label} position="top-start" withArrow>
                   <Text fw={700} size="md" truncate="end" maw={220}>{label}</Text>
-                </Tooltip>
+                </EllipsisTooltip>
               </Group>
               <Box
                 component="span"
@@ -1078,16 +1125,11 @@ function ReportsSubjectGroupMonitoring({
                 counts={getSubjectSubgroupStatusCounts(group.subjects)}
                 label={group.subjectGroupName}
               />
-              <Tooltip
-                label={group.subjectGroupName}
-                position="top-start"
-                withArrow
-                disabled={group.subjectGroupName.length < 24}
-              >
+              <EllipsisTooltip label={group.subjectGroupName} position="top-start" withArrow>
                 <Text fw={700} size="md" truncate="end" maw={260}>
                   {group.subjectGroupName}
                 </Text>
-              </Tooltip>
+              </EllipsisTooltip>
               <RoleIconButton
                 personName={group.coordinatorName}
                 roleLabel="Subject Coordinator"
@@ -1139,11 +1181,13 @@ function AdvisoryList({ sections }: { sections: ReportMonitoringSectionGroup[] }
                 counts={getRowStatusCounts(section.rows)}
                 label={`${section.gradeDisplayName} • ${section.sectionName}`}
               />
-              <Text fw={700} size="md" truncate="end" maw={260}>
-                {section.gradeDisplayName}
-                {" • "}
-                {section.sectionName}
-              </Text>
+              <EllipsisTooltip label={`${section.gradeDisplayName} • ${section.sectionName}`} position="top-start" withArrow>
+                <Text fw={700} size="md" truncate="end" maw={260}>
+                  {section.gradeDisplayName}
+                  {" • "}
+                  {section.sectionName}
+                </Text>
+              </EllipsisTooltip>
             </Group>
             <Button
               size="compact-sm"
@@ -1210,7 +1254,7 @@ function AssignedReports({
   const showSegmented = hasAdvisory && hasHandled;
 
   return (
-    <Stack gap="sm">
+    <Stack gap="sm" w="100%">
       {showSegmented && (
         <SegmentedControl
           value={view}
@@ -1380,20 +1424,6 @@ export default function ReportsBrowser() {
         <Box style={{ minWidth: 0 }}>
           <p className="text-sm text-[#808898]">Monitor finalized assessment reports</p>
         </Box>
-        <Tooltip label="Refresh" position="bottom" withArrow>
-          <ActionIcon
-            variant="outline"
-            color="#808898"
-            size="lg"
-            radius="xl"
-            mt="xs"
-            onClick={() => void loadData(true)}
-            loading={loading}
-            aria-label="Refresh reports"
-          >
-            <IconRefresh size={18} stroke={1.5} />
-          </ActionIcon>
-        </Tooltip>
       </Box>
 
       {loadError && (

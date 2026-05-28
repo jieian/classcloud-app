@@ -431,6 +431,7 @@ export default function ScanPapersPage() {
       setAccessDenied(false);
       return;
     }
+    invalidateReportsCache();
     fetchMyAssignedScope(user.id).then((scope) => {
       const hasAccess = examSectionIds.some((id) => scope.sectionIds.includes(id));
       setAccessDenied(!hasAccess);
