@@ -263,7 +263,7 @@ function StudentMobileRow({
 export default function ScanPapersPage() {
   const { examId } = useParams<{ examId: string }>();
   const router = useRouter();
-  const { user, permissions } = useAuth();
+  const { user, permissions, loading: authLoading } = useAuth();
   const isMobile = useMediaQuery('(max-width: 768px)');
 
   const [exam, setExam] = useState<ExamWithRelations | null>(null);
@@ -1382,7 +1382,7 @@ export default function ScanPapersPage() {
     );
   }
 
-  if (!canAccessExams) {
+  if (!authLoading && !canAccessExams) {
     return (
       <Center h="70vh">
         <Stack align="center" gap="md">
