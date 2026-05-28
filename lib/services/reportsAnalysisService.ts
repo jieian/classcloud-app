@@ -1348,17 +1348,35 @@ export async function fetchReportSubjectOverview(
   const cached = cacheGet<ReportSubjectOverview | null>(cacheKey);
   if (cached !== undefined) return cached;
 
-  const [subjectCards, sectionCards] = await Promise.all([
+  const [subjectCards, sectionCards, activeSubjects] = await Promise.all([
     fetchReportSubjectCards(),
     fetchReportSectionCards(),
+    fetchActiveCurriculumSubjectsForReports(),
   ]);
   const subjectCard =
     subjectCards.find(
       (card) => card.gradeLevelId === gradeLevelId && card.subjectId === subjectId,
     ) ?? null;
-  if (!subjectCard) return cacheSet(cacheKey, null);
+
+  // Fall back to the active curriculum when no subject card exists yet (grade has no exams or
+  // teacher assignments — common for newly assigned GSL grades).
+  const activeSubjectEntry =
+    subjectCard == null
+      ? (activeSubjects.find(
+          (s) => s.gradeLevelId === gradeLevelId && s.subjectId === subjectId,
+        ) ?? null)
+      : null;
+
+  if (!subjectCard && !activeSubjectEntry) return cacheSet(cacheKey, null);
 
   const sectionsInGrade = sectionCards.filter((card) => card.gradeLevelId === gradeLevelId);
+  const subjectName = subjectCard?.subjectName ?? activeSubjectEntry!.subjectName;
+  const subjectType = subjectCard?.subjectType ?? activeSubjectEntry!.subjectType ?? null;
+  const gradeDisplayName =
+    subjectCard?.gradeDisplayName ?? sectionsInGrade[0]?.gradeDisplayName ?? `Grade ${gradeLevelId}`;
+  const gradeLevelNumber =
+    subjectCard?.gradeLevelNumber ?? sectionsInGrade[0]?.gradeLevelNumber ?? null;
+
   const overviews = await Promise.all(
     sectionsInGrade.map((section) => fetchReportSectionOverview(section.sectionId)),
   );
@@ -1396,17 +1414,19 @@ export async function fetchReportSubjectOverview(
   return cacheSet(cacheKey, {
     subjectId,
     curriculumSubjectId,
-    subjectName: subjectCard.subjectName,
-    subjectType: subjectCard.subjectType,
+    subjectName,
+    subjectType,
     gradeLevelId,
-    gradeDisplayName: subjectCard.gradeDisplayName,
-    gradeLevelNumber: subjectCard.gradeLevelNumber,
-    sectionCount: subjectCard.sectionCount,
-    finalizedSections: subjectCard.finalizedSections,
-    isFinalized: subjectCard.isFinalized,
-    latestExamId: latestCard?.examId ?? subjectCard.latestExamId,
+    gradeDisplayName,
+    gradeLevelNumber,
+    sectionCount: subjectCard?.sectionCount ?? sectionRows.length,
+    finalizedSections:
+      subjectCard?.finalizedSections ??
+      sectionRows.filter((r) => r.status === "Finalized").length,
+    isFinalized: subjectCard?.isFinalized ?? false,
+    latestExamId: latestCard?.examId ?? subjectCard?.latestExamId ?? null,
     latestExamTitle: latestCard?.title ?? null,
-    latestExamDate: latestCard?.examDate ?? subjectCard.latestExamDate,
+    latestExamDate: latestCard?.examDate ?? subjectCard?.latestExamDate ?? null,
     sections: sectionRows.sort((a, b) => {
       const aIsSses = isSsesSectionName(a.sectionName);
       const bIsSses = isSsesSectionName(b.sectionName);
@@ -1581,6 +1601,7 @@ export async function fetchConsolidatedSubjectAnalytics(
   gradeLevelId: number,
   subjectId: number,
   examId: number | null,
+  sectionIds: number[] | null = null,
 ): Promise<ConsolidatedReportResult> {
   const empty: ConsolidatedReportResult = {
     summary: null,
@@ -1591,12 +1612,15 @@ export async function fetchConsolidatedSubjectAnalytics(
   if (!Number.isFinite(gradeLevelId) || !Number.isFinite(subjectId)) return empty;
 
   const allExamCards = await fetchReportExamCards();
+  const sectionIdSet =
+    sectionIds && sectionIds.length > 0 ? new Set(sectionIds) : null;
 
   // Primary pass: regular sections whose exam is linked to the correct curriculum subject
   const bySubjectId = allExamCards.filter(
     (card) =>
       card.gradeLevelId === gradeLevelId &&
       card.subjectId === subjectId &&
+      (sectionIdSet == null || sectionIdSet.has(card.sectionId)) &&
       card.isFinalized &&
       (examId == null || card.examId === examId),
   );
@@ -1608,12 +1632,14 @@ export async function fetchConsolidatedSubjectAnalytics(
   const subjectOverview = await fetchReportSubjectOverview(gradeLevelId, subjectId);
   const remainingSectionIds = (subjectOverview?.sections ?? [])
     .map((s) => s.sectionId)
+    .filter((id) => sectionIdSet == null || sectionIdSet.has(id))
     .filter((id) => !sectionsWithData.has(id));
 
   const bySectionId =
     remainingSectionIds.length > 0
       ? allExamCards.filter(
           (card) =>
+            card.gradeLevelId === gradeLevelId &&
             remainingSectionIds.includes(card.sectionId) &&
             card.isFinalized &&
             (examId == null || card.examId === examId),
@@ -2008,6 +2034,7 @@ function buildSubjectGroupMonitoring(
   coordinatorRows: SubjectCoordinatorRow[],
   userId: string | null,
   includeAllGroups: boolean,
+  leadersBySubject?: Map<string, string | null>,
 ): ReportMonitoringCoordinatorGroup[] {
   const allowedGroupIds = new Set<number>();
   if (includeAllGroups) {
@@ -2042,7 +2069,7 @@ function buildSubjectGroupMonitoring(
     const groupRows = rows.filter((row) => memberIds.has(row.curriculumSubjectId));
     if (groupRows.length === 0) continue;
 
-    const gradeSubjects = buildGradeGroups(groupRows)
+    const gradeSubjects = buildGradeGroups(groupRows, undefined, leadersBySubject)
       .flatMap((grade) => grade.subjects)
       .sort(compareMonitoringSubjects);
 
@@ -2176,6 +2203,15 @@ export async function fetchReportMonitoringTree(
   const coordinatorRows = (coordinatorsResult.data ?? []) as SubjectCoordinatorRow[];
   const gradeSubjectLeaderRows =
     (gradeSubjectLeadersResult.data ?? []) as GradeSubjectLeaderRow[];
+  const leadersBySubject = new Map<string, string | null>();
+  for (const row of gradeSubjectLeaderRows) {
+    if (row.grade_level_id != null && row.curriculum_subject_id != null) {
+      leadersBySubject.set(
+        `${row.grade_level_id}:${row.curriculum_subject_id}`,
+        toTeacherName(row.users),
+      );
+    }
+  }
 
   const userGradeLeaderSubjectKeys = new Set(
     canMonitorGradeLevel && userId
@@ -2391,6 +2427,7 @@ export async function fetchReportMonitoringTree(
           coordinatorRows,
           userId,
           false,
+          leadersBySubject,
         )
       : [],
     allMonitoring: {
@@ -2425,6 +2462,7 @@ export async function fetchReportMonitoringTree(
             coordinatorRows,
             userId,
             true,
+            leadersBySubject,
           )
         : [],
     },
@@ -2624,6 +2662,7 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
   subjectId: number,
   selectedExamId: number,
   examTitle: string,
+  sectionIds: number[] | null = null,
 ): Promise<ConsolidatedSubjectDiagnosticResult | null> {
   if (
     !Number.isFinite(gradeLevelId) ||
@@ -2634,7 +2673,11 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
     return null;
   }
 
-  const cacheKey = `subjectDiagnostic:${gradeLevelId}:${subjectId}:${selectedExamId}:${examTitle.trim().toLowerCase()}`;
+  const sectionKey =
+    sectionIds && sectionIds.length > 0
+      ? sectionIds.slice().sort((a, b) => a - b).join(",")
+      : "all";
+  const cacheKey = `subjectDiagnostic:${gradeLevelId}:${subjectId}:${selectedExamId}:${examTitle.trim().toLowerCase()}:${sectionKey}`;
   const cached = cacheGet<ConsolidatedSubjectDiagnosticResult | null>(cacheKey);
   if (cached !== undefined) return cached;
 
@@ -2644,17 +2687,21 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
   ]);
   if (!overview) return cacheSet(cacheKey, null);
 
+  const sectionIdSet =
+    sectionIds && sectionIds.length > 0 ? new Set(sectionIds) : null;
   const normalizedTitle = examTitle.trim().toLowerCase();
   const bySubjectId = examCards.filter(
     (card) =>
       card.gradeLevelId === gradeLevelId &&
       card.subjectId === subjectId &&
+      (sectionIdSet == null || sectionIdSet.has(card.sectionId)) &&
       card.title.trim().toLowerCase() === normalizedTitle,
   );
 
   const sectionsWithData = new Set(bySubjectId.map((card) => card.sectionId));
   const remainingSectionIds = overview.sections
     .map((section) => section.sectionId)
+    .filter((sectionId) => sectionIdSet == null || sectionIdSet.has(sectionId))
     .filter((sectionId) => !sectionsWithData.has(sectionId));
 
   const bySectionId =
@@ -2684,6 +2731,7 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
   const savedFallbackBySection = new Map<number, { examId: number; sectionId: number }>();
   const unmatchedSectionIds = overview.sections
     .map((section) => section.sectionId)
+    .filter((sectionId) => sectionIdSet == null || sectionIdSet.has(sectionId))
     .filter((sectionId) => !latestBySection.has(sectionId));
 
   if (unmatchedSectionIds.length > 0) {
@@ -2737,7 +2785,9 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
   }
 
   const sections = await Promise.all(
-    overview.sections.map(async (section): Promise<ConsolidatedSubjectSectionResult> => {
+    overview.sections
+      .filter((section) => sectionIdSet == null || sectionIdSet.has(section.sectionId))
+      .map(async (section): Promise<ConsolidatedSubjectSectionResult> => {
       const card = latestBySection.get(section.sectionId) ?? null;
       const savedFallback = savedFallbackBySection.get(section.sectionId) ?? null;
       const resolvedExamId = card?.examId ?? savedFallback?.examId ?? null;
@@ -2805,4 +2855,62 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
     sectionCount: sortedSections.length,
     finalizedSectionCount: sortedSections.filter((section) => section.isFinalized).length,
   });
+}
+
+/**
+ * Returns all subject_ids that belong to the same subject group as the given subjectId+gradeLevelId.
+ * If the subject is not in any group, returns [subjectId].
+ */
+export async function fetchSubjectGroupForSubject(
+  subjectId: number,
+  gradeLevelId: number,
+): Promise<number[]> {
+  const { data: activeContextData } = await supabase
+    .from("school_years")
+    .select("curriculum_id")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const activeContext = activeContextData as { curriculum_id: number | null } | null;
+  if (!activeContext?.curriculum_id) return [subjectId];
+
+  type MemberRow = {
+    curriculum_subject_id: number | null;
+    curriculum_subjects: { subject_id: number | null; grade_level_id: number | null } | null;
+  };
+  type GroupRow = {
+    subject_group_id: number;
+    subject_group_members: MemberRow[];
+  };
+
+  const { data: groups } = await supabase
+    .from("subject_groups")
+    .select(
+      "subject_group_id, subject_group_members(curriculum_subject_id, curriculum_subjects!inner(subject_id, grade_level_id))",
+    )
+    .eq("curriculum_id", activeContext.curriculum_id)
+    .is("deleted_at", null)
+    .is("subject_group_members.deleted_at", null);
+
+  if (!groups) return [subjectId];
+
+  // Find the group that contains our subject+grade
+  for (const group of groups as GroupRow[]) {
+    const members = group.subject_group_members ?? [];
+    const belongsHere = members.some(
+      (m) =>
+        m.curriculum_subjects?.subject_id === subjectId &&
+        m.curriculum_subjects?.grade_level_id === gradeLevelId,
+    );
+    if (belongsHere) {
+      // Return all unique subject_ids in this group (for the same grade level)
+      const ids = members
+        .map((m) => m.curriculum_subjects?.subject_id)
+        .filter((id): id is number => id != null);
+      return [...new Set(ids)];
+    }
+  }
+
+  return [subjectId];
 }

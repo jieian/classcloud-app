@@ -59,11 +59,6 @@ const emptyTree: ReportMonitoringTree = {
   allMonitoring: { gradeLevels: [], subjectGroups: [] },
 };
 
-const reportAccordionStyles = {
-  control: { backgroundColor: "#F5F5F5" },
-  item: { border: "1px solid #e2edff" },
-};
-
 const subAccordionStyles = {
   item: {
     border: "1px solid #D6D9E0",
@@ -144,45 +139,6 @@ function useClickTooltip() {
   return { opened, toggle };
 }
 
-function StatusDot({ status }: { status: ReportMonitoringRow["status"] }) {
-  const { opened, toggle } = useClickTooltip();
-  const color =
-    status === "Finalized"
-      ? STATUS_COLORS.done
-      : status === "Not Finalized"
-        ? STATUS_COLORS.ongoing
-        : STATUS_COLORS.notStarted;
-  const label =
-    status === "Finalized" ? "Done" : status === "Not Finalized" ? "Ongoing" : "Not Started";
-
-  return (
-    <Tooltip label={label} withArrow position="top" opened={opened}>
-      <Box
-        onClick={toggle}
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: "50%",
-          backgroundColor: color,
-          flexShrink: 0,
-          cursor: "pointer",
-        }}
-      />
-    </Tooltip>
-  );
-}
-
-function TeacherIcon({ name }: { name: string | null }) {
-  const { opened, toggle } = useClickTooltip();
-
-  return (
-    <Tooltip label={name ?? "Unassigned"} withArrow position="top" opened={opened}>
-      <ActionIcon variant="subtle" color="gray" size="sm" onClick={toggle}>
-        <IconChalkboardTeacher size={16} stroke={1.7} />
-      </ActionIcon>
-    </Tooltip>
-  );
-}
 
 function StatusBadge({ status }: { status: ReportMonitoringRow["status"] }) {
   const color =
@@ -244,39 +200,12 @@ function getSubjectSubgroupStatusCounts(subjects: ReportMonitoringSubjectGroup[]
 }
 
 
-function classifySubgroupFromRows(rows: ReportMonitoringRow[]): keyof StatusCounts {
-  if (rows.length === 0) return "notStarted";
-  if (rows.every((row) => row.status === "Finalized")) return "done";
-  if (rows.every((row) => row.status === "No exam yet")) return "notStarted";
-  return "ongoing";
-}
-
 function classifySubgroupFromCounts(counts: StatusCounts): keyof StatusCounts {
   const total = statusCountsTotal(counts);
   if (total === 0) return "notStarted";
   if (counts.done === total) return "done";
   if (counts.notStarted === total) return "notStarted";
   return "ongoing";
-}
-
-function getSectionGroupStatusCounts(sections: ReportMonitoringSectionGroup[]): StatusCounts {
-  return sections.reduce<StatusCounts>(
-    (counts, section) => {
-      counts[classifySubgroupFromRows(section.rows)] += 1;
-      return counts;
-    },
-    { done: 0, ongoing: 0, notStarted: 0 },
-  );
-}
-
-function getGradeGroupStatusCounts(grades: ReportMonitoringGradeGroup[]): StatusCounts {
-  return grades.reduce<StatusCounts>(
-    (counts, grade) => {
-      counts[classifySubgroupFromCounts(getSubjectSubgroupStatusCounts(grade.subjects))] += 1;
-      return counts;
-    },
-    { done: 0, ongoing: 0, notStarted: 0 },
-  );
 }
 
 function getCoordinatorGroupStatusCounts(groups: ReportMonitoringCoordinatorGroup[]): StatusCounts {
@@ -331,8 +260,8 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
   }
 
   function handleClick(event: MouseEvent) {
-    event.stopPropagation();
     if (!isTouchDevice) return;
+    event.stopPropagation();
     if (opened) {
       setOpened(false);
       activePopover.close = null;
@@ -428,39 +357,16 @@ function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }
   );
 }
 
-function MainAccordionHeader({
-  title,
-  counts,
-}: {
-  title: string;
-  counts: StatusCounts;
-}) {
-  return (
-    <Group gap="sm" wrap="nowrap">
-      <StatusCircle counts={counts} label={title} />
-      <Text fw={700} size="md" c="#1f2937">
-        {title}
-      </Text>
-    </Group>
-  );
-}
-
-function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: string }) {
+function StatusProgressBar({ counts, label }: { counts: StatusCounts; label: string }) {
   const [opened, setOpened] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isMobileBar = useMediaQuery("(max-width: 600px)");
   const total = statusCountsTotal(counts);
-  const { done, ongoing, notStarted } = counts;
-  const statusItems = [
-    { label: "Done", count: done, color: STATUS_COLORS.done },
-    { label: "Ongoing", count: ongoing, color: STATUS_COLORS.ongoing },
-    { label: "Not Started", count: notStarted, color: STATUS_COLORS.notStarted },
-  ];
-
+  const doneWidth = total === 0 ? 0 : (counts.done / total) * 100;
+  const ongoingWidth = total === 0 ? 0 : (counts.ongoing / total) * 100;
+  const notStartedWidth = total === 0 ? 100 : (counts.notStarted / total) * 100;
   const isTouchDevice =
     typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
 
-  // On touch: close when tapping anywhere outside (deferred so the opening tap doesn't immediately close)
   useEffect(() => {
     if (!opened || !isTouchDevice) return;
     const id = setTimeout(() => {
@@ -485,8 +391,8 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
   }
 
   function handleClick(event: MouseEvent) {
-    event.stopPropagation();
     if (!isTouchDevice) return;
+    event.stopPropagation();
     if (opened) {
       setOpened(false);
       activePopover.close = null;
@@ -497,29 +403,11 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
     }
   }
 
-  const barStyle = isMobileBar
-    ? { width: 60, flexShrink: 0 }
-    : { flex: 1, minWidth: 88, maxWidth: 210 };
-
-  if (total === 0) {
-    return (
-      <Box
-        h={16}
-        style={{
-          ...barStyle,
-          border: "1px solid #D6D9E0",
-          borderRadius: 3,
-          backgroundColor: "#f3f4f6",
-        }}
-      />
-    );
-  }
-
-  const segments = [
-    { key: "done", count: done, color: STATUS_COLORS.done, label: "Done" },
-    { key: "ongoing", count: ongoing, color: STATUS_COLORS.ongoing, label: "Ongoing" },
-    { key: "not-started", count: notStarted, color: STATUS_COLORS.notStarted, label: "Not Started" },
-  ].filter((segment) => segment.count > 0);
+  const statusItems = [
+    { label: "Done", count: counts.done, color: STATUS_COLORS.done },
+    { label: "Ongoing", count: counts.ongoing, color: STATUS_COLORS.ongoing },
+    { label: "Not Started", count: counts.notStarted, color: STATUS_COLORS.notStarted },
+  ];
 
   return (
     <Popover
@@ -528,55 +416,47 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
       width={220}
       shadow="sm"
       withinPortal
-      position="top"
-      closeOnClickOutside
+      position="right"
+      closeOnClickOutside={isTouchDevice}
     >
       <Popover.Target>
         <Box
-          h={16}
+          aria-label={`${label} progress`}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
           onClick={handleClick}
           style={{
+            width: 210,
+            maxWidth: "32vw",
+            minWidth: 90,
+            height: 14,
+            borderRadius: 4,
+            backgroundColor: STATUS_COLORS.notStarted,
             display: "flex",
-            ...barStyle,
             overflow: "hidden",
-            border: "1px solid #D6D9E0",
-            borderRadius: 3,
-            backgroundColor: "#ffffff",
+            flexShrink: 0,
             cursor: isTouchDevice ? "pointer" : "default",
           }}
         >
-          {segments.map((segment) => (
-            <Box
-              key={segment.key}
-              aria-label={`${segment.label}: ${segment.count}`}
-              style={{
-                width: `${(segment.count / total) * 100}%`,
-                backgroundColor: segment.color,
-              }}
-            />
-          ))}
+          {doneWidth > 0 && (
+            <Box style={{ width: `${doneWidth}%`, backgroundColor: STATUS_COLORS.done }} />
+          )}
+          {ongoingWidth > 0 && (
+            <Box style={{ width: `${ongoingWidth}%`, backgroundColor: STATUS_COLORS.ongoing }} />
+          )}
+          {notStartedWidth > 0 && total > 0 && (
+            <Box style={{ width: `${notStartedWidth}%`, backgroundColor: STATUS_COLORS.notStarted }} />
+          )}
         </Box>
       </Popover.Target>
 
       <Popover.Dropdown
-        style={{
-          border: "1px solid #d3e9d0",
-          borderRadius: 10,
-          padding: "12px 14px",
-        }}
+        style={{ border: "1px solid #d3e9d0", borderRadius: 10, padding: "12px 14px" }}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onClick={(event) => event.stopPropagation()}
       >
-        <Text
-          size="10px"
-          fw={700}
-          tt="uppercase"
-          c="#4EAE4A"
-          style={{ letterSpacing: "0.06em" }}
-        >
+        <Text size="10px" fw={700} tt="uppercase" c="#4EAE4A" style={{ letterSpacing: "0.06em" }}>
           {label}
         </Text>
         <Divider my={8} color="#e8f0e8" />
@@ -603,117 +483,6 @@ function StatusStackedBar({ counts, label }: { counts: StatusCounts; label: stri
         </Box>
       </Popover.Dropdown>
     </Popover>
-  );
-}
-
-function RowLine({
-  row,
-  label,
-  isLast = false,
-}: {
-  row: ReportMonitoringRow;
-  label: string;
-  isLast?: boolean;
-}) {
-  const router = useRouter();
-  const isMobile = useMediaQuery("(max-width: 600px)");
-  const href =
-    row.latestExamId != null
-      ? `/reports/subject/${row.gradeLevelId}/${row.subjectId}/${row.latestExamId}`
-      : null;
-
-  const viewButton = (
-    <Button
-      variant="subtle"
-      color="#4EAE4A"
-      size="compact-sm"
-      px={6}
-      onClick={() => href && router.push(href)}
-      style={!href ? { backgroundColor: "#ffffff", color: "#adb5bd", cursor: "default" } : undefined}
-    >
-      View
-    </Button>
-  );
-
-  if (isMobile) {
-    return (
-      <Box
-        py="xs"
-        pl={24}
-        pr={12}
-        className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#d1d5db] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#d1d5db] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#d1d5db] ${
-          isLast ? "before:bottom-1/2" : "before:bottom-0"
-        }`}
-        style={{
-          borderBottom: "1px solid #e5e7eb",
-          marginRight: -12,
-          display: "grid",
-          gridTemplateColumns: "1fr auto 1fr",
-          alignItems: "center",
-          columnGap: 8,
-        }}
-      >
-        <span className="tree-node" aria-hidden="true" />
-        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
-          <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
-            {label}
-          </Text>
-        </Tooltip>
-        <Group gap={6} wrap="nowrap" justify="center">
-          <StatusDot status={row.status} />
-          <TeacherIcon name={row.teacherName} />
-        </Group>
-        <Box style={{ display: "flex", justifyContent: "flex-end" }}>
-          {viewButton}
-        </Box>
-      </Box>
-    );
-  }
-
-  return (
-    <Group
-      justify="space-between"
-      gap="sm"
-      py="xs"
-      pl={24}
-      pr={12}
-      wrap="nowrap"
-      className={`relative before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#d1d5db] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#d1d5db] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#d1d5db] ${
-        isLast ? "before:bottom-1/2" : "before:bottom-0"
-      }`}
-      style={{
-        borderBottom: "1px solid #e5e7eb",
-        marginRight: -12,
-      }}
-    >
-      <span className="tree-node" aria-hidden="true" />
-      <Box
-        style={{
-          display: "grid",
-          gridTemplateColumns: "90px 108px max-content",
-          alignItems: "center",
-          columnGap: 10,
-          minWidth: 0,
-          flex: "0 1 auto",
-        }}
-      >
-        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
-          <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
-            {label}
-          </Text>
-        </Tooltip>
-        <StatusBadge status={row.status} />
-        <Group gap={4} wrap="nowrap" ml={4}>
-          <Tooltip label="Subject Teacher" withArrow position="top">
-            <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" />
-          </Tooltip>
-          <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
-            {row.teacherName ?? "Unassigned"}
-          </Text>
-        </Group>
-      </Box>
-      {viewButton}
-    </Group>
   );
 }
 
@@ -770,84 +539,6 @@ function RoleIconButton({
   );
 }
 
-function TreeBranchLine({
-  label,
-  rows,
-  personName,
-  roleLabel,
-  roleIcon,
-}: {
-  label: string;
-  rows: ReportMonitoringRow[];
-  personName?: string | null;
-  roleLabel?: string;
-  roleIcon?: ReactNode;
-}) {
-  return (
-    <Box
-      style={{
-        borderBottom: "1px solid #e5e7eb",
-        marginRight: -12,
-        paddingRight: 12,
-      }}
-    >
-      <Group gap="xs" py={6} wrap="nowrap">
-        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
-          <Text fw={500} size="md" truncate="end" maw={220}>
-            {label}
-          </Text>
-        </Tooltip>
-        <StatusStackedBar counts={getRowStatusCounts(rows)} label={label} />
-        <RoleIconButton personName={personName} roleLabel={roleLabel} roleIcon={roleIcon} />
-      </Group>
-      <Box ml="lg" pl="sm">
-        {rows.length === 0 ? (
-          <EmptyPanel message="No active sections found for this grade subject." />
-        ) : (
-          rows.map((row, index) => (
-            <RowLine
-              key={`${row.sectionId}-${row.curriculumSubjectId}`}
-              row={row}
-              label={row.sectionName}
-              isLast={index === rows.length - 1}
-            />
-          ))
-        )}
-      </Box>
-    </Box>
-  );
-}
-
-function SubjectTreeList({
-  subjects,
-  emptyMessage,
-  personName,
-  roleLabel,
-  roleIcon,
-}: {
-  subjects: ReportMonitoringSubjectGroup[];
-  emptyMessage: string;
-  personName?: string | null;
-  roleLabel?: string;
-  roleIcon?: ReactNode;
-}) {
-  if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
-
-  return (
-    <TreeGuide>
-      {subjects.map((subject) => (
-        <TreeBranchLine
-          key={subject.curriculumSubjectId}
-          label={subject.subjectName}
-          rows={subject.rows}
-          personName={subject.leaderName ?? personName}
-          roleLabel={roleLabel}
-          roleIcon={roleIcon}
-        />
-      ))}
-    </TreeGuide>
-  );
-}
 
 function EmptyPanel({ message }: { message: string }) {
   return (
@@ -856,6 +547,278 @@ function EmptyPanel({ message }: { message: string }) {
         {message}
       </Text>
     </Box>
+  );
+}
+
+// Status-only row (no View button) — used inside HandledSubjectsAccordion panels
+function SubjectSectionStatusRow({
+  row,
+  label,
+  isLast = false,
+  showTeacher = true,
+}: {
+  row: ReportMonitoringRow;
+  label: string;
+  isLast?: boolean;
+  showTeacher?: boolean;
+}) {
+  return (
+    <Group
+      justify="space-between"
+      gap="sm"
+      py="xs"
+      pl={24}
+      pr={12}
+      wrap="nowrap"
+      className={`relative hover:bg-gray-50 before:absolute before:left-[-13px] before:top-0 before:w-[2px] before:bg-[#d1d5db] before:content-[''] after:absolute after:left-[-13px] after:top-1/2 after:h-[2px] after:w-[18px] after:-translate-y-1/2 after:bg-[#d1d5db] after:content-[''] [&_.tree-node]:absolute [&_.tree-node]:left-[1px] [&_.tree-node]:top-1/2 [&_.tree-node]:h-[8px] [&_.tree-node]:w-[8px] [&_.tree-node]:-translate-y-1/2 [&_.tree-node]:bg-[#d1d5db] ${
+        isLast ? "before:bottom-1/2" : "before:bottom-0"
+      }`}
+      style={{ borderBottom: "1px solid #e5e7eb", marginRight: -12 }}
+    >
+      <span className="tree-node" aria-hidden="true" />
+      <Box
+        style={{
+          display: "grid",
+          gridTemplateColumns: showTeacher ? "150px 108px max-content" : "150px 108px",
+          alignItems: "center",
+          columnGap: 10,
+          minWidth: 0,
+          flex: "0 1 auto",
+        }}
+      >
+        <Tooltip label={label} position="top-start" withArrow disabled={label.length < 22}>
+          <Text size="sm" truncate="end" style={{ minWidth: 0 }}>
+            {label}
+          </Text>
+        </Tooltip>
+        <StatusBadge status={row.status} />
+        {showTeacher && (
+          <Group gap={4} wrap="nowrap" ml={4}>
+            <Tooltip label="Subject Teacher" withArrow position="top">
+              <IconChalkboardTeacher size={15} stroke={1.7} color="#6b7280" />
+            </Tooltip>
+            <Text size="sm" c={row.teacherName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
+              {row.teacherName ?? "Unassigned"}
+            </Text>
+          </Group>
+        )}
+      </Box>
+    </Group>
+  );
+}
+
+// Subject-level row with View button — used in GradeMonitoring and SubjectGroupMonitoring
+// Always-open subject panels (no toggle) with section-status rows and a View button per subject
+function SubjectMonitoringList({
+  subjects,
+  emptyMessage,
+  showGrade = false,
+  from,
+  collapsible = false,
+  subjectStatusDisplay = "circle",
+}: {
+  subjects: ReportMonitoringSubjectGroup[];
+  emptyMessage: string;
+  showGrade?: boolean;
+  from?: string;
+  collapsible?: boolean;
+  subjectStatusDisplay?: "circle" | "bar";
+}) {
+  const router = useRouter();
+  const [openSubjects, setOpenSubjects] = useState<string[]>([]);
+
+  if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
+
+  const sorted = [...subjects].sort(
+    (a, b) =>
+      (a.gradeLevelNumber ?? 99) - (b.gradeLevelNumber ?? 99) ||
+      a.subjectName.localeCompare(b.subjectName),
+  );
+
+  if (collapsible) {
+    return (
+      <Accordion
+        multiple
+        value={openSubjects}
+        onChange={setOpenSubjects}
+        variant="separated"
+        styles={subAccordionStyles}
+      >
+        {sorted.map((subject) => {
+          const label = showGrade
+            ? `${subject.gradeDisplayName} \u2022 ${subject.subjectName}`
+            : subject.subjectName;
+          const sectionIds = [...new Set(subject.rows.map((row) => row.sectionId))];
+          const params = new URLSearchParams();
+          if (from) params.set("from", from);
+          if (from === "subject" && sectionIds.length > 0) params.set("sections", sectionIds.join(","));
+          const query = params.toString();
+          const href = `/reports/subject/${subject.gradeLevelId}/${subject.subjectId}${query ? `?${query}` : ""}`;
+          return (
+            <Accordion.Item
+              key={subject.curriculumSubjectId}
+              value={`subject-${subject.curriculumSubjectId}`}
+            >
+              <Accordion.Control>
+                <Group justify="space-between" wrap="nowrap" style={{ minWidth: 0, paddingRight: 4 }}>
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                    {subjectStatusDisplay === "bar" ? (
+                      <StatusProgressBar counts={getRowStatusCounts(subject.rows)} label={label} />
+                    ) : (
+                      <StatusCircle counts={getRowStatusCounts(subject.rows)} label={label} />
+                    )}
+                    <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                      <Text fw={700} size="md" truncate="end" maw={220}>
+                        {label}
+                      </Text>
+                    </Tooltip>
+                    <RoleIconButton
+                      personName={subject.leaderName}
+                      roleLabel="Subject Leader"
+                      roleIcon={<IconUserEdit size={14} stroke={1.7} />}
+                    />
+                  </Group>
+                  <Tooltip label="View report" position="top" withArrow withinPortal>
+                    <Box
+                      component="span"
+                      onClick={(e) => { e.stopPropagation(); router.push(href); }}
+                      style={{
+                        alignItems: "center",
+                        backgroundColor: "#4EAE4A",
+                        borderRadius: 4,
+                        color: "#ffffff",
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        height: 26,
+                        lineHeight: 1,
+                        paddingInline: 8,
+                        userSelect: "none",
+                      }}
+                    >
+                      View
+                    </Box>
+                  </Tooltip>
+                </Group>
+              </Accordion.Control>
+              <Accordion.Panel
+                onDoubleClick={(event) => {
+                  setOpenSubjects((current) =>
+                    current.filter((value) => value !== `subject-${subject.curriculumSubjectId}`),
+                  );
+                  keepClosedAccordionInView(event);
+                }}
+              >
+                <TreeGuide>
+                  {subject.rows.map((row, index) => (
+                    <SubjectSectionStatusRow
+                      key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                      row={row}
+                      label={row.sectionName}
+                      isLast={index === subject.rows.length - 1}
+                    />
+                  ))}
+                </TreeGuide>
+              </Accordion.Panel>
+            </Accordion.Item>
+          );
+        })}
+      </Accordion>
+    );
+  }
+
+  return (
+    <Stack gap={8}>
+      {sorted.map((subject) => {
+        const label = showGrade
+          ? `${subject.gradeDisplayName} • ${subject.subjectName}`
+          : subject.subjectName;
+        const sectionIds = [...new Set(subject.rows.map((row) => row.sectionId))];
+        const params = new URLSearchParams();
+        if (from) params.set("from", from);
+        if (from === "subject" && sectionIds.length > 0) params.set("sections", sectionIds.join(","));
+        const query = params.toString();
+        const href = `/reports/subject/${subject.gradeLevelId}/${subject.subjectId}${query ? `?${query}` : ""}`;
+        return (
+          <Box
+            key={subject.curriculumSubjectId}
+            style={{
+              border: "1px solid #D6D9E0",
+              borderRadius: 6,
+              backgroundColor: "#ffffff",
+              overflow: "hidden",
+            }}
+          >
+            {/* Subject header — always visible, no toggle */}
+            <Group
+              justify="space-between"
+              wrap="nowrap"
+              px={14}
+              py={10}
+              style={{ borderBottom: "1px solid #e5e7eb", minWidth: 0 }}
+            >
+              <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                {subjectStatusDisplay === "bar" ? (
+                  <>
+                    <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                      <Text fw={700} size="md" truncate="end" maw={220}>
+                        {label}
+                      </Text>
+                    </Tooltip>
+                    <StatusProgressBar counts={getRowStatusCounts(subject.rows)} label={label} />
+                    <RoleIconButton
+                      personName={subject.leaderName}
+                      roleLabel="Subject Leader"
+                      roleIcon={<IconUserEdit size={14} stroke={1.7} />}
+                    />
+                  </>
+                ) : (
+                  <StatusCircle counts={getRowStatusCounts(subject.rows)} label={label} />
+                )}
+                {subjectStatusDisplay !== "bar" && (
+                  <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                    <Text fw={700} size="md" truncate="end" maw={220}>
+                      {label}
+                    </Text>
+                  </Tooltip>
+                )}
+                {subjectStatusDisplay !== "bar" && (
+                  <RoleIconButton
+                    personName={subject.leaderName}
+                    roleLabel="Subject Leader"
+                    roleIcon={<IconUserEdit size={14} stroke={1.7} />}
+                  />
+                )}
+              </Group>
+              <Tooltip label="View report" position="top" withArrow withinPortal>
+                <Button
+                  size="compact-sm"
+                  color="#4EAE4A"
+                  px={6}
+                  onClick={() => router.push(href)}
+                >
+                  View
+                </Button>
+              </Tooltip>
+            </Group>
+            {/* Section rows — always visible */}
+            <Box px={12} pb={8}>
+              <TreeGuide>
+                {subject.rows.map((row, index) => (
+                  <SubjectSectionStatusRow
+                    key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                    row={row}
+                    label={row.sectionName}
+                    isLast={index === subject.rows.length - 1}
+                  />
+                ))}
+              </TreeGuide>
+            </Box>
+          </Box>
+        );
+      })}
+    </Stack>
   );
 }
 
@@ -871,11 +834,14 @@ function SectionAccordion({
   sections,
   rowLabel,
   emptyMessage,
+  from,
 }: {
   sections: ReportMonitoringSectionGroup[];
   rowLabel: (row: ReportMonitoringRow) => string;
   emptyMessage: string;
+  from?: string;
 }) {
+  const router = useRouter();
   const [openSections, setOpenSections] = useState<string[]>([]);
 
   if (sections.length === 0) return <EmptyPanel message={emptyMessage} />;
@@ -888,49 +854,154 @@ function SectionAccordion({
       variant="separated"
       styles={subAccordionStyles}
     >
-      {sections.map((section) => (
-        <Accordion.Item
-          key={section.sectionId}
-          value={`section-${section.sectionId}`}
-        >
-          <Accordion.Control>
-            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-              <StatusCircle counts={getRowStatusCounts(section.rows)} label={`${section.gradeDisplayName} • ${section.sectionName}`} />
-              <Tooltip
-                label={`${section.gradeDisplayName} \u2022 ${section.sectionName}`}
-                position="top-start"
-                withArrow
-                disabled={`${section.gradeDisplayName} ${section.sectionName}`.length < 24}
-              >
-                <Text fw={700} size="md" truncate="end" maw={260}>
-                  {section.gradeDisplayName}
-                  {" \u2022 "}
-                  {section.sectionName}
-                </Text>
-              </Tooltip>
-            </Group>
-          </Accordion.Control>
-          <Accordion.Panel
-            onDoubleClick={(event) => {
-              setOpenSections((current) =>
-                current.filter((value) => value !== `section-${section.sectionId}`),
-              );
-              keepClosedAccordionInView(event);
-            }}
+      {sections.map((section) => {
+        const viewHref = `/reports/${section.gradeLevelId}/${section.sectionId}${from ? `?from=${from}` : ""}`;
+        const label = `${section.gradeDisplayName} • ${section.sectionName}`;
+        return (
+          <Accordion.Item
+            key={section.sectionId}
+            value={`section-${section.sectionId}`}
           >
-            <TreeGuide>
-              {section.rows.map((row, index) => (
-                <RowLine
-                  key={`${row.sectionId}-${row.curriculumSubjectId}`}
-                  row={row}
-                  label={rowLabel(row)}
-                  isLast={index === section.rows.length - 1}
-                />
-              ))}
-            </TreeGuide>
-          </Accordion.Panel>
-        </Accordion.Item>
-      ))}
+            <Accordion.Control>
+            <Group justify="space-between" wrap="nowrap" style={{ minWidth: 0, paddingRight: 4 }}>
+              <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                <StatusCircle counts={getRowStatusCounts(section.rows)} label={label} />
+                <Tooltip label={label} position="top-start" withArrow disabled={label.length < 28}>
+                  <Text fw={700} size="md" truncate="end" maw={220}>{label}</Text>
+                </Tooltip>
+              </Group>
+              <Box
+                component="span"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  router.push(viewHref);
+                }}
+                style={{
+                  alignItems: "center",
+                  backgroundColor: "#4EAE4A",
+                  borderRadius: 4,
+                  color: "#ffffff",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  height: 26,
+                  lineHeight: 1,
+                  paddingInline: 8,
+                  userSelect: "none",
+                }}
+              >
+                View
+              </Box>
+            </Group>
+            </Accordion.Control>
+            <Accordion.Panel
+              onDoubleClick={(event) => {
+                setOpenSections((current) =>
+                  current.filter((value) => value !== `section-${section.sectionId}`),
+                );
+                keepClosedAccordionInView(event);
+              }}
+            >
+              <TreeGuide>
+                {section.rows.map((row, index) => (
+                  <SubjectSectionStatusRow
+                    key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                    row={row}
+                    label={rowLabel(row)}
+                    isLast={index === section.rows.length - 1}
+                  />
+                ))}
+              </TreeGuide>
+            </Accordion.Panel>
+          </Accordion.Item>
+        );
+      })}
+    </Accordion>
+  );
+}
+
+function HandledSubjectsAccordion({
+  subjects,
+}: {
+  subjects: ReportMonitoringSubjectGroup[];
+}) {
+  const [openSubjects, setOpenSubjects] = useState<string[]>([]);
+  const router = useRouter();
+
+  if (subjects.length === 0) return <EmptyPanel message="No assigned subjects found." />;
+
+  return (
+    <Accordion
+      multiple
+      value={openSubjects}
+      onChange={setOpenSubjects}
+      variant="separated"
+      styles={subAccordionStyles}
+    >
+      {subjects.map((subject) => {
+        const handledSectionIds = [
+          ...new Set(subject.rows.map((row) => row.sectionId)),
+        ].sort((a, b) => a - b);
+        const href = `/reports/subject/${subject.gradeLevelId}/${subject.subjectId}?from=assigned&sections=${handledSectionIds.join(",")}`;
+        return (
+          <Accordion.Item
+            key={subject.curriculumSubjectId}
+            value={`subject-${subject.curriculumSubjectId}`}
+          >
+            <Accordion.Control>
+              <Group justify="space-between" wrap="nowrap" style={{ minWidth: 0, paddingRight: 4 }}>
+                <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                  <StatusCircle counts={getRowStatusCounts(subject.rows)} label={subject.subjectName} />
+                  <Text fw={700} size="md" truncate="end" maw={220}>{subject.subjectName}</Text>
+                </Group>
+                <Tooltip label="View report" position="top" withArrow withinPortal>
+                  <Box
+                    component="span"
+                    onClick={(e) => { e.stopPropagation(); router.push(href); }}
+                    style={{
+                      alignItems: "center",
+                      backgroundColor: "#4EAE4A",
+                      borderRadius: 4,
+                      color: "#ffffff",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      height: 26,
+                      lineHeight: 1,
+                      paddingInline: 8,
+                      userSelect: "none",
+                    }}
+                  >
+                    View
+                  </Box>
+                </Tooltip>
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel
+              onDoubleClick={(event) => {
+                setOpenSubjects((current) =>
+                  current.filter((v) => v !== `subject-${subject.curriculumSubjectId}`),
+                );
+                keepClosedAccordionInView(event);
+              }}
+            >
+              <TreeGuide>
+                {subject.rows.map((row, index) => (
+                  <SubjectSectionStatusRow
+                    key={`${row.sectionId}-${row.curriculumSubjectId}`}
+                    row={row}
+                    label={`${row.gradeDisplayName} • ${row.sectionName}`}
+                    isLast={index === subject.rows.length - 1}
+                    showTeacher={false}
+                  />
+                ))}
+              </TreeGuide>
+            </Accordion.Panel>
+          </Accordion.Item>
+        );
+      })}
     </Accordion>
   );
 }
@@ -938,66 +1009,51 @@ function SectionAccordion({
 function GradeMonitoring({
   grades,
   emptyMessage,
+  from,
 }: {
   grades: ReportMonitoringGradeGroup[];
   emptyMessage: string;
+  from?: string;
 }) {
-  const [openGrades, setOpenGrades] = useState<string[]>([]);
-
-  if (grades.length === 0) return <EmptyPanel message={emptyMessage} />;
+  const allSubjects = grades.flatMap((g) => g.subjects);
 
   return (
-    <Accordion
-      multiple
-      value={openGrades}
-      onChange={setOpenGrades}
-      variant="separated"
-      styles={subAccordionStyles}
-    >
-      {grades.map((grade) => (
-        <Accordion.Item key={grade.gradeLevelId} value={`grade-${grade.gradeLevelId}`}>
-          <Accordion.Control>
-            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-              <StatusCircle counts={getSubjectSubgroupStatusCounts(grade.subjects)} label={grade.gradeDisplayName} />
-              <Tooltip
-                label={grade.gradeDisplayName}
-                position="top-start"
-                withArrow
-                disabled={grade.gradeDisplayName.length < 24}
-              >
-                <Text fw={700} size="md" truncate="end" maw={260}>
-                  {grade.gradeDisplayName}
-                </Text>
-              </Tooltip>
-            </Group>
-          </Accordion.Control>
-          <Accordion.Panel
-            onDoubleClick={(event) => {
-              setOpenGrades((current) =>
-                current.filter((value) => value !== `grade-${grade.gradeLevelId}`),
-              );
-              keepClosedAccordionInView(event);
-            }}
-          >
-            <SubjectTreeList
-              subjects={grade.subjects}
-              emptyMessage="No subjects are available for this grade level."
-              roleLabel="Grade Subject Leader"
-              roleIcon={<IconUserEdit size={14} stroke={1.7} />}
-            />
-          </Accordion.Panel>
-        </Accordion.Item>
-      ))}
-    </Accordion>
+    <SubjectMonitoringList
+      subjects={allSubjects}
+      emptyMessage={emptyMessage}
+      showGrade={true}
+      from={from}
+      collapsible
+    />
   );
 }
 
 function SubjectGroupMonitoring({
   groups,
   emptyMessage,
+  from,
 }: {
   groups: ReportMonitoringCoordinatorGroup[];
   emptyMessage: string;
+  from?: string;
+}) {
+  return (
+    <ReportsSubjectGroupMonitoring
+      groups={groups}
+      emptyMessage={emptyMessage}
+      from={from}
+    />
+  );
+}
+
+function ReportsSubjectGroupMonitoring({
+  groups,
+  emptyMessage,
+  from,
+}: {
+  groups: ReportMonitoringCoordinatorGroup[];
+  emptyMessage: string;
+  from?: string;
 }) {
   const [openGroups, setOpenGroups] = useState<string[]>([]);
 
@@ -1014,11 +1070,14 @@ function SubjectGroupMonitoring({
       {groups.map((group) => (
         <Accordion.Item
           key={group.subjectGroupId}
-          value={`subject-group-${group.subjectGroupId}`}
+          value={`reports-subject-group-${group.subjectGroupId}`}
         >
           <Accordion.Control>
             <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-              <StatusCircle counts={getSubjectSubgroupStatusCounts(group.subjects)} label={group.subjectGroupName} />
+              <StatusCircle
+                counts={getSubjectSubgroupStatusCounts(group.subjects)}
+                label={group.subjectGroupName}
+              />
               <Tooltip
                 label={group.subjectGroupName}
                 position="top-start"
@@ -1029,27 +1088,75 @@ function SubjectGroupMonitoring({
                   {group.subjectGroupName}
                 </Text>
               </Tooltip>
+              <RoleIconButton
+                personName={group.coordinatorName}
+                roleLabel="Subject Coordinator"
+                roleIcon={<IconUserCog size={14} stroke={1.7} />}
+              />
             </Group>
           </Accordion.Control>
           <Accordion.Panel
             onDoubleClick={(event) => {
               setOpenGroups((current) =>
-                current.filter((value) => value !== `subject-group-${group.subjectGroupId}`),
+                current.filter((value) => value !== `reports-subject-group-${group.subjectGroupId}`),
               );
               keepClosedAccordionInView(event);
             }}
           >
-            <SubjectTreeList
+            <SubjectMonitoringList
               subjects={group.subjects}
               emptyMessage="No subject rows are available for this group."
-              personName={group.coordinatorName}
-              roleLabel="Subject Coordinator"
-              roleIcon={<IconUserCog size={14} stroke={1.7} />}
+              showGrade={true}
+              from={from}
+              subjectStatusDisplay="bar"
             />
           </Accordion.Panel>
         </Accordion.Item>
       ))}
     </Accordion>
+  );
+}
+
+function AdvisoryList({ sections }: { sections: ReportMonitoringSectionGroup[] }) {
+  const router = useRouter();
+  if (sections.length === 0) return <EmptyPanel message="No advisory reports found." />;
+  return (
+    <Stack gap="xs">
+      {sections.map((section) => {
+        const href = `/reports/${section.gradeLevelId}/${section.sectionId}?from=advisory`;
+        return (
+          <Group
+            key={section.sectionId}
+            justify="space-between"
+            align="center"
+            wrap="nowrap"
+            px="sm"
+            py="xs"
+            className="rounded-lg border border-[#E5E7EB] bg-white hover:bg-gray-50"
+          >
+            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+              <StatusCircle
+                counts={getRowStatusCounts(section.rows)}
+                label={`${section.gradeDisplayName} • ${section.sectionName}`}
+              />
+              <Text fw={700} size="md" truncate="end" maw={260}>
+                {section.gradeDisplayName}
+                {" • "}
+                {section.sectionName}
+              </Text>
+            </Group>
+            <Button
+              size="compact-sm"
+              color="#4EAE4A"
+              px={6}
+              onClick={() => router.push(href)}
+            >
+              View
+            </Button>
+          </Group>
+        );
+      })}
+    </Stack>
   );
 }
 
@@ -1070,6 +1177,32 @@ function AssignedReports({
     if (hasAdvisory && !hasHandled) onViewChange("advisory");
   }, [hasAdvisory, hasHandled]);
 
+  // Group handled sections by curriculum subject → subject-first view
+  const handledSubjectGroups = useMemo<ReportMonitoringSubjectGroup[]>(() => {
+    const map = new Map<number, ReportMonitoringSubjectGroup>();
+    for (const section of tree.assigned.handledSections) {
+      for (const row of section.rows) {
+        if (!map.has(row.curriculumSubjectId)) {
+          map.set(row.curriculumSubjectId, {
+            curriculumSubjectId: row.curriculumSubjectId,
+            subjectId: row.subjectId,
+            subjectName: row.subjectName,
+            subjectType: row.subjectType,
+            gradeLevelId: row.gradeLevelId,
+            gradeDisplayName: row.gradeDisplayName,
+            gradeLevelNumber: row.gradeLevelNumber ?? null,
+            leaderName: null,
+            rows: [],
+          });
+        }
+        map.get(row.curriculumSubjectId)!.rows.push(row);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" }),
+    );
+  }, [tree.assigned.handledSections]);
+
   if (!hasAdvisory && !hasHandled) {
     return <EmptyPanel message="No advisory or assigned subject reports found." />;
   }
@@ -1084,7 +1217,7 @@ function AssignedReports({
           onChange={(value) => onViewChange(value as "advisory" | "assigned")}
           data={[
             { value: "advisory", label: "Advisory" },
-            { value: "assigned", label: "Assigned Subjects" },
+            { value: "assigned", label: "Subjects" },
           ]}
           color="#4EAE4A"
           radius="sm"
@@ -1099,76 +1232,72 @@ function AssignedReports({
           sections={tree.assigned.advisorySections}
           rowLabel={(row) => row.subjectName}
           emptyMessage="No advisory reports found."
+          from="advisory"
         />
       ) : (
-        <SectionAccordion
-          sections={tree.assigned.handledSections}
-          rowLabel={(row) => row.subjectName}
-          emptyMessage="No assigned subject reports found."
+        <HandledSubjectsAccordion
+          subjects={handledSubjectGroups}
         />
       )}
     </Stack>
   );
 }
 
-function ReportsMonitoring({
-  tree,
-  view,
-  onViewChange,
-}: {
-  tree: ReportMonitoringTree;
-  view: "grade" | "subject-group";
-  onViewChange: (view: "grade" | "subject-group") => void;
-}) {
+function ReportsMonitoring({ tree }: { tree: ReportMonitoringTree }) {
   return (
-    <Stack gap="sm">
-      <SegmentedControl
-        value={view}
-        onChange={(value) => onViewChange(value as "grade" | "subject-group")}
-        data={[
-          { value: "grade", label: "Grade Level" },
-          { value: "subject-group", label: "Subject Group" },
-        ]}
-        color="#4EAE4A"
-        radius="sm"
-        size="sm"
-        transitionDuration={180}
-        styles={reportSegmentedStyles}
-      />
-      {view === "grade" ? (
-        <GradeMonitoring
-          grades={tree.allMonitoring.gradeLevels}
-          emptyMessage="No grade level reports found."
-        />
-      ) : (
-        <SubjectGroupMonitoring
-          groups={tree.allMonitoring.subjectGroups}
-          emptyMessage="No subject group reports found."
-        />
-      )}
-    </Stack>
+    <ReportsSubjectGroupMonitoring
+      groups={tree.allMonitoring.subjectGroups}
+      emptyMessage="No subject group reports found."
+      from="all"
+    />
   );
 }
 
-function ReportsMonitoringAccordionHeader({
-  tree,
-  view,
-}: {
-  tree: ReportMonitoringTree;
-  view: "grade" | "subject-group";
-}) {
-  const counts =
-    view === "grade"
-      ? getGradeGroupStatusCounts(tree.allMonitoring.gradeLevels)
-      : getCoordinatorGroupStatusCounts(tree.allMonitoring.subjectGroups);
+function ReportsMonitoringAccordionHeader({ tree }: { tree: ReportMonitoringTree }) {
+  const counts = getCoordinatorGroupStatusCounts(tree.allMonitoring.subjectGroups);
 
   return (
     <Group gap="sm" wrap="nowrap">
-      <StatusCircle counts={counts} label={view === "grade" ? "Grade Level" : "Subject Group"} />
+      <StatusCircle counts={counts} label="Subject Group" />
       <Text fw={700} size="md" c="#1f2937">
         Reports Monitoring
       </Text>
     </Group>
+  );
+}
+
+function FixedReportSection({
+  header,
+  children,
+}: {
+  header: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Box
+      style={{
+        border: "1px solid #e2edff",
+        borderRadius: 6,
+        backgroundColor: "#ffffff",
+        overflow: "hidden",
+      }}
+    >
+      <Box
+        px="md"
+        py="sm"
+        style={{
+          alignItems: "center",
+          backgroundColor: "#F5F5F5",
+          display: "flex",
+          minHeight: 60,
+        }}
+      >
+        {header}
+      </Box>
+      <Box p="sm">
+        {children}
+      </Box>
+    </Box>
   );
 }
 
@@ -1199,8 +1328,6 @@ export default function ReportsBrowser() {
   const [loading, setLoading] = useState(true);
   const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [reportsMonitoringView, setReportsMonitoringView] =
-    useState<"grade" | "subject-group">("grade");
   const [assignedView, setAssignedView] = useState<"advisory" | "assigned">("advisory");
 
   const loadData = async (forceRefresh = false) => {
@@ -1248,17 +1375,18 @@ export default function ReportsBrowser() {
 
   return (
     <div className="space-y-5">
-      <Group justify="space-between" align="flex-end" gap="sm">
-        <div>
-          <h1 className="text-3xl font-bold text-[#597D37]">Reports</h1>
-          <p className="mb-3 text-sm text-[#808898]">Monitor finalized assessment reports</p>
-        </div>
+      <Box>
+        <h1 className="text-3xl font-bold text-[#597D37]">Reports</h1>
+        <Box style={{ minWidth: 0 }}>
+          <p className="text-sm text-[#808898]">Monitor finalized assessment reports</p>
+        </Box>
         <Tooltip label="Refresh" position="bottom" withArrow>
           <ActionIcon
             variant="outline"
             color="#808898"
             size="lg"
             radius="xl"
+            mt="xs"
             onClick={() => void loadData(true)}
             loading={loading}
             aria-label="Refresh reports"
@@ -1266,7 +1394,7 @@ export default function ReportsBrowser() {
             <IconRefresh size={18} stroke={1.5} />
           </ActionIcon>
         </Tooltip>
-      </Group>
+      </Box>
 
       {loadError && (
         <Box
@@ -1283,90 +1411,55 @@ export default function ReportsBrowser() {
         </Box>
       )}
 
-      <Accordion
-        multiple
-        defaultValue={[
-          reportScope.canViewAll ? "reports-monitoring" : "",
-          reportScope.canViewAssigned ? "assigned" : "",
-          reportScope.canMonitorGradeLevel ? "grade-subject-monitoring" : "",
-          reportScope.canMonitorSubjects ? "subject-group-monitoring" : "",
-        ].filter(Boolean)}
-        variant="separated"
-        styles={reportAccordionStyles}
-      >
-        {reportScope.canViewAll && (
-          <Accordion.Item value="reports-monitoring">
-            <Accordion.Control>
-              <ReportsMonitoringAccordionHeader
-                tree={tree}
-                view={reportsMonitoringView}
-              />
-            </Accordion.Control>
-            <Accordion.Panel>
-              <ReportsMonitoring
-                tree={tree}
-                view={reportsMonitoringView}
-                onViewChange={setReportsMonitoringView}
-              />
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
+      <Stack gap="md">
         {reportScope.canViewAssigned && (
-          <Accordion.Item value="assigned">
-            <Accordion.Control>
+          <FixedReportSection
+            header={
               <Group gap="sm" wrap="nowrap">
-                <StatusCircle
-                  counts={getSectionGroupStatusCounts(
-                    assignedView === "advisory"
-                      ? tree.assigned.advisorySections
-                      : tree.assigned.handledSections,
-                  )}
-                  label={assignedView === "advisory" ? "Advisory" : "Assigned Subjects"}
-                />
-                <Text fw={700} size="md" c="#1f2937">Assigned</Text>
+                <Text fw={700} size="md" c="#1f2937">My Advisory &amp; Subjects</Text>
               </Group>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <AssignedReports tree={tree} view={assignedView} onViewChange={setAssignedView} />
-            </Accordion.Panel>
-          </Accordion.Item>
+            }
+          >
+              <AssignedReports
+                tree={tree}
+                view={assignedView}
+                onViewChange={setAssignedView}
+              />
+          </FixedReportSection>
         )}
 
         {reportScope.canMonitorGradeLevel && (
-          <Accordion.Item value="grade-subject-monitoring">
-            <Accordion.Control>
-              <MainAccordionHeader
-                title="Grade Subject Monitoring"
-                counts={getGradeGroupStatusCounts(tree.gradeMonitoring)}
-              />
-            </Accordion.Control>
-            <Accordion.Panel>
+          <FixedReportSection
+            header={<Text fw={700} size="md" c="#1f2937">Grade Subject Monitoring</Text>}
+          >
               <GradeMonitoring
                 grades={tree.gradeMonitoring}
                 emptyMessage="No active grade subject leader assignment found for this school year."
+                from="grade"
               />
-            </Accordion.Panel>
-          </Accordion.Item>
+          </FixedReportSection>
         )}
 
         {reportScope.canMonitorSubjects && (
-          <Accordion.Item value="subject-group-monitoring">
-            <Accordion.Control>
-              <MainAccordionHeader
-                title="Subject Group Monitoring"
-                counts={getCoordinatorGroupStatusCounts(tree.subjectGroupMonitoring)}
-              />
-            </Accordion.Control>
-            <Accordion.Panel>
+          <FixedReportSection
+            header={<Text fw={700} size="md" c="#1f2937">Subject Group Monitoring</Text>}
+          >
               <SubjectGroupMonitoring
                 groups={tree.subjectGroupMonitoring}
                 emptyMessage="No active subject group assignment found for this school year."
+                from="subject"
               />
-            </Accordion.Panel>
-          </Accordion.Item>
+          </FixedReportSection>
         )}
-      </Accordion>
+
+        {reportScope.canViewAll && (
+          <FixedReportSection
+            header={<ReportsMonitoringAccordionHeader tree={tree} />}
+          >
+              <ReportsMonitoring tree={tree} />
+          </FixedReportSection>
+        )}
+      </Stack>
     </div>
   );
 }

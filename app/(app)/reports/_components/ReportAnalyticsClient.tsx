@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Accordion,
+  Button,
   Card,
   Group,
   Select,
@@ -19,8 +20,8 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
-import { IconBook, IconChevronDown, IconReportOff } from "@tabler/icons-react";
-import { useSearchParams } from "next/navigation";
+import { IconBook, IconChevronDown, IconDownload, IconReportOff, IconUsersGroup } from "@tabler/icons-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import BackButton from "@/components/BackButton";
 import {
   fetchReportExamCards,
@@ -938,10 +939,27 @@ export default function ReportAnalyticsClient({
   initialSubjectId = null,
   mode = "section",
 }: ReportAnalyticsClientProps) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const queryGradeParam = Number(searchParams.get("gradeLevelId"));
   const querySectionParam = Number(searchParams.get("sectionId"));
   const queryExamParam = Number(searchParams.get("examId"));
+  const fromParam = searchParams.get("from");
+  const assignedSectionIdsFromQuery = useMemo(
+    () =>
+      (searchParams.get("sections") ?? "")
+        .split(",")
+        .map((value) => Number(value))
+        .filter(Number.isFinite),
+    [searchParams],
+  );
+  const pageTitle = (() => {
+    if (fromParam === "advisory" || fromParam === "assigned") return "My Advisory & Subjects";
+    if (fromParam === "grade") return "Grade Subject Monitoring";
+    if (fromParam === "subject") return "Subject Group Monitoring";
+    if (fromParam === "all") return "All Reports";
+    return "Report Analytics";
+  })();
   const gradeParam = Number.isFinite(initialGradeLevelId)
     ? Number(initialGradeLevelId)
     : queryGradeParam;
@@ -964,6 +982,7 @@ export default function ReportAnalyticsClient({
   );
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
   const [selectedSectionId, setSelectedSectionId] = useState<number | null>(null);
+  const [selectedConsolidated, setSelectedConsolidated] = useState(false);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(
     Number.isFinite(initialSubjectId) ? Number(initialSubjectId) : null,
   );
@@ -972,7 +991,7 @@ export default function ReportAnalyticsClient({
   const [subjectHydrated, setSubjectHydrated] = useState(false);
   const [subjectClearedByUser, setSubjectClearedByUser] = useState(false);
   const [sectionSubjectOptions, setSectionSubjectOptions] = useState<
-    { value: string; label: string }[]
+    { value: string; label: string; disabled?: boolean; status?: string }[]
   >([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
@@ -1112,6 +1131,15 @@ export default function ReportAnalyticsClient({
   }, [scopedCards]);
 
   useEffect(() => {
+    // In subject mode the grade is fixed by the URL path — never override with scopedCards fallback.
+    // scopedCards only holds grades that have exam cards, so a grade with no exams yet would
+    // incorrectly fall back to the first graded card (usually Grade 1).
+    if (mode === "subject") {
+      if (Number.isFinite(gradeParam) && selectedGradeId !== gradeParam) {
+        setSelectedGradeId(gradeParam);
+      }
+      return;
+    }
     if (scopedCards.length === 0) {
       setSelectedGradeId(null);
       return;
@@ -1126,7 +1154,7 @@ export default function ReportAnalyticsClient({
         ? gradeParam
         : null;
     setSelectedGradeId(queryMatch ?? scopedCards[0].gradeLevelId);
-  }, [scopedCards, gradeParam, selectedGradeId]);
+  }, [scopedCards, gradeParam, selectedGradeId, mode]);
 
   useEffect(() => {
     if (mode !== "subject") return;
@@ -1153,14 +1181,88 @@ export default function ReportAnalyticsClient({
     };
   }, [mode, selectedGradeId, selectedSubjectId]);
 
+  const finalizedSectionIds = useMemo(() => {
+    if (mode !== "subject" || selectedSubjectId == null || selectedGradeId == null) return new Set<number>();
+    return new Set(
+      cards
+        .filter((c) => c.gradeLevelId === selectedGradeId && c.subjectId === selectedSubjectId && c.isFinalized)
+        .map((c) => c.sectionId),
+    );
+  }, [cards, mode, selectedGradeId, selectedSubjectId]);
+
+    // Monitoring contexts (grade/subject/all): always allow "All" — partial consolidated data is valid
+
   const sectionOptions = useMemo(() => {
     if (mode === "subject") {
+      const allSections = subjectOverview?.sections ?? [];
+      const toItem = (section: { sectionId: number; sectionName: string; status?: string }) => ({
+        value: String(section.sectionId),
+        label: section.sectionName,
+        disabled: !finalizedSectionIds.has(section.sectionId),
+        status: section.status,
+      });
+      const toAssignedItem = (section: { sectionId: number; sectionName: string; status?: string }) => ({
+        value: String(section.sectionId),
+        label: section.sectionName,
+        disabled: section.status !== "Finalized",
+        status: section.status,
+      });
+
+      const assignedSectionIds = new Set(reportScope.assignedScope?.sectionIds ?? []);
+      const handledSubjectSectionIds = new Set(
+        (reportScope.assignedScope?.assignedPairs ?? [])
+          .filter((pair) => pair.curriculumSubjectId === subjectOverview?.curriculumSubjectId)
+          .map((pair) => pair.sectionId),
+      );
+      const queryAssignedSectionIds = new Set(assignedSectionIdsFromQuery);
+      const scopedAssignedSectionIds =
+        fromParam === "assigned" && queryAssignedSectionIds.size > 0
+          ? queryAssignedSectionIds
+          : fromParam === "assigned"
+          ? handledSubjectSectionIds
+          : assignedSectionIds;
+      const subjectGroupSectionIds =
+        fromParam === "subject" && queryAssignedSectionIds.size > 0
+          ? queryAssignedSectionIds
+          : null;
+      const subjectGroupSections =
+        subjectGroupSectionIds == null
+          ? allSections
+          : allSections.filter((s) => subjectGroupSectionIds.has(s.sectionId));
+      const hasAssigned =
+        reportScope.canViewAssigned &&
+        allSections.some((s) => scopedAssignedSectionIds.has(s.sectionId));
+
+      if (fromParam === "subject") {
+        return [
+          { value: "all", label: "Consolidated (All Sections)", disabled: false },
+          ...subjectGroupSections.map(toItem),
+        ];
+      }
+
+      if (hasAssigned) {
+        const assignedSections = allSections.filter((s) => scopedAssignedSectionIds.has(s.sectionId));
+        const otherSections = allSections.filter((s) => !scopedAssignedSectionIds.has(s.sectionId));
+
+        if (fromParam === "assigned") {
+          return assignedSections.map(toAssignedItem);
+        }
+
+        // My Advisory & Subjects context: only show sections the teacher handles for this subject.
+        if (fromParam === "advisory") {
+          return assignedSections.map(toItem);
+        }
+
+        return [
+          { group: "Summary", items: [{ value: "all", label: "Consolidated (All Sections)", disabled: false }] },
+          { group: "My Sections", items: assignedSections.map(toItem) },
+          ...(otherSections.length > 0 ? [{ group: "Other Sections", items: otherSections.map(toItem) }] : []),
+        ];
+      }
+
       return [
-        { value: "all", label: "All" },
-        ...(subjectOverview?.sections ?? []).map((section) => ({
-          value: String(section.sectionId),
-          label: section.sectionName,
-        })),
+        { value: "all", label: "Consolidated (All Sections)", disabled: false },
+        ...allSections.map(toItem),
       ];
     }
 
@@ -1176,41 +1278,79 @@ export default function ReportAnalyticsClient({
     return Array.from(dedup.values()).sort((a, b) =>
       a.label.localeCompare(b.label, undefined, { sensitivity: "base" }),
     );
-  }, [scopedCards, mode, selectedGradeId, subjectOverview]);
+  }, [scopedCards, mode, selectedGradeId, subjectOverview, finalizedSectionIds, reportScope, fromParam, assignedSectionIdsFromQuery]);
+
+  // Flat list of all leaf section items (value+label) from sectionOptions (handles grouped/flat structures)
+  const flatSectionItems = useMemo(() => {
+    const items: { value: string; label: string }[] = [];
+    for (const opt of sectionOptions) {
+      if ("group" in opt) {
+        for (const item of opt.items) items.push({ value: item.value, label: item.label });
+      } else {
+        items.push({ value: opt.value, label: opt.label });
+      }
+    }
+    return items;
+  }, [sectionOptions]);
+
+  const consolidatedSectionFilter = useMemo(
+    () =>
+      fromParam === "subject" && assignedSectionIdsFromQuery.length > 0
+        ? assignedSectionIdsFromQuery
+        : null,
+    [fromParam, assignedSectionIdsFromQuery],
+  );
+  const consolidatedCandidateSectionIds = useMemo(() => {
+    if (mode !== "subject") return null;
+    const sectionIds = (subjectOverview?.sections ?? []).map((section) => section.sectionId);
+    const filtered =
+      consolidatedSectionFilter == null
+        ? sectionIds
+        : sectionIds.filter((sectionId) => consolidatedSectionFilter.includes(sectionId));
+    return new Set(filtered);
+  }, [consolidatedSectionFilter, mode, subjectOverview]);
 
   useEffect(() => {
     if (mode === "subject") {
       if (initialSectionId != null && Number.isFinite(initialSectionId)) {
-        const hasRouteSection = sectionOptions.some(
+        const hasRouteSection = flatSectionItems.some(
           (option) => option.value === String(initialSectionId),
         );
+        setSelectedConsolidated(false);
         setSelectedSectionId(hasRouteSection ? Number(initialSectionId) : null);
         return;
       }
       if (selectedSectionId != null) {
-        const hasCurrent = sectionOptions.some(
+        const hasCurrent = flatSectionItems.some(
           (option) => option.value === String(selectedSectionId),
         );
-        if (hasCurrent) return;
+        if (hasCurrent) {
+          setSelectedConsolidated(false);
+          return;
+        }
       }
+      if (selectedConsolidated && flatSectionItems.some((option) => option.value === "all")) {
+        return;
+      }
+      setSelectedConsolidated(false);
       setSelectedSectionId(null);
       return;
     }
 
-    if (sectionOptions.length === 0) {
+    if (flatSectionItems.length === 0) {
       setSelectedSectionId(null);
       return;
     }
 
     const hasCurrent =
       selectedSectionId != null &&
-      sectionOptions.some((option) => Number(option.value) === selectedSectionId);
+      flatSectionItems.some((option) => Number(option.value) === selectedSectionId);
     if (hasCurrent) return;
 
     // Dynamic route section has highest priority in this page.
     const routeMatch =
       Number.isFinite(initialSectionId) &&
-      sectionOptions.some((option) => Number(option.value) === Number(initialSectionId))
+      flatSectionItems.some((option) => Number(option.value) === Number(initialSectionId))
         ? Number(initialSectionId)
         : null;
     if (routeMatch != null) {
@@ -1221,7 +1361,7 @@ export default function ReportAnalyticsClient({
     // URL param fallback.
     const queryMatch =
       Number.isFinite(sectionParam) &&
-      sectionOptions.some((option) => Number(option.value) === sectionParam)
+      flatSectionItems.some((option) => Number(option.value) === sectionParam)
         ? sectionParam
         : null;
     if (queryMatch != null) {
@@ -1230,8 +1370,8 @@ export default function ReportAnalyticsClient({
     }
 
     // Last fallback: first available section under current grade scope.
-    setSelectedSectionId(Number(sectionOptions[0]?.value ?? null));
-  }, [initialSectionId, mode, sectionOptions, selectedSectionId, sectionParam]);
+    setSelectedSectionId(Number(flatSectionItems[0]?.value ?? null));
+  }, [initialSectionId, mode, flatSectionItems, selectedSectionId, selectedConsolidated, sectionParam, fromParam]);
 
   useEffect(() => {
     let mounted = true;
@@ -1254,10 +1394,14 @@ export default function ReportAnalyticsClient({
       if (!mounted) return;
 
       const options = (overview?.subjects ?? [])
-        .map((subject) => subject.subjectName)
-        .filter((name) => name.trim().length > 0)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-        .map((name) => ({ value: name, label: name }));
+        .filter((subject) => subject.subjectName.trim().length > 0)
+        .sort((a, b) => a.subjectName.localeCompare(b.subjectName, undefined, { sensitivity: "base" }))
+        .map((subject) => ({
+          value: subject.subjectName,
+          label: subject.subjectName,
+          disabled: subject.status !== "Finalized",
+          status: subject.status,
+        }));
 
       setSectionSubjectOptions(options);
     };
@@ -1270,11 +1414,27 @@ export default function ReportAnalyticsClient({
 
   const availableExamCards = useMemo(() => {
     if (mode === "subject") {
-      return cards.filter((card) => {
+      const inBaseScope = (card: ReportExamCard) => {
         if (selectedGradeId != null && card.gradeLevelId !== selectedGradeId) return false;
-        if (selectedSubjectId != null && card.subjectId !== selectedSubjectId) return false;
         if (selectedSectionId != null && card.sectionId !== selectedSectionId) return false;
+        if (
+          selectedSectionId == null &&
+          consolidatedCandidateSectionIds != null &&
+          !consolidatedCandidateSectionIds.has(card.sectionId)
+        ) {
+          return false;
+        }
         return true;
+      };
+      const inSubjectScope = (card: ReportExamCard) =>
+        inBaseScope(card) && (selectedSubjectId == null || card.subjectId === selectedSubjectId);
+      const subjectCards = cards.filter(inSubjectScope);
+
+      if (selectedSectionId != null || subjectCards.length > 0) return subjectCards;
+
+      return cards.filter((card) => {
+        if (!inBaseScope(card)) return false;
+        return consolidatedCandidateSectionIds?.has(card.sectionId) ?? false;
       });
     }
 
@@ -1293,7 +1453,7 @@ export default function ReportAnalyticsClient({
       if (card.subjectName !== selectedSubject) return false;
       return true;
     });
-  }, [cards, examParam, mode, selectedGradeId, selectedSectionId, selectedSubject, selectedSubjectId]);
+  }, [cards, consolidatedCandidateSectionIds, examParam, mode, selectedGradeId, selectedSectionId, selectedSubject, selectedSubjectId]);
 
   useEffect(() => {
     if (mode === "subject") return;
@@ -1427,6 +1587,7 @@ export default function ReportAnalyticsClient({
     if (mode === "subject" && selectedSectionId == null) {
       const dedup = new Map<number, { value: string; label: string; sort: number }>();
       for (const card of availableExamCards) {
+        if (!card.isFinalized) continue;
         if (!dedup.has(card.examId)) {
           const timestamp = card.examDate ? new Date(card.examDate).getTime() : 0;
           dedup.set(card.examId, {
@@ -1506,6 +1667,7 @@ export default function ReportAnalyticsClient({
           selectedSubjectId,
           selectedCard.examId,
           selectedCard.title,
+          consolidatedSectionFilter,
         );
         if (!mounted) return;
         setDiagnosticResult(result);
@@ -1517,7 +1679,7 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
+  }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
 
   useEffect(() => {
     let mounted = true;
@@ -1535,6 +1697,7 @@ export default function ReportAnalyticsClient({
             selectedCard.gradeLevelId,
             selectedSubjectId ?? 0,
             null,
+            consolidatedSectionFilter,
           );
           if (!mounted) return;
           setSummary(consolidated.summary);
@@ -1556,7 +1719,7 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
+  }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubjectId]);
 
   useEffect(() => {
     let mounted = true;
@@ -1578,6 +1741,7 @@ export default function ReportAnalyticsClient({
                 selectedCard.gradeLevelId,
                 selectedSubjectId ?? 0,
                 null,
+                consolidatedSectionFilter,
               )
             ).proficiencyRows
           : await fetchSavedProficiencyRows(selectedCard.examId, selectedCard.sectionId);
@@ -1592,7 +1756,7 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
+  }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
   useEffect(() => {
     let mounted = true;
@@ -1613,6 +1777,7 @@ export default function ReportAnalyticsClient({
                 selectedCard.gradeLevelId,
                 selectedSubjectId ?? 0,
                 null,
+                consolidatedSectionFilter,
               )
             ).itemAnalysis
           : await fetchSavedItemAnalysisSummary(selectedCard.examId, selectedCard.sectionId);
@@ -1626,7 +1791,7 @@ export default function ReportAnalyticsClient({
     return () => {
       mounted = false;
     };
-  }, [isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
+  }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
 
   if (loading || reportScope.scopeLoading) {
@@ -1646,42 +1811,85 @@ export default function ReportAnalyticsClient({
     return hit?.label ?? "Grade";
   })();
   const selectedSectionLabel = (() => {
-    if (mode === "subject" && selectedSectionId == null) return "All Sections";
+    if (mode === "subject" && selectedSectionId == null) {
+      return selectedConsolidated ? "Consolidated" : "";
+    }
     if (selectedSectionId == null) return "Section";
-    const hit = sectionOptions.find(
+    const hit = flatSectionItems.find(
       (option) => Number(option.value) === selectedSectionId,
     );
     return hit?.label ?? "Section";
   })();
-  const detailHref = "/reports";
-  const backLabel = "Back to Reports";
+  const needsSelection =
+    mode === "subject"
+      ? selectedSectionId == null && !selectedConsolidated
+      : !selectedSubject;
+  const selectionPrompt =
+    mode === "subject"
+      ? "Select Section"
+      : "Select Subject";
+  const individualDownloadHref =
+    !isConsolidatedSubjectView && selectedCard?.isFinalized && selectedSubject
+      ? `/api/reports/exam-result-download?examId=${selectedCard.examId}&sectionId=${selectedCard.sectionId}`
+      : null;
+  const consolidatedDownloadHref =
+    isConsolidatedSubjectView &&
+    selectedConsolidated &&
+    selectedCard &&
+    selectedGradeId != null &&
+    selectedSubjectId != null &&
+    (diagnosticResult?.finalizedSectionCount ?? 0) > 0
+      ? `/api/reports/consolidated-exam-download?gradeLevelId=${selectedGradeId}&subjectId=${selectedSubjectId}&examId=${selectedCard.examId}${
+          consolidatedSectionFilter && consolidatedSectionFilter.length > 0
+            ? `&sections=${consolidatedSectionFilter.join(",")}`
+            : ""
+        }`
+      : null;
+
   return (
     <div className="space-y-5 min-w-0">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-[#597D37]">Report Analytics</h1>
-        <BackButton href={detailHref} size="sm" mb="md">
-          {backLabel}
+        <h1 className="text-2xl sm:text-3xl font-bold mb-4 text-[#597D37]">{pageTitle}</h1>
+        <BackButton onClick={() => router.back()} size="sm" mb="md">
+          Back to Reports
         </BackButton>
         <Text size="lg" fw={700} c="black">
           {mode === "subject" && subjectOverview
-            ? `${selectedGradeLabel} - ${subjectOverview.subjectName} - ${selectedSectionLabel}`
-            : `${selectedGradeLabel} - ${selectedSectionLabel}`}
+            ? selectedSectionId == null && !selectedConsolidated
+              ? `${selectedGradeLabel} • ${subjectOverview.subjectName}`
+              : `${selectedGradeLabel} • ${subjectOverview.subjectName} • ${selectedSectionLabel}`
+            : `${selectedGradeLabel} • ${selectedSectionLabel}`}
         </Text>
       </div>
 
       <Group mb="md" align="flex-end" gap="sm">
         <Select
-          placeholder={mode === "subject" ? "Select sections" : "Select subjects"}
+          placeholder={mode === "subject" ? "Select Section" : "Select Subject"}
           data={mode === "subject" ? sectionOptions : sectionSubjectOptions}
           value={
             mode === "subject"
               ? selectedSectionId == null
-                ? "all"
+                ? selectedConsolidated
+                  ? "all"
+                  : null
                 : String(selectedSectionId)
               : selectedSubject
           }
           onChange={(value) => {
             if (mode === "subject") {
+              if (!value) {
+                setSelectedConsolidated(false);
+                setSelectedSectionId(null);
+                setSelectedKey(null);
+                return;
+              }
+              if (value === "all") {
+                setSelectedConsolidated(true);
+                setSelectedSectionId(null);
+                setSelectedKey(null);
+                return;
+              }
+              setSelectedConsolidated(false);
               setSelectedSectionId(value && value !== "all" ? Number(value) : null);
               setSelectedKey(null);
               return;
@@ -1696,14 +1904,98 @@ export default function ReportAnalyticsClient({
             setSubjectClearedByUser(false);
             setSubjectHydrated(true);
           }}
-          leftSection={<IconBook size={16} />}
+          renderOption={({ option }) => {
+            const isDisabled = "disabled" in option && option.disabled;
+            const status = "status" in option ? (option as { status?: string }).status : undefined;
+            const tooltipLabel = (() => {
+              if (!isDisabled) return "";
+              if (option.value === "all")
+                return "All sections must have a finalized exam before viewing consolidated results.";
+              if (status === "No exam yet")
+                return "Not Started: no report has been created for this section yet.";
+              if (status === "Not Finalized")
+                return "Ongoing: this section's report has not been finalized yet.";
+              // subject-mode section items
+              return "This section's exam has not been finalized yet.";
+            })();
+            const statusColor = (() => {
+              if (status === "No exam yet") return "#9ca3af";
+              if (status === "Not Finalized") return "#f59e0b";
+              return "#4EAE4A";
+            })();
+            return (
+              <Tooltip
+                label={tooltipLabel}
+                disabled={!isDisabled}
+                position="right"
+                withArrow
+                multiline
+                maw={220}
+                withinPortal
+              >
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    gap: 8,
+                    opacity: isDisabled ? 0.55 : 1,
+                    width: "100%",
+                  }}
+                >
+                  <span>{option.label}</span>
+                  {status && (
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        backgroundColor: statusColor,
+                        borderRadius: "50%",
+                        flexShrink: 0,
+                        height: 8,
+                        width: 8,
+                      }}
+                    />
+                  )}
+                </div>
+              </Tooltip>
+            );
+          }}
+          leftSection={mode === "subject" ? <IconUsersGroup size={16} /> : <IconBook size={16} />}
           w={{ base: "100%", sm: 260 }}
           disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
-          clearable={mode !== "subject"}
+          clearable
           nothingFoundMessage="-"
         />
+        {individualDownloadHref && (
+          <Button
+            component="a"
+            href={individualDownloadHref}
+            leftSection={<IconDownload size={16} />}
+            color="#4EAE4A"
+            variant="filled"
+            radius="sm"
+            size="sm"
+          >
+            Download Excel
+          </Button>
+        )}
+        {consolidatedDownloadHref && (
+          <Button
+            component="a"
+            href={consolidatedDownloadHref}
+            leftSection={<IconDownload size={16} />}
+            color="#4EAE4A"
+            variant="filled"
+            radius="sm"
+            size="sm"
+          >
+            Download Excel
+          </Button>
+        )}
       </Group>
 
+      {needsSelection ? (
+        <SectionEmptyState message={selectionPrompt} />
+      ) : (
       <div className="space-y-3 min-w-0">
         <div className="sticky top-0 z-20 w-full bg-white/95 pb-1 backdrop-blur">
           <SegmentedControl
@@ -2298,6 +2590,7 @@ export default function ReportAnalyticsClient({
         )}
         </Accordion>
       </div>
+      )}
     </div>
   );
 }
