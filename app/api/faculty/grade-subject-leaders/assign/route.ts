@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -7,6 +8,7 @@ import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { invalidateReportsCache } from "@/lib/services/reportsAnalysisService";
+import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 
 const _POST = async function (request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -81,6 +83,7 @@ const _POST = async function (request: Request) {
     );
   }
   invalidateReportsCache();
+  revalidateTag(REPORTS_CACHE_TAG, "minutes");
 
   after(async () => {
     await insertAuditLog({

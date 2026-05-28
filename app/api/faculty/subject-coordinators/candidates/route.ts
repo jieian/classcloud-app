@@ -2,6 +2,10 @@ import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supaba
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import type { FacultyMember } from "@/app/(app)/school/faculty/_lib/facultyService";
+import { redis } from "@/lib/redis";
+
+const CACHE_KEY = "faculty:candidates";
+const CACHE_TTL = 600;
 
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();
@@ -16,6 +20,9 @@ const _GET = async function () {
   if (!getPermissionsFromUser(caller).includes("faculty.full_access")) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
+
+  const cached = await redis.get<FacultyMember[]>(CACHE_KEY);
+  if (cached) return Response.json({ data: cached });
 
   // Parallel: all faculty + current coordinators in the active SY
   const [facultyResult, coordinatorResult] = await Promise.all([
@@ -49,6 +56,7 @@ const _GET = async function () {
     (f) => !coordinatorUids.has(f.uid),
   );
 
+  await redis.set(CACHE_KEY, candidates, { ex: CACHE_TTL });
   return Response.json({ data: candidates });
 };
 

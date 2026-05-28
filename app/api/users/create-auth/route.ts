@@ -8,6 +8,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { generateRawToken, hashToken, encryptPassword } from "@/lib/crypto";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 
 const ALLOWED_DOMAINS = ["baliuagu.edu.ph", "gmail.com", "deped.gov.ph"];
 
@@ -248,6 +249,7 @@ const _POST = async function (request: Request) {
       new_values: { email: trimmedEmail, role_ids },
     }).catch(() => {});
 
+    await redis.del("users:pending");
     return Response.json({ success: true, uuid: uid }, { status: 200 });
   }
 
@@ -337,6 +339,7 @@ const _POST = async function (request: Request) {
       new_values: { email: trimmedEmail, role_ids },
     }).catch(() => {});
 
+    await redis.del("users:pending");
     return Response.json(
       { success: true, uuid: newAuthUserUuid },
       { status: 201 },

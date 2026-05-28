@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { redis } from "@/lib/redis";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
@@ -64,6 +65,8 @@ const _POST = async function (request: Request) {
     }
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
 
   // Non-blocking audit writes — don't delay the response
   after(async () => {

@@ -3,6 +3,7 @@ import { sendRejectionEmail } from "@/lib/email/templates";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -64,6 +65,8 @@ const _POST = async function(request: Request) {
       return Response.json({ error: "Internal server error." }, { status: 500 });
     }
   }
+
+  await redis.del("users:pending");
 
   // Send rejection email (non-fatal)
   if (email) {

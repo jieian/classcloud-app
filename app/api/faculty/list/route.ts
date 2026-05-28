@@ -1,18 +1,26 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
+
+const CACHE_KEY = "faculty:list";
+const CACHE_TTL = 600;
 
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();
 
-  const [authResult, rpcResult] = await Promise.all([
+  const [authResult, cached] = await Promise.all([
     supabase.auth.getUser(),
-    adminClient.rpc("get_faculty_list"),
+    redis.get<{ uid: string }[]>(CACHE_KEY),
   ]);
 
   if (!authResult.data.user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  if (cached) return Response.json({ data: cached });
+
+  const rpcResult = await adminClient.rpc("get_faculty_list");
 
   if (rpcResult.error) {
     console.error("get_faculty_list error:", rpcResult.error.message);
@@ -27,6 +35,7 @@ const _GET = async function () {
     return true;
   });
 
+  await redis.set(CACHE_KEY, data, { ex: CACHE_TTL });
   return Response.json({ data });
 };
 

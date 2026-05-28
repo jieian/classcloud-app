@@ -4,6 +4,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 import { after } from "next/server";
+import { redis } from "@/lib/redis";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -38,6 +39,8 @@ const _POST = async function(request: Request) {
       { status: 500 },
     );
   }
+
+  await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
 
   // Audit log — non-blocking
   after(async () => {

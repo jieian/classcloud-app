@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getServerUser } from "@/lib/supabase/server";
@@ -22,12 +23,14 @@ const _POST = async function (request: Request) {
     return Response.json({ error: error.message }, { status: 400 });
   }
 
-  await insertAuditLog({
-    actor_id: user.id,
-    category: "SECURITY",
-    action: "password_reset",
-    entity_type: "user",
-    entity_id: user.id,
+  after(() => {
+    insertAuditLog({
+      actor_id: user.id,
+      category: "SECURITY",
+      action: "password_reset",
+      entity_type: "user",
+      entity_id: user.id,
+    });
   });
 
   return Response.json({ success: true });

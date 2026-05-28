@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { redis } from "@/lib/redis";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { parseBody, AssignSubjectCoordinatorSchema } from "@/lib/api-schemas";
@@ -69,6 +70,8 @@ const _POST = async function (request: Request) {
 
   const oldCoordinatorId = (rpcResult as { old_coordinator_id: string | null } | null)
     ?.old_coordinator_id ?? null;
+
+  await redis.del("coordinator:groups", "faculty:candidates");
 
   syncUserPermissions(user_id).catch((err) =>
     console.error("syncUserPermissions failed for new coordinator:", err),

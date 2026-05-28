@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { revalidateTag } from "next/cache";
+import { redis } from "@/lib/redis";
 import { z } from "zod";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
@@ -148,6 +149,7 @@ const _POST = async function (request: Request) {
 
   // 7. Cache invalidation + deferred audit log
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
+  await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
 
   after(async () => {
     try {

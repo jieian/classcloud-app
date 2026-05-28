@@ -3,6 +3,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { hashToken, decryptPassword } from "@/lib/crypto";
 import { sendEmailVerifiedEmail } from "@/lib/email/templates";
 import { dispatchNewSignup } from "@/lib/notifications";
+import { redis } from "@/lib/redis";
 
 /** Masks an email for display: j***@gmail.com */
 function maskEmail(email: string): string {
@@ -175,6 +176,8 @@ const _POST = async function (request: Request) {
     console.error("[confirm] RPC returned success=false for uid:", uid);
     return Response.json({ status: "error" }, { status: 500 });
   }
+
+  void redis.del("users:pending");
 
   // Notify all users.full_access about the new self-registration (fire-and-forget)
   void dispatchNewSignup({ newUserUid: uid, firstName: row.first_name, lastName: row.last_name });

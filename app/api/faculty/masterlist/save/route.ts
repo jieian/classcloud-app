@@ -6,6 +6,7 @@ import { syncUserPermissions } from "@/lib/permissions-sync";
 import { parseBody, SaveMasterlistSchema } from "@/lib/api-schemas";
 import { insertAuditLog } from "@/lib/audit";
 import { after } from "next/server";
+import { redis } from "@/lib/redis";
 
 const _POST = async function (request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -102,6 +103,8 @@ const _POST = async function (request: Request) {
 
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  await redis.del("faculty:list", "faculty:candidates");
 
   // Audit log — non-blocking
   after(async () => {

@@ -3,6 +3,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 
 const _PATCH = async function (request: Request) {
   // 1. Verify caller is authenticated
@@ -64,6 +65,8 @@ const _PATCH = async function (request: Request) {
       { status: 500 },
     );
   }
+
+  await redis.del("users:active", "faculty:list", "faculty:candidates");
 
   // 5. Sync JWT claims + Redis version (non-fatal)
   syncUserPermissions(uid).catch((err) =>

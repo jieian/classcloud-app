@@ -1,0 +1,302 @@
+[
+  {
+    "schemaname": "public",
+    "tablename": "audit_logs",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "curriculum_subjects",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "curriculums",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "enrollments",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exam_assignments",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exam_results_reports",
+    "policyname": "Enable read access for authenticated users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exams",
+    "policyname": "exam policy",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "(( SELECT auth.role() AS role) = 'authenticated'::text)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "grade_levels",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "item_analysis_reports",
+    "policyname": "Enable read access for authenticated users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "notifications_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "notifications_update_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(( SELECT auth.uid() AS uid) = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "pending_registrations",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "permissions",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "quarters",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "role_permissions",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "roles",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "school_years",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "scores",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "section_transfer_requests",
+    "policyname": "str_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((( SELECT auth.uid() AS uid) = requested_by) AND ((EXISTS ( SELECT 1\n   FROM sections\n  WHERE ((sections.section_id = section_transfer_requests.to_section_id) AND (sections.adviser_id = ( SELECT auth.uid() AS uid)) AND (sections.deleted_at IS NULL)))) OR (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((r.role_id = ur.role_id)))\n  WHERE ((ur.uid = ( SELECT auth.uid() AS uid)) AND ((r.name)::text = 'full_access_student_management'::text))))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "section_transfer_requests",
+    "policyname": "str_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((( SELECT auth.uid() AS uid) = requested_by) OR (EXISTS ( SELECT 1\n   FROM sections\n  WHERE ((sections.section_id = section_transfer_requests.from_section_id) AND (sections.adviser_id = ( SELECT auth.uid() AS uid))))) OR (EXISTS ( SELECT 1\n   FROM sections\n  WHERE ((sections.section_id = section_transfer_requests.to_section_id) AND (sections.adviser_id = ( SELECT auth.uid() AS uid))))) OR (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((r.role_id = ur.role_id)))\n  WHERE ((ur.uid = ( SELECT auth.uid() AS uid)) AND ((r.name)::text = 'full_access_student_management'::text)))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "section_transfer_requests",
+    "policyname": "str_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((EXISTS ( SELECT 1\n   FROM sections\n  WHERE ((sections.section_id = section_transfer_requests.from_section_id) AND (sections.adviser_id = ( SELECT auth.uid() AS uid)) AND (sections.deleted_at IS NULL)))) OR (( SELECT auth.uid() AS uid) = requested_by) OR (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((r.role_id = ur.role_id)))\n  WHERE ((ur.uid = ( SELECT auth.uid() AS uid)) AND ((r.name)::text = 'full_access_student_management'::text)))))",
+    "with_check": "((EXISTS ( SELECT 1\n   FROM sections\n  WHERE ((sections.section_id = section_transfer_requests.from_section_id) AND (sections.adviser_id = ( SELECT auth.uid() AS uid)) AND (sections.deleted_at IS NULL)))) OR (( SELECT auth.uid() AS uid) = requested_by) OR (EXISTS ( SELECT 1\n   FROM (user_roles ur\n     JOIN roles r ON ((r.role_id = ur.role_id)))\n  WHERE ((ur.uid = ( SELECT auth.uid() AS uid)) AND ((r.name)::text = 'full_access_student_management'::text)))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "sections",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "students",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "subject_coordinators",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "subject_group_members",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "subject_groups",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "subjects",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "teacher_class_assignments",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "user_roles",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "users",
+    "policyname": "Enable read access for all users",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "true",
+    "with_check": null
+  }
+]

@@ -12,6 +12,7 @@ import {
 } from "@/lib/crypto";
 import { insertAuditLog } from "@/lib/audit";
 import { sendInvitationEmail, sendInviteCancelledEmail } from "@/lib/email/templates";
+import { redis } from "@/lib/redis";
 
 const _PATCH = async function (request: Request) {
   // ── Auth + permissions ────────────────────────────────────────────────────
@@ -177,6 +178,8 @@ const _PATCH = async function (request: Request) {
       { status: 500 },
     );
   }
+
+  await redis.del("users:pending");
 
   // Audit log (non-fatal)
   insertAuditLog({

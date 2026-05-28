@@ -4,6 +4,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -62,6 +63,8 @@ const _POST = async function(request: Request) {
       { status: 500 },
     );
   }
+
+  await redis.del("users:pending", "users:active");
 
   // Send approval email (non-fatal — account is already active)
   const email = authData.user?.email;

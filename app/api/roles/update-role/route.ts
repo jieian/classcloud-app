@@ -4,6 +4,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncAllUsersWithRole } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 
 const _PUT = async function (request: Request) {
   // 1. Auth
@@ -62,6 +63,8 @@ const _PUT = async function (request: Request) {
     console.error("Role Update Failed:", error.message);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
+
+  await redis.del("faculty:list", "faculty:candidates", "users:active");
 
   // 6. Sync JWT claims for all users holding this role after the response is sent.
   // after() guarantees completion even after the serverless function responds.

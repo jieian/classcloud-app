@@ -8,6 +8,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUsersBatch } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -52,6 +53,8 @@ const _DELETE = async function(request: Request) {
       { status: 500 }
     );
   }
+
+  await redis.del("faculty:list", "faculty:candidates", "users:active");
 
   // 7. Sync JWT claims for all previously affected users after the response is sent.
   // Batched to avoid hitting the Auth admin API rate limit; after() guarantees

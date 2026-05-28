@@ -4,6 +4,7 @@ import { hashToken, decryptPassword } from "@/lib/crypto";
 import { insertAuditLog } from "@/lib/audit";
 import { sendInviteActivatedEmail } from "@/lib/email/templates";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { redis } from "@/lib/redis";
 
 const _POST = async function (request: Request) {
   const body = await request.json();
@@ -101,6 +102,8 @@ const _POST = async function (request: Request) {
     .delete()
     .eq("id", invitation.id);
   if (deleteError) console.error("Failed to delete invitation record:", deleteError.message);
+
+  await redis.del("users:pending", "users:active");
 
   // Sync JWT permissions (non-fatal)
   syncUserPermissions(uid).catch((e) =>

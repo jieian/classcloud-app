@@ -8,6 +8,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 import { sendAccountDeactivationEmail } from "@/lib/email/templates";
+import { redis } from "@/lib/redis";
 const _DELETE = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -77,6 +78,8 @@ const _DELETE = async function(request: Request) {
       return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
+    await redis.del("users:active", "faculty:list", "faculty:candidates");
+
     // Clear JWT claims — user is banned but token still exists until expiry
     syncUserPermissions(uuid).catch((err) =>
       console.error("syncUserPermissions failed after soft-delete:", err),
@@ -108,6 +111,7 @@ const _DELETE = async function(request: Request) {
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
+  await redis.del("users:pending");
   return Response.json({ success: true });
 }
 
