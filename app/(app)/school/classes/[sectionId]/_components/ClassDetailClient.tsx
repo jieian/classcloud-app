@@ -20,7 +20,6 @@ import {
 } from "@mantine/core";
 import {
   IconAlertCircle,
-  IconArchive,
   IconBadge,
   IconBook,
   IconChalkboardTeacher,
@@ -37,7 +36,6 @@ import {
   type SectionDetail,
   type SectionSubjectRow,
 } from "@/lib/services/classService";
-import ArchiveClassModal from "./ArchiveClassModal";
 import AssignAdviserModal from "./AssignAdviserModal";
 import EditSectionNameModal from "./EditSectionNameModal";
 import ManageSubjectTeachersModal from "./ManageSubjectTeachersModal";
@@ -127,7 +125,6 @@ export default function ClassDetailClient({ sectionId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [assignAdviserOpened, setAssignAdviserOpened] = useState(false);
   const [editNameOpened, setEditNameOpened] = useState(false);
-  const [archiveOpened, setArchiveOpened] = useState(false);
   const [manageTeachersOpened, setManageTeachersOpened] = useState(false);
 
   const loadDetail = useCallback(async () => {
@@ -137,9 +134,11 @@ export default function ClassDetailClient({ sectionId }: Props) {
       setSubjects(result.subjects);
       setError(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load class.");
+      const msg = e instanceof Error ? e.message : "Failed to load class.";
+      if (msg === "Forbidden") { router.replace("/unauthorized"); return; }
+      setError(msg);
     }
-  }, [sectionId]);
+  }, [sectionId, router]);
 
   useEffect(() => {
     async function load() {
@@ -161,10 +160,12 @@ export default function ClassDetailClient({ sectionId }: Props) {
   }
 
   const currentSection = section;
+  const isActiveSy = !!currentSection?.is_active_sy;
   const canEditSectionName =
     !loading &&
     !!currentSection &&
     hasClassesManagement &&
+    isActiveSy &&
     currentSection.section_type === "REGULAR";
 
   return (
@@ -266,7 +267,7 @@ export default function ClassDetailClient({ sectionId }: Props) {
                     {currentSection!.adviser_name ?? "Unassigned"}
                   </Text>
                 </Text>
-                {hasClassesManagement && (
+                {hasClassesManagement && isActiveSy && (
                   <Tooltip
                     label={
                       currentSection!.adviser_id ? "Edit Adviser" : "Assign Adviser"
@@ -318,21 +319,11 @@ export default function ClassDetailClient({ sectionId }: Props) {
                     component={Link}
                     href={`/school/classes/${currentSection!.section_id}/students`}
                   >
-                    {permissions.includes("students.full_access") ||
-                    currentSection!.adviser_id === user?.id
+                    {isActiveSy &&
+                    (permissions.includes("students.full_access") ||
+                      currentSection!.adviser_id === user?.id)
                       ? "Manage Student Roster"
                       : "View Student Roster"}
-                  </Button>
-                )}
-                {hasClassesManagement && (
-                  <Button
-                    variant="outline"
-                    color="red"
-                    leftSection={<IconArchive size={16} />}
-                    size="sm"
-                    onClick={() => setArchiveOpened(true)}
-                  >
-                    Delete Class
                   </Button>
                 )}
               </Stack>
@@ -391,7 +382,7 @@ export default function ClassDetailClient({ sectionId }: Props) {
               </>
             )}
 
-            {hasClassesManagement && (
+            {hasClassesManagement && isActiveSy && (
               <>
                 <Divider my="sm" />
                 <Button
@@ -424,14 +415,6 @@ export default function ClassDetailClient({ sectionId }: Props) {
             currentName={currentSection!.name}
             onClose={() => setEditNameOpened(false)}
             onRenamed={loadDetail}
-          />
-
-          <ArchiveClassModal
-            opened={archiveOpened}
-            sectionId={currentSection!.section_id}
-            sectionName={currentSection!.name}
-            onClose={() => setArchiveOpened(false)}
-            onArchived={() => router.push("/school/classes")}
           />
 
           <ManageSubjectTeachersModal

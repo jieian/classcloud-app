@@ -50,6 +50,12 @@
   {
     "schemaname": "public",
     "tablename": "curriculum_subjects",
+    "indexname": "idx_curriculum_subjects_curriculum_active",
+    "indexdef": "CREATE INDEX idx_curriculum_subjects_curriculum_active ON public.curriculum_subjects USING btree (curriculum_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "curriculum_subjects",
     "indexname": "idx_curriculum_subjects_grade_level_id",
     "indexdef": "CREATE INDEX idx_curriculum_subjects_grade_level_id ON public.curriculum_subjects USING btree (grade_level_id)"
   },
@@ -106,12 +112,6 @@
     "tablename": "exam_assignments",
     "indexname": "exam_assignments_pkey",
     "indexdef": "CREATE UNIQUE INDEX exam_assignments_pkey ON public.exam_assignments USING btree (id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "exam_assignments",
-    "indexname": "idx_exam_assignments_exam_id",
-    "indexdef": "CREATE INDEX idx_exam_assignments_exam_id ON public.exam_assignments USING btree (exam_id)"
   },
   {
     "schemaname": "public",
@@ -356,12 +356,6 @@
   {
     "schemaname": "public",
     "tablename": "quarters",
-    "indexname": "idx_quarters_sy_id",
-    "indexdef": "CREATE INDEX idx_quarters_sy_id ON public.quarters USING btree (sy_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "quarters",
     "indexname": "idx_quarters_sy_id_is_active",
     "indexdef": "CREATE INDEX idx_quarters_sy_id_is_active ON public.quarters USING btree (sy_id, is_active)"
   },
@@ -388,6 +382,12 @@
     "tablename": "role_permissions",
     "indexname": "role_permissions_pkey",
     "indexdef": "CREATE UNIQUE INDEX role_permissions_pkey ON public.role_permissions USING btree (role_id, permission_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "roles",
+    "indexname": "idx_roles_is_faculty",
+    "indexdef": "CREATE INDEX idx_roles_is_faculty ON public.roles USING btree (is_faculty) WHERE (is_faculty = true)"
   },
   {
     "schemaname": "public",
@@ -436,12 +436,6 @@
     "tablename": "scores",
     "indexname": "idx_scores_exam_assignment_enrollment",
     "indexdef": "CREATE INDEX idx_scores_exam_assignment_enrollment ON public.scores USING btree (exam_assignment_id, enrollment_id, graded_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "scores",
-    "indexname": "idx_scores_exam_assignment_id",
-    "indexdef": "CREATE INDEX idx_scores_exam_assignment_id ON public.scores USING btree (exam_assignment_id)"
   },
   {
     "schemaname": "public",
@@ -592,6 +586,12 @@
     "tablename": "subject_group_members",
     "indexname": "subject_group_members_pkey",
     "indexdef": "CREATE UNIQUE INDEX subject_group_members_pkey ON public.subject_group_members USING btree (subject_group_id, curriculum_subject_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "subject_groups",
+    "indexname": "idx_subject_groups_curriculum_id",
+    "indexdef": "CREATE INDEX idx_subject_groups_curriculum_id ON public.subject_groups USING btree (curriculum_id)"
   },
   {
     "schemaname": "public",

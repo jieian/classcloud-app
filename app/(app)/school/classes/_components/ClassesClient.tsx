@@ -11,6 +11,7 @@ import {
   Button,
   Center,
   Group,
+  SegmentedControl,
   SimpleGrid,
   Skeleton,
   Stack,
@@ -20,8 +21,6 @@ import {
 import {
   IconArrowsTransferUp,
   IconInfoCircle,
-  IconSchool,
-  IconShieldLock,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
@@ -52,19 +51,21 @@ function ClassesAccordionEmptyState({
   description: string;
 }) {
   return (
-    <Center py={28} px="md">
+    <Center
+      py={36}
+      px="md"
+      style={{
+        border: "1px solid var(--mantine-color-gray-3)",
+        borderRadius: "8px",
+        backgroundColor: "#FFFFFF",
+      }}
+    >
       <Stack gap={10} align="center">
-        <ThemeIcon
-          size={48}
-          radius="xl"
-          color="gray.2"
-          variant="filled"
-          mb="sm"
-        >
+        <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled">
           <IconUsersGroup size={28} stroke={1.5} color="#3D4147" />
         </ThemeIcon>
         <Stack gap={4} align="center">
-          <Text size="md" fw={700} c="#111827">
+          <Text size="sm" fw={500} c="#111827">
             {title}
           </Text>
           <Text size="sm" c="dimmed" ta="center" maw={380}>
@@ -111,10 +112,10 @@ export default function ClassesClient({ initialData }: Props = {}) {
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);
   const [viewTransitioning, setViewTransitioning] = useState(false);
   const [viewMode, setViewMode] = useState<"admin" | "faculty">(() => {
-    if (typeof window === "undefined") return "admin";
-    return localStorage.getItem("classesViewMode") === "faculty"
-      ? "faculty"
-      : "admin";
+    if (typeof window === "undefined") return "faculty";
+    return localStorage.getItem("classesViewMode") === "admin"
+      ? "admin"
+      : "faculty";
   });
   const initDoneRef = useRef(!!initialData);
   const adminSelectedSyIdRef = useRef<number | null>(null);
@@ -359,112 +360,37 @@ export default function ClassesClient({ initialData }: Props = {}) {
   );
 
   const switchViewControl = canSwitchView ? (
-    <Stack gap={6} w={isMobile ? "100%" : "auto"}>
-      <Box
-        role="tablist"
-        aria-label="Classes view mode"
-        style={{
-          position: "relative",
-          display: "flex",
-          width: isMobile ? "100%" : 300,
-          height: isMobile ? 36 : 38,
-          fontFamily: "Arial, Helvetica, sans-serif",
+    <SegmentedControl
+      value={effectiveViewMode}
+      onChange={(value) => void handleViewChange(value as "admin" | "faculty")}
+      data={[
+        { value: "admin", label: "Admin View" },
+        { value: "faculty", label: "Faculty View" },
+      ]}
+      color={isAdminView ? "#4A72AE" : "#4EAE4A"}
+      radius="sm"
+      size="sm"
+      transitionDuration={180}
+      fullWidth={isMobile}
+      disabled={viewTransitioning}
+      styles={{
+        root: {
+          backgroundColor: "#ffffff",
+          border: "1px solid #D6D9E0",
           padding: 3,
-          background: "#ffffff",
-          border: "1.5px solid #9ca3af",
-          borderRadius: 9999,
-        }}
-      >
-        <Box
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: 3,
-            bottom: 3,
-            width: "calc(50% - 3px)",
-            left: isAdminView ? "calc(50% + 1.5px)" : "3px",
-            borderRadius: 9999,
-            zIndex: 1,
-            background: isAdminView
-              ? "linear-gradient(180deg, #5578b7 0%, #4A72AE 100%)"
-              : "linear-gradient(180deg, #5dc259 0%, #4EAE4A 100%)",
-            boxShadow: isAdminView
-              ? "0 2px 8px rgba(74, 114, 174, 0.22), 0 1px 2px rgba(0,0,0,0.05)"
-              : "0 2px 8px rgba(78, 174, 74, 0.22), 0 1px 2px rgba(0,0,0,0.05)",
-            transition: "all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-          }}
-        />
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!isAdminView}
-          onClick={() => void handleViewChange("faculty")}
-          disabled={!isAdminView || viewTransitioning}
-          style={{
-            position: "relative",
-            zIndex: 2,
-            flex: 1,
-            border: "none",
-            background: "transparent",
-            fontSize: 13,
-            fontWeight: isAdminView ? 600 : 700,
-            letterSpacing: "0.2px",
-            color: isAdminView ? "#868e96" : "#ffffff",
-            cursor:
-              !isAdminView || viewTransitioning ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            transition: "color 0.35s ease",
-            borderRadius: 9999,
-            textShadow: "none",
-          }}
-        >
-          <IconSchool size={15} stroke={1.5} />
-          <span>Faculty</span>
-        </button>
-
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isAdminView}
-          onClick={() => void handleViewChange("admin")}
-          disabled={isAdminView || viewTransitioning}
-          style={{
-            position: "relative",
-            zIndex: 2,
-            flex: 1,
-            border: "none",
-            background: "transparent",
-            fontSize: 13,
-            fontWeight: isAdminView ? 700 : 600,
-            letterSpacing: "0.2px",
-            color: isAdminView ? "#ffffff" : "#868e96",
-            cursor: isAdminView || viewTransitioning ? "default" : "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 6,
-            transition: "color 0.35s ease",
-            borderRadius: 9999,
-            textShadow: "none",
-          }}
-        >
-          <IconShieldLock size={15} stroke={1.5} />
-          <span>Admin</span>
-        </button>
-      </Box>
-      {viewTransitioning && (
-        <Group gap="xs" align="center">
-          <Skeleton height={10} radius="xl" w={90} />
-          <Text size="xs" c="dimmed">
-            Updating class view...
-          </Text>
-        </Group>
-      )}
-    </Stack>
+          minWidth: 230,
+        },
+        label: {
+          fontWeight: 600,
+          fontSize: 14,
+          padding: "6px 14px",
+          whiteSpace: "nowrap",
+        },
+        indicator: {
+          border: `1px solid ${isAdminView ? "#4A72AE" : "#4EAE4A"}`,
+        },
+      }}
+    />
   ) : null;
 
   const transferRequestsButton = canViewTransferRequests ? (

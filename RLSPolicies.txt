@@ -66,7 +66,7 @@
     "permissive": "PERMISSIVE",
     "roles": "{authenticated}",
     "cmd": "ALL",
-    "qual": "(( SELECT auth.role() AS role) = 'authenticated'::text)",
+    "qual": "true",
     "with_check": null
   },
   {

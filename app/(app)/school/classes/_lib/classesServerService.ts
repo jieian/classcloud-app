@@ -6,6 +6,7 @@ import {
   type SchoolYearOption,
   type SectionCard,
 } from "@/lib/services/classService";
+import type { SectionUserRow, SectionRow } from "@/lib/types/class.types";
 
 export const SCHOOL_YEARS_CACHE_TAG = "school-years";
 
@@ -16,21 +17,6 @@ export type ClassesInitialData = {
   defaultSyId: number | null;
   assignedSectionIds: number[];
 };
-
-interface SectionUserRow {
-  first_name: string | null;
-  last_name: string | null;
-  deleted_at: string | null;
-}
-
-interface SectionRow {
-  section_id: number;
-  name: string;
-  section_type: "SSES" | "REGULAR";
-  grade_level_id: number;
-  adviser_id: string | null;
-  users: SectionUserRow | SectionUserRow[] | null;
-}
 
 export async function getSchoolYearsCached(): Promise<SchoolYearOption[]> {
   "use cache";
@@ -58,58 +44,32 @@ export async function getGradeLevelsCached(): Promise<GradeLevelRow[]> {
 }
 
 /**
- * Fetches the full data set needed to render the classes page.
- * School years and grade levels come from cache; sections are always live.
- * The adviser deleted_at check is inlined into the join — no extra round-trip.
+ * Fetches sections, enrollment counts, and teacher assignments for a given
+ * school year. Used by both getClassesInitData (SSR) and GET /api/classes/sections
+ * (client-side year switching) so the logic lives in one place.
  */
-export async function getClassesInitData(
+export async function buildSectionCardsForSy(
+  syId: number,
   userId: string,
-  _permissions: string[],
-): Promise<ClassesInitialData> {
-  void _permissions;
-
-  // Fetch the active school year ID live so it is never stale, even when
-  // the school_years cache hasn't been revalidated yet after an activation.
-  // The full school-years list (for the dropdown) still comes from cache.
-  const [schoolYears, gradeLevels, activeSyResult] = await Promise.all([
-    getSchoolYearsCached(),
-    getGradeLevelsCached(),
-    admin
-      .from("school_years")
-      .select("sy_id")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle(),
-  ]);
-
-  // Prefer the live active year; fall back to resolving from the cached list
-  // (handles the edge case where no year is marked active yet).
-  const defaultSyId =
-    (activeSyResult.data as { sy_id: number } | null)?.sy_id ??
-    resolveDefaultSyId(schoolYears);
-
-  if (!defaultSyId) {
-    return { schoolYears, gradeLevels, sections: [], defaultSyId: null, assignedSectionIds: [] };
-  }
-
+): Promise<{ sections: SectionCard[]; assignedSectionIds: number[] }> {
   const [secResult, enrollResult, assignResult] = await Promise.all([
     admin
       .from("sections")
       .select(
         "section_id, name, section_type, grade_level_id, adviser_id, users(first_name, last_name, deleted_at)",
       )
-      .eq("sy_id", defaultSyId)
+      .eq("sy_id", syId)
       .is("deleted_at", null),
     admin
       .from("enrollments")
       .select("section_id")
-      .eq("sy_id", defaultSyId)
+      .eq("sy_id", syId)
       .is("deleted_at", null),
     admin
       .from("teacher_class_assignments")
       .select("section_id, sections!inner(sy_id)")
       .eq("teacher_id", userId)
-      .eq("sections.sy_id", defaultSyId)
+      .eq("sections.sy_id", syId)
       .is("deleted_at", null),
   ]);
 
@@ -139,5 +99,82 @@ export async function getClassesInitData(
     (assignResult.data ?? []) as { section_id: number }[]
   ).map((a) => a.section_id);
 
+  return { sections, assignedSectionIds };
+}
+
+/**
+ * Used by page server components to gate access before rendering.
+ * Checks adviser_id and teacher_class_assignments in parallel.
+ * Returns true if the limited_access user may access this section.
+ */
+export async function canLimitedAccessSection(
+  userId: string,
+  sectionId: number,
+): Promise<boolean> {
+  const [sectionResult, assignResult] = await Promise.all([
+    admin
+      .from("sections")
+      .select("adviser_id")
+      .eq("section_id", sectionId)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    admin
+      .from("teacher_class_assignments")
+      .select("section_id", { count: "exact", head: true })
+      .eq("section_id", sectionId)
+      .eq("teacher_id", userId)
+      .is("deleted_at", null),
+  ]);
+
+  if (!sectionResult.data) return false;
+  const isAdviser = (sectionResult.data as any).adviser_id === userId;
+  const isTeacher = (assignResult.count ?? 0) > 0;
+  return isAdviser || isTeacher;
+}
+
+/**
+ * Used by API routes that have already fetched the section and confirmed the
+ * user is NOT the adviser. Returns true if a teacher_class_assignment exists.
+ */
+export async function isTeacherInSection(
+  userId: string,
+  sectionId: number,
+): Promise<boolean> {
+  const { count } = await admin
+    .from("teacher_class_assignments")
+    .select("section_id", { count: "exact", head: true })
+    .eq("section_id", sectionId)
+    .eq("teacher_id", userId)
+    .is("deleted_at", null);
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Fetches the full data set needed to render the classes page.
+ * School years and grade levels come from cache; sections are always live.
+ */
+export async function getClassesInitData(
+  userId: string,
+): Promise<ClassesInitialData> {
+  const [schoolYears, gradeLevels, activeSyResult] = await Promise.all([
+    getSchoolYearsCached(),
+    getGradeLevelsCached(),
+    admin
+      .from("school_years")
+      .select("sy_id")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle(),
+  ]);
+
+  const defaultSyId =
+    (activeSyResult.data as { sy_id: number } | null)?.sy_id ??
+    resolveDefaultSyId(schoolYears);
+
+  if (!defaultSyId) {
+    return { schoolYears, gradeLevels, sections: [], defaultSyId: null, assignedSectionIds: [] };
+  }
+
+  const { sections, assignedSectionIds } = await buildSectionCardsForSy(defaultSyId, userId);
   return { schoolYears, gradeLevels, sections, defaultSyId, assignedSectionIds };
 }

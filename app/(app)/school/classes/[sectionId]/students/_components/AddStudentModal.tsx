@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import {
   Alert,
+  Box,
   Button,
   Divider,
   Group,
@@ -20,6 +21,7 @@ import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconCheck,
+  IconInfoCircle,
   IconSend,
   IconUserCheck,
   IconUserOff,
@@ -241,16 +243,12 @@ export default function AddStudentModal({
 
   function goBackFromEdit() {
     if (phase.tag !== "edit") return;
-    const { student, restore, currentSection } = phase;
-    if (currentSection) {
-      setPhase({ tag: "enrolled_elsewhere", student, currentSection });
-    } else {
-      setPhase(
-        restore
-          ? { tag: "found_deleted", student }
-          : { tag: "found_active", student },
-      );
-    }
+    const { student, restore } = phase;
+    setPhase(
+      restore
+        ? { tag: "found_deleted", student }
+        : { tag: "found_active", student },
+    );
     form.reset();
   }
 
@@ -415,153 +413,44 @@ export default function AddStudentModal({
     }
   }
 
-  // Form submit — handles new / edit-active / edit-deleted / edit-with-move paths
+  // Form submit — handles new / edit-active / edit-deleted paths
   function handleSaveAndAdd() {
     const { hasErrors } = form.validate();
     if (hasErrors) return;
 
-    const isMove = phase.tag === "edit" && !!phase.currentSection;
-
-    // Partial access + edit + move → transfer request path (not direct update_move)
-    if (isMove && !hasFullAccess && phase.tag === "edit" && phase.currentSection) {
-      const cs = phase.currentSection;
-      if (!canMoveDirect(hasFullAccess, cs)) {
-        const studentDisplay = `${toTitleCase(form.values.last_name)}, ${toTitleCase(form.values.first_name)}`.toUpperCase();
-        modals.openConfirmModal({
-          title: "Save & send transfer request?",
-          children: (
-            <Stack gap="xs">
-              <Text size="sm">
-                Update <strong>{studentDisplay}</strong>'s info and send a
-                transfer request to move them to this class?
-              </Text>
-              <Text size="xs" c="dimmed">
-                The adviser of the student&apos;s current class will be
-                notified. An administrator will review and approve the transfer.
-              </Text>
-            </Stack>
-          ),
-          labels: { confirm: "Save & Send Request", cancel: "Cancel" },
-          confirmProps: { color: "#4EAE4A" },
-          onConfirm: () => void submitEditAndRequest(phase),
-          ...confirmModalProps,
-        });
-        return;
-      }
-    }
-
     const action: AddStudentAction =
       phase.tag === "new"
         ? "new"
-        : phase.tag === "edit" && phase.currentSection
-          ? "update_move"
-          : phase.tag === "edit" && phase.restore
-            ? "restore_update_enroll"
-            : "update_enroll";
+        : phase.tag === "edit" && phase.restore
+          ? "restore_update_enroll"
+          : "update_enroll";
 
     const studentName =
       phase.tag === "edit"
         ? phase.student.full_name.toUpperCase()
         : `${toTitleCase(form.values.last_name)}, ${toTitleCase(form.values.first_name)}`.toUpperCase();
 
-    const isDirectMove = action === "update_move";
-    const autoApproveReason =
-      isDirectMove && !hasFullAccess && phase.tag === "edit" && phase.currentSection
-        ? !phase.currentSection.has_adviser
-          ? "The student's current class has no assigned adviser, so the transfer is approved automatically."
-          : phase.currentSection.self_adviser
-            ? "You are the adviser of the student's current class, so the transfer is approved automatically."
-            : null
-        : null;
-
     modals.openConfirmModal({
-      title: isDirectMove ? "Move student?" : "Add student?",
+      title: "Add student?",
       children: (
-        <Stack gap="xs">
-          <Text size="sm">
-            {phase.tag === "new" ? (
-              <>
-                Add <strong>{studentName}</strong> to this class as a new
-                student?
-              </>
-            ) : isDirectMove ? (
-              <>
-                Update <strong>{studentName}</strong>'s info and move them to
-                this class?
-              </>
-            ) : (
-              <>
-                Update <strong>{studentName}</strong>'s info and add them to
-                this class?
-              </>
-            )}
-          </Text>
-          {autoApproveReason && (
-            <Text size="xs" c="dimmed">
-              {autoApproveReason}
-            </Text>
+        <Text size="sm">
+          {phase.tag === "new" ? (
+            <>
+              Add <strong>{studentName}</strong> to this class as a new student?
+            </>
+          ) : (
+            <>
+              Update <strong>{studentName}</strong>'s info and add them to this
+              class?
+            </>
           )}
-        </Stack>
+        </Text>
       ),
-      labels: {
-        confirm: isDirectMove ? "Save & Move" : "Add",
-        cancel: "Cancel",
-      },
+      labels: { confirm: "Add", cancel: "Cancel" },
       confirmProps: { color: "#4EAE4A" },
       onConfirm: () => void submitForm(action),
       ...confirmModalProps,
     });
-  }
-
-  // Partial access: update student info then create a transfer request
-  async function submitEditAndRequest(
-    editPhase: Extract<Phase, { tag: "edit" }>,
-  ) {
-    setSaving(true);
-    try {
-      // Update student info only if the form has been changed
-      if (form.isDirty()) {
-        await updateStudent(editPhase.student.lrn, {
-          lrn: editPhase.student.lrn,
-          last_name: toTitleCase(form.values.last_name),
-          first_name: toTitleCase(form.values.first_name),
-          middle_name: form.values.middle_name.trim()
-            ? toTitleCase(form.values.middle_name)
-            : "",
-          sex: form.values.sex,
-        });
-      }
-
-      await createTransferRequest({
-        lrn: editPhase.student.lrn,
-        from_section_id: editPhase.currentSection!.section_id,
-        to_section_id: sectionId,
-      });
-
-      const displayName = form.isDirty()
-        ? `${toTitleCase(form.values.last_name)}, ${toTitleCase(form.values.first_name)}`.toUpperCase()
-        : editPhase.student.full_name.toUpperCase();
-
-      setPhase({ tag: "request_sent", studentName: displayName });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "";
-      if (msg.includes("ALREADY_PENDING")) {
-        notify({
-          type: "warning",
-          title: "Request already exists",
-          message:
-            "A pending transfer request for this student already exists. Please wait for it to be resolved.",
-        });
-      } else {
-        notify({
-          type: "error",
-          title: "Error",
-          message: e instanceof Error ? e.message : "An error occurred.",
-        });
-      }
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function submitAction(action: AddStudentAction, studentLrn: string) {
@@ -595,7 +484,6 @@ export default function AddStudentModal({
   }
 
   async function submitForm(action: AddStudentAction) {
-    const isMove = action === "update_move";
     setSaving(true);
     try {
       await addStudentToRoster(sectionId, {
@@ -610,10 +498,8 @@ export default function AddStudentModal({
       });
       notify({
         type: "success",
-        title: isMove ? "Student Moved" : "Student Added",
-        message: isMove
-          ? "Student has been moved to this class."
-          : "Student has been added to the roster.",
+        title: "Student Added",
+        message: "Student has been added to the roster.",
       });
       onAdded();
       onClose();
@@ -621,12 +507,7 @@ export default function AddStudentModal({
       notify({
         type: "error",
         title: "Error",
-        message:
-          e instanceof Error
-            ? e.message
-            : isMove
-              ? "Failed to move student."
-              : "Failed to add student.",
+        message: e instanceof Error ? e.message : "Failed to add student.",
       });
     } finally {
       setSaving(false);
@@ -647,13 +528,6 @@ export default function AddStudentModal({
     phase.tag === "already_enrolled" ||
     phase.tag === "enrolled_elsewhere" ||
     phase.tag === "edit";
-
-  // Determines labels for the edit form header/button when in move context
-  const editIsRequestFlow =
-    !hasFullAccess &&
-    phase.tag === "edit" &&
-    !!phase.currentSection &&
-    !canMoveDirect(hasFullAccess, phase.currentSection);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -693,9 +567,7 @@ export default function AddStudentModal({
             />
             {lrnLocked && (
               <Button
-                variant="subtle"
-                color="gray"
-                size="sm"
+                variant="default"
                 onClick={resetToInput}
                 disabled={saving}
                 mb={lrnError ? 20 : 0}
@@ -811,9 +683,14 @@ export default function AddStudentModal({
         {phase.tag === "already_enrolled" && (
           <Stack gap="sm">
             <Alert
-              color="red"
+              variant="filled"
+              radius="md"
               icon={<IconAlertCircle size={16} />}
               title="Already enrolled"
+              styles={{
+                root: { backgroundColor: "#FF6666" },
+                icon: { alignSelf: "center", marginTop: 0 },
+              }}
             >
               <Text size="sm" fw={600}>
                 {phase.student.full_name.toUpperCase()}
@@ -836,11 +713,20 @@ export default function AddStudentModal({
         {/* ── Enrolled elsewhere ── */}
         {phase.tag === "enrolled_elsewhere" && (
           <Stack gap="sm">
-            <Alert
-              color="yellow"
-              icon={<IconAlertCircle size={16} />}
-              title="Student is in another class"
+            <Box
+              style={{
+                border: "1px solid rgba(34, 139, 230, 0.45)",
+                borderLeftWidth: 6,
+                borderLeftColor: "#228be6",
+                borderRadius: 6,
+                padding: "12px 14px",
+                backgroundColor: "#fff",
+              }}
             >
+              <Group gap="xs" mb={6} align="center">
+                <IconInfoCircle size={14} color="#228be6" style={{ flexShrink: 0 }} />
+                <Text size="sm" fw={700}>Student is in another class</Text>
+              </Group>
               <Text size="sm" fw={600}>
                 {phase.student.full_name.toUpperCase()}
               </Text>
@@ -851,7 +737,7 @@ export default function AddStudentModal({
                   {phase.currentSection.name}
                 </strong>
               </Text>
-            </Alert>
+            </Box>
 
             {/* ── Pending request block ── */}
             {!hasFullAccess && phase.currentSection.has_pending_request ? (
@@ -903,17 +789,6 @@ export default function AddStudentModal({
                   Move to this class
                 </Button>
                 <Button
-                  variant="outline"
-                  color="#4EAE4A"
-                  fullWidth
-                  disabled={saving}
-                  onClick={() =>
-                    goToEditMode(phase.student, false, phase.currentSection)
-                  }
-                >
-                  Edit info & move to this class
-                </Button>
-                <Button
                   variant="subtle"
                   color="gray"
                   fullWidth
@@ -941,17 +816,6 @@ export default function AddStudentModal({
                   }
                 >
                   Send transfer request
-                </Button>
-                <Button
-                  variant="outline"
-                  color="#4EAE4A"
-                  fullWidth
-                  disabled={saving}
-                  onClick={() =>
-                    goToEditMode(phase.student, false, phase.currentSection)
-                  }
-                >
-                  Edit info & send transfer request
                 </Button>
                 <Button
                   variant="subtle"
@@ -1008,13 +872,9 @@ export default function AddStudentModal({
             {phase.tag === "edit" && (
               <Divider
                 label={
-                  phase.currentSection
-                    ? editIsRequestFlow
-                      ? "Update info & send transfer request"
-                      : "Update info & move to this class"
-                    : phase.restore
-                      ? "Restore & update student info"
-                      : "Update student info"
+                  phase.restore
+                    ? "Restore & update student info"
+                    : "Update student info"
                 }
                 labelPosition="center"
               />
@@ -1086,13 +946,7 @@ export default function AddStudentModal({
                 loading={saving}
                 disabled={!form.isValid()}
               >
-                {phase.tag === "new"
-                  ? "Add Student"
-                  : editIsRequestFlow
-                    ? "Save & Send Request"
-                    : phase.tag === "edit" && phase.currentSection
-                      ? "Save & Move"
-                      : "Save & Add"}
+                {phase.tag === "new" ? "Add Student" : "Save & Add"}
               </Button>
             )}
           </Group>

@@ -11,6 +11,7 @@ import {
   Text,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
@@ -367,22 +368,24 @@ export default function EditRoleDrawer({
         </Grid>
 
         {/* Action Buttons */}
-        <Group justify="flex-end" mt="xl">
-          <Button variant="default" onClick={handleClose}>
-            Cancel
-          </Button>
+        <Group justify="flex-end" mt="xl" wrap="nowrap">
+          <UnstyledButton onClick={handleClose} style={{ cursor: "pointer" }}>
+            <Text size="sm" fw={600}>Cancel</Text>
+          </UnstyledButton>
           <Button
-            variant="outline"
+            variant="default"
+            radius="md"
             onClick={() => form.reset()}
             disabled={!form.isDirty()}
           >
             Revert Changes
           </Button>
           <Button
+            radius="md"
             onClick={handleSave}
             disabled={!form.isDirty() || !form.isValid()}
             loading={loading}
-            color="#4EAE4A"
+            style={form.isDirty() && form.isValid() ? { backgroundColor: "#4EAE4A" } : undefined}
           >
             Save
           </Button>

@@ -6,6 +6,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -17,10 +18,10 @@ const _GET = async function(
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);
-  const hasAccess =
-    permissions.includes("students.full_access") ||
-    permissions.includes("students.limited_access");
-  if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
+  const hasFullAccess = permissions.includes("students.full_access");
+  const hasLimitedAccess = permissions.includes("students.limited_access");
+  if (!hasFullAccess && !hasLimitedAccess)
+    return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const { sectionId: sectionIdStr } = await params;
   const sectionId = Number(sectionIdStr);
@@ -42,6 +43,15 @@ const _GET = async function(
     return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sectionRaw)
     return Response.json({ error: "Section not found." }, { status: 404 });
+
+  // Limited-access users may only download rosters for sections they advise or teach in.
+  if (!hasFullAccess) {
+    const sec = sectionRaw as any;
+    if (sec.adviser_id !== user.id) {
+      const isTeacher = await isTeacherInSection(user.id, sectionId);
+      if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
 
   const sec = sectionRaw as any;
 

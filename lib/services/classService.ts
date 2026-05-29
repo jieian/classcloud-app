@@ -517,19 +517,6 @@ export async function checkSectionNameExists(
   return (data?.length ?? 0) > 0;
 }
 
-export async function archiveSection(sectionId: number): Promise<void> {
-  const response = await fetch(`/api/classes/${sectionId}`, {
-    method: "DELETE",
-  });
-
-  const parsed = await readResponsePayload(response);
-  if (!response.ok) {
-    throw new Error(
-      getErrorMessageFromPayload(parsed, "Failed to archive section."),
-    );
-  }
-}
-
 export async function assignSubjectTeachers(
   sectionId: number,
   assignments: { curriculum_subject_id: number; teacher_id: string | null }[],

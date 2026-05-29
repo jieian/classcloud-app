@@ -57,7 +57,7 @@ export const UpdateStudentSchema = z.object({
 // depending on the action — that conditional check stays in the route handler.
 export const AddStudentSchema = z.object({
   action: z.enum(
-    ["new", "enroll", "update_enroll", "restore_enroll", "restore_update_enroll", "move", "update_move"],
+    ["new", "enroll", "update_enroll", "restore_enroll", "restore_update_enroll", "move"],
     { message: "Invalid action." },
   ),
   lrn: z.string().trim().regex(/^\d{12}$/, "LRN must be exactly 12 numeric digits."),
@@ -65,6 +65,20 @@ export const AddStudentSchema = z.object({
   first_name: z.string().trim().optional(),
   middle_name: z.string().trim().optional(),
   sex: z.string().optional(),
+});
+
+// ── Bulk import ───────────────────────────────────────────────────────────────
+export const BulkImportStudentSchema = z.object({
+  lrn: z.string().trim().regex(/^\d{12}$/, "Invalid LRN."),
+  action: z.enum(["new", "enroll", "restore_enroll", "move"]),
+  last_name: z.string().trim().min(2).max(100).optional(),
+  first_name: z.string().trim().min(2).max(100).optional(),
+  middle_name: z.string().trim().max(100).optional(),
+  sex: z.enum(["M", "F"]).optional(),
+});
+
+export const BulkImportSchema = z.object({
+  students: z.array(BulkImportStudentSchema).min(1).max(100),
 });
 
 // ── Sections ──────────────────────────────────────────────────────────────────

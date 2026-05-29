@@ -20,7 +20,7 @@ const _GET = async function() {
     permissions.includes("students.full_access");
   if (!hasAccess) return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const data = await getClassesInitData(user.id, permissions);
+  const data = await getClassesInitData(user.id);
   return Response.json(data);
 }
 
