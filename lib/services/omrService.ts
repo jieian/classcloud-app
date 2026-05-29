@@ -18,6 +18,7 @@
  */
 
 import { OMR } from '@/lib/omrLayout';
+import { getExamChoiceLetters, normalizeExamNumChoices } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -190,7 +191,7 @@ function buildDebugDataUrl(
   ctx.putImageData(imageData, 0, 0);
 
   const S       = WARP_SCALE;
-  const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
+  const choices = getExamChoiceLetters(numChoices);
   const r       = OMR.BUBBLE_R * S * 1.1;  // slightly larger for visibility on phone screens
 
   for (let item = 1; item <= totalItems; item++) {
@@ -241,6 +242,7 @@ export async function processAnswerSheet(
   manualCorners?: CornerSet,
   onStatus?: (msg: string) => void
 ): Promise<DetectionResult> {
+  const normalizedNumChoices = normalizeExamNumChoices(numChoices);
   // Steps 1–3 run on the main thread (canvas / DOM APIs unavailable in workers)
   const rawCanvas  = await loadImageToCanvas(file);
   const workCanvas = scaleCanvas(rawCanvas, MAX_SCAN_PX);
@@ -279,7 +281,7 @@ export async function processAnswerSheet(
 
         const debugDataUrl = buildDebugDataUrl(
           warpedBuffer, warpedWidth, warpedHeight,
-          answers, confidence, totalItems, numChoices
+          answers, confidence, totalItems, normalizedNumChoices
         );
         const warpedDataUrl = buildWarpedDataUrl(
           warpedBuffer, warpedWidth, warpedHeight
@@ -294,7 +296,7 @@ export async function processAnswerSheet(
           warpedDataUrl,
           detectedExamId: qrPayload.examId,
           detectedTotalItems: qrPayload.totalItems,
-          detectedNumChoices: qrPayload.numChoices,
+          detectedNumChoices: qrPayload.numChoices === null ? null : normalizeExamNumChoices(qrPayload.numChoices),
         });
 
       } else if (type === 'error') {
@@ -312,7 +314,7 @@ export async function processAnswerSheet(
         width:         workCanvas.width,
         height:        workCanvas.height,
         totalItems,
-        numChoices,
+        numChoices: normalizedNumChoices,
         manualCorners: scaledCorners ?? null,
       },
       [buffer]  // transfer the ArrayBuffer (zero-copy)

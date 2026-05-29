@@ -13,7 +13,7 @@
 import jsPDF from 'jspdf';
 import { OMR } from '@/lib/omrLayout';
 import type { ExamWithRelations } from '@/lib/exam-supabase';
-import { resolveExamParams } from '@/lib/exam-supabase';
+import { getExamChoiceLetters, resolveExamParams } from '@/lib/exam-supabase';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -144,7 +144,7 @@ export async function generateAnswerSheetPdf(opts: AnswerSheetOptions): Promise<
   });
 
   const { totalItems, numChoices } = resolveExamParams(exam);
-  const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
+  const choices = getExamChoiceLetters(numChoices);
 
   // ── Corner Markers ────────────────────────────────────────────────────────
   // Four solid black squares at exact corner positions for perspective detection

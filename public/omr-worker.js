@@ -411,7 +411,8 @@ function detectBubbles(buffer, width, height, totalItems, numChoices) {
     // while still covering the core fill area inside the printed outline.
     const r    = Math.max(2, Math.round(bubR * 0.65));
 
-    const choices = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'].slice(0, numChoices);
+    const normalizedNumChoices = Number(numChoices) >= 5 ? 5 : 4;
+    const choices = ['A', 'B', 'C', 'D', 'E'].slice(0, normalizedNumChoices);
 
     // ── Pass 1: collect raw mean grayscale for every bubble ───────────────────
     // Lower mean = darker = more likely filled.

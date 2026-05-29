@@ -10,7 +10,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import {
   IconPlus, IconAlertCircle,
-  IconAlertTriangle, IconMinus, IconClipboardCheck, IconTrash,
+  IconAlertTriangle, IconClipboardCheck, IconTrash,
 } from '@tabler/icons-react';
 import { notify } from '@/components/notificationIcon/notificationIcon';
 import { modals } from '@mantine/modals';
@@ -20,13 +20,12 @@ import { fetchSubjectsWithGradeLevels, type SubjectWithGradeLevel } from '@/lib/
 import { fetchActiveSections } from '@/lib/services/sectionService';
 import { fetchSchoolYears, fetchTeacherClassAssignments } from '@/lib/services/classService';
 import { createExamWithAssignments, saveObjectives, saveAnswerKey, checkExamDuplicates, checkOccupiedSubjects, fetchOccupiedSectionSubjectPairs } from '@/lib/services/examService';
-import type { LearningObjective, AnswerKeyJsonb, Quarter, Section, GradeLevel } from '@/lib/exam-supabase';
+import { getExamChoiceLetters, normalizeExamNumChoices, type LearningObjective, type AnswerKeyJsonb, type Quarter, type Section, type GradeLevel } from '@/lib/exam-supabase';
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 import NoActivePeriodBanner from '@/components/NoActivePeriodBanner';
 import MobileStepIndicator from '@/components/MobileStepIndicator';
 
-const ALL_CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
 // Always 2 columns matching the PDF answer sheet layout
 
 const OBJECTIVE_PALETTE = [
@@ -53,7 +52,7 @@ function makeRow(override?: Partial<ObjectiveRow>): ObjectiveRow {
 }
 
 // ── Draft persistence ────────────────────────────────────────────────────────
-const DRAFT_KEY = 'exam_create_draft';
+const LEGACY_DRAFT_KEY = 'exam_create_draft';
 
 interface ExamCreateDraft {
   step: number;
@@ -66,16 +65,39 @@ interface ExamCreateDraft {
   answers: Record<number, string | null>;
 }
 
-function readDraft(): ExamCreateDraft | null {
+function getDraftKey(userId: string | undefined) {
+  return userId ? `exam:create:${userId}:draft` : null;
+}
+
+function readDraftFromKey(key: string | null): ExamCreateDraft | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
+    const raw = key ? sessionStorage.getItem(key) : null;
     return raw ? (JSON.parse(raw) as ExamCreateDraft) : null;
   } catch { return null; }
 }
 
-function clearDraft() {
-  try { sessionStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+function readDraft(userId: string | undefined): { draft: ExamCreateDraft | null; source: 'scoped' | 'legacy' | null } {
+  const scopedKey = getDraftKey(userId);
+  const scopedDraft = readDraftFromKey(scopedKey);
+  if (scopedDraft) return { draft: scopedDraft, source: 'scoped' };
+
+  const legacyDraft = readDraftFromKey(LEGACY_DRAFT_KEY);
+  return legacyDraft
+    ? { draft: legacyDraft, source: 'legacy' }
+    : { draft: null, source: null };
+}
+
+function writeDraft(key: string | null, draft: ExamCreateDraft) {
+  if (!key || typeof window === 'undefined') return;
+  try { sessionStorage.setItem(key, JSON.stringify(draft)); } catch { /* ignore */ }
+}
+
+function clearDraft(key?: string | null) {
+  try {
+    if (key) sessionStorage.removeItem(key);
+    sessionStorage.removeItem(LEGACY_DRAFT_KEY);
+  } catch { /* ignore */ }
 }
 
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
@@ -84,6 +106,28 @@ function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (levelNumber <= 4) return 40;
   if (levelNumber <= 6) return 50;
   return 50;
+}
+
+function sanitizeAnswers(
+  answers: Record<number, string | null> | undefined,
+  totalItems: number,
+  numChoices: number,
+): Record<number, string | null> {
+  const allowed = new Set(getExamChoiceLetters(numChoices));
+  return Object.entries(answers ?? {}).reduce<Record<number, string | null>>((acc, [key, value]) => {
+    const itemNo = Number(key);
+    if (!Number.isInteger(itemNo) || itemNo < 1 || itemNo > totalItems) return acc;
+    if (value === null || allowed.has(value)) acc[itemNo] = value;
+    return acc;
+  }, {});
+}
+
+function clampObjectiveRows(rows: ObjectiveRow[], totalItems: number): ObjectiveRow[] {
+  return rows.map((row) => {
+    const start = row.start_item === '' ? '' : Math.min(Math.max(Number(row.start_item) || 1, 1), totalItems);
+    const end = row.end_item === '' ? '' : Math.min(Math.max(Number(row.end_item) || 1, 1), totalItems);
+    return { ...row, start_item: start, end_item: end };
+  });
 }
 
 // Answer Key step — fixed-width badge (96px). Ref on inner text span detects overflow.
@@ -158,10 +202,12 @@ export default function CreateExamPage() {
   const { user, permissions } = useAuth();
   const hasLimitedAccess = permissions.includes('exams.limited_access');
   const isMobile = useMediaQuery('(max-width: 768px)');
+  const draftStorageKey = useMemo(() => getDraftKey(user?.id), [user?.id]);
+  const draftPromptShownRef = useRef(false);
 
   // Load once on first render — does not re-run on re-renders
   const draftRef = useRef<ExamCreateDraft | null | undefined>(undefined);
-  if (draftRef.current === undefined) draftRef.current = readDraft();
+  if (draftRef.current === undefined) draftRef.current = null;
   const d = draftRef.current;
 
   // Restore saved row IDs so nextRowId stays ahead
@@ -172,6 +218,7 @@ export default function CreateExamPage() {
 
   const [activeStep, setActiveStep] = useState(d?.step ?? 0);
   const [saving, setSaving] = useState(false);
+  const [draftReady, setDraftReady] = useState(false);
 
   // Reference data
   const [gradeLevels, setGradeLevels] = useState<GradeLevel[]>([]);
@@ -195,7 +242,7 @@ export default function CreateExamPage() {
 
   // Step 1 — Items & Choices
   const [totalItems, setTotalItems] = useState(d?.totalItems ?? 30);
-  const [numChoices, setNumChoices] = useState(d?.numChoices ?? 4);
+  const [numChoices, setNumChoices] = useState<4 | 5>(normalizeExamNumChoices(d?.numChoices));
 
   // Step 2 — Objectives
   const [objectiveRows, setObjectiveRows] = useState<ObjectiveRow[]>(
@@ -204,7 +251,9 @@ export default function CreateExamPage() {
   const [triedToSaveObjectives, setTriedToSaveObjectives] = useState(false);
 
   // Step 3 — Answer Key
-  const [answers, setAnswers] = useState<{ [key: number]: string | null }>(d?.answers ?? {});
+  const [answers, setAnswers] = useState<{ [key: number]: string | null }>(
+    sanitizeAnswers(d?.answers, d?.totalItems ?? 30, normalizeExamNumChoices(d?.numChoices)),
+  );
   const [triedToSave, setTriedToSave] = useState(false);
   const [isAnswerKeyFlashStrong, setIsAnswerKeyFlashStrong] = useState(false);
   const answerKeyFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,9 +261,44 @@ export default function CreateExamPage() {
   // Refs to skip auto-reset effects on the very first mount (would clear restored data)
   const gradeLevelMountedRef = useRef(false);
   const sectionMountedRef = useRef(false);
-  const totalItemsMountedRef = useRef(false);
-  const prevGradeLevelForItemsRef = useRef<string | null | undefined>(d?.gradeLevelId);
   const duplicateCheckRequestRef = useRef(0);
+
+  const getRecommendedTotalItems = (gradeLevelId: string | null | undefined) => {
+    const gradeLevel = gradeLevels.find(g => g.grade_level_id === Number(gradeLevelId)) ?? null;
+    return getAutoTotalItems(gradeLevel?.level_number);
+  };
+
+  const applyDraft = (draft: ExamCreateDraft) => {
+    const draftNumChoices = normalizeExamNumChoices(draft.numChoices);
+    const draftTotalItems = getRecommendedTotalItems(draft.gradeLevelId);
+    if (draft.objectiveRows?.length) {
+      const maxId = Math.max(...draft.objectiveRows.map(r => r.id));
+      if (maxId >= nextRowId) nextRowId = maxId + 1;
+    }
+    setActiveStep(draft.step ?? 0);
+    setSelectedGradeLevelId(draft.gradeLevelId ?? null);
+    setSelectedSubjectId(draft.subjectId ?? null);
+    setSelectedSectionIds(draft.sectionIds ?? []);
+    setTotalItems(draftTotalItems);
+    setNumChoices(draftNumChoices);
+    setObjectiveRows(draft.objectiveRows?.length ? clampObjectiveRows(draft.objectiveRows, draftTotalItems) : [makeRow()]);
+    setAnswers(sanitizeAnswers(draft.answers, draftTotalItems, draftNumChoices));
+    setTriedToSave(false);
+    setTriedToSaveObjectives(false);
+    gradeLevelMountedRef.current = false;
+    draftRef.current = draft;
+  };
+
+  const currentDraft = (): ExamCreateDraft => ({
+    step: activeStep,
+    gradeLevelId: selectedGradeLevelId,
+    subjectId: selectedSubjectId,
+    sectionIds: selectedSectionIds,
+    totalItems,
+    numChoices: normalizeExamNumChoices(numChoices),
+    objectiveRows: clampObjectiveRows(objectiveRows, totalItems),
+    answers: sanitizeAnswers(answers, totalItems, numChoices),
+  });
 
   useEffect(() => {
     const load = async () => {
@@ -257,6 +341,67 @@ export default function CreateExamPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!user?.id || dataLoading || draftPromptShownRef.current) return;
+    draftPromptShownRef.current = true;
+    const { draft, source } = readDraft(user.id);
+    if (!draft) {
+      setDraftReady(true);
+      return;
+    }
+
+    modals.open({
+      title: 'Continue saved draft?',
+      closeOnClickOutside: false,
+      closeOnEscape: false,
+      withCloseButton: false,
+      children: (
+        <Stack gap="sm">
+          <Text size="sm">
+            You have a saved examination draft. Continue where you left off or start a new examination?
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button
+              variant="outline"
+              color="red"
+              onClick={() => {
+                clearDraft(draftStorageKey);
+                setDraftReady(true);
+                modals.closeAll();
+              }}
+            >
+              Start New
+            </Button>
+            <Button
+              color="#4EAE4A"
+              onClick={() => {
+                applyDraft(draft);
+                if (source === 'legacy') {
+                  const migratedTotalItems = getRecommendedTotalItems(draft.gradeLevelId);
+                  const migratedNumChoices = normalizeExamNumChoices(draft.numChoices);
+                  writeDraft(draftStorageKey, {
+                    ...draft,
+                    totalItems: migratedTotalItems,
+                    numChoices: migratedNumChoices,
+                    objectiveRows: draft.objectiveRows?.length ? clampObjectiveRows(draft.objectiveRows, migratedTotalItems) : [makeRow()],
+                    answers: sanitizeAnswers(draft.answers, migratedTotalItems, migratedNumChoices),
+                  });
+                  clearDraft(null);
+                }
+                setDraftReady(true);
+                modals.closeAll();
+              }}
+            >
+              Continue Draft
+            </Button>
+          </Group>
+        </Stack>
+      ),
+      ...(isMobile ? mobileConfirmModalProps : {}),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, draftStorageKey, dataLoading]);
+
   // Auto-reset sections/subject when grade changes (skip on first mount to preserve restored draft)
   useEffect(() => {
     if (!gradeLevelMountedRef.current) { gradeLevelMountedRef.current = true; return; }
@@ -269,32 +414,28 @@ export default function CreateExamPage() {
   // Auto-set totalItems based on grade — only fires when user actually changes grade,
   // not on initial mount or when gradeLevels data loads (preserves restored draft value)
   useEffect(() => {
-    if (!totalItemsMountedRef.current) { totalItemsMountedRef.current = true; return; }
-    if (prevGradeLevelForItemsRef.current === selectedGradeLevelId) return; // gradeLevels loaded, grade unchanged
-    prevGradeLevelForItemsRef.current = selectedGradeLevelId;
-    const gradeLevel = gradeLevels.find(g => g.grade_level_id === Number(selectedGradeLevelId)) ?? null;
-    setTotalItems(getAutoTotalItems(gradeLevel?.level_number));
+    const recommended = getRecommendedTotalItems(selectedGradeLevelId);
+    setTotalItems(prev => prev === recommended ? prev : recommended);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGradeLevelId, gradeLevels]);
 
+  useEffect(() => {
+    setAnswers(prev => sanitizeAnswers(prev, totalItems, numChoices));
+    setObjectiveRows(prev => clampObjectiveRows(prev, totalItems));
+  }, [totalItems, numChoices]);
+
   // Save draft to sessionStorage whenever form state changes
   useEffect(() => {
-    try {
-      const draft: ExamCreateDraft = {
-        step: activeStep,
-        gradeLevelId: selectedGradeLevelId,
-        subjectId: selectedSubjectId,
-        sectionIds: selectedSectionIds,
-        totalItems,
-        numChoices,
-        objectiveRows,
-        answers,
-      };
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    } catch { /* ignore */ }
-  }, [activeStep, selectedGradeLevelId, selectedSubjectId, selectedSectionIds, totalItems, numChoices, objectiveRows, answers]);
+    if (!draftReady) return;
+    if (!hasInProgressChanges()) {
+      clearDraft(draftStorageKey);
+      return;
+    }
+    writeDraft(draftStorageKey, currentDraft());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftReady, draftStorageKey, activeStep, selectedGradeLevelId, selectedSubjectId, selectedSectionIds, totalItems, numChoices, objectiveRows, answers]);
 
-  const choices = ALL_CHOICES.slice(0, numChoices);
+  const choices = getExamChoiceLetters(numChoices);
   const itemsInCol1 = Math.ceil(totalItems / 2);
 
   // Filtered data
@@ -508,8 +649,8 @@ export default function CreateExamPage() {
 
       const answerKeyData: AnswerKeyJsonb = {
         total_questions: totalItems,
-        num_choices: numChoices,
-        answers: answers as { [questionNumber: number]: string | null },
+        num_choices: normalizeExamNumChoices(numChoices),
+        answers: sanitizeAnswers(answers, totalItems, numChoices),
       };
 
       await Promise.all(exam_ids.map(async (id) => {
@@ -523,7 +664,7 @@ export default function CreateExamPage() {
         message: exam_ids.length > 1 ? `${exam_ids.length} examinations were created successfully.` : 'Examination was created successfully.',
         autoClose: 2500,
       });
-      clearDraft();
+      clearDraft(draftStorageKey);
       router.push(`/exam?newExamIds=${exam_ids.join(',')}`);
     } catch (error) {
       notify({ type: "error", title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.' });
@@ -707,46 +848,36 @@ export default function CreateExamPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white border border-gray-200 rounded-md p-4">
             <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Number of Items</p>
-            <div className="flex items-center justify-center gap-3">
-              <button type="button" onClick={() => setTotalItems(prev => Math.max(10, prev - 1))} disabled={totalItems <= 10}
-                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${totalItems <= 10 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
-                <IconMinus className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-2">
-                <input type="number" min={10} max={200} value={totalItems}
-                  onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v)) setTotalItems(Math.max(10, Math.min(200, v))); }}
-                  className="w-20 text-center text-2xl font-bold text-gray-900 border border-gray-300 rounded-md px-2 py-1.5 focus:outline-none focus:border-green-500" />
-                <span className="text-sm text-gray-400">items</span>
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-24 text-center rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+                <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
               </div>
-              <button type="button" onClick={() => setTotalItems(prev => Math.min(200, prev + 1))} disabled={totalItems >= 200}
-                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${totalItems >= 200 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
-                <IconPlus className="w-4 h-4" />
-              </button>
+              <span className="text-sm text-gray-400">items</span>
             </div>
-            <p className="text-xs text-gray-500 text-center mt-2">Recommended by grade level (G1-2: 30, G3-4: 40, G5-6: 50)</p>
+            <p className="text-xs text-gray-500 text-center mt-2">Locked by grade level (G1-2: 30, G3-4: 40, G5+: 50)</p>
           </div>
           <div className="bg-white border border-gray-200 rounded-md p-4">
             <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Choices per Item</p>
-            <div className="flex items-center justify-center gap-3">
-              <button type="button" onClick={() => setNumChoices(prev => Math.max(2, prev - 1))} disabled={numChoices <= 2}
-                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${numChoices <= 2 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
-                <IconMinus className="w-4 h-4" />
-              </button>
-              <div className="flex items-center gap-2">
-                <div className="w-20 text-center py-1.5">
-                  <p className="text-2xl font-bold text-gray-900">{numChoices}</p>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm text-gray-400">choices</span>
-                  <span className="text-xs font-semibold text-green-600">{ALL_CHOICES.slice(0, numChoices).join(' / ')}</span>
-                </div>
-              </div>
-              <button type="button" onClick={() => setNumChoices(prev => Math.min(8, prev + 1))} disabled={numChoices >= 8}
-                className={`w-10 h-10 rounded-full border flex items-center justify-center transition-all ${numChoices >= 8 ? 'border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed' : 'border-gray-300 text-gray-700 hover:bg-gray-100 active:scale-95'}`}>
-                <IconPlus className="w-4 h-4" />
-              </button>
+            <div className="flex items-center justify-center gap-2">
+              {[4, 5].map((count) => {
+                const active = numChoices === count;
+                return (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setNumChoices(count as 4 | 5)}
+                    className={`min-w-[92px] rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                      active
+                        ? 'border-green-600 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {getExamChoiceLetters(count).join('')}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-xs text-gray-500 text-center mt-2">Min: 2 (A/B) / Max: 8 (A-H)</p>
+            <p className="text-xs text-gray-500 text-center mt-2">Answer sheets support ABCD or ABCDE only</p>
           </div>
         </div>
       </Paper>
@@ -1088,7 +1219,7 @@ export default function CreateExamPage() {
               {[
                 ['Exam Name', generatedExamNames.join('\n')],
                 ['Items', String(totalItems)],
-                ['Choices', `${numChoices} (${ALL_CHOICES.slice(0, numChoices).join('/')})`],
+                ['Choices', `${numChoices} (${getExamChoiceLetters(numChoices).join('/')})`],
               ].map(([label, value]) => (
                 <div key={label}>
                   <Text size="sm" fw={700} mb={2}>
@@ -1166,7 +1297,7 @@ export default function CreateExamPage() {
     }
   };
 
-  const resetAndExit = () => {
+  const resetFormState = () => {
     setSelectedGradeLevelId(null);
     setSelectedSubjectId(null);
     setSelectedSectionIds([]);
@@ -1178,10 +1309,12 @@ export default function CreateExamPage() {
     setTriedToSave(false);
     setTriedToSaveObjectives(false);
     gradeLevelMountedRef.current = false;
-    totalItemsMountedRef.current = false;
-    prevGradeLevelForItemsRef.current = null;
     draftRef.current = null;
-    clearDraft();
+  };
+
+  const resetAndExit = () => {
+    resetFormState();
+    clearDraft(draftStorageKey);
     router.push('/exam');
   };
 
@@ -1198,7 +1331,7 @@ export default function CreateExamPage() {
       }
     : {};
 
-  const handleCancel = () => {
+  const hasInProgressChanges = () => {
     const defaultObjectiveRow = objectiveRows[0];
     const hasObjectiveProgress = objectiveRows.length > 1 || Boolean(
       defaultObjectiveRow &&
@@ -1209,7 +1342,7 @@ export default function CreateExamPage() {
       ),
     );
 
-    const hasInProgressChanges =
+    return (
       activeStep > 0 ||
       Boolean(selectedGradeLevelId) ||
       Boolean(selectedSubjectId) ||
@@ -1217,23 +1350,50 @@ export default function CreateExamPage() {
       totalItems !== 30 ||
       numChoices !== 4 ||
       hasObjectiveProgress ||
-      Object.keys(answers).length > 0;
+      Object.keys(answers).length > 0
+    );
+  };
 
-    if (!hasInProgressChanges) {
+  const handleCancel = () => {
+    if (!hasInProgressChanges()) {
       resetAndExit();
       return;
     }
 
-    modals.openConfirmModal({
-      title: 'Discard changes?',
+    modals.open({
+      title: 'Save draft before leaving?',
       children: (
-        <Text size="sm">
-          You have unsaved changes. Are you sure you want to leave?
-        </Text>
+        <Stack gap="sm">
+          <Text size="sm">
+            You have unsaved changes. Save this examination as a draft, discard it, or stay on this page?
+          </Text>
+          <Group justify="flex-end" gap="xs">
+            <Button variant="subtle" color="gray" onClick={() => modals.closeAll()}>
+              Stay
+            </Button>
+            <Button
+              variant="outline"
+              color="red"
+              onClick={() => {
+                resetAndExit();
+                modals.closeAll();
+              }}
+            >
+              Discard & Exit
+            </Button>
+            <Button
+              color="#4EAE4A"
+              onClick={() => {
+                writeDraft(draftStorageKey, currentDraft());
+                router.push('/exam');
+                modals.closeAll();
+              }}
+            >
+              Save Draft & Exit
+            </Button>
+          </Group>
+        </Stack>
       ),
-      labels: { confirm: 'Discard', cancel: 'Stay' },
-      confirmProps: { color: 'red' },
-      onConfirm: resetAndExit,
       ...mobileConfirmModalProps,
     });
   };

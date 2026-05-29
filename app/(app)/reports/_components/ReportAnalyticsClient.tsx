@@ -42,7 +42,13 @@ import {
   type ReportExamCard,
   type ReportSubjectOverview,
 } from "@/lib/services/reportsAnalysisService";
-import { useReportPermissions, isSectionInScope } from "@/hooks/useReportPermissions";
+import {
+  isPairInScope,
+  isSectionInScope,
+  isSubjectInScope,
+  useReportPermissions,
+  type ReportPermissionScope,
+} from "@/hooks/useReportPermissions";
 
 interface ReportAnalyticsClientProps {
   initialGradeLevelId?: number | null;
@@ -134,6 +140,109 @@ const PROFICIENCY_HEADER_LABELS: Record<(typeof PROFICIENCY_LEVELS)[number], Rea
   "Low Proficient": <>Low Proficient<br />Learners</>,
   "Not Proficient": <>Not Proficient<br />Learners</>,
 };
+
+function scrollReportShellToTop() {
+  if (typeof document === "undefined") return;
+  const main = document.querySelector("main");
+  if (main instanceof HTMLElement) {
+    main.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function canAccessReportCard(
+  card: ReportExamCard,
+  reportScope: ReportPermissionScope,
+): boolean {
+  if (reportScope.canViewAll) return true;
+  if (!reportScope.assignedScope) return false;
+
+  const hasCurriculumSubject =
+    card.curriculumSubjectId != null && card.curriculumSubjectId !== 0;
+  if (
+    hasCurriculumSubject &&
+    isPairInScope(card.sectionId, card.curriculumSubjectId, reportScope)
+  ) {
+    return true;
+  }
+
+  return isSectionInScope(card.sectionId, card.gradeLevelId, reportScope);
+}
+
+function canAccessSectionRoute(
+  sectionId: number,
+  reportScope: ReportPermissionScope,
+  gradeLevelId?: number,
+): boolean {
+  if (reportScope.canViewAll) return true;
+  if (!reportScope.assignedScope) return false;
+  return isSectionInScope(sectionId, gradeLevelId ?? 0, reportScope);
+}
+
+function canAccessCurriculumSubjectRoute(
+  curriculumSubjectId: number | null | undefined,
+  reportScope: ReportPermissionScope,
+  allowedSectionIds: number[] | null,
+): boolean {
+  if (reportScope.canViewAll) return true;
+  const scope = reportScope.assignedScope;
+  if (!scope || curriculumSubjectId == null || curriculumSubjectId === 0) {
+    return false;
+  }
+
+  const sectionMatches = (sectionId: number) =>
+    allowedSectionIds == null || allowedSectionIds.includes(sectionId);
+
+  return (
+    (reportScope.canViewAssigned &&
+      scope.assignedPairs.some(
+        (pair) =>
+          pair.curriculumSubjectId === curriculumSubjectId &&
+          sectionMatches(pair.sectionId),
+      )) ||
+    (reportScope.canMonitorGradeLevel &&
+      scope.curriculumSubjectIds.includes(curriculumSubjectId) &&
+      scope.glSectionIds.some(sectionMatches)) ||
+    (reportScope.canMonitorSubjects &&
+      scope.curriculumSubjectIds.includes(curriculumSubjectId) &&
+      scope.subjectSectionIds.some(sectionMatches))
+  );
+}
+
+function canAccessSubjectRoute(
+  subjectId: number | null | undefined,
+  curriculumSubjectId: number | null | undefined,
+  reportScope: ReportPermissionScope,
+  allowedSectionIds: number[] | null,
+): boolean {
+  if (reportScope.canViewAll) return true;
+  if (!reportScope.assignedScope) return false;
+
+  if (
+    curriculumSubjectId != null &&
+    curriculumSubjectId !== 0 &&
+    canAccessCurriculumSubjectRoute(curriculumSubjectId, reportScope, allowedSectionIds)
+  ) {
+    return true;
+  }
+
+  if (subjectId == null || subjectId === 0 || !isSubjectInScope(subjectId, reportScope)) {
+    return false;
+  }
+
+  if (allowedSectionIds == null || allowedSectionIds.length === 0) {
+    return true;
+  }
+
+  const { sectionIds, glSectionIds, subjectSectionIds } = reportScope.assignedScope;
+  return allowedSectionIds.some(
+    (sectionId) =>
+      (reportScope.canViewAssigned && sectionIds.includes(sectionId)) ||
+      (reportScope.canMonitorGradeLevel && glSectionIds.includes(sectionId)) ||
+      (reportScope.canMonitorSubjects && subjectSectionIds.includes(sectionId)),
+  );
+}
 
 function DetailCard({ label, value }: { label: string; value: string }) {
   return (
@@ -988,7 +1097,7 @@ export default function ReportAnalyticsClient({
     () =>
       reportScope.scopeLoading
         ? []
-        : cards.filter((card) => isSectionInScope(card.sectionId, card.gradeLevelId, reportScope)),
+        : cards.filter((card) => canAccessReportCard(card, reportScope)),
     [cards, reportScope],
   );
   const [selectedGradeId, setSelectedGradeId] = useState<number | null>(null);
@@ -1694,6 +1803,76 @@ export default function ReportAnalyticsClient({
   }, [availableExamCards, mode, selectedKey, selectedSectionId]);
 
   const isConsolidatedSubjectView = mode === "subject" && selectedSectionId == null;
+  const routeAccessCheckPending =
+    loading ||
+    reportScope.scopeLoading ||
+    (mode === "subject" && selectedSubjectId != null && !subjectHydrated);
+  const routeAccessDenied = useMemo(() => {
+    if (routeAccessCheckPending) return false;
+
+    if (mode === "subject") {
+      if (Number.isFinite(examParam)) {
+        return selectedCard ? !canAccessReportCard(selectedCard, reportScope) : false;
+      }
+
+      if (selectedSubjectId != null || subjectOverview?.curriculumSubjectId != null) {
+        return !canAccessSubjectRoute(
+          selectedSubjectId,
+          subjectOverview?.curriculumSubjectId,
+          reportScope,
+          consolidatedSectionFilter,
+        );
+      }
+
+      return false;
+    }
+
+    if (Number.isFinite(examParam)) {
+      const routeCard = cards.find(
+        (card) =>
+          card.examId === examParam &&
+          (Number.isFinite(sectionParam) ? card.sectionId === sectionParam : true) &&
+          (Number.isFinite(gradeParam) ? card.gradeLevelId === gradeParam : true),
+      );
+      return routeCard ? !canAccessReportCard(routeCard, reportScope) : false;
+    }
+
+    if (Number.isFinite(sectionParam)) {
+      return !canAccessSectionRoute(
+        sectionParam,
+        reportScope,
+        Number.isFinite(gradeParam) ? gradeParam : undefined,
+      );
+    }
+
+    if (selectedSectionId != null) {
+      return !canAccessSectionRoute(
+        selectedSectionId,
+        reportScope,
+        selectedGradeId ?? undefined,
+      );
+    }
+
+    return false;
+  }, [
+    cards,
+    consolidatedSectionFilter,
+    examParam,
+    gradeParam,
+    mode,
+    reportScope,
+    routeAccessCheckPending,
+    sectionParam,
+    selectedCard,
+    selectedGradeId,
+    selectedSectionId,
+    selectedSubjectId,
+    subjectOverview?.curriculumSubjectId,
+  ]);
+
+  useEffect(() => {
+    if (routeAccessDenied) router.replace("/unauthorized");
+  }, [routeAccessDenied, router]);
 
   useEffect(() => {
     let mounted = true;
@@ -1837,16 +2016,7 @@ export default function ReportAnalyticsClient({
   }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
 
-  if (loading || reportScope.scopeLoading) {
-    return (
-      <Stack gap="md">
-        <Skeleton height={26} width={260} radius="sm" />
-        <Skeleton height={18} width={280} radius="sm" />
-        <Skeleton height={40} radius="sm" />
-        <Skeleton height={180} radius="sm" />
-      </Stack>
-    );
-  }
+  if (routeAccessDenied) return null;
 
   const selectedGradeLabel = (() => {
     if (selectedGradeId == null) return "Grade";
@@ -1867,6 +2037,7 @@ export default function ReportAnalyticsClient({
     mode === "subject"
       ? selectedSectionId == null && !selectedConsolidated
       : !selectedSubject;
+  const analyticsShellLoading = loading || reportScope.scopeLoading;
   const selectionPrompt =
     mode === "subject"
       ? "Select Section"
@@ -2012,9 +2183,12 @@ export default function ReportAnalyticsClient({
             );
           }}
           leftSection={mode === "subject" ? <IconUsersGroup size={16} /> : <IconBook size={16} />}
-          style={{ flex: 1 }}
-          w={{ sm: 260 }}
-          disabled={mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0}
+          style={{ flex: isMobile ? 1 : undefined }}
+          w={{ base: "100%", sm: 260 }}
+          disabled={
+            analyticsShellLoading ||
+            (mode === "subject" ? sectionOptions.length === 0 : sectionSubjectOptions.length === 0)
+          }
           clearable
           nothingFoundMessage="-"
         />}
@@ -2065,15 +2239,26 @@ export default function ReportAnalyticsClient({
         )}
       </Group>
 
-      {needsSelection ? (
-        <SectionEmptyState message={selectionPrompt} />
+      {analyticsShellLoading ? (
+        <Stack gap="sm">
+          <Skeleton height={42} radius="md" />
+          <Skeleton height={180} radius="md" />
+          <Skeleton height={120} radius="md" />
+        </Stack>
+      ) : needsSelection ? (
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, backgroundColor: "#ffffff", width: "100%" }}>
+          <SectionEmptyState message={selectionPrompt} />
+        </div>
       ) : (
       <div className="space-y-3 min-w-0">
         <div className="sticky top-0 z-20 w-full bg-white/95 pb-1 backdrop-blur">
           <SegmentedControl
             fullWidth
             value={activeTab}
-            onChange={(value) => { setActiveTab(value as typeof activeTab); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+            onChange={(value) => {
+              setActiveTab(value as typeof activeTab);
+              scrollReportShellToTop();
+            }}
             color="#4EAE4A"
             radius="lg"
             size="sm"

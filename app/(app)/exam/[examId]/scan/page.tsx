@@ -51,7 +51,7 @@ import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 import { SearchBar } from '@/components/searchBar/SearchBar';
 import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/VerticalWizardLayout';
 import type { ExamWithRelations, ExamScore } from '@/lib/exam-supabase';
-import { resolveExamParams } from '@/lib/exam-supabase';
+import { getExamChoiceLetters, resolveExamParams } from '@/lib/exam-supabase';
 import { invalidateReportsCache, fetchMyAssignedScope } from '@/lib/services/reportsAnalysisService';
 import { notify } from '@/components/notificationIcon/notificationIcon';
 
@@ -110,8 +110,6 @@ function visualPolygonCorners(result: LiveDocumentDetectionResult): string {
 
 // â"€â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-const CHOICES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
-
 function getMpl(score: number, totalItems: number): number {
   if (!totalItems) return 0;
   return Math.round((score / totalItems) * 100);
@@ -167,7 +165,46 @@ const STEP_ORDER = ['capture', 'review', 'submit'] as const;
 const STEP_HEADING_COLOR = '#4EAE4A';
 const STEP_BORDER_COLOR = '#e0e0e0';
 const SCAN_PAGE_CACHE_TTL_MS = 2 * 60 * 1000;
-const getScanPageCacheKey = (id: number) => `scanPageCache:${id}`;
+const getScanPageCacheKey = (id: number) => `exam:scan:${id}:cache`;
+const getScanRosterScrollKey = (id: number) => `exam:scan:${id}:roster-scroll`;
+
+function getAppShellScrollContainer(): HTMLElement | null {
+  if (typeof document === 'undefined') return null;
+  const main = document.querySelector('main');
+  return main instanceof HTMLElement ? main : null;
+}
+
+function saveScanRosterScrollPosition(examId: string | string[] | undefined) {
+  if (typeof window === 'undefined') return;
+  const examIdNum = Number(examId);
+  if (!Number.isFinite(examIdNum)) return;
+  const scrollContainer = getAppShellScrollContainer();
+  const scrollTop = scrollContainer?.scrollTop ?? window.scrollY;
+  window.sessionStorage.setItem(getScanRosterScrollKey(examIdNum), String(scrollTop));
+}
+
+function restoreScanRosterScrollPosition(examId: string | string[] | undefined) {
+  if (typeof window === 'undefined') return;
+  const examIdNum = Number(examId);
+  if (!Number.isFinite(examIdNum)) return;
+  const raw = window.sessionStorage.getItem(getScanRosterScrollKey(examIdNum));
+  if (!raw) return;
+  const scrollTop = Number(raw);
+  if (!Number.isFinite(scrollTop)) return;
+
+  const restore = () => {
+    const scrollContainer = getAppShellScrollContainer();
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollTop;
+      return;
+    }
+    window.scrollTo({ top: scrollTop });
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(restore);
+  });
+}
 
 // ─── Mobile accordion row ─────────────────────────────────────────────────────
 
@@ -439,7 +476,7 @@ export default function ScanPapersPage() {
   }, [exam, user?.id, permissions]);
 
   const { totalItems, numChoices } = resolveExamParams(exam);
-  const choices = CHOICES.slice(0, numChoices);
+  const choices = getExamChoiceLetters(numChoices);
   const answerKey: { [item: number]: string | null } = exam?.answer_key?.answers ?? {};
 
   // â"€â"€ Camera management â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
@@ -641,6 +678,7 @@ export default function ScanPapersPage() {
       notify({ type: 'warning', title: 'Exam Finalized', message: 'This examination has been finalized and can no longer accept scans.' });
       return;
     }
+    saveScanRosterScrollPosition(examId);
     setSelectedStudent(student);
     setCapturedFile(null);
     setPreviewUrl(null);
@@ -653,7 +691,7 @@ export default function ScanPapersPage() {
     setWarpedImageUrl(null);
     setProcessingError(null);
     setStep('capture');
-  }, [exam?.is_locked]);
+  }, [exam?.is_locked, examId]);
 
   const captureFromCamera = async () => {
     if (!videoRef.current) return;
@@ -1080,6 +1118,7 @@ export default function ScanPapersPage() {
     setProcessingStatus('');
     setSubmitting(false);
     setStep('students');
+    restoreScanRosterScrollPosition(examId);
   };
 
   const handleCancel = () => {
@@ -1149,6 +1188,7 @@ export default function ScanPapersPage() {
       setManuallyReviewedItems(new Set());
       setReviewFilter('all');
       setHighlightedEnrollmentId(scannedId);
+      restoreScanRosterScrollPosition(examId);
       setTimeout(() => setHighlightedEnrollmentId(null), 3000);
       notify({
         type: 'success',
@@ -1286,7 +1326,13 @@ export default function ScanPapersPage() {
       invalidateReportsCache();
       const url = `/reports/${gradeLevelId}/${sectionId}/${finalizedExamId}?from=exam&examId=${finalizedExamId}`;
       setReportsUrl(url);
-      setExam((prev) => prev ? { ...prev, is_locked: true } : prev);
+      setExam((prev) => {
+        const next = prev ? { ...prev, is_locked: true } : prev;
+        if (next) {
+          persistScanPageCache(next, rosterStudentsRef.current, existingAttemptsRef.current);
+        }
+        return next;
+      });
       notify({ type: 'success', title: 'Reports Ready', message: 'Examination finalized successfully.' });
     } catch (error) {
       console.error("Failed to finalize examination:", error);
@@ -1481,7 +1527,7 @@ export default function ScanPapersPage() {
               >
                 {isMobile ? 'Download' : 'Download Results'}
               </Button>
-              {exam.is_locked ? (() => {
+              {!isAdminView && (exam.is_locked ? (() => {
                 const firstAssignment = exam.exam_assignments?.[0];
                 const sid = firstAssignment?.sections?.section_id;
                 const gid = firstAssignment?.sections?.grade_level_id;
@@ -1529,7 +1575,7 @@ export default function ScanPapersPage() {
                 >
                   Scanned {scannedStudentsCount}/{rosterStudents.length}
                 </Button>
-              )}
+              ))}
             </Group>
           </Group>
 

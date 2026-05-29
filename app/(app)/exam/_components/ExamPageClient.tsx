@@ -61,6 +61,122 @@ import { SearchBar } from "@/components/searchBar/SearchBar";
 import NoActivePeriodBanner from "@/components/NoActivePeriodBanner";
 import EmptySearchState from "@/components/EmptySearchState";
 
+const EXAM_BROWSER_STORAGE_PREFIX = "exam:browser";
+
+function makeExamStorageKey(
+  userId: string | undefined,
+  viewMode: "admin" | "faculty",
+  key: string,
+) {
+  return userId ? `${EXAM_BROWSER_STORAGE_PREFIX}:${userId}:${viewMode}:${key}` : null;
+}
+
+function getAppShellScrollContainer(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const main = document.querySelector("main");
+  return main instanceof HTMLElement ? main : null;
+}
+
+function saveExamScrollPosition(storageKey: string | null) {
+  if (!storageKey || typeof window === "undefined") return;
+  const scrollContainer = getAppShellScrollContainer();
+  const scrollTop = scrollContainer?.scrollTop ?? window.scrollY;
+  window.sessionStorage.setItem(storageKey, String(scrollTop));
+}
+
+function restoreExamScrollPosition(storageKey: string | null) {
+  if (!storageKey || typeof window === "undefined") return;
+  const raw = window.sessionStorage.getItem(storageKey);
+  if (!raw) return;
+  const scrollTop = Number(raw);
+  if (!Number.isFinite(scrollTop)) return;
+
+  const restore = () => {
+    const scrollContainer = getAppShellScrollContainer();
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollTop;
+      return;
+    }
+    window.scrollTo({ top: scrollTop });
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(restore);
+  });
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isExamArray(value: unknown): value is ExamWithRelations[] {
+  return Array.isArray(value);
+}
+
+type TeacherAssignmentCache = {
+  section_id: number;
+  curriculum_subject_id: number;
+  subject_id: number;
+};
+
+function isTeacherAssignmentArray(value: unknown): value is TeacherAssignmentCache[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        item != null &&
+        typeof item === "object" &&
+        typeof (item as TeacherAssignmentCache).section_id === "number" &&
+        typeof (item as TeacherAssignmentCache).curriculum_subject_id === "number" &&
+        typeof (item as TeacherAssignmentCache).subject_id === "number",
+    )
+  );
+}
+
+function makeExamScopeKey(sectionIds?: number[]) {
+  return sectionIds == null
+    ? "all"
+    : [...sectionIds].sort((a, b) => a - b).join(",") || "none";
+}
+
+function readStoredExamList(storageKey: string | null, scopeKey: string) {
+  if (!storageKey || typeof window === "undefined") {
+    return { hasCache: false, exams: [] as ExamWithRelations[] };
+  }
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return { hasCache: false, exams: [] as ExamWithRelations[] };
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed != null &&
+      typeof parsed === "object" &&
+      (parsed as { scopeKey?: unknown }).scopeKey === scopeKey &&
+      isExamArray((parsed as { exams?: unknown }).exams)
+    ) {
+      return { hasCache: true, exams: (parsed as { exams: ExamWithRelations[] }).exams };
+    }
+  } catch {
+    // Ignore malformed storage payloads.
+  }
+  return { hasCache: false, exams: [] as ExamWithRelations[] };
+}
+
+function readStoredExamState<T>(
+  storageKey: string | null,
+  fallback: T,
+  validate: (value: unknown) => value is T,
+): T {
+  if (!storageKey || typeof window === "undefined") return fallback;
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    return validate(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function ExamPageClient({ initialData }: { initialData: ExamInitialData | null }) {
   const router = useRouter();
   const isMobile = useMediaQuery('(max-width: 768px)');
@@ -103,9 +219,19 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     if (typeof window === "undefined") return "admin";
     return localStorage.getItem("examViewMode") === "faculty" ? "faculty" : "admin";
   });
+  const storageKeys = useMemo(
+    () => ({
+      openGradeGroups: makeExamStorageKey(user?.id, viewMode, "open-grade-groups"),
+      exams: makeExamStorageKey(user?.id, viewMode, "exams"),
+      assignments: makeExamStorageKey(user?.id, viewMode, "assignments"),
+      scroll: makeExamStorageKey(user?.id, viewMode, "scroll"),
+    }),
+    [user?.id, viewMode],
+  );
   const fetchSectionIdsRef = useRef<number[] | undefined>(undefined);
   const gradeGroupRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const newExamScrollDoneRef = useRef(false);
+  const restoredScrollDoneRef = useRef(false);
 
   // Handle ?newExamIds= short-lived highlight persisted in localStorage
   useEffect(() => {
@@ -212,21 +338,59 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 	    });
 	  }, [effectiveAllowedSectionIds, assignedSectionSubjectPairs]);
 
-  const fetchExams = async (sectionIds?: number[]) => {
+  const fetchExams = async (
+    sectionIds?: number[],
+    options: { forceRefresh?: boolean } = {},
+  ) => {
     fetchSectionIdsRef.current = sectionIds;
-    setLoading(true);
+    const scopeKey = makeExamScopeKey(sectionIds);
+    const cached = options.forceRefresh
+      ? { hasCache: false, exams: [] as ExamWithRelations[] }
+      : readStoredExamList(storageKeys.exams, scopeKey);
+
+    if (options.forceRefresh && storageKeys.exams && typeof window !== "undefined") {
+      window.sessionStorage.removeItem(storageKeys.exams);
+    }
+
+    if (cached.hasCache) {
+      setExams(cached.exams);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setDbError(null);
     try {
       const data = await fetchExamsWithRelations(sectionIds);
       setExams(data);
+      if (storageKeys.exams && typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          storageKeys.exams,
+          JSON.stringify({ scopeKey, exams: data }),
+        );
+      }
     } catch (error: unknown) {
+      if (!cached.hasCache) setExams([]);
       setDbError(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   };
 
-  const refetchExams = () => fetchExams(fetchSectionIdsRef.current);
+  const refetchExams = () =>
+    fetchExams(fetchSectionIdsRef.current, { forceRefresh: true });
+
+  useEffect(() => {
+    if (loading || !storageKeys.exams || typeof window === "undefined") return;
+    window.sessionStorage.setItem(
+      storageKeys.exams,
+      JSON.stringify({ scopeKey: makeExamScopeKey(fetchSectionIdsRef.current), exams }),
+    );
+  }, [exams, loading, storageKeys.exams]);
+
+  useEffect(() => {
+    if (authLoading || fetchSectionIdsRef.current !== undefined) return;
+    setLoading(true);
+  }, [authLoading, storageKeys.exams]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -234,27 +398,40 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     const isEffectiveFullAccess =
       permissions.includes("exams.full_access") && viewMode === "admin";
 
-    setLoading(true);
     setDbError(null);
 
     const init = async () => {
-      const assignments = user?.id
-        ? await fetchTeacherClassAssignments(user.id)
-        : [];
-
       if (user?.id) {
-        setTeacherAssignments(assignments);
-        const sectionSet = new Set(assignments.map((a) => a.section_id));
-        setAllowedSectionIds(sectionSet);
-        setAssignedSectionSubjectPairs(
-          new Set(
-            assignments.map((a) => `${a.section_id}-${a.curriculum_subject_id}`),
-          ),
+        const applyAssignments = (assignments: TeacherAssignmentCache[]) => {
+          setTeacherAssignments(assignments);
+          if (storageKeys.assignments && typeof window !== "undefined") {
+            window.sessionStorage.setItem(storageKeys.assignments, JSON.stringify(assignments));
+          }
+          const sectionSet = new Set(assignments.map((a) => a.section_id));
+          setAllowedSectionIds(sectionSet);
+          setAssignedSectionSubjectPairs(
+            new Set(
+              assignments.map((a) => `${a.section_id}-${a.curriculum_subject_id}`),
+            ),
+          );
+          const sectionIds = isEffectiveFullAccess
+            ? undefined
+            : Array.from(sectionSet);
+          fetchExams(sectionIds);
+        };
+
+        const cachedAssignments = readStoredExamState(
+          storageKeys.assignments,
+          [],
+          isTeacherAssignmentArray,
         );
-        const sectionIds = isEffectiveFullAccess
-          ? undefined
-          : Array.from(sectionSet);
-        fetchExams(sectionIds);
+        if (cachedAssignments.length > 0) {
+          applyAssignments(cachedAssignments);
+        }
+
+        const assignments = await fetchTeacherClassAssignments(user.id);
+        setTeacherAssignments(assignments);
+        applyAssignments(assignments);
       } else {
         setTeacherAssignments([]);
         setAllowedSectionIds(null);
@@ -265,7 +442,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id, hasFullAccess, viewMode]);
+  }, [authLoading, user?.id, hasFullAccess, viewMode, storageKeys.assignments]);
 
   // Persist view mode so navigation away and back keeps the faculty view active.
   useEffect(() => {
@@ -274,25 +451,17 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   // Restore accordion open/closed state for this browser session.
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = sessionStorage.getItem("examOpenGradeGroups");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          setOpenGradeGroups(
-            parsed.filter(
-              (value): value is string => typeof value === "string",
-            ),
-          );
-        }
-      }
-    } catch {
-      // Ignore malformed storage payloads.
-    } finally {
+    if (!storageKeys.openGradeGroups) {
+      setOpenGradeGroups([]);
       setAccordionStateReady(true);
+      return;
     }
-  }, []);
+    setOpenGradeGroups(
+      readStoredExamState(storageKeys.openGradeGroups, [], isStringArray),
+    );
+    setAccordionInitialized(false);
+    setAccordionStateReady(true);
+  }, [storageKeys.openGradeGroups]);
 
   // Reset to admin view if the user no longer has a teaching load (e.g. load removed mid-session).
   // Guard: allowedSectionIds === null means assignments haven't loaded yet — skip to avoid
@@ -687,12 +856,12 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     if (groupsToOpen.length === 0) return;
     setOpenGradeGroups((prev) => {
       const merged = Array.from(new Set([...prev, ...groupsToOpen]));
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem('examOpenGradeGroups', JSON.stringify(merged));
+      if (storageKeys.openGradeGroups && typeof window !== 'undefined') {
+        sessionStorage.setItem(storageKeys.openGradeGroups, JSON.stringify(merged));
       }
       return merged;
     });
-  }, [newlyCreatedExamIds, groupedExams]);
+  }, [newlyCreatedExamIds, groupedExams, storageKeys.openGradeGroups]);
 
   useEffect(() => {
     if (newlyCreatedExamIds.size === 0) {
@@ -715,10 +884,42 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   const handleAccordionChange = (value: string[]) => {
     setOpenGradeGroups(value);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("examOpenGradeGroups", JSON.stringify(value));
+    if (storageKeys.openGradeGroups && typeof window !== "undefined") {
+      sessionStorage.setItem(storageKeys.openGradeGroups, JSON.stringify(value));
     }
   };
+
+  const openExamRoute = useCallback(
+    (href: string) => {
+      saveExamScrollPosition(storageKeys.scroll);
+      restoredScrollDoneRef.current = false;
+      router.push(href);
+    },
+    [router, storageKeys.scroll],
+  );
+
+  useEffect(() => {
+    restoredScrollDoneRef.current = false;
+  }, [storageKeys.scroll]);
+
+  useEffect(() => {
+    if (
+      restoredScrollDoneRef.current ||
+      loading ||
+      !accordionStateReady ||
+      !accordionInitialized
+    ) {
+      return;
+    }
+    restoredScrollDoneRef.current = true;
+    restoreExamScrollPosition(storageKeys.scroll);
+  }, [
+    accordionInitialized,
+    accordionStateReady,
+    loading,
+    storageKeys.scroll,
+    groupedExams,
+  ]);
 
   const handleStatusChange = async (
     exam: ExamWithRelations,
@@ -861,7 +1062,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
             <Button
               color="#4EAE4A"
               radius="md"
-              onClick={() => router.push("/exam/create")}
+              onClick={() => openExamRoute("/exam/create")}
               disabled={
                 !effectiveFullAccess &&
                 !!effectiveAllowedSectionIds &&
@@ -1042,11 +1243,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           ))}
         </Stack>
       ) : dbError ? null : isFiltering && filteredExams.length === 0 ? (
-        <EmptySearchState
-          title="No examination found."
-          description="Try adjusting your search or filters."
-          icon={IconClipboardOff}
-        />
+        <EmptySearchState />
       ) : !isFiltering && groupedExams.length === 0 ? (
         <Center
           py={36}
@@ -1074,7 +1271,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                 color="#4EAE4A"
                 radius="md"
                 size="sm"
-                onClick={() => router.push("/exam/create")}
+                onClick={() => openExamRoute("/exam/create")}
               >
                 Create Examination
               </Button>
@@ -1135,7 +1332,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                           padding="lg"
                           radius="md"
                           withBorder
-                          onClick={() => router.push(`/exam/${exam.exam_id}/scan`)}
+                          onClick={() => openExamRoute(`/exam/${exam.exam_id}/scan`)}
                           style={{
                             transition:
                               "box-shadow 1.2s ease, border-color 1.2s ease",

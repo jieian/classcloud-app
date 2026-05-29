@@ -1,3 +1,13 @@
+export const EXAM_CHOICE_LETTERS = ['A', 'B', 'C', 'D', 'E'] as const;
+
+export function normalizeExamNumChoices(value: number | null | undefined): 4 | 5 {
+  return Number(value) >= 5 ? 5 : 4;
+}
+
+export function getExamChoiceLetters(value: number | null | undefined): string[] {
+  return EXAM_CHOICE_LETTERS.slice(0, normalizeExamNumChoices(value));
+}
+
 /**
  * exam-supabase.ts
  * Bridge: exposes a named `supabase` client + all examination-system types
@@ -107,7 +117,7 @@ export function resolveExamParams(exam: Exam | null | undefined): {
   const ak = exam?.answer_key ?? null;
   return {
     totalItems:  ak?.total_questions ?? exam?.total_items ?? 30,
-    numChoices:  ak?.num_choices      ?? 4,
+    numChoices:  normalizeExamNumChoices(ak?.num_choices),
   };
 }
 
