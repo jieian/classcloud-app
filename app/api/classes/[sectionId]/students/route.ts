@@ -7,6 +7,37 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchDirectMove } from "@/lib/notifications";
 import { parseBody, AddStudentSchema } from "@/lib/api-schemas";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+
+type NestedRelation<T> = T | T[] | null;
+
+type SectionAccessRow = {
+  sy_id: number;
+  adviser_id: string | null;
+};
+
+type RosterSectionRow = {
+  section_id: number;
+  name: string;
+  adviser_id: string | null;
+  sy_id: number;
+  grade_levels: NestedRelation<{ display_name: string | null }>;
+};
+
+type EnrollmentSectionRow = {
+  section_id: number | null;
+};
+
+type RosterEnrollmentRow = {
+  enrollment_id: number;
+  lrn: string;
+  students: NestedRelation<{
+    lrn: string;
+    full_name: string | null;
+    sex: "M" | "F" | null;
+  }>;
+};
+
 // ─── POST /api/classes/[sectionId]/students ──────────────────────────────────
 // Adds a student to a class roster. Handles 5 actions:
 //   new                  – create new student record + enroll
@@ -41,7 +72,7 @@ const _POST = async function(
   const { action, lrn, last_name, first_name, middle_name, sex: sexRaw } = parsed.data;
 
   // Validate name fields for actions that write to students table
-  const needsNameFields = ["new", "update_enroll", "restore_update_enroll", "update_move"].includes(action);
+  const needsNameFields = ["new", "update_enroll", "restore_update_enroll"].includes(action);
   const lastName = last_name ?? "";
   const firstName = first_name ?? "";
   const middleName = middle_name ?? "";
@@ -63,31 +94,10 @@ const _POST = async function(
   }
 
 
-  // Gate direct move/update_move: full_access may always proceed;
-  // partial_access may only move students INTO their own advisory section.
-  if (action === "move" || action === "update_move") {
-    const hasFullAccess = permissions.includes("students.full_access");
-    if (!hasFullAccess) {
-      const { data: destSection } = await admin
-        .from("sections")
-        .select("adviser_id")
-        .eq("section_id", sectionId)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if ((destSection as any)?.adviser_id !== user.id) {
-        return Response.json(
-          { error: "Only the class adviser can move students to this section directly." },
-          { status: 403 },
-        );
-      }
-    }
-  }
-
-  // Get section's sy_id
+  // Fetch section once — covers both auth and sy_id needed below.
   const { data: sectionRaw } = await admin
     .from("sections")
-    .select("sy_id")
+    .select("sy_id, adviser_id")
     .eq("section_id", sectionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -95,7 +105,16 @@ const _POST = async function(
   if (!sectionRaw)
     return Response.json({ error: "Section not found." }, { status: 404 });
 
-  const syId = (sectionRaw as any).sy_id as number;
+  const section = sectionRaw as SectionAccessRow;
+
+  // Non-student-admin users may only operate on sections they advise or teach in.
+  const hasFullAccess = permissions.includes("students.full_access");
+  if (!hasFullAccess && section.adviser_id !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const syId = section.sy_id;
 
   // Helper: upsert enrollment — restores soft-deleted record or inserts new
   async function insertEnrollment(): Promise<Response | null> {
@@ -197,7 +216,7 @@ const _POST = async function(
         .eq("sy_id", syId)
         .is("deleted_at", null)
         .maybeSingle();
-      const fromSectionId = (currentEnroll as any)?.section_id as number | null;
+      const fromSectionId = (currentEnroll as EnrollmentSectionRow | null)?.section_id ?? null;
 
       const { error } = await admin.rpc("move_student_enrollment", {
         p_lrn: lrn,
@@ -225,47 +244,6 @@ const _POST = async function(
       break;
     }
 
-    // Update student info + move to this class (RPC — atomic)
-    case "update_move": {
-      // Pre-fetch from-section BEFORE the RPC — old enrollment is soft-deleted atomically inside it
-      const { data: currentEnroll } = await admin
-        .from("enrollments")
-        .select("section_id")
-        .eq("lrn", lrn)
-        .eq("sy_id", syId)
-        .is("deleted_at", null)
-        .maybeSingle();
-      const fromSectionId = (currentEnroll as any)?.section_id as number | null;
-
-      const { error } = await admin.rpc("update_move_student", {
-        p_lrn: lrn,
-        p_last_name: lastName,
-        p_first_name: firstName,
-        p_middle_name: middleName || "",
-        p_sex: sex,
-        p_sy_id: syId,
-        p_section_id: sectionId,
-      });
-      if (error) {
-        if (error.code === "23505")
-          return Response.json(
-            { error: "This student is already enrolled in this class." },
-            { status: 409 },
-          );
-        return Response.json({ error: "Internal server error." }, { status: 500 });
-      }
-      // Cancel any open transfer requests — the student has already moved.
-      await admin
-        .from("section_transfer_requests")
-        .update({ status: "CANCELLED", cancellation_reason: "MOVED_BY_ADMIN" })
-        .eq("lrn", lrn)
-        .eq("status", "PENDING");
-
-      if (fromSectionId) {
-        void dispatchDirectMove({ lrn, fromSectionId, toSectionId: sectionId, actorUid: user.id });
-      }
-      break;
-    }
   }
 
   return Response.json({ success: true });
@@ -296,26 +274,27 @@ const _GET = async function(
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
 
-  // Fetch section + enrollments with student details in parallel
-  const [{ data: sectionRaw, error: secError }, { data: enrollRaw, error: enrollError }] =
-    await Promise.all([
-      admin
-        .from("sections")
-        .select("section_id, name, adviser_id, sy_id, grade_levels(display_name)")
-        .eq("section_id", sectionId)
-        .is("deleted_at", null)
-        .maybeSingle(),
-      // We'll re-fetch after getting sy_id, but first check section exists.
-      // Use a dummy that always resolves so Promise.all doesn't stall.
-      Promise.resolve({ data: null, error: null }),
-    ]);
+  // Fetch section first; sy_id is needed before we can fetch enrollments.
+  const { data: sectionRaw, error: secError } = await admin
+    .from("sections")
+    .select("section_id, name, adviser_id, sy_id, grade_levels(display_name)")
+    .eq("section_id", sectionId)
+    .is("deleted_at", null)
+    .maybeSingle();
 
   if (secError)
     return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sectionRaw)
     return Response.json({ error: "Section not found." }, { status: 404 });
 
-  const s = sectionRaw as any;
+  // Non-student-admin users may only view rosters for sections they advise or teach in.
+  const s = sectionRaw as RosterSectionRow;
+  const hasStudentFullAccess = permissions.includes("students.full_access");
+  if (!hasStudentFullAccess && s.adviser_id !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const glRaw = s.grade_levels;
   const grade_level_display: string = Array.isArray(glRaw)
     ? (glRaw[0]?.display_name ?? "")
@@ -335,7 +314,7 @@ const _GET = async function(
   if (enrollErr)
     return Response.json({ error: "Internal server error." }, { status: 500 });
 
-  const students = ((enrollData ?? []) as any[]).map((e: any) => {
+  const students = ((enrollData ?? []) as RosterEnrollmentRow[]).map((e) => {
     const student = Array.isArray(e.students) ? e.students[0] : e.students;
     return {
       enrollment_id: e.enrollment_id as number,

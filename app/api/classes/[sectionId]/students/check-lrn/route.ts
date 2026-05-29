@@ -5,6 +5,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 const _GET = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -34,6 +35,23 @@ const _GET = async function(
       { status: 400 },
     );
 
+  // Fetch section upfront — needed for auth + sy_id later.
+  // Limited-access users (advisers) may only look up students in their own section.
+  const { data: sectionRaw } = await admin
+    .from("sections")
+    .select("sy_id, adviser_id")
+    .eq("section_id", sectionId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!sectionRaw)
+    return Response.json({ error: "Section not found." }, { status: 404 });
+
+  const hasFullAccess = permissions.includes("students.full_access");
+  if (!hasFullAccess && (sectionRaw as any).adviser_id !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   // Look up the student — include soft-deleted (admin bypasses RLS)
   const { data: studentRaw, error: studentErr } = await admin
@@ -63,13 +81,7 @@ const _GET = async function(
     return Response.json({ status: "deleted", student });
   }
 
-  // Student is active — get this section's sy_id, then check enrollments
-  const { data: sectionRaw } = await admin
-    .from("sections")
-    .select("sy_id")
-    .eq("section_id", sectionId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // Student is active — use already-fetched sectionRaw for sy_id
 
   const syId = (sectionRaw as any)?.sy_id;
 

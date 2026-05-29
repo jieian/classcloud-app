@@ -5,18 +5,14 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { parseBody, BulkImportSchema } from "@/lib/api-schemas";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 // ─── POST /api/classes/[sectionId]/students/import ────────────────────────────
 // Bulk-enrolls students that were reviewed and confirmed by the user.
 // Supports actions: new, enroll, restore_enroll, move.
-
-interface ImportStudent {
-  lrn: string;
-  action: "new" | "enroll" | "restore_enroll" | "move";
-  last_name?: string;
-  first_name?: string;
-  middle_name?: string;
-  sex?: "M" | "F";
-}
+// NOTE: Operations run in parallel per student but are NOT wrapped in a single
+// DB transaction — partial failures are reported per-student without rollback.
+// Full atomicity would require a server-side RPC.
 
 const _POST = async function(
   request: Request,
@@ -30,9 +26,7 @@ const _POST = async function(
 
   const permissions = getPermissionsFromUser(user);
   const hasFullAccess = permissions.includes("students.full_access");
-  const hasPartialAccess = permissions.includes(
-    "students.limited_access",
-  );
+  const hasPartialAccess = permissions.includes("students.limited_access");
   if (!hasFullAccess && !hasPartialAccess)
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
@@ -41,18 +35,8 @@ const _POST = async function(
   if (!sectionId)
     return Response.json({ error: "Invalid section ID." }, { status: 400 });
 
-  const body = (await request.json()) as { students?: unknown };
-  const students = body.students;
-
-  if (!Array.isArray(students) || students.length === 0)
-    return Response.json({ error: "No students provided." }, { status: 400 });
-
-  if (students.length > 100)
-    return Response.json(
-      { error: "Too many students. Maximum 100 per import." },
-      { status: 400 },
-    );
-
+  const parsed = parseBody(BulkImportSchema, await request.json());
+  if (!parsed.success) return parsed.response;
 
   // Get section's sy_id + adviser_id
   const { data: sectionRaw } = await admin
@@ -68,35 +52,38 @@ const _POST = async function(
   const syId: number = (sectionRaw as any).sy_id;
   const sectionAdviserId: string | null = (sectionRaw as any).adviser_id ?? null;
 
-  // Partial-access permission gate: must be adviser of this section
+  // Partial-access permission gate: must be adviser or assigned teacher
+  if (!hasFullAccess && sectionAdviserId !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Pre-batch: for partial_access, fetch source-section adviser_ids for all
+  // "move" LRNs in one query to avoid N serial lookups inside the parallel map.
+  const moveSourceMap = new Map<string, { adviser_id: string | null }>();
   if (!hasFullAccess) {
-    if (sectionAdviserId !== user.id) {
-      return Response.json(
-        { error: "Only the class adviser can import students into this section." },
-        { status: 403 },
-      );
+    const moveLrns = parsed.data.students
+      .filter((s) => s.action === "move")
+      .map((s) => s.lrn);
+    if (moveLrns.length > 0) {
+      const { data: moveSrcData } = await admin
+        .from("enrollments")
+        .select("lrn, sections(adviser_id)")
+        .in("lrn", moveLrns)
+        .eq("sy_id", syId)
+        .is("deleted_at", null);
+      for (const row of (moveSrcData ?? []) as any[]) {
+        const sec = Array.isArray(row.sections) ? row.sections[0] : row.sections;
+        moveSourceMap.set(row.lrn as string, { adviser_id: sec?.adviser_id ?? null });
+      }
     }
   }
 
-  // ── Process each student ────────────────────────────────────────────────────
-  const results: Array<{ lrn: string; success: boolean; error?: string }> = [];
+  // ── Process each student in parallel ────────────────────────────────────────
+  const settled = await Promise.allSettled(
+    parsed.data.students.map(async (s) => {
+      const lrn = s.lrn;
 
-  for (const raw of students) {
-    const s = raw as ImportStudent;
-    const lrn = (s.lrn ?? "").trim();
-
-    if (!/^\d{12}$/.test(lrn)) {
-      results.push({ lrn, success: false, error: "Invalid LRN format." });
-      continue;
-    }
-
-    const validActions = ["new", "enroll", "restore_enroll", "move"];
-    if (!validActions.includes(s.action ?? "")) {
-      results.push({ lrn, success: false, error: "Invalid action." });
-      continue;
-    }
-
-    try {
       if (s.action === "new") {
         const lastName = (s.last_name ?? "").trim();
         const firstName = (s.first_name ?? "").trim();
@@ -104,7 +91,7 @@ const _POST = async function(
         const middleName = /^[-–—]+$/.test(rawMiddleName) ? "" : rawMiddleName;
         const sex = s.sex ?? "M";
 
-        if (!lastName || !firstName || !sex)
+        if (!lastName || !firstName)
           throw new Error("Name and sex are required for new students.");
 
         const { error: insertErr } = await admin.from("students").insert({
@@ -114,7 +101,6 @@ const _POST = async function(
           middle_name: middleName || null,
           sex,
         });
-
         if (insertErr) {
           if (insertErr.code === "23505")
             throw new Error("A student with this LRN already exists.");
@@ -151,32 +137,15 @@ const _POST = async function(
         if (enrollErr) throw new Error(enrollErr.message);
 
       } else if (s.action === "move") {
-        // Re-validate move permission on server side
         if (!hasFullAccess) {
-          // partial_access: must be adviser of THIS section (already checked above)
-          // Additionally verify canMoveDirect conditions for the source section
-          const { data: enrollData } = await admin
-            .from("enrollments")
-            .select("section_id, sections(adviser_id)")
-            .eq("lrn", lrn)
-            .eq("sy_id", syId)
-            .is("deleted_at", null)
-            .maybeSingle();
-
-          if (enrollData) {
-            const fromSection = Array.isArray((enrollData as any).sections)
-              ? (enrollData as any).sections[0]
-              : (enrollData as any).sections;
-            const fromAdviserId: string | null = fromSection?.adviser_id ?? null;
+          const srcSection = moveSourceMap.get(lrn);
+          if (srcSection !== undefined) {
+            const fromAdviserId = srcSection.adviser_id;
             const hasAdviser = fromAdviserId !== null;
             const selfAdviser = hasAdviser && fromAdviserId === user.id;
             const canMoveDirect = !hasAdviser || selfAdviser;
-
-            if (!canMoveDirect) {
-              throw new Error(
-                "Transfer request required — cannot move directly.",
-              );
-            }
+            if (!canMoveDirect)
+              throw new Error("Transfer request required — cannot move directly.");
           }
         }
 
@@ -191,7 +160,6 @@ const _POST = async function(
           throw new Error(moveErr.message);
         }
 
-        // Cancel any open transfer requests since the student has moved
         await admin
           .from("section_transfer_requests")
           .update({ status: "CANCELLED", cancellation_reason: "MOVED_BY_ADMIN" })
@@ -199,15 +167,19 @@ const _POST = async function(
           .eq("status", "PENDING");
       }
 
-      results.push({ lrn, success: true });
-    } catch (e) {
-      results.push({
-        lrn,
-        success: false,
-        error: e instanceof Error ? e.message : "An error occurred.",
-      });
-    }
-  }
+      return { lrn, success: true as const };
+    }),
+  );
+
+  const results = settled.map((r, i) =>
+    r.status === "fulfilled"
+      ? r.value
+      : {
+          lrn: parsed.data.students[i].lrn,
+          success: false as const,
+          error: r.reason instanceof Error ? r.reason.message : "An error occurred.",
+        },
+  );
 
   return Response.json({ results });
 }

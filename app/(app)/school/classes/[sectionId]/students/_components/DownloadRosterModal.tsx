@@ -50,6 +50,11 @@ export default function DownloadRosterModal({
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
 
+      notify({
+        type: "success",
+        title: "Successful Download",
+        message: `${gradeLevel} - ${sectionName} roster has been downloaded.`,
+      });
       onClose();
     } catch (e) {
       notify({

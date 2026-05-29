@@ -10,6 +10,43 @@ import type {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, RenameSectionSchema } from "@/lib/api-schemas";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+
+type NestedRelation<T> = T | T[] | null;
+
+type SectionRow = {
+  section_id: number;
+  name: string;
+  section_type: "SSES" | "REGULAR";
+  adviser_id: string | null;
+  grade_level_id: number;
+  sy_id: number | null;
+  grade_levels: NestedRelation<{ display_name: string | null }>;
+  users: NestedRelation<{ first_name: string | null; last_name: string | null }>;
+};
+
+type SchoolYearRow = {
+  sy_id: number;
+  curriculum_id: number | null;
+};
+
+type TeacherAssignmentRow = {
+  curriculum_subject_id: number;
+  teacher_id: string | null;
+  users: NestedRelation<{ first_name: string | null; last_name: string | null }>;
+};
+
+type CurriculumSubjectDataRow = {
+  curriculum_subject_id: number;
+  subjects: NestedRelation<{
+    subject_id: number;
+    name: string;
+    code: string;
+    subject_type: string;
+    deleted_at: string | null;
+  }>;
+};
+
 const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -39,7 +76,7 @@ const _GET = async function(
       admin
         .from("sections")
         .select(
-          "section_id, name, section_type, adviser_id, grade_level_id, grade_levels(display_name), users(first_name, last_name)",
+          "section_id, name, section_type, adviser_id, grade_level_id, sy_id, grade_levels(display_name), users(first_name, last_name)",
         )
         .eq("section_id", sectionId)
         .is("deleted_at", null)
@@ -55,8 +92,16 @@ const _GET = async function(
   if (secError) return Response.json({ error: "Internal server error." }, { status: 500 });
   if (!sRaw) return Response.json({ error: "Section not found." }, { status: 404 });
 
-  const s = sRaw as any;
-  const activeSyId: number | null = (syData as any)?.sy_id ?? null;
+  // Non-student-admin users may only view sections they advise or teach in.
+  const s = sRaw as SectionRow;
+  const hasStudentFullAccess = permissions.includes("students.full_access");
+  if (!hasStudentFullAccess && s.adviser_id !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const activeSchoolYear = syData as SchoolYearRow | null;
+  const activeSyId: number | null = activeSchoolYear?.sy_id ?? null;
   const gradeLevelId: number = s.grade_level_id;
   const glRaw = s.grade_levels;
   const glDisplay: string = Array.isArray(glRaw)
@@ -67,19 +112,19 @@ const _GET = async function(
     ? `${adviserUser.first_name ?? ""} ${adviserUser.last_name ?? ""}`.trim() || null
     : null;
 
-  const curriculumId: number | null = (syData as any)?.curriculum_id ?? null;
+  const curriculumId: number | null = activeSchoolYear?.curriculum_id ?? null;
 
-  // Wave 2: enrollments + curriculum_subjects + teacher assignments — all parallel
-  const [{ data: enrollData }, { data: csData }, { data: assignData }] =
+  // Wave 2: enrollment count + curriculum_subjects + teacher assignments — all parallel
+  const [{ count: enrollCount }, { data: csData }, { data: assignData }] =
     await Promise.all([
       activeSyId
         ? admin
             .from("enrollments")
-            .select("enrollment_id")
+            .select("*", { count: "exact", head: true })
             .eq("section_id", sectionId)
             .eq("sy_id", activeSyId)
             .is("deleted_at", null)
-        : Promise.resolve({ data: [] }),
+        : Promise.resolve({ count: 0, data: null, error: null }),
       curriculumId
         ? admin
             .from("curriculum_subjects")
@@ -98,7 +143,7 @@ const _GET = async function(
   // Map: curriculum_subject_id → { teacher_name, teacher_id }
   const teacherNameMap = new Map<number, string>();
   const teacherIdMap = new Map<number, string>();
-  for (const a of (assignData ?? []) as any[]) {
+  for (const a of (assignData ?? []) as TeacherAssignmentRow[]) {
     const u = Array.isArray(a.users) ? a.users[0] : a.users;
     const name = u
       ? `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim()
@@ -110,9 +155,9 @@ const _GET = async function(
 
   const sectionType = s.section_type as "SSES" | "REGULAR";
 
-  const subjects: SectionSubjectRow[] = ((csData ?? []) as any[]).flatMap(
-    (cs: any) => {
-      const sub = cs.subjects;
+  const subjects: SectionSubjectRow[] = ((csData ?? []) as CurriculumSubjectDataRow[]).flatMap(
+    (cs) => {
+      const sub = Array.isArray(cs.subjects) ? cs.subjects[0] : cs.subjects;
       if (!sub || sub.deleted_at !== null) return [];
       // BOTH subjects apply to all sections; SSES subjects only for SSES sections
       if (sub.subject_type !== "BOTH" && sectionType !== "SSES") return [];
@@ -128,6 +173,7 @@ const _GET = async function(
     },
   );
 
+  const sectionSyId: number | null = s.sy_id ?? null;
   const section: SectionDetail = {
     section_id: s.section_id,
     name: s.name,
@@ -136,7 +182,9 @@ const _GET = async function(
     adviser_name: adviserName,
     grade_level_id: gradeLevelId,
     grade_level_display: glDisplay,
-    student_count: (enrollData ?? []).length,
+    student_count: enrollCount ?? 0,
+    sy_id: sectionSyId,
+    is_active_sy: sectionSyId !== null && sectionSyId === activeSyId,
   };
 
   return Response.json({ section, subjects });
@@ -180,41 +228,5 @@ const _PATCH = async function(
   return Response.json({ success: true });
 }
 
-const _DELETE = async function(
-  _request: Request,
-  { params }: { params: Promise<{ sectionId: string }> },
-) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-  const permissions = getPermissionsFromUser(user);
-  if (!permissions.includes("classes.full_access"))
-    return Response.json({ error: "Forbidden" }, { status: 403 });
-
-  const { sectionId: sectionIdStr } = await params;
-  const sectionId = Number(sectionIdStr);
-  if (!sectionId)
-    return Response.json({ error: "Invalid section ID." }, { status: 400 });
-
-
-  const { error } = await admin
-    .from("sections")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("section_id", sectionId)
-    .is("deleted_at", null);
-
-  if (error)
-    return Response.json(
-      { error: "Failed to archive section." },
-      { status: 500 },
-    );
-
-  return Response.json({ success: true });
-}
-
 export const GET = withErrorHandler(_GET)
 export const PATCH = withErrorHandler(_PATCH)
-export const DELETE = withErrorHandler(_DELETE)

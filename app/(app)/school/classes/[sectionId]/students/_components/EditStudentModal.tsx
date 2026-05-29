@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import {
   ActionIcon,
   Button,
   Group,
+  Loader,
   Modal,
   Select,
   Stack,
   Text,
   TextInput,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
@@ -80,6 +82,8 @@ export default function EditStudentModal({
 }: Props) {
   const [saving, setSaving] = useState(false);
   const [checkingLrn, setCheckingLrn] = useState(false);
+  const [lrnTaken, setLrnTaken] = useState(false);
+  const lrnDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const confirmModalProps = isMobile
     ? {
@@ -115,19 +119,23 @@ export default function EditStudentModal({
     },
   });
 
-  // Seed form when modal opens with a student
+  // Seed form when modal opens; reset check state on close
   useEffect(() => {
     if (opened && student) {
-      // full_name is "Last, First Middle" generated — parse back to fields
-      // But we pass the raw fields via the roster entry; store them separately
       form.setValues({
         lrn: student.lrn,
-        last_name: "", // populated below via parsed name
+        last_name: "",
         first_name: "",
         middle_name: "",
         sex: student.sex,
       });
       form.resetDirty();
+      setLrnTaken(false);
+      setCheckingLrn(false);
+    } else if (!opened) {
+      setLrnTaken(false);
+      setCheckingLrn(false);
+      if (lrnDebounceRef.current) clearTimeout(lrnDebounceRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, student]);
@@ -140,6 +148,39 @@ export default function EditStudentModal({
   // See: fetchStudentNames below.
 
   const [originalLrn, setOriginalLrn] = useState("");
+
+  // Check LRN uniqueness as the user types (once 12 valid digits, only if changed)
+  useEffect(() => {
+    const lrn = form.values.lrn.trim();
+    setLrnTaken(false);
+    form.clearFieldError("lrn");
+
+    if (lrnDebounceRef.current) clearTimeout(lrnDebounceRef.current);
+
+    if (!/^\d{12}$/.test(lrn) || lrn === originalLrn) {
+      setCheckingLrn(false);
+      return;
+    }
+
+    setCheckingLrn(true);
+    lrnDebounceRef.current = setTimeout(() => {
+      void checkLrnExists(lrn, originalLrn)
+        .then((taken) => {
+          setLrnTaken(taken);
+          if (taken) {
+            form.setFieldError(
+              "lrn",
+              `LRN ${lrn} is already assigned to another student.`,
+            );
+          }
+        })
+        .catch(() => {
+          // silent — save will surface the error if it persists
+        })
+        .finally(() => setCheckingLrn(false));
+    }, 400);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.values.lrn, originalLrn]);
 
   // Fetch individual name fields when modal opens
   useEffect(() => {
@@ -199,34 +240,10 @@ export default function EditStudentModal({
 
   const handleSave = async () => {
     const { hasErrors } = form.validate();
-    if (hasErrors) return;
+    if (hasErrors || lrnTaken || checkingLrn) return;
 
     const newLrn = form.values.lrn.trim();
     const lrnChanged = newLrn !== originalLrn;
-
-    // LRN uniqueness check (only if it changed)
-    if (lrnChanged) {
-      setCheckingLrn(true);
-      try {
-        const taken = await checkLrnExists(newLrn, originalLrn);
-        if (taken) {
-          form.setFieldError(
-            "lrn",
-            `LRN ${newLrn} is already assigned to another student.`,
-          );
-          return;
-        }
-      } catch {
-        notify({
-          type: "error",
-          title: "Error",
-          message: "Could not verify LRN. Please try again.",
-        });
-        return;
-      } finally {
-        setCheckingLrn(false);
-      }
-    }
 
     modals.openConfirmModal({
       title: "Save changes?",
@@ -304,7 +321,9 @@ export default function EditStudentModal({
           description="Exactly 12 numeric digits. No spaces or letters."
           {...form.getInputProps("lrn")}
           rightSection={
-            form.errors.lrn ? (
+            checkingLrn ? (
+              <Loader size="xs" />
+            ) : form.errors.lrn ? (
               <ErrorIcon message={form.errors.lrn as string} />
             ) : null
           }
@@ -366,22 +385,26 @@ export default function EditStudentModal({
           allowDeselect={false}
         />
 
-        <Group justify="flex-end" mt="xs">
-          <Button variant="default" onClick={handleClose} disabled={busy}>
-            Cancel
-          </Button>
+        <Group justify="flex-end" mt="xs" wrap="nowrap">
+          <UnstyledButton onClick={handleClose} disabled={busy} style={{ cursor: busy ? "not-allowed" : "pointer" }}>
+            <Text size="sm" fw={600} c={busy ? "dimmed" : undefined}>Cancel</Text>
+          </UnstyledButton>
           <Button
-            variant="outline"
-            onClick={() => form.reset()}
+            variant="default"
+            radius="md"
+            onClick={() => { form.reset(); setLrnTaken(false); setCheckingLrn(false); }}
             disabled={!form.isDirty() || busy}
           >
             Revert Changes
           </Button>
           <Button
-            color="#4EAE4A"
+            radius="md"
             onClick={() => void handleSave()}
-            loading={busy}
-            disabled={!form.isDirty() || !form.isValid()}
+            loading={saving}
+            disabled={!form.isDirty() || !form.isValid() || lrnTaken || checkingLrn}
+            style={form.isDirty() && form.isValid() && !lrnTaken && !checkingLrn
+              ? { backgroundColor: "#4EAE4A" }
+              : undefined}
           >
             Save
           </Button>

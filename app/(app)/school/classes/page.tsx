@@ -20,7 +20,7 @@ async function ClassesContent({
   userId: string;
   permissions: string[];
 }) {
-  const initialData = await getClassesInitData(userId, permissions).catch(
+  const initialData = await getClassesInitData(userId).catch(
     () => null,
   );
   return <ClassesClient initialData={initialData} />;

@@ -33,6 +33,8 @@ export interface SectionDetail {
   grade_level_id: number;
   grade_level_display: string;
   student_count: number;
+  sy_id: number | null;
+  is_active_sy: boolean;
 }
 
 export interface SectionSubjectRow {
@@ -48,6 +50,23 @@ export interface SectionCheckResult {
   available: boolean;
   conflict?: "name" | "sses";
   error?: string;
+}
+
+// ─── Section DB row shapes (server-side, shared) ─────────────────────────────
+
+export interface SectionUserRow {
+  first_name: string | null;
+  last_name: string | null;
+  deleted_at: string | null;
+}
+
+export interface SectionRow {
+  section_id: number;
+  name: string;
+  section_type: "SSES" | "REGULAR";
+  grade_level_id: number;
+  adviser_id: string | null;
+  users: SectionUserRow | SectionUserRow[] | null;
 }
 
 // ─── Advisers ─────────────────────────────────────────────────────────────────
@@ -125,8 +144,7 @@ export type AddStudentAction =
   | "update_enroll"
   | "restore_enroll"
   | "restore_update_enroll"
-  | "move"
-  | "update_move";
+  | "move";
 
 export interface AddStudentPayload {
   action: AddStudentAction;

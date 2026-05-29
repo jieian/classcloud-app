@@ -6,6 +6,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type ImportRowStatus =
@@ -73,9 +74,44 @@ function parseName(
   };
 }
 
+// ─── Row extraction ───────────────────────────────────────────────────────────
+
+interface RawRow {
+  rowNum: number;
+  lrn: string;
+  name: string;
+  sex: string;
+}
+
+/** DepEd SF1 (School Register): LRN=col A, Name=col C, Sex=col G.
+ *  Data starts at row 7 (index 6). Student rows are identified by a valid
+ *  12-digit LRN in col A — this reliably skips headers, sub-totals, and footers. */
+function extractSF1Rows(
+  ws: XLSXStyle.WorkSheet,
+  range: XLSXStyle.Range,
+): RawRow[] {
+  const rows: RawRow[] = [];
+  for (let r = 6; r <= range.e.r; r++) {
+    const lrnCell  = ws[XLSXStyle.utils.encode_cell({ r, c: 0 })]; // col A
+    const nameCell = ws[XLSXStyle.utils.encode_cell({ r, c: 2 })]; // col C
+    const sexCell  = ws[XLSXStyle.utils.encode_cell({ r, c: 6 })]; // col G
+
+    // Primary filter: must be a 12-digit LRN — rejects total rows (18, 17, 35) and text footers
+    const lrnRaw = String(lrnCell?.v ?? "").replace(/\D/g, "");
+    if (!/^\d{12}$/.test(lrnRaw)) continue;
+
+    const nameRaw = String(nameCell?.v ?? nameCell?.w ?? "").trim();
+    // Sex is already uppercase M/F in the SF1 cell value
+    const sexRaw  = String(sexCell?.v  ?? sexCell?.w  ?? "").trim().toUpperCase();
+
+    rows.push({ rowNum: r + 1, lrn: lrnRaw, name: nameRaw, sex: sexRaw });
+  }
+  return rows;
+}
+
 // ─── POST /api/classes/[sectionId]/students/import/review ─────────────────────
-// Accepts a multipart/form-data upload with field "file" (.xlsx).
-// Parses the Excel, validates format, runs LRN checks, and returns review rows.
+// Accepts a multipart/form-data upload with field "file" (.xls or .xlsx).
+// Parses the DepEd SF1 (School Register), validates, checks LRNs, returns review rows.
 
 const _POST = async function(
   request: Request,
@@ -112,15 +148,18 @@ const _POST = async function(
   if (!(fileEntry instanceof File))
     return Response.json({ error: "No file provided." }, { status: 400 });
 
+  if (fileEntry.size > 5 * 1024 * 1024)
+    return Response.json({ error: "File too large. Maximum 5 MB." }, { status: 413 });
+
   const arrayBuffer = await fileEntry.arrayBuffer();
 
-  // ── Parse Excel ─────────────────────────────────────────────────────────────
+  // ── Parse Excel (.xlsx or .xls) ─────────────────────────────────────────────
   let workbook: XLSXStyle.WorkBook;
   try {
     workbook = XLSXStyle.read(new Uint8Array(arrayBuffer), { type: "array" });
   } catch {
     return Response.json(
-      { error: "Could not read file. Make sure it is a valid .xlsx file." },
+      { error: "Could not read file. Make sure it is a valid .xlsx or .xls file." },
       { status: 400 },
     );
   }
@@ -130,31 +169,10 @@ const _POST = async function(
     return Response.json({ error: "The file has no worksheets." }, { status: 400 });
 
   const ws = workbook.Sheets[wsName];
-
-  // ── Extract data rows (row 4 onward, skip fully-blank rows) ─────────────────
-  const rawRows: Array<{
-    rowNum: number;
-    lrn: string;
-    name: string;
-    sex: string;
-  }> = [];
-
   const range = XLSXStyle.utils.decode_range(ws["!ref"] ?? "A1");
-  for (let r = 3; r <= range.e.r; r++) {
-    // r is 0-indexed; r=3 corresponds to row 4 in Excel
-    const lrnCell = ws[XLSXStyle.utils.encode_cell({ r, c: 0 })];
-    const nameCell = ws[XLSXStyle.utils.encode_cell({ r, c: 1 })];
-    const sexCell = ws[XLSXStyle.utils.encode_cell({ r, c: 2 })];
 
-    const lrnRaw = lrnCell ? String(lrnCell.w ?? lrnCell.v ?? "").trim() : "";
-    const nameRaw = nameCell ? String(nameCell.w ?? nameCell.v ?? "").trim() : "";
-    const sexRaw = sexCell ? String(sexCell.w ?? sexCell.v ?? "").trim() : "";
-
-    // Skip fully blank rows
-    if (!lrnRaw && !nameRaw && !sexRaw) continue;
-
-    rawRows.push({ rowNum: r + 1, lrn: lrnRaw, name: nameRaw, sex: sexRaw });
-  }
+  // ── Extract rows from SF1 ────────────────────────────────────────────────────
+  const rawRows: RawRow[] = extractSF1Rows(ws, range);
 
   if (rawRows.length === 0)
     return Response.json({ error: "The file contains no data rows." }, { status: 400 });
@@ -250,6 +268,12 @@ const _POST = async function(
 
   const syId: number = (sectionRaw as any).sy_id;
   const sectionAdviserId: string | null = (sectionRaw as any).adviser_id ?? null;
+
+  // Limited-access users may only review imports for sections they advise or teach in.
+  if (!hasFullAccess && sectionAdviserId !== user.id) {
+    const isTeacher = await isTeacherInSection(user.id, sectionId);
+    if (!isTeacher) return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   // Collect LRNs that need checking
   const lrnsToCheck = withDedupe

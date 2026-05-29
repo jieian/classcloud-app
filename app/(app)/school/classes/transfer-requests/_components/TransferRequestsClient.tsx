@@ -1,36 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useMediaQuery } from "@mantine/hooks";
 import BackButton from "@/components/BackButton";
 import {
   Accordion,
-  ActionIcon,
   Alert,
   Badge,
   Box,
   Button,
-  Chip,
+  Center,
   Divider,
   Group,
   Modal,
-  Pagination,
   Paper,
+  Select,
   Skeleton,
   Stack,
   Text,
   Textarea,
+  ThemeIcon,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import {
   IconAlertCircle,
   IconArrowRight,
-  IconCheck,
   IconClock,
-  IconRefresh,
-  IconX,
+  IconMailDown,
+  IconMailOff,
+  IconMailUp,
 } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -50,7 +51,7 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 5;
+const PREVIEW_SIZE = 3;
 
 const STATUS_CONFIG: Record<
   TransferRequestStatus | "ALL",
@@ -132,16 +133,18 @@ function SectionSkeleton() {
   );
 }
 
-// ─── Status Filter Chips ──────────────────────────────────────────────────────
+// ─── Status Filter Select ─────────────────────────────────────────────────────
 
-function StatusChips({
+function StatusSelect({
   items,
   value,
   onChange,
+  icon,
 }: {
   items: TransferRequestItem[];
   value: string;
   onChange: (v: string) => void;
+  icon: React.ReactNode;
 }) {
   const counts = useMemo(() => {
     const map: Record<string, number> = { ALL: items.length };
@@ -151,27 +154,26 @@ function StatusChips({
     return map;
   }, [items]);
 
-  const visibleFilters = FILTER_ORDER.filter(
+  const data = FILTER_ORDER.filter(
     (s) => s === "ALL" || (counts[s] ?? 0) > 0,
-  );
+  ).map((s) => ({
+    value: s,
+    label:
+      s === "ALL"
+        ? `All Requests (${counts.ALL})`
+        : `${STATUS_CONFIG[s].label} (${counts[s] ?? 0})`,
+  }));
 
   return (
-    <Chip.Group multiple={false} value={value} onChange={onChange}>
-      <Group gap="xs" mb="xs">
-        {visibleFilters.map((s) => (
-          <Chip
-            key={s}
-            value={s}
-            size="xs"
-            color={STATUS_CONFIG[s].color}
-            variant="light"
-          >
-            {STATUS_CONFIG[s].label} (
-            {s === "ALL" ? counts.ALL : (counts[s] ?? 0)})
-          </Chip>
-        ))}
-      </Group>
-    </Chip.Group>
+    <Select
+      data={data}
+      value={value}
+      onChange={(v) => v && onChange(v)}
+      leftSection={icon}
+      w={200}
+      clearable={false}
+      mb="xs"
+    />
   );
 }
 
@@ -313,9 +315,7 @@ function RequestCard({
           <Group gap="xs" justify="flex-end" mt={4}>
             <Button
               size="xs"
-              variant="light"
               color="red"
-              leftSection={<IconX size={13} />}
               disabled={actioning}
               onClick={() => onReject(item)}
             >
@@ -324,7 +324,6 @@ function RequestCard({
             <Button
               size="xs"
               color="#4EAE4A"
-              leftSection={<IconCheck size={13} />}
               loading={actioning}
               disabled={actioning}
               onClick={() => onApprove(item)}
@@ -338,9 +337,7 @@ function RequestCard({
           <Group justify="flex-end" mt={4}>
             <Button
               size="xs"
-              variant="subtle"
-              color="gray"
-              leftSection={<IconX size={13} />}
+              variant="default"
               disabled={actioning}
               onClick={() => onCancel(item)}
             >
@@ -369,6 +366,7 @@ function RequestSection({
   onReject,
   onCancel,
   emptyMessage,
+  icon,
 }: {
   title: string;
   description: string;
@@ -383,28 +381,23 @@ function RequestSection({
   onReject: (item: TransferRequestItem) => void;
   onCancel: (item: TransferRequestItem) => void;
   emptyMessage: string;
+  icon: React.ReactNode;
 }) {
-  const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState(false);
 
-  const filtered = useMemo(
-    () => (filter === "ALL" ? items : items.filter((r) => r.status === filter)),
-    [items, filter],
-  );
+  const filtered = useMemo(() => {
+    const base = filter === "ALL" ? items : items.filter((r) => r.status === filter);
+    return [...base].sort(
+      (a, b) => new Date(b.requested_at).getTime() - new Date(a.requested_at).getTime(),
+    );
+  }, [items, filter]);
 
-  // Reset to page 1 whenever the filter changes
   useEffect(() => {
-    setPage(1);
+    setExpanded(false);
   }, [filter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  // If items disappear (e.g. after an action), clamp to the last available page
-  const safePage = Math.min(page, totalPages);
-  const paginatedItems = filtered.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
-  );
-  const rangeStart = filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const rangeEnd = Math.min(safePage * PAGE_SIZE, filtered.length);
+  const visibleItems = expanded ? filtered : filtered.slice(0, PREVIEW_SIZE);
+  const hiddenCount = filtered.length - PREVIEW_SIZE;
 
   return (
     <Box>
@@ -422,24 +415,36 @@ function RequestSection({
           {error}
         </Alert>
       ) : items.length === 0 ? (
-        <Text size="sm" c="dimmed" ta="center" py="lg">
-          {emptyMessage}
-        </Text>
+        <Center
+          py={36}
+          px="md"
+          style={{
+            border: "1px solid var(--mantine-color-gray-3)",
+            borderRadius: "8px",
+            backgroundColor: "#FFFFFF",
+          }}
+        >
+          <Stack gap={10} align="center">
+            <ThemeIcon size={48} radius="xl" color="gray.2" variant="filled">
+              <IconMailOff size={28} stroke={1.5} color="#3D4147" />
+            </ThemeIcon>
+            <Stack gap={4} align="center">
+              <Text size="sm" fw={500} c="#111827">
+                {emptyMessage}
+              </Text>
+            </Stack>
+          </Stack>
+        </Center>
       ) : (
         <>
-          <StatusChips items={items} value={filter} onChange={onFilterChange} />
+          <StatusSelect items={items} value={filter} onChange={onFilterChange} icon={icon} />
           {filtered.length === 0 ? (
             <Text size="sm" c="dimmed" ta="center" py="md">
               No requests match the selected filter.
             </Text>
           ) : (
             <Stack gap="xs">
-              {filtered.length > PAGE_SIZE && (
-                <Text size="xs" c="dimmed" ta="right">
-                  Showing {rangeStart}–{rangeEnd} of {filtered.length}
-                </Text>
-              )}
-              {paginatedItems.map((item) => (
+              {visibleItems.map((item) => (
                 <RequestCard
                   key={item.request_id}
                   item={item}
@@ -450,16 +455,15 @@ function RequestSection({
                   onCancel={onCancel}
                 />
               ))}
-              {totalPages > 1 && (
-                <Group justify="center" mt="xs">
-                  <Pagination
-                    value={safePage}
-                    onChange={setPage}
-                    total={totalPages}
-                    size="sm"
-                    radius="md"
-                  />
-                </Group>
+              {!expanded && hiddenCount > 0 && (
+                <UnstyledButton onClick={() => setExpanded(true)} style={{ width: "100%", textAlign: "center" }} py="sm">
+                  <Text size="sm" c="dimmed">See More</Text>
+                </UnstyledButton>
+              )}
+              {expanded && filtered.length > PREVIEW_SIZE && (
+                <UnstyledButton onClick={() => setExpanded(false)} style={{ width: "100%", textAlign: "center" }} py="sm">
+                  <Text size="sm" c="dimmed">See Less</Text>
+                </UnstyledButton>
               )}
             </Stack>
           )}
@@ -490,8 +494,6 @@ function NotificationsSkeleton() {
   );
 }
 
-const NOTIF_PAGE_SIZE = 5;
-
 function NotificationsPanel({
   notifs,
   loading,
@@ -503,7 +505,7 @@ function NotificationsPanel({
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
 }) {
-  const [page, setPage] = useState(1);
+  const [expanded, setExpanded] = useState(false);
 
   const unreadCount = notifs.filter((n) => !n.read_at).length;
   const hasUnread = unreadCount > 0;
@@ -514,22 +516,18 @@ function NotificationsPanel({
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / NOTIF_PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const paginated = sorted.slice(
-    (safePage - 1) * NOTIF_PAGE_SIZE,
-    safePage * NOTIF_PAGE_SIZE,
-  );
+  const visibleNotifs = expanded ? sorted : sorted.slice(0, PREVIEW_SIZE);
+  const hiddenCount = sorted.length - PREVIEW_SIZE;
 
   useEffect(() => {
-    setPage(1);
+    setExpanded(false);
   }, [notifs.length]);
 
   return (
     <Box mb="lg">
       <Accordion
         multiple
-        defaultValue={["notifications"]}
+        defaultValue={[]}
         variant="separated"
         styles={{
           item: { border: "1px solid var(--mantine-color-default-border)" },
@@ -550,9 +548,8 @@ function NotificationsPanel({
               </Group>
               {hasUnread && (
                 <Button
-                  variant="subtle"
+                  variant="default"
                   size="xs"
-                  color="gray"
                   onClick={(e) => {
                     e.stopPropagation();
                     onMarkAllRead();
@@ -572,7 +569,7 @@ function NotificationsPanel({
               <NotificationsSkeleton />
             ) : (
               <Stack gap="xs">
-                {paginated.map((n) => {
+                {visibleNotifs.map((n) => {
                   const isUnread = !n.read_at;
                   return (
                     <Paper
@@ -614,16 +611,15 @@ function NotificationsPanel({
                     </Paper>
                   );
                 })}
-                {totalPages > 1 && (
-                  <Group justify="center" mt="xs">
-                    <Pagination
-                      value={safePage}
-                      onChange={setPage}
-                      total={totalPages}
-                      size="sm"
-                      radius="md"
-                    />
-                  </Group>
+                {!expanded && hiddenCount > 0 && (
+                  <UnstyledButton onClick={() => setExpanded(true)} style={{ width: "100%", textAlign: "center" }} py="sm">
+                    <Text size="sm" c="dimmed">See More</Text>
+                  </UnstyledButton>
+                )}
+                {expanded && sorted.length > PREVIEW_SIZE && (
+                  <UnstyledButton onClick={() => setExpanded(false)} style={{ width: "100%", textAlign: "center" }} py="sm">
+                    <Text size="sm" c="dimmed">See Less</Text>
+                  </UnstyledButton>
                 )}
               </Stack>
             )}
@@ -921,32 +917,13 @@ export default function TransferRequestsClient() {
     }
   }
 
-  const isRefreshing = loadingIncoming || loadingOutgoing;
-
   return (
     <>
       {/* Page header */}
       <BackButton href="/school/classes" mb="md" size="sm">Back to Classes</BackButton>
-      <Group mb="xs" align="center" gap="xs">
-        <Text size="xl" fw={700}>
-          Transfer Requests
-        </Text>
-        <Box style={{ marginLeft: "auto" }}>
-          <Tooltip label="Refresh" position="bottom" withArrow>
-            <ActionIcon
-              variant="outline"
-              color="#808898"
-              size="lg"
-              radius="xl"
-              onClick={refresh}
-              loading={isRefreshing}
-              aria-label="Refresh transfer requests"
-            >
-              <IconRefresh size={18} stroke={1.5} />
-            </ActionIcon>
-          </Tooltip>
-        </Box>
-      </Group>
+      <Text size="xl" fw={700} mb="xs">
+        Transfer Requests
+      </Text>
       <p className="mb-6 text-sm text-[#808898]">
         Track and manage student section transfer requests, and view
         notifications relevant to your classes.
@@ -977,6 +954,7 @@ export default function TransferRequestsClient() {
             onReject={handleReject}
             onCancel={() => {}}
             emptyMessage="No incoming transfer requests."
+            icon={<IconMailDown size={16} />}
           />
         )}
 
@@ -997,6 +975,7 @@ export default function TransferRequestsClient() {
             onReject={() => {}}
             onCancel={handleCancel}
             emptyMessage="You haven't submitted any transfer requests yet."
+            icon={<IconMailUp size={16} />}
           />
         )}
       </Stack>
