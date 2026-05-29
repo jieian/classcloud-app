@@ -59,6 +59,15 @@
     gap: 4px;
   }
 
+  .profileSection {
+    width: 100%;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid rgba(53, 132, 50, 0.12);
+    display: flex;
+    justify-content: center;
+  }
+
   .bottomActions {
     display: flex;
     flex-direction: column;
@@ -307,6 +316,11 @@
     min-height: 0;
     flex: 1 1 auto;
     overflow-y: auto;
+  }
+
+  .profileSection {
+    border-bottom: 1px solid rgba(53, 132, 50, 0.12);
+    padding-bottom: var(--mantine-spacing-xs);
   }
 
   .bottomActions {

@@ -11,8 +11,8 @@ import {
   IconFileText,
   IconX,
   IconLogout,
-  IconSettings,
   IconMenu2,
+  IconUserCircle,
 } from "@tabler/icons-react";
 import {
   Badge,
@@ -162,7 +162,7 @@ export default function Navbar() {
     active: false,
   });
 
-  const { signOut, permissions } = useAuth();
+  const { signOut, permissions, firstName, lastName } = useAuth();
 
   // Badge count on the Classes sublink:
   //   admins (students.full_access)   → pending transfer request count
@@ -218,7 +218,7 @@ export default function Navbar() {
 
   // Current page label for mobile top bar
   const currentPageLabel = useMemo(() => {
-    if (pathname === "/settings") return "Account Settings";
+    if (pathname === "/settings") return "My Profile";
     // Check sublinks first (more specific) — e.g. /user-roles/users → "User Management"
     for (const link of navigationData) {
       for (const sub of link.sublinks) {
@@ -556,24 +556,18 @@ export default function Navbar() {
 
   const settingsAndLogout = (
     <div className={classes.bottomActions}>
-      <Tooltip
-        label="Account Settings"
-        position="right"
-        withArrow
-        disabled={isMobile}
-      >
+      <Tooltip label="My Profile" position="right" withArrow disabled={isMobile}>
         <Link href="/settings" style={{ textDecoration: "none" }}>
           <UnstyledButton
             onClick={handleSimpleLinkClick}
             className={classes.mainLink}
             data-active={pathname === "/settings" || undefined}
           >
-            <IconSettings size={22} stroke={1.5} />
-            {isMobile && <span>Account Settings</span>}
+            <IconUserCircle size={22} stroke={1.5} />
+            {isMobile && <span>{firstName} {lastName}</span>}
           </UnstyledButton>
         </Link>
       </Tooltip>
-
       <Tooltip
         label="Logout"
         position="right"

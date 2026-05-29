@@ -31,6 +31,7 @@ import {
 } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
 import { getPasswordStrength, passwordRequirements } from "@/app/(app)/user-roles/users/_lib/utils";
+import MyAssignmentCard from "./MyAssignmentCard";
 
 function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
@@ -553,6 +554,9 @@ export default function SettingsClient() {
           </Stack>
         )}
       </Paper>
+
+      {/* ── My Assignments ────────────────────────────────────────────────── */}
+      <MyAssignmentCard />
 
       {/* ── Password ──────────────────────────────────────────────────────── */}
       <Paper withBorder p="md" radius="md">
