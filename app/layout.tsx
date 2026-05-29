@@ -7,7 +7,7 @@ import "@mantine/core/styles.css";
 import "./globals.css";
 
 import "@mantine/notifications/styles.css";
-import DynamicNotifications from "@/app/(app)/exam/_components/ExamNotificationsPosition";
+import AppNotifications from "@/components/notificationIcon/NotificationsPosition";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Analytics } from "@vercel/analytics/react";
 
@@ -48,7 +48,7 @@ export default function RootLayout({
           }}
         >
           <ModalsProvider>
-            <DynamicNotifications />
+            <AppNotifications />
             {children}
             <SpeedInsights />
             <Analytics />
