@@ -61,6 +61,20 @@ function clearSupabaseClientAuthArtifacts() {
     }
     sessionKeys.forEach((k) => sessionStorage.removeItem(k));
     sessionStorage.removeItem("cc_perm_version");
+
+    const reportKeys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith("reports:")) reportKeys.push(key);
+    }
+    reportKeys.forEach((k) => sessionStorage.removeItem(k));
+
+    const examKeys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith("exam:")) examKeys.push(key);
+    }
+    examKeys.forEach((k) => sessionStorage.removeItem(k));
   } catch {
     // ignore storage failures
   }

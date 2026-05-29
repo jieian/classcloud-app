@@ -7,9 +7,14 @@ export const REPORTS_CACHE_TAG = "reports";
 
 type RawGradeJoin = { display_name: string; level_number: number | null };
 type RawSubjectJoin = { name: string | null; subject_type?: "BOTH" | "SSES" | null };
-type RawCurriculumSubjectJoin = { subject_id: number | null; subjects: RawSubjectJoin | RawSubjectJoin[] | null };
+type RawCurriculumSubjectJoin = {
+  curriculum_subject_id: number | null;
+  subject_id: number | null;
+  subjects: RawSubjectJoin | RawSubjectJoin[] | null;
+};
 type ActiveCurriculumSubject = {
   subjectId: number;
+  curriculumSubjectId: number;
   subjectName: string;
   subjectType: "BOTH" | "SSES" | null;
   gradeLevelId: number;
@@ -143,7 +148,7 @@ export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
   let q = admin
     .from("exam_assignments")
     .select(
-      "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
+      "id, exam_id, section_id, sections!inner(section_id, name, grade_level_id, grade_levels!inner(display_name, level_number)), exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(curriculum_subject_id, subject_id, subjects(name, subject_type)))",
     )
     .is("exams.deleted_at", null);
   if (activeSyId != null) q = q.eq("sections.sy_id", activeSyId);
@@ -169,6 +174,7 @@ export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     const curriculumJoin = firstJoin(examJoin.curriculum_subjects);
     const subjectJoin = firstJoin(curriculumJoin?.subjects);
     const subjectId = curriculumJoin?.subject_id ?? null;
+    const curriculumSubjectId = curriculumJoin?.curriculum_subject_id ?? null;
     const subjectName = subjectJoin?.name ?? "Unknown Subject";
     const subjectType = subjectJoin?.subject_type ?? null;
 
@@ -184,6 +190,7 @@ export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
       title: examJoin.title,
       totalItems: resolveReportTotalItems(examJoin),
       examDate: examJoin.exam_date,
+      curriculumSubjectId: curriculumSubjectId ?? 0,
       subjectId,
       subjectName,
       subjectType,
@@ -314,7 +321,7 @@ async function getActiveCurriculumSubjectsCached(): Promise<ActiveCurriculumSubj
 
   const { data, error } = await admin
     .from("curriculum_subjects")
-    .select("subject_id, grade_level_id, subjects!inner(name, subject_type, deleted_at)")
+    .select("curriculum_subject_id, subject_id, grade_level_id, subjects!inner(name, subject_type, deleted_at)")
     .eq("curriculum_id", curriculumId)
     .is("deleted_at", null);
 
@@ -324,14 +331,21 @@ async function getActiveCurriculumSubjectsCached(): Promise<ActiveCurriculumSubj
   }
 
   return ((data ?? []) as {
+    curriculum_subject_id: number | null;
     subject_id: number | null;
     grade_level_id: number | null;
     subjects: RawSubjectJoin | RawSubjectJoin[] | null;
   }[])
     .map((row) => {
       const subjectJoin = firstJoin(row.subjects);
-      if (row.subject_id == null || row.grade_level_id == null || !subjectJoin) return null;
+      if (
+        row.curriculum_subject_id == null ||
+        row.subject_id == null ||
+        row.grade_level_id == null ||
+        !subjectJoin
+      ) return null;
       return {
+        curriculumSubjectId: row.curriculum_subject_id,
         subjectId: row.subject_id,
         subjectName: subjectJoin.name ?? "Unknown Subject",
         subjectType: subjectJoin.subject_type ?? null,

@@ -2,7 +2,7 @@
 
 import React from "react";
 import type { MouseEvent, ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Accordion,
@@ -105,6 +105,127 @@ const STATUS_COLORS = {
 
 /** Single-slot registry — only one popover/tooltip open at a time on touch */
 const activePopover = { close: null as (() => void) | null };
+
+type AssignedReportView = "advisory" | "assigned";
+
+const REPORTS_BROWSER_STORAGE_PREFIX = "reports:browser";
+const EMPTY_OPEN_VALUES: string[] = [];
+
+function makeReportsStorageKey(userId: string | undefined, key: string) {
+  return userId ? `${REPORTS_BROWSER_STORAGE_PREFIX}:${userId}:${key}` : null;
+}
+
+function getAppShellScrollContainer(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  const main = document.querySelector("main");
+  return main instanceof HTMLElement ? main : null;
+}
+
+function saveReportsScrollPosition(storageKey: string | null) {
+  if (!storageKey || typeof window === "undefined") return;
+  const scrollContainer = getAppShellScrollContainer();
+  const scrollTop = scrollContainer?.scrollTop ?? window.scrollY;
+  window.sessionStorage.setItem(storageKey, String(scrollTop));
+}
+
+function restoreReportsScrollPosition(storageKey: string | null) {
+  if (!storageKey || typeof window === "undefined") return;
+  const raw = window.sessionStorage.getItem(storageKey);
+  if (!raw) return;
+  const scrollTop = Number(raw);
+  if (!Number.isFinite(scrollTop)) return;
+
+  const restore = () => {
+    const scrollContainer = getAppShellScrollContainer();
+    if (scrollContainer) {
+      scrollContainer.scrollTop = scrollTop;
+      return;
+    }
+    window.scrollTo({ top: scrollTop });
+  };
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(restore);
+  });
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isAssignedReportView(value: unknown): value is AssignedReportView {
+  return value === "advisory" || value === "assigned";
+}
+
+function isReportMonitoringTree(value: unknown): value is ReportMonitoringTree {
+  if (value == null || typeof value !== "object") return false;
+  const tree = value as Partial<ReportMonitoringTree>;
+  return (
+    tree.assigned != null &&
+    typeof tree.assigned === "object" &&
+    Array.isArray(tree.assigned.advisorySections) &&
+    Array.isArray(tree.assigned.handledSections) &&
+    Array.isArray(tree.gradeMonitoring) &&
+    Array.isArray(tree.subjectGroupMonitoring) &&
+    tree.allMonitoring != null &&
+    typeof tree.allMonitoring === "object" &&
+    Array.isArray(tree.allMonitoring.gradeLevels) &&
+    Array.isArray(tree.allMonitoring.subjectGroups)
+  );
+}
+
+function readStoredReportsState<T>(
+  storageKey: string | null,
+  fallback: T,
+  validate: (value: unknown) => value is T,
+): T {
+  if (!storageKey || typeof window === "undefined") return fallback;
+  try {
+    const raw = window.sessionStorage.getItem(storageKey);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    return validate(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function useReportsSessionState<T>(
+  storageKey: string | null,
+  fallback: T,
+  validate: (value: unknown) => value is T,
+) {
+  const [value, setValue] = useState<T>(() =>
+    readStoredReportsState(storageKey, fallback, validate),
+  );
+
+  useEffect(() => {
+    setValue(readStoredReportsState(storageKey, fallback, validate));
+  }, [storageKey, fallback, validate]);
+
+  useEffect(() => {
+    if (!storageKey || typeof window === "undefined") return;
+    window.sessionStorage.setItem(storageKey, JSON.stringify(value));
+  }, [storageKey, value]);
+
+  return [value, setValue] as const;
+}
+
+function makeReportsTreeScopeKey(reportScope: {
+  canViewAll: boolean;
+  canViewAssigned: boolean;
+  canMonitorGradeLevel: boolean;
+  canMonitorSubjects: boolean;
+}) {
+  return [
+    reportScope.canViewAll ? "all" : "",
+    reportScope.canViewAssigned ? "assigned" : "",
+    reportScope.canMonitorGradeLevel ? "grade" : "",
+    reportScope.canMonitorSubjects ? "subjects" : "",
+  ]
+    .filter(Boolean)
+    .join("-") || "none";
+}
 
 function EllipsisTooltip({ label, children, ...props }: { label: string; children: React.ReactElement } & Omit<React.ComponentProps<typeof Tooltip>, "label" | "children" | "disabled">) {
   const ref = useRef<HTMLElement>(null);
@@ -681,6 +802,8 @@ function SubjectMonitoringList({
   from,
   collapsible = false,
   subjectStatusDisplay = "circle",
+  storageKey = null,
+  onOpenReport,
 }: {
   subjects: ReportMonitoringSubjectGroup[];
   emptyMessage: string;
@@ -688,10 +811,15 @@ function SubjectMonitoringList({
   from?: string;
   collapsible?: boolean;
   subjectStatusDisplay?: "circle" | "bar";
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
-  const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 600px)");
-  const [openSubjects, setOpenSubjects] = useState<string[]>([]);
+  const [openSubjects, setOpenSubjects] = useReportsSessionState(
+    storageKey,
+    EMPTY_OPEN_VALUES,
+    isStringArray,
+  );
 
   if (subjects.length === 0) return <EmptyPanel message={emptyMessage} />;
 
@@ -747,7 +875,7 @@ function SubjectMonitoringList({
                   <Tooltip label="View report" position="top" withArrow withinPortal>
                     <Box
                       component="span"
-                      onClick={(e) => { e.stopPropagation(); router.push(href); }}
+                      onClick={(e) => { e.stopPropagation(); onOpenReport(href); }}
                       style={{
                         alignItems: "center",
                         backgroundColor: "#4EAE4A",
@@ -838,7 +966,7 @@ function SubjectMonitoringList({
                   />
                 </Group>
                 <Tooltip label="View report" position="top" withArrow withinPortal>
-                  <Button size="compact-sm" color="#4EAE4A" px={6} onClick={() => router.push(href)}>
+                  <Button size="compact-sm" color="#4EAE4A" px={6} onClick={() => onOpenReport(href)}>
                     View
                   </Button>
                 </Tooltip>
@@ -882,14 +1010,21 @@ function SectionAccordion({
   rowLabel,
   emptyMessage,
   from,
+  storageKey = null,
+  onOpenReport,
 }: {
   sections: ReportMonitoringSectionGroup[];
   rowLabel: (row: ReportMonitoringRow) => string;
   emptyMessage: string;
   from?: string;
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
-  const router = useRouter();
-  const [openSections, setOpenSections] = useState<string[]>([]);
+  const [openSections, setOpenSections] = useReportsSessionState(
+    storageKey,
+    EMPTY_OPEN_VALUES,
+    isStringArray,
+  );
 
   if (sections.length === 0) return <EmptyPanel message={emptyMessage} />;
 
@@ -921,7 +1056,7 @@ function SectionAccordion({
                 component="span"
                 onClick={(event) => {
                   event.stopPropagation();
-                  router.push(viewHref);
+                  onOpenReport(viewHref);
                 }}
                 style={{
                   alignItems: "center",
@@ -970,11 +1105,18 @@ function SectionAccordion({
 
 function HandledSubjectsAccordion({
   subjects,
+  storageKey = null,
+  onOpenReport,
 }: {
   subjects: ReportMonitoringSubjectGroup[];
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
-  const [openSubjects, setOpenSubjects] = useState<string[]>([]);
-  const router = useRouter();
+  const [openSubjects, setOpenSubjects] = useReportsSessionState(
+    storageKey,
+    EMPTY_OPEN_VALUES,
+    isStringArray,
+  );
 
   if (subjects.length === 0) return <EmptyPanel message="No assigned subjects found." />;
 
@@ -1005,7 +1147,7 @@ function HandledSubjectsAccordion({
                 <Tooltip label="View report" position="top" withArrow withinPortal>
                   <Box
                     component="span"
-                    onClick={(e) => { e.stopPropagation(); router.push(href); }}
+                    onClick={(e) => { e.stopPropagation(); onOpenReport(href); }}
                     style={{
                       alignItems: "center",
                       backgroundColor: "#4EAE4A",
@@ -1057,10 +1199,14 @@ function GradeMonitoring({
   grades,
   emptyMessage,
   from,
+  storageKey = null,
+  onOpenReport,
 }: {
   grades: ReportMonitoringGradeGroup[];
   emptyMessage: string;
   from?: string;
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
   const allSubjects = grades.flatMap((g) => g.subjects);
 
@@ -1071,6 +1217,8 @@ function GradeMonitoring({
       showGrade={true}
       from={from}
       collapsible
+      storageKey={storageKey}
+      onOpenReport={onOpenReport}
     />
   );
 }
@@ -1079,16 +1227,22 @@ function SubjectGroupMonitoring({
   groups,
   emptyMessage,
   from,
+  storageKey = null,
+  onOpenReport,
 }: {
   groups: ReportMonitoringCoordinatorGroup[];
   emptyMessage: string;
   from?: string;
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
   return (
     <ReportsSubjectGroupMonitoring
       groups={groups}
       emptyMessage={emptyMessage}
       from={from}
+      storageKey={storageKey}
+      onOpenReport={onOpenReport}
     />
   );
 }
@@ -1097,12 +1251,20 @@ function ReportsSubjectGroupMonitoring({
   groups,
   emptyMessage,
   from,
+  storageKey = null,
+  onOpenReport,
 }: {
   groups: ReportMonitoringCoordinatorGroup[];
   emptyMessage: string;
   from?: string;
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
-  const [openGroups, setOpenGroups] = useState<string[]>([]);
+  const [openGroups, setOpenGroups] = useReportsSessionState(
+    storageKey,
+    EMPTY_OPEN_VALUES,
+    isStringArray,
+  );
 
   if (groups.length === 0) return <EmptyPanel message={emptyMessage} />;
 
@@ -1151,6 +1313,7 @@ function ReportsSubjectGroupMonitoring({
               showGrade={true}
               from={from}
               subjectStatusDisplay="bar"
+              onOpenReport={onOpenReport}
             />
           </Accordion.Panel>
         </Accordion.Item>
@@ -1159,8 +1322,13 @@ function ReportsSubjectGroupMonitoring({
   );
 }
 
-function AdvisoryList({ sections }: { sections: ReportMonitoringSectionGroup[] }) {
-  const router = useRouter();
+function AdvisoryList({
+  sections,
+  onOpenReport,
+}: {
+  sections: ReportMonitoringSectionGroup[];
+  onOpenReport: (href: string) => void;
+}) {
   if (sections.length === 0) return <EmptyPanel message="No advisory reports found." />;
   return (
     <Stack gap="xs">
@@ -1193,7 +1361,7 @@ function AdvisoryList({ sections }: { sections: ReportMonitoringSectionGroup[] }
               size="compact-sm"
               color="#4EAE4A"
               px={6}
-              onClick={() => router.push(href)}
+              onClick={() => onOpenReport(href)}
             >
               View
             </Button>
@@ -1208,10 +1376,16 @@ function AssignedReports({
   tree,
   view,
   onViewChange,
+  advisoryStorageKey,
+  handledStorageKey,
+  onOpenReport,
 }: {
   tree: ReportMonitoringTree;
-  view: "advisory" | "assigned";
-  onViewChange: (v: "advisory" | "assigned") => void;
+  view: AssignedReportView;
+  onViewChange: (v: AssignedReportView) => void;
+  advisoryStorageKey?: string | null;
+  handledStorageKey?: string | null;
+  onOpenReport: (href: string) => void;
 }) {
   const hasAdvisory = tree.assigned.advisorySections.length > 0;
   const hasHandled = tree.assigned.handledSections.length > 0;
@@ -1277,22 +1451,36 @@ function AssignedReports({
           rowLabel={(row) => row.subjectName}
           emptyMessage="No advisory reports found."
           from="advisory"
+          storageKey={advisoryStorageKey}
+          onOpenReport={onOpenReport}
         />
       ) : (
         <HandledSubjectsAccordion
           subjects={handledSubjectGroups}
+          storageKey={handledStorageKey}
+          onOpenReport={onOpenReport}
         />
       )}
     </Stack>
   );
 }
 
-function ReportsMonitoring({ tree }: { tree: ReportMonitoringTree }) {
+function ReportsMonitoring({
+  tree,
+  storageKey = null,
+  onOpenReport,
+}: {
+  tree: ReportMonitoringTree;
+  storageKey?: string | null;
+  onOpenReport: (href: string) => void;
+}) {
   return (
     <ReportsSubjectGroupMonitoring
       groups={tree.allMonitoring.subjectGroups}
       emptyMessage="No subject group reports found."
       from="all"
+      storageKey={storageKey}
+      onOpenReport={onOpenReport}
     />
   );
 }
@@ -1368,20 +1556,63 @@ function LoadingState() {
 
 export default function ReportsBrowser() {
   const { user } = useAuth();
+  const router = useRouter();
   const reportScope = useReportPermissions();
-  const [loading, setLoading] = useState(true);
-  const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
+  const treeScopeKey = makeReportsTreeScopeKey(reportScope);
+  const treeStorageKey = makeReportsStorageKey(user?.id, `tree:${treeScopeKey}`);
+  const cachedTree = useMemo(
+    () => readStoredReportsState(treeStorageKey, emptyTree, isReportMonitoringTree),
+    [treeStorageKey],
+  );
+  const hasCachedTree = cachedTree !== emptyTree;
+  const [loading, setLoading] = useState(() => !hasCachedTree);
+  const [tree, setTree] = useState<ReportMonitoringTree>(() => cachedTree);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [assignedView, setAssignedView] = useState<"advisory" | "assigned">("advisory");
+  const storageKeys = useMemo(
+    () => ({
+      assignedView: makeReportsStorageKey(user?.id, "assigned-view"),
+      advisorySections: makeReportsStorageKey(user?.id, "assigned-advisory-sections"),
+      handledSubjects: makeReportsStorageKey(user?.id, "assigned-handled-subjects"),
+      gradeSubjects: makeReportsStorageKey(user?.id, "grade-subjects"),
+      subjectGroups: makeReportsStorageKey(user?.id, "subject-groups"),
+      allGroups: makeReportsStorageKey(user?.id, "all-groups"),
+      scroll: makeReportsStorageKey(user?.id, "scroll"),
+      tree: treeStorageKey,
+    }),
+    [treeStorageKey, user?.id],
+  );
+  const [assignedView, setAssignedView] = useReportsSessionState<AssignedReportView>(
+    storageKeys.assignedView,
+    "advisory",
+    isAssignedReportView,
+  );
 
   const loadData = async (forceRefresh = false) => {
-    setLoading(true);
+    const storedTree = forceRefresh
+      ? emptyTree
+      : readStoredReportsState(storageKeys.tree, emptyTree, isReportMonitoringTree);
+    const hasStoredTree = storedTree !== emptyTree;
+
+    if (forceRefresh && storageKeys.tree && typeof window !== "undefined") {
+      window.sessionStorage.removeItem(storageKeys.tree);
+    }
+
+    if (hasStoredTree) {
+      setTree(storedTree);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
       if (forceRefresh) invalidateReportsCache();
-      setTree(await fetchReportMonitoringTreeFromApi());
+      const freshTree = await fetchReportMonitoringTreeFromApi();
+      setTree(freshTree);
+      if (storageKeys.tree && typeof window !== "undefined") {
+        window.sessionStorage.setItem(storageKeys.tree, JSON.stringify(freshTree));
+      }
     } catch (error) {
-      setTree(emptyTree);
+      if (!hasStoredTree) setTree(emptyTree);
       setLoadError(
         error instanceof Error
           ? error.message
@@ -1412,6 +1643,25 @@ export default function ReportsBrowser() {
       reportScope.canMonitorSubjects,
     [reportScope],
   );
+
+  const openReport = useCallback(
+    (href: string) => {
+      saveReportsScrollPosition(storageKeys.scroll);
+      router.push(href);
+    },
+    [router, storageKeys.scroll],
+  );
+
+  useEffect(() => {
+    if (loading || reportScope.scopeLoading || !hasAnyVisibleSection) return;
+    restoreReportsScrollPosition(storageKeys.scroll);
+  }, [
+    hasAnyVisibleSection,
+    loading,
+    reportScope.scopeLoading,
+    storageKeys.scroll,
+    tree,
+  ]);
 
   if (loading || reportScope.scopeLoading) return <LoadingState />;
 
@@ -1454,6 +1704,9 @@ export default function ReportsBrowser() {
                 tree={tree}
                 view={assignedView}
                 onViewChange={setAssignedView}
+                advisoryStorageKey={storageKeys.advisorySections}
+                handledStorageKey={storageKeys.handledSubjects}
+                onOpenReport={openReport}
               />
           </FixedReportSection>
         )}
@@ -1466,6 +1719,8 @@ export default function ReportsBrowser() {
                 grades={tree.gradeMonitoring}
                 emptyMessage="No active grade subject leader assignment found for this school year."
                 from="grade"
+                storageKey={storageKeys.gradeSubjects}
+                onOpenReport={openReport}
               />
           </FixedReportSection>
         )}
@@ -1478,6 +1733,8 @@ export default function ReportsBrowser() {
                 groups={tree.subjectGroupMonitoring}
                 emptyMessage="No active subject group assignment found for this school year."
                 from="subject"
+                storageKey={storageKeys.subjectGroups}
+                onOpenReport={openReport}
               />
           </FixedReportSection>
         )}
@@ -1486,7 +1743,11 @@ export default function ReportsBrowser() {
           <FixedReportSection
             header={<ReportsMonitoringAccordionHeader tree={tree} />}
           >
-              <ReportsMonitoring tree={tree} />
+              <ReportsMonitoring
+                tree={tree}
+                storageKey={storageKeys.allGroups}
+                onOpenReport={openReport}
+              />
           </FixedReportSection>
         )}
       </Stack>

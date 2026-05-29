@@ -67,6 +67,7 @@ export type ReportExamCard = {
   title: string;
   totalItems: number;
   examDate: string | null;
+  curriculumSubjectId: number;
   subjectId: number | null;
   subjectName: string;
   subjectType: "BOTH" | "SSES" | null;
@@ -202,6 +203,7 @@ type SubjectJoin = {
 };
 
 type CurriculumSubjectJoin = {
+  curriculum_subject_id: number | null;
   subject_id: number | null;
   subjects: SubjectJoin | SubjectJoin[] | null;
 };
@@ -422,6 +424,7 @@ function isSubjectApplicableToSection(
 }
 
 function getSubjectInfo(exam: ExamJoin): {
+  curriculumSubjectId: number;
   subjectId: number | null;
   subjectName: string;
   subjectType: "BOTH" | "SSES" | null;
@@ -429,6 +432,7 @@ function getSubjectInfo(exam: ExamJoin): {
   const curriculumJoin = firstJoin(exam.curriculum_subjects);
   const subjectJoin = firstJoin(curriculumJoin?.subjects);
   return {
+    curriculumSubjectId: curriculumJoin?.curriculum_subject_id ?? 0,
     subjectId: curriculumJoin?.subject_id ?? null,
     subjectName: subjectJoin?.name ?? "Unknown Subject",
     subjectType: subjectJoin?.subject_type ?? null,
@@ -911,7 +915,7 @@ async function fetchReportExamCardsForContext(
   const { data, error } = await db
     .from("exam_assignments")
     .select(
-      "id, exam_id, section_id, exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(subject_id, subjects(name, subject_type)))",
+      "id, exam_id, section_id, exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(curriculum_subject_id, subject_id, subjects(name, subject_type)))",
     )
     .in("section_id", sectionIds)
     .is("exams.deleted_at", null);
@@ -947,6 +951,7 @@ async function fetchReportExamCardsForContext(
       title: examJoin.title,
       totalItems: resolveReportTotalItems(examJoin),
       examDate: examJoin.exam_date,
+      curriculumSubjectId: subjectInfo.curriculumSubjectId,
       subjectId: subjectInfo.subjectId,
       subjectName: subjectInfo.subjectName,
       subjectType: subjectInfo.subjectType,
