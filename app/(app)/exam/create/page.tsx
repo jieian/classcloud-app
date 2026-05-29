@@ -682,9 +682,9 @@ export default function CreateExamPage() {
   // ── Step content ──
   const renderStep0 = () => (
     <Stack gap="md">
-      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Specify Exam Information</Text>}
-      <Paper p="lg" withBorder radius="md">
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Details</Text>
+      {!isMobile && <Text size="xl" fw={700} c="#298925">Specify Exam Information</Text>}
+      <Paper p="lg" withBorder radius="md" style={{ borderColor: '#B8B8B8', borderRadius: 8 }}>
+        <Text size="lg" fw={700} mb="md" c="#298925">Exam Details</Text>
         {dataLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {[
@@ -818,7 +818,7 @@ export default function CreateExamPage() {
                 <Text size="sm" fw={600} mb={4}>
                   Examination Name{generatedExamNames.length > 1 ? 's' : ''}
                 </Text>
-                <Paper withBorder p="sm" radius="md" bg="white" style={{ borderColor: 'var(--mantine-color-gray-3)' }}>
+                <Paper withBorder p="sm" radius="md" bg="white" style={{ borderColor: '#B8B8B8' }}>
                   <Stack gap={6}>
                     {generatedExamNames.map((name, idx) => (
                       <Text key={`${name}-${idx}`} size="sm" fw={600} c="dark" title={name} className="truncate">
@@ -842,9 +842,9 @@ export default function CreateExamPage() {
 
   const renderStep1 = () => (
     <Stack gap="md">
-      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Items and Choices</Text>}
-      <Paper p="lg" withBorder radius="md">
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Configuration</Text>
+      {!isMobile && <Text size="xl" fw={700} c="#298925">Set Items and Choices</Text>}
+      <Paper p="lg" withBorder radius="md" style={{ borderColor: '#B8B8B8', borderRadius: 8 }}>
+        <Text size="lg" fw={700} mb="md" c="#298925">Exam Configuration</Text>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-white border border-gray-200 rounded-md p-4">
             <p className="text-sm font-semibold text-gray-800 mb-3 text-center">Number of Items</p>
@@ -886,9 +886,9 @@ export default function CreateExamPage() {
 
   const renderStep2 = () => (
     <Stack gap="md">
-      {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Learning Objectives</Text>}
-      <Paper p="lg" withBorder radius="md">
-        <Text size="md" fw={700} mb="md" c="#4EAE4A">Map Objectives to Items</Text>
+      {!isMobile && <Text size="xl" fw={700} c="#298925">Set Learning Objectives</Text>}
+      <Paper p="lg" withBorder radius="md" style={{ borderColor: '#B8B8B8', borderRadius: 8 }}>
+        <Text size="lg" fw={700} mb="md" c="#298925">Map Objectives to Items</Text>
         <Stack gap="sm">
           {(() => {
             const remaining = Math.max(totalItems - uniqueCovered, 0);
@@ -1035,9 +1035,9 @@ export default function CreateExamPage() {
     const remainingCount = unansweredQuestions.length;
     return (
       <Stack gap="md">
-        {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Set Answer Key</Text>}
-        <Paper p="lg" withBorder radius="md">
-          <Text size="md" fw={700} mb="md" c="#4EAE4A">Choose Answer Key</Text>
+        {!isMobile && <Text size="xl" fw={700} c="#298925">Set Answer Key</Text>}
+        <Paper p="lg" withBorder radius="md" style={{ borderColor: '#B8B8B8', borderRadius: 8 }}>
+          <Text size="lg" fw={700} mb="md" c="#298925">Choose Answer Key</Text>
           <Stack gap="md">
             <div className="bg-white border border-gray-200 rounded-xl p-4 text-center mx-auto w-full max-w-md">
               <p className="text-3xl font-bold text-gray-900">{answeredCount}/{totalItems}</p>
@@ -1211,9 +1211,9 @@ export default function CreateExamPage() {
 
     return (
       <Stack gap="md">
-        {!isMobile && <Text size="lg" fw={700} c="#4EAE4A">Review & Create</Text>}
-        <Paper p="lg" withBorder radius="md">
-          <Text size="md" fw={700} mb="md" c="#4EAE4A">Exam Summary</Text>
+        {!isMobile && <Text size="xl" fw={700} c="#298925">Review & Create</Text>}
+        <Paper p="lg" withBorder radius="md" style={{ borderColor: '#B8B8B8', borderRadius: 8 }}>
+          <Text size="lg" fw={700} mb="md" c="#298925">Exam Summary</Text>
           <Stack gap="md">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               {[
@@ -1450,7 +1450,7 @@ export default function CreateExamPage() {
   if (!dataLoading && (hasActiveSchoolYear === false || !quarters.some((q) => q.is_active))) {
     return (
       <>
-        <h1 className="text-2xl font-bold mb-4 text-[#597D37]">Create Examination</h1>
+        <h1 className="text-3xl font-bold mb-6 text-[#597D37]">Create Examination</h1>
         <NoActivePeriodBanner />
       </>
     );
@@ -1458,7 +1458,7 @@ export default function CreateExamPage() {
 
   return (
     <>
-      <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Create Examination</h1>
+      <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Create Examination</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
         {isMobile ? (
           <>

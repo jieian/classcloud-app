@@ -162,8 +162,8 @@ const STEP_LABELS: Record<string, string> = {
   submit: 'Save Scanned Results',
 };
 const STEP_ORDER = ['capture', 'review', 'submit'] as const;
-const STEP_HEADING_COLOR = '#4EAE4A';
-const STEP_BORDER_COLOR = '#e0e0e0';
+const STEP_HEADING_COLOR = '#298925';
+const STEP_BORDER_COLOR = '#B8B8B8';
 const SCAN_PAGE_CACHE_TTL_MS = 2 * 60 * 1000;
 const getScanPageCacheKey = (id: number) => `exam:scan:${id}:cache`;
 const getScanRosterScrollKey = (id: number) => `exam:scan:${id}:roster-scroll`;
@@ -1388,7 +1388,7 @@ export default function ScanPapersPage() {
   if (examLoading) {
     return (
       <>
-        <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
+        <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Scan Papers</h1>
         <Stack gap="md" maw={1000} style={{ width: '100%' }}>
           <Box>
             <BackButton size="sm" href="/exam">
@@ -1502,7 +1502,7 @@ export default function ScanPapersPage() {
   if (isStudentStep) {
     return (
       <>
-        <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
+        <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Scan Papers</h1>
         <Stack gap="md" maw={1000} style={{ width: '100%' }}>
           <Box>
             <BackButton size="sm" href="/exam">
@@ -2087,7 +2087,7 @@ export default function ScanPapersPage() {
           )}
         </div>
       )}
-      <h1 className="text-xl md:text-2xl font-bold mb-2 md:mb-4 text-[#597D37]">Scan Papers</h1>
+      <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Scan Papers</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
       <div style={isMobile ? { paddingBottom: 80 } : undefined}>
       <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>

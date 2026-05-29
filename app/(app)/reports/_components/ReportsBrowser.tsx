@@ -1647,6 +1647,9 @@ export default function ReportsBrowser() {
   const openReport = useCallback(
     (href: string) => {
       saveReportsScrollPosition(storageKeys.scroll);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("reports:came-from-browser", "1");
+      }
       router.push(href);
     },
     [router, storageKeys.scroll],
@@ -1654,14 +1657,21 @@ export default function ReportsBrowser() {
 
   useEffect(() => {
     if (loading || reportScope.scopeLoading || !hasAnyVisibleSection) return;
-    restoreReportsScrollPosition(storageKeys.scroll);
-  }, [
-    hasAnyVisibleSection,
-    loading,
-    reportScope.scopeLoading,
-    storageKeys.scroll,
-    tree,
-  ]);
+    const cameFromBrowser =
+      typeof window !== "undefined" &&
+      window.sessionStorage.getItem("reports:came-from-browser") === "1";
+    if (cameFromBrowser) {
+      window.sessionStorage.removeItem("reports:came-from-browser");
+      restoreReportsScrollPosition(storageKeys.scroll);
+    } else {
+      const scrollContainer = getAppShellScrollContainer();
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0;
+      } else {
+        window.scrollTo({ top: 0 });
+      }
+    }
+  }, [hasAnyVisibleSection, loading, reportScope.scopeLoading, storageKeys.scroll]);
 
   if (loading || reportScope.scopeLoading) return <LoadingState />;
 
