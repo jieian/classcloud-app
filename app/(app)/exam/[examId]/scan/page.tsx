@@ -470,11 +470,13 @@ export default function ScanPapersPage() {
       });
   }, [examId, persistScanPageCache]);
 
-  // Scope-check: teachers (limited_access only) must be assigned to one of the exam's sections
+  // Scope-check: in faculty view, even full-access admins are treated as teachers
   useEffect(() => {
     const hasFullAccess = permissions.includes("exams.full_access");
     const hasLimitedAccess = permissions.includes("exams.limited_access");
-    if (!exam || !user?.id || hasFullAccess || !hasLimitedAccess) {
+    const storedViewMode = localStorage.getItem("examViewMode") ?? "admin";
+    const effectiveFullAccess = hasFullAccess && storedViewMode !== "faculty";
+    if (!exam || !user?.id || effectiveFullAccess || (!hasFullAccess && !hasLimitedAccess)) {
       setAccessDenied(false);
       return;
     }
@@ -487,7 +489,12 @@ export default function ScanPapersPage() {
     }
     invalidateReportsCache();
     fetchMyAssignedScope(user.id).then((scope) => {
-      const hasAccess = examSectionIds.some((id) => scope.sectionIds.includes(id));
+      const examCurriculumSubjectId = exam.curriculum_subject_id;
+      const hasAccess = examSectionIds.some((sectionId) =>
+        scope.assignedPairs.some(
+          (pair) => pair.sectionId === sectionId && pair.curriculumSubjectId === examCurriculumSubjectId,
+        ),
+      );
       setAccessDenied(!hasAccess);
     });
   }, [exam, user?.id, permissions]);
@@ -1579,38 +1586,9 @@ export default function ScanPapersPage() {
     );
   }
 
-  if (!examLoading && accessDenied) {
-    return (
-      <Center h="70vh">
-        <Stack align="center" gap="md">
-          <IconLock size={48} color="#808898" stroke={1.5} />
-          <Title order={2} c="#597D37">Access Denied</Title>
-          <Text c="#808898" ta="center" maw={400}>
-            You don&apos;t have permission to access this examination. Contact your administrator if you think this is a mistake.
-          </Text>
-          <Button variant="outline" color="#4EAE4A" onClick={() => router.push('/exam')}>
-            Back to Examinations
-          </Button>
-        </Stack>
-      </Center>
-    );
-  }
-
-  if (!examLoading && !exam) {
-    return (
-      <Center h="70vh">
-        <Stack align="center" gap="md">
-          <IconLock size={48} color="#808898" stroke={1.5} />
-          <Title order={2} c="#597D37">Access Denied</Title>
-          <Text c="#808898" ta="center" maw={400}>
-            You don&apos;t have permission to access this examination. Contact your administrator if you think this is a mistake.
-          </Text>
-          <Button variant="outline" color="#4EAE4A" onClick={() => router.push('/exam')}>
-            Back to Examinations
-          </Button>
-        </Stack>
-      </Center>
-    );
+  if (!examLoading && (accessDenied || !exam)) {
+    router.replace("/unauthorized");
+    return null;
   }
 
   // Still loading — exam not yet available; return null to avoid rendering with null exam.

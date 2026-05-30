@@ -24,13 +24,11 @@ export function useReportPermissions(): ReportPermissionScope {
   const hasAnyReportAccess =
     canViewAll || canViewAssigned || canMonitorGradeLevel || canMonitorSubjects;
 
-  const needsScope = !canViewAll && hasAnyReportAccess;
-
   const [assignedScope, setAssignedScope] = useState<AssignedScope | null>(null);
-  const [scopeLoading, setScopeLoading] = useState(needsScope);
+  const [scopeLoading, setScopeLoading] = useState(hasAnyReportAccess);
 
   useEffect(() => {
-    if (!needsScope || !user?.id) {
+    if (!hasAnyReportAccess || !user?.id) {
       setScopeLoading(false);
       return;
     }
@@ -38,7 +36,7 @@ export function useReportPermissions(): ReportPermissionScope {
     fetchMyAssignedScope(user.id)
       .then(setAssignedScope)
       .finally(() => setScopeLoading(false));
-  }, [needsScope, user?.id]);
+  }, [hasAnyReportAccess, user?.id]);
 
   return {
     canViewAll,
@@ -46,8 +44,8 @@ export function useReportPermissions(): ReportPermissionScope {
     canMonitorGradeLevel,
     canMonitorSubjects,
     hasAnyReportAccess,
-    assignedScope: canViewAll ? null : assignedScope,
-    scopeLoading: canViewAll ? false : scopeLoading,
+    assignedScope,
+    scopeLoading,
   };
 }
 

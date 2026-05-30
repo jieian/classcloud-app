@@ -1810,7 +1810,37 @@ export default function ReportAnalyticsClient({
   const routeAccessDenied = useMemo(() => {
     if (routeAccessCheckPending) return false;
 
+    // ── Permission-level gates — apply across all modes ──────────────────
+    if (fromParam === "all" && !reportScope.canViewAll) return true;
+    if (fromParam === "grade" && !reportScope.canMonitorGradeLevel) return true;
+    if (fromParam === "subject" && !reportScope.canMonitorSubjects) return true;
+
+    // ── Subject mode ─────────────────────────────────────────────────────
     if (mode === "subject") {
+      // GSL: block even canViewAll users who are not the actual GSL for this curriculum subject
+      if (fromParam === "grade") {
+        const curriculumSubjectId = subjectOverview?.curriculumSubjectId;
+        if (curriculumSubjectId == null) return false; // still loading
+        return !reportScope.assignedScope?.glCurriculumSubjectIds.includes(curriculumSubjectId);
+      }
+
+      // Subject coordinator: must coordinate the subject group that contains this curriculum subject
+      if (fromParam === "subject") {
+        const curriculumSubjectId = subjectOverview?.curriculumSubjectId;
+        if (curriculumSubjectId == null) return false; // still loading
+        return !reportScope.assignedScope?.coordinatorCurriculumSubjectIds.includes(curriculumSubjectId);
+      }
+
+      // Assigned subject: must directly teach that curriculum subject (no canViewAll bypass)
+      if (fromParam === "assigned") {
+        if (!reportScope.canViewAssigned || !reportScope.assignedScope) return true;
+        const curriculumSubjectId = subjectOverview?.curriculumSubjectId;
+        if (curriculumSubjectId == null) return false; // still loading
+        return !reportScope.assignedScope.assignedPairs.some(
+          (p) => p.curriculumSubjectId === curriculumSubjectId,
+        );
+      }
+
       if (Number.isFinite(examParam)) {
         return selectedCard ? !canAccessReportCard(selectedCard, reportScope) : false;
       }
@@ -1825,6 +1855,23 @@ export default function ReportAnalyticsClient({
       }
 
       return false;
+    }
+
+    // ── Section mode ─────────────────────────────────────────────────────
+    // Advisory: must be the actual adviser — no canViewAll bypass
+    if (fromParam === "advisory") {
+      if (!reportScope.assignedScope) return true;
+      const sectionId = Number.isFinite(sectionParam) ? sectionParam : selectedSectionId;
+      if (sectionId == null) return false;
+      return !reportScope.assignedScope.advisorySectionIds.includes(sectionId);
+    }
+
+    // Assigned section: must directly teach in that section — no canViewAll bypass
+    if (fromParam === "assigned") {
+      if (!reportScope.canViewAssigned || !reportScope.assignedScope) return true;
+      const sectionId = Number.isFinite(sectionParam) ? sectionParam : selectedSectionId;
+      if (sectionId == null) return false;
+      return !reportScope.assignedScope.sectionIds.includes(sectionId);
     }
 
     if (Number.isFinite(examParam)) {
@@ -1858,6 +1905,7 @@ export default function ReportAnalyticsClient({
     cards,
     consolidatedSectionFilter,
     examParam,
+    fromParam,
     gradeParam,
     mode,
     reportScope,
@@ -1871,7 +1919,8 @@ export default function ReportAnalyticsClient({
   ]);
 
   useEffect(() => {
-    if (routeAccessDenied) router.replace("/unauthorized");
+    if (!routeAccessDenied) return;
+    router.replace("/unauthorized");
   }, [routeAccessDenied, router]);
 
   useEffect(() => {

@@ -1696,6 +1696,9 @@ export type AssignedScope = {
   assignedPairs: { sectionId: number; curriculumSubjectId: number }[];
   glSectionIds: number[];
   subjectSectionIds: number[];
+  advisorySectionIds: number[];
+  glCurriculumSubjectIds: number[];
+  coordinatorCurriculumSubjectIds: number[];
 };
 
 export type ReportMonitoringStatus = ReportSubjectStatus;
@@ -2492,6 +2495,9 @@ export async function fetchMyAssignedScope(
     assignedPairs: [],
     glSectionIds: [],
     subjectSectionIds: [],
+    advisorySectionIds: [],
+    glCurriculumSubjectIds: [],
+    coordinatorCurriculumSubjectIds: [],
   };
 
   type MyRow = {
@@ -2566,6 +2572,7 @@ export async function fetchMyAssignedScope(
   const myCurriculumSubjectIds = new Set<number>();
   const mySubjectIds = new Set<number>();
   const myGradeLevelIds = new Set<number>();
+  const myGlCurriculumSubjectIds = new Set<number>();
   const assignedPairs: { sectionId: number; curriculumSubjectId: number }[] = [];
 
   for (const row of (myData ?? []) as MyRow[]) {
@@ -2589,14 +2596,59 @@ export async function fetchMyAssignedScope(
   };
 
   for (const row of (gslData ?? []) as GslScopeRow[]) {
-    if (row.curriculum_subject_id != null) myCurriculumSubjectIds.add(row.curriculum_subject_id);
+    if (row.curriculum_subject_id != null) {
+      myCurriculumSubjectIds.add(row.curriculum_subject_id);
+      myGlCurriculumSubjectIds.add(row.curriculum_subject_id);
+    }
     if (row.grade_level_id != null) myGradeLevelIds.add(row.grade_level_id);
     const cs = firstJoin(row.curriculum_subjects);
     if (cs?.subject_id != null) mySubjectIds.add(cs.subject_id);
     if (cs?.grade_level_id != null) myGradeLevelIds.add(cs.grade_level_id);
   }
 
-  if (myCurriculumSubjectIds.size === 0 && mySubjectIds.size === 0 && myGradeLevelIds.size === 0) {
+  const { data: advisoryData } = await db
+    .from("sections")
+    .select("section_id")
+    .eq("adviser_id", userId)
+    .is("deleted_at", null);
+
+  const advisorySectionIds = (advisoryData ?? [])
+    .map((r: { section_id: number | null }) => r.section_id)
+    .filter((id: number | null): id is number => id != null);
+
+  // Subject coordinator: resolve which curriculum subjects this user coordinates
+  const { data: coordGroupData } = activeSyId == null
+    ? { data: [] }
+    : await db
+        .from("subject_coordinators")
+        .select("subject_group_id")
+        .eq("user_id", userId)
+        .eq("sy_id", activeSyId)
+        .is("deleted_at", null);
+
+  const coordGroupIds = (coordGroupData ?? [])
+    .map((r: { subject_group_id: number | null }) => r.subject_group_id)
+    .filter((id: number | null): id is number => id != null);
+
+  let coordinatorCurriculumSubjectIds: number[] = [];
+  if (coordGroupIds.length > 0) {
+    const { data: memberData } = await db
+      .from("subject_group_members")
+      .select("curriculum_subject_id")
+      .in("subject_group_id", coordGroupIds)
+      .is("deleted_at", null);
+    coordinatorCurriculumSubjectIds = (memberData ?? [])
+      .map((r: { curriculum_subject_id: number | null }) => r.curriculum_subject_id)
+      .filter((id: number | null): id is number => id != null);
+  }
+
+  if (
+    myCurriculumSubjectIds.size === 0 &&
+    mySubjectIds.size === 0 &&
+    myGradeLevelIds.size === 0 &&
+    advisorySectionIds.length === 0 &&
+    coordinatorCurriculumSubjectIds.length === 0
+  ) {
     return useCache ? cacheSet(cacheKey, empty) : empty;
   }
 
@@ -2657,6 +2709,9 @@ export async function fetchMyAssignedScope(
     assignedPairs,
     glSectionIds,
     subjectSectionIds,
+    advisorySectionIds,
+    glCurriculumSubjectIds: Array.from(myGlCurriculumSubjectIds),
+    coordinatorCurriculumSubjectIds,
   };
 
   return useCache ? cacheSet(cacheKey, scope) : scope;
