@@ -493,7 +493,7 @@ function canAccessConsolidated({
   sectionIds: number[];
   scope: Awaited<ReturnType<typeof fetchMyAssignedScope>>;
 }) {
-  if (permissions.includes("reports.view_all") || permissions.includes("reports.approve")) return true;
+  if (permissions.includes("reports.view_all")) return true;
   if (curriculumSubjectId == null) return false;
   if (
     permissions.includes("reports.monitor_grade_level") &&
@@ -731,7 +731,6 @@ const _GET = async function (request: Request) {
   const permissions = getPermissionsFromUser(user);
   const hasReportPermission =
     permissions.includes("reports.view_all") ||
-    permissions.includes("reports.approve") ||
     permissions.includes("reports.view_assigned") ||
     permissions.includes("reports.monitor_grade_level") ||
     permissions.includes("reports.monitor_subjects");

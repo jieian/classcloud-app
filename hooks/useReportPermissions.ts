@@ -17,9 +17,7 @@ export type ReportPermissionScope = {
 export function useReportPermissions(): ReportPermissionScope {
   const { user, permissions } = useAuth();
 
-  const canViewAll =
-    permissions.includes("reports.view_all") ||
-    permissions.includes("reports.approve");
+  const canViewAll = permissions.includes("reports.view_all");
   const canViewAssigned = permissions.includes("reports.view_assigned");
   const canMonitorGradeLevel = permissions.includes("reports.monitor_grade_level");
   const canMonitorSubjects = permissions.includes("reports.monitor_subjects");

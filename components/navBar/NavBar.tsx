@@ -81,7 +81,6 @@ const navigationData: NavigationLink[] = [
     requiredPermissions: [
       "school_year.full_access",
       "curriculum.full_access",
-      "curriculum.limited_access",
       "faculty.full_access",
       "classes.full_access",
       "students.limited_access",
@@ -98,10 +97,7 @@ const navigationData: NavigationLink[] = [
         label: "Curriculum",
         key: "curriculum",
         href: "/school/curriculum",
-        requiredPermissions: [
-          "curriculum.full_access",
-          "curriculum.limited_access",
-        ],
+        requiredPermissions: ["curriculum.full_access"],
       },
       {
         label: "Faculty",
@@ -132,7 +128,7 @@ const navigationData: NavigationLink[] = [
     icon: IconFileText,
     label: "Reports",
     href: "/reports",
-    requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects", "reports.approve"],
+    requiredPermissions: ["reports.view_all", "reports.view_assigned", "reports.monitor_grade_level", "reports.monitor_subjects"],
     sublinks: [],
   },
 ];

@@ -17,9 +17,7 @@ const _GET = async function () {
   const tree = await fetchReportMonitoringTree(
     user.id,
     {
-      canViewAll:
-        permissions.includes("reports.view_all") ||
-        permissions.includes("reports.approve"),
+      canViewAll: permissions.includes("reports.view_all"),
       canViewAssigned: permissions.includes("reports.view_assigned"),
       canMonitorGradeLevel: permissions.includes("reports.monitor_grade_level"),
       canMonitorSubjects: permissions.includes("reports.monitor_subjects"),

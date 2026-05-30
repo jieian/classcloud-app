@@ -63,7 +63,6 @@ const PERMISSION_GROUPS: PermGroup[] = [
         type: "radio",
         options: [
           { permName: "curriculum.full_access", display: "Full Access" },
-          { permName: "curriculum.limited_access", display: "Limited Access" },
         ],
       },
       {
@@ -112,11 +111,6 @@ const PERMISSION_GROUPS: PermGroup[] = [
           { permName: "reports.monitor_grade_level", display: "Grade Level" },
           { permName: "reports.monitor_subjects", display: "Subjects" },
         ],
-      },
-      {
-        label: "Approve",
-        type: "checkbox",
-        options: [{ permName: "reports.approve", display: "Approve Reports" }],
       },
     ],
   },

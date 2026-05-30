@@ -191,7 +191,7 @@ function canAccessReport({
   report: ReportRow;
   scope: Awaited<ReturnType<typeof fetchMyAssignedScope>>;
 }): boolean {
-  if (permissions.includes("reports.view_all") || permissions.includes("reports.approve")) {
+  if (permissions.includes("reports.view_all")) {
     return true;
   }
   const sectionId = report.section_id;
@@ -258,7 +258,6 @@ const _GET = async function (request: Request) {
   const permissions = getPermissionsFromUser(user);
   const hasReportPermission =
     permissions.includes("reports.view_all") ||
-    permissions.includes("reports.approve") ||
     permissions.includes("reports.view_assigned") ||
     permissions.includes("reports.monitor_grade_level") ||
     permissions.includes("reports.monitor_subjects");

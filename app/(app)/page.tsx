@@ -54,7 +54,6 @@ const quickActions: QuickAction[] = [
       "reports.view_assigned",
       "reports.monitor_grade_level",
       "reports.monitor_subjects",
-      "reports.approve",
     ],
   },
   {
