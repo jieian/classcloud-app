@@ -269,33 +269,20 @@ export async function fetchAttemptsForExam(examId: number): Promise<ExamScore[]>
 
 /** Delete a single score/attempt by ID. */
 export async function deleteAttempt(attemptId: number): Promise<boolean> {
-  const { error: scoreError } = await supabase
-    .from("scores")
-    .delete()
-    .eq("score_id", attemptId);
-
-  if (!scoreError) return true;
-
-  if (!isMissingResourceError(scoreError.message)) {
-    console.error("[attemptService] delete score error:", scoreError.message);
+  try {
+    const response = await fetch("/api/exams/scores/delete", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scoreId: attemptId }),
+    });
+    if (response.ok) return true;
+    const body = await response.json().catch(() => ({})) as { error?: string };
+    console.error("[attemptService] delete score API error:", body.error ?? response.statusText);
+    return false;
+  } catch (error) {
+    console.error("[attemptService] delete score request failed:", error);
     return false;
   }
-
-  const legacyIdColumns = ["attempt_id", "id"] as const;
-  for (const idCol of legacyIdColumns) {
-    const { error } = await supabase
-      .from(LEGACY_ATTEMPT_TABLE)
-      .delete()
-      .eq(idCol, attemptId);
-
-    if (!error) return true;
-    if (!isMissingResourceError(error.message)) {
-      console.error(`[attemptService] delete legacy attempt error (${idCol}):`, error.message);
-      return false;
-    }
-  }
-
-  return false;
 }
 
 /**

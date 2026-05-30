@@ -13,6 +13,7 @@ import {
   Group,
   Modal,
   Paper,
+  ScrollArea,
   Select,
   Skeleton,
   Table,
@@ -23,6 +24,7 @@ import {
   TableThead,
   TableTr,
   Text,
+  TextInput,
   ThemeIcon,
   Title,
   Stack,
@@ -42,7 +44,7 @@ import {
   IconBoltOff,
 } from '@tabler/icons-react';
 import { detectDocumentInCanvas, processAnswerSheet, type DetectionResult, type LiveDocumentDetectionResult } from '@/lib/services/omrService';
-import { createAttempt, scoreResponses, fetchAttemptsForExam } from '@/lib/services/attemptService';
+import { createAttempt, scoreResponses, fetchAttemptsForExam, deleteAttempt } from '@/lib/services/attemptService';
 import { fetchStudentRoster } from '@/lib/services/classService';
 import { fetchExamById } from '@/lib/services/examService';
 import { useAuth } from '@/context/AuthContext';
@@ -134,24 +136,26 @@ function proficiencyBadge(mpl: number): string {
 function studentHighlightCellStyle(
   isHighlighted: boolean,
   edge: 'start' | 'middle' | 'end' = 'middle',
-): CSSProperties | undefined {
-  if (!isHighlighted) return undefined;
+  color = '#4EAE4A',
+): CSSProperties {
+  const base: CSSProperties = { transition: 'box-shadow 1.2s ease, background-color 1.2s ease' };
+  if (!isHighlighted) return base;
 
   const shadows = [
-    'inset 0 3px 0 #4EAE4A',
-    'inset 0 -3px 0 #4EAE4A',
+    `inset 0 3px 0 ${color}`,
+    `inset 0 -3px 0 ${color}`,
   ];
 
-  if (edge === 'start') shadows.push('inset 3px 0 0 #4EAE4A');
-  if (edge === 'end') shadows.push('inset -3px 0 0 #4EAE4A');
+  if (edge === 'start') shadows.push(`inset 3px 0 0 ${color}`);
+  if (edge === 'end') shadows.push(`inset -3px 0 0 ${color}`);
 
   return {
+    ...base,
     boxShadow: shadows.join(', '),
     borderBottomLeftRadius: edge === 'start' ? 8 : undefined,
     borderTopLeftRadius: edge === 'start' ? 8 : undefined,
     borderBottomRightRadius: edge === 'end' ? 8 : undefined,
     borderTopRightRadius: edge === 'end' ? 8 : undefined,
-    transition: 'box-shadow 1.2s ease',
   };
 }
 
@@ -213,22 +217,29 @@ function StudentMobileRow({
   attempt,
   totalItems,
   isHighlighted,
+  isNonTakerHighlighted,
   isAdminView,
   isLocked,
   onScan,
+  onUndo,
 }: {
   student: RosterStudent;
   attempt: ExamScore | undefined;
   totalItems: number;
   isHighlighted: boolean;
+  isNonTakerHighlighted: boolean;
   isAdminView: boolean;
   isLocked: boolean;
   onScan: (student: RosterStudent) => void;
+  onUndo: (student: RosterStudent) => void;
 }) {
   const [opened, { toggle }] = useDisclosure(false);
   const mpl = attempt ? getMpl(attempt.calculated_score, totalItems) : null;
   const proficiency = mpl != null ? getProficiency(mpl) : null;
   const hasScanned = attempt != null;
+
+  const borderColor = isNonTakerHighlighted ? '#ef4444' : isHighlighted ? '#4EAE4A' : undefined;
+  const bgColor = isNonTakerHighlighted ? '#fef2f2' : isHighlighted ? '#f7fbf4' : undefined;
 
   return (
     <>
@@ -237,8 +248,8 @@ function StudentMobileRow({
         style={{
           cursor: 'pointer',
           padding: '12px 16px',
-          borderLeft: isHighlighted ? '3px solid #4EAE4A' : undefined,
-          backgroundColor: isHighlighted ? '#f7fbf4' : undefined,
+          borderLeft: borderColor ? `3px solid ${borderColor}` : undefined,
+          backgroundColor: bgColor,
           transition: 'background-color 1.2s ease',
         }}
       >
@@ -259,13 +270,18 @@ function StudentMobileRow({
             </div>
           </Group>
           {!isAdminView && (
-            <div onClick={(e) => e.stopPropagation()}>
+            <Group gap={4} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
               <Tooltip label="This examination has already been proceeded." disabled={!isLocked} withArrow>
-                <Button size="xs" radius="md" color={hasScanned ? 'yellow' : '#4EAE4A'} onClick={() => onScan(student)} disabled={isLocked}>
+                <Button size="xs" radius="md" w={72} color={hasScanned ? 'yellow' : '#4EAE4A'} onClick={() => onScan(student)} disabled={isLocked}>
                   {hasScanned ? 'Rescan' : 'Scan'}
                 </Button>
               </Tooltip>
-            </div>
+              <Tooltip label="Remove scan" withArrow disabled={!hasScanned || isLocked}>
+                <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !isLocked ? 'visible' : 'hidden' }} onClick={() => onUndo(student)}>
+                  <IconX size={12} />
+                </Button>
+              </Tooltip>
+            </Group>
           )}
         </Group>
       </div>
@@ -337,6 +353,7 @@ export default function ScanPapersPage() {
   const [scannerScanResult, setScannerScanResult] = useState<DetectionResult | null>(null);
   const [debugImageUrl, setDebugImageUrl] = useState<string | null>(null);
   const [highlightedEnrollmentId, setHighlightedEnrollmentId] = useState<number | null>(null);
+  const [nonTakerHighlightIds, setNonTakerHighlightIds] = useState<Set<number>>(new Set());
   const [warpedImageUrl, setWarpedImageUrl] = useState<string | null>(null);
 
   const [rosterStudents, setRosterStudents] = useState<RosterStudent[]>([]);
@@ -1348,10 +1365,99 @@ export default function ScanPapersPage() {
       notify({ type: 'info', title: 'Already Proceeded', message: 'This examination has already been proceeded to reports.' });
       return;
     }
-    if (rosterStudents.length > 0 && scannedStudentsCount < rosterStudents.length) {
-      notify({ type: 'warning', title: 'Incomplete Scans', message: `Not all students have been scanned yet (${scannedStudentsCount}/${rosterStudents.length}). Please scan all students before proceeding to reports.` });
+
+    const nonTakers = rosterStudents.filter(s => getStudentAttempt(s) == null);
+
+    if (nonTakers.length > 0) {
+      const NonTakerConfirmModal = () => {
+        const [confirmText, setConfirmText] = useState('');
+        const canProceed = confirmText === 'CONFIRM';
+        return (
+          <Stack gap="md">
+            <Text size="sm" c="red" fw={600}>
+              {nonTakers.length} student{nonTakers.length > 1 ? 's' : ''} have not been scanned yet.
+            </Text>
+           
+            <ScrollArea.Autosize mah={200} style={{ border: '1px solid var(--mantine-color-gray-3)', borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}>
+              {(() => {
+                const maleNT = nonTakers.filter(s => s.sex === 'M');
+                const femaleNT = nonTakers.filter(s => s.sex === 'F');
+                return (
+                  <>
+                    {maleNT.length > 0 && (
+                      <>
+                        <div style={{ padding: '4px 12px', backgroundColor: 'var(--mantine-color-gray-1)', borderBottom: '1px solid var(--mantine-color-gray-3)', textAlign: 'center' }}>
+                          <Text size="sm" fw={700} c="dark">Male ({maleNT.length})</Text>
+                        </div>
+                        {maleNT.map((s, i) => (
+                          <div key={s.enrollment_id} style={{ padding: '6px 12px', borderBottom: i < maleNT.length - 1 || femaleNT.length > 0 ? '1px solid var(--mantine-color-gray-2)' : undefined }}>
+                            <Text size="sm" c="dimmed">{s.full_name}</Text>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                    {femaleNT.length > 0 && (
+                      <>
+                        <div style={{ padding: '4px 12px', backgroundColor: 'var(--mantine-color-gray-1)', borderBottom: '1px solid var(--mantine-color-gray-3)', borderTop: maleNT.length > 0 ? '1px solid var(--mantine-color-gray-3)' : undefined, textAlign: 'center' }}>
+                          <Text size="sm" fw={700} c="dark">Female ({femaleNT.length})</Text>
+                        </div>
+                        {femaleNT.map((s, i) => (
+                          <div key={s.enrollment_id} style={{ padding: '6px 12px', borderBottom: i < femaleNT.length - 1 ? '1px solid var(--mantine-color-gray-2)' : undefined }}>
+                            <Text size="sm" c="dimmed">{s.full_name}</Text>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </ScrollArea.Autosize>
+             <Text size="sm">
+              If you proceed, these students will be recorded as <strong>non-takers</strong>. This action cannot be undone.
+            </Text>
+            <TextInput
+              placeholder='Type CONFIRM to proceed'
+              value={confirmText}
+              onChange={e => setConfirmText(e.currentTarget.value)}
+              error={confirmText.length > 0 && !canProceed ? 'Type CONFIRM exactly to enable proceed' : null}
+            />
+            <Group justify="flex-end" gap="sm">
+              <Button
+                variant="outline"
+                color="gray"
+                onClick={() => {
+                  modals.closeAll();
+                  const ids = new Set(nonTakers.map(s => s.enrollment_id));
+                  setNonTakerHighlightIds(ids);
+                  setTimeout(() => setNonTakerHighlightIds(new Set()), 3000);
+                }}
+              >
+                View Non-Takers
+              </Button>
+              <Button
+                color="red"
+                disabled={!canProceed}
+                onClick={() => {
+                  if (!canProceed) return;
+                  modals.closeAll();
+                  void doFinalizeReports();
+                }}
+              >
+                Proceed to Reports
+              </Button>
+            </Group>
+          </Stack>
+        );
+      };
+
+      modals.open({
+        title: 'Students Not Yet Scanned',
+        children: <NonTakerConfirmModal />,
+        ...mobileConfirmModalProps,
+      });
       return;
     }
+
     modals.openConfirmModal({
       title: 'Proceed to Reports?',
       children: (
@@ -1362,6 +1468,33 @@ export default function ScanPapersPage() {
       labels: { confirm: 'Proceed', cancel: 'Stay' },
       confirmProps: { color: '#4EAE4A' },
       onConfirm: () => { void doFinalizeReports(); },
+      ...mobileConfirmModalProps,
+    });
+  };
+
+  const handleUndoScan = (student: RosterStudent) => {
+    const attempt = getStudentAttempt(student);
+    if (!attempt) return;
+    modals.openConfirmModal({
+      title: 'Remove Scan?',
+      children: (
+        <Text size="sm">
+          This will remove the scanned result for <strong>{student.full_name}</strong>. You can scan them again afterward.
+        </Text>
+      ),
+      labels: { confirm: 'Remove', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        const ok = await deleteAttempt(attempt.score_id);
+        if (ok) {
+          const updated = existingAttemptsRef.current.filter(a => a.score_id !== attempt.score_id);
+          setExistingAttempts(updated);
+          persistScanPageCache(exam, rosterStudentsRef.current, updated);
+          notify({ type: 'success', title: 'Scan Removed', message: `Scan for ${student.full_name} has been removed.` });
+        } else {
+          notify({ type: 'error', title: 'Failed', message: 'Could not remove scan. Please try again.' });
+        }
+      },
       ...mobileConfirmModalProps,
     });
   };
@@ -1553,7 +1686,7 @@ export default function ScanPapersPage() {
                     </Button>
                   </Tooltip>
                 );
-              })() : rosterStudents.length > 0 && scannedStudentsCount >= rosterStudents.length ? (
+              })() : rosterStudents.length > 0 ? (
                 <Button
                   variant="filled"
                   size="sm"
@@ -1565,17 +1698,7 @@ export default function ScanPapersPage() {
                 >
                   Proceed to Reports
                 </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  color="gray"
-                  size="sm"
-                  w={isMobile ? undefined : 180}
-                  disabled
-                >
-                  Scanned {scannedStudentsCount}/{rosterStudents.length}
-                </Button>
-              ))}
+              ) : null)}
             </Group>
           </Group>
 
@@ -1663,18 +1786,21 @@ export default function ScanPapersPage() {
                               const proficiency = mpl != null ? getProficiency(mpl) : null;
                               const hasScanned = attempt != null;
                               const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
+                              const isNonTaker = nonTakerHighlightIds.has(student.enrollment_id);
+                              const highlightColor = isNonTaker ? '#ef4444' : '#4EAE4A';
+                              const isAnyHighlighted = isNonTaker || isHighlighted;
                               return (
-                                <TableTr key={student.enrollment_id}>
-                                  <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
+                                <TableTr key={student.enrollment_id} style={{ backgroundColor: isNonTaker ? '#fef2f2' : undefined, transition: 'background-color 1.2s ease' }}>
+                                  <TableTd style={studentHighlightCellStyle(isAnyHighlighted, 'start', highlightColor)}>
                                     <Text fz="sm" fw={500} c="dark">{student.full_name}</Text>
                                     <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
                                   </TableTd>
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'middle', highlightColor)}>
                                     <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
                                       {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
                                     </Text>
                                   </TableTd>
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, isAdminView ? 'end' : 'middle', highlightColor)}>
                                     {proficiency ? (
                                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
                                         {proficiency}
@@ -1682,12 +1808,19 @@ export default function ScanPapersPage() {
                                     ) : <Text span size="sm" c="dimmed">—</Text>}
                                   </TableTd>
                                   {!isAdminView && (
-                                    <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                      <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
-                                        <Button size="xs" radius="md" color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
-                                          {hasScanned ? 'Rescan' : 'Scan'}
-                                        </Button>
-                                      </Tooltip>
+                                    <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'end', highlightColor)}>
+                                      <Group gap={4} justify="center" wrap="nowrap">
+                                        <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
+                                          <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
+                                            {hasScanned ? 'Rescan' : 'Scan'}
+                                          </Button>
+                                        </Tooltip>
+                                        <Tooltip label="Remove scan" withArrow disabled={!hasScanned || exam.is_locked}>
+                                          <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !exam.is_locked ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
+                                            <IconX size={12} />
+                                          </Button>
+                                        </Tooltip>
+                                      </Group>
                                     </TableTd>
                                   )}
                                 </TableTr>
@@ -1706,18 +1839,21 @@ export default function ScanPapersPage() {
                               const proficiency = mpl != null ? getProficiency(mpl) : null;
                               const hasScanned = attempt != null;
                               const isHighlighted = highlightedEnrollmentId === student.enrollment_id;
+                              const isNonTaker = nonTakerHighlightIds.has(student.enrollment_id);
+                              const highlightColor = isNonTaker ? '#ef4444' : '#4EAE4A';
+                              const isAnyHighlighted = isNonTaker || isHighlighted;
                               return (
-                                <TableTr key={student.enrollment_id}>
-                                  <TableTd style={studentHighlightCellStyle(isHighlighted, 'start')}>
+                                <TableTr key={student.enrollment_id} style={{ backgroundColor: isNonTaker ? '#fef2f2' : undefined, transition: 'background-color 1.2s ease' }}>
+                                  <TableTd style={studentHighlightCellStyle(isAnyHighlighted, 'start', highlightColor)}>
                                     <Text fz="sm" fw={500} c="dark">{student.full_name}</Text>
                                     <Text fz="xs" c="dimmed" mt={2}>LRN: {student.lrn}</Text>
                                   </TableTd>
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted)}>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'middle', highlightColor)}>
                                     <Text fz="sm" fw={600} c={attempt ? "dark" : "dimmed"}>
                                       {attempt ? `${attempt.calculated_score}/${totalItems}` : '—'}
                                     </Text>
                                   </TableTd>
-                                  <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, isAdminView ? 'end' : 'middle')}>
+                                  <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, isAdminView ? 'end' : 'middle', highlightColor)}>
                                     {proficiency ? (
                                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${proficiencyBadge(mpl!)}`}>
                                         {proficiency}
@@ -1725,12 +1861,19 @@ export default function ScanPapersPage() {
                                     ) : <Text span size="sm" c="dimmed">—</Text>}
                                   </TableTd>
                                   {!isAdminView && (
-                                    <TableTd ta="center" style={studentHighlightCellStyle(isHighlighted, 'end')}>
-                                      <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
-                                        <Button size="xs" radius="md" color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
-                                          {hasScanned ? 'Rescan' : 'Scan'}
-                                        </Button>
-                                      </Tooltip>
+                                    <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'end', highlightColor)}>
+                                      <Group gap={4} justify="center" wrap="nowrap">
+                                        <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
+                                          <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
+                                            {hasScanned ? 'Rescan' : 'Scan'}
+                                          </Button>
+                                        </Tooltip>
+                                        <Tooltip label="Remove scan" withArrow disabled={!hasScanned || exam.is_locked}>
+                                          <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !exam.is_locked ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
+                                            <IconX size={12} />
+                                          </Button>
+                                        </Tooltip>
+                                      </Group>
                                     </TableTd>
                                   )}
                                 </TableTr>
@@ -1764,9 +1907,11 @@ export default function ScanPapersPage() {
                               attempt={getStudentAttempt(student)}
                               totalItems={totalItems}
                               isHighlighted={highlightedEnrollmentId === student.enrollment_id}
+                              isNonTakerHighlighted={nonTakerHighlightIds.has(student.enrollment_id)}
                               isAdminView={isAdminView}
                               isLocked={exam.is_locked}
                               onScan={handleScanStudent}
+                              onUndo={handleUndoScan}
                             />
                           ))}
                         </>
@@ -1783,9 +1928,11 @@ export default function ScanPapersPage() {
                               attempt={getStudentAttempt(student)}
                               totalItems={totalItems}
                               isHighlighted={highlightedEnrollmentId === student.enrollment_id}
+                              isNonTakerHighlighted={nonTakerHighlightIds.has(student.enrollment_id)}
                               isAdminView={isAdminView}
                               isLocked={exam.is_locked}
                               onScan={handleScanStudent}
+                              onUndo={handleUndoScan}
                             />
                           ))}
                         </>
