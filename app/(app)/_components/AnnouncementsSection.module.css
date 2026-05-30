@@ -1,0 +1,137 @@
+.section {
+  border: 1px solid #b9d6c0;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.09), 0 1px 3px rgba(0, 0, 0, 0.06);
+  margin-top: 16px;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #0f1115;
+  white-space: nowrap;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Outlined green button (Scheduled) */
+.btnOutline {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4eae4a;
+  background: transparent;
+  border: 1px solid #4eae4a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.14s;
+  white-space: nowrap;
+}
+.btnOutline:hover {
+  background: #f0faf0;
+}
+
+/* Filled green button (Create Announcement) */
+.btnFilled {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: #4eae4a;
+  border: 1px solid #4eae4a;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.14s;
+  white-space: nowrap;
+}
+.btnFilled:hover {
+  background: #3a9238;
+  border-color: #3a9238;
+}
+
+/* ── Body ────────────────────────────────────────────────── */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 16px 16px;
+  border-top: 1px solid #edf0f3;
+  padding-top: 14px;
+}
+
+/* ── Skeleton cards ──────────────────────────────────────── */
+.skeletonCard {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 10px 12px 8px;
+  }
+  .body {
+    padding: 12px;
+    padding-top: 12px;
+  }
+  /* Icon-only buttons on mobile */
+  .btnText {
+    display: none;
+  }
+  .btnOutline,
+  .btnFilled {
+    padding: 6px;
+    gap: 0;
+  }
+}
+
+/* ── Empty state ─────────────────────────────────────────── */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+  gap: 8px;
+  text-align: center;
+}
+
+.emptyIcon {
+  color: #c4cad4;
+}
+
+.emptyTitle {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #3d4147;
+}
+
+.emptySubtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #808898;
+  line-height: 1.45;
+}

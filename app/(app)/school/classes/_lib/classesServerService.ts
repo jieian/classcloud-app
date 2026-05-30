@@ -21,7 +21,7 @@ export type ClassesInitialData = {
 export async function getSchoolYearsCached(): Promise<SchoolYearOption[]> {
   "use cache";
   cacheTag(SCHOOL_YEARS_CACHE_TAG);
-  cacheLife("minutes");
+  cacheLife("days");
   const { data, error } = await admin
     .from("school_years")
     .select("sy_id, year_range, is_active")

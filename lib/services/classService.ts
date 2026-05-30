@@ -581,7 +581,17 @@ export async function fetchNotifications(): Promise<NotificationItem[]> {
   if (!res.ok) return [];
   const parsed = await readResponsePayload(res);
   const data = asApiJson(parsed.json);
-  return (data.notifications as NotificationItem[]) ?? [];
+  const all = (data.notifications as NotificationItem[]) ?? [];
+
+  // Unread first (by recency), then read (by recency), max 5
+  return [...all]
+    .sort((a, b) => {
+      const aUnread = !a.read_at;
+      const bUnread = !b.read_at;
+      if (aUnread !== bUnread) return aUnread ? -1 : 1;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    })
+    .slice(0, 5);
 }
 
 export async function fetchUnreadNotificationCount(): Promise<number> {

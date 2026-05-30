@@ -36,7 +36,7 @@ export default function AuthenticatedLayout({
         <div className={styles.shell}>
           <NavBar />
           <main className={styles.main}>
-            <div style={{ marginTop: "var(--mantine-spacing-md)" }}>
+            <div style={{ marginTop: "var(--mantine-spacing-md)" }} className={styles.innerContent}>
               {children}
             </div>
           </main>

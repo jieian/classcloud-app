@@ -35,6 +35,7 @@
 import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/classes/_lib/classesServerService";
+import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
 import { invalidateActiveContext } from "@/lib/active-context";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -88,6 +89,7 @@ const _DELETE = async function (
     console.error("active-context cache invalidation failed (hard-delete):", err),
   );
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
+  revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
 
   return Response.json({ success: true }, { status: 200 });
 };

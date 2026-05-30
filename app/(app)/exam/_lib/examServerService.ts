@@ -54,7 +54,7 @@ async function getGradeLevelsCached(): Promise<GradeLevel[]> {
 async function getSchoolYearsCached(): Promise<SchoolYearSimple[]> {
   "use cache";
   cacheTag("school-years");
-  cacheLife("minutes");
+  cacheLife("days");
   const { data, error } = await admin
     .from("school_years")
     .select("sy_id, year_range, is_active")
@@ -67,7 +67,7 @@ async function getSchoolYearsCached(): Promise<SchoolYearSimple[]> {
 async function getSubjectsCached(): Promise<SubjectWithGradeLevel[]> {
   "use cache";
   cacheTag("subjects");
-  cacheLife("minutes");
+  cacheLife("days");
   const { data: sy } = await admin
     .from("school_years")
     .select("curriculum_id")

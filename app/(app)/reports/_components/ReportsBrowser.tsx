@@ -38,27 +38,29 @@ import {
   type ReportMonitoringSubjectGroup,
   type ReportMonitoringTree,
 } from "@/lib/services/reportsAnalysisService";
-
-async function fetchReportMonitoringTreeFromApi(): Promise<ReportMonitoringTree> {
-  const response = await fetch("/api/reports/monitoring-tree", {
-    credentials: "include",
-    cache: "no-store",
-  });
-  const result = await response.json();
-
-  if (!response.ok) {
-    throw new Error(result?.error || "Failed to load reports.");
-  }
-
-  return result as ReportMonitoringTree;
-}
-
-const emptyTree: ReportMonitoringTree = {
-  assigned: { advisorySections: [], handledSections: [] },
-  gradeMonitoring: [],
-  subjectGroupMonitoring: [],
-  allMonitoring: { gradeLevels: [], subjectGroups: [] },
-};
+import {
+  emptyTree,
+  fetchReportMonitoringTreeFromApi,
+  isReportMonitoringTree,
+  makeReportsStorageKey,
+  makeReportsTreeScopeKey,
+  readStoredReportsState,
+  REPORTS_BROWSER_STORAGE_PREFIX,
+} from "@/lib/services/reportsMonitoringCache";
+import {
+  activePopover,
+  classifySubgroupFromCounts,
+  EllipsisTooltip,
+  getCoordinatorGroupStatusCounts,
+  getRowStatusCounts,
+  getSubjectSubgroupStatusCounts,
+  RoleIconButton,
+  STATUS_COLORS,
+  StatusCircle,
+  statusCountsTotal,
+  type StatusCounts,
+  useClickTooltip,
+} from "./ReportsShared";
 
 const subAccordionStyles = {
   item: {
@@ -97,23 +99,9 @@ const reportSegmentedStyles = {
   },
 };
 
-const STATUS_COLORS = {
-  done: "#4EAE4A",
-  ongoing: "#fdba74",
-  notStarted: "#d1d5db",
-};
-
-/** Single-slot registry — only one popover/tooltip open at a time on touch */
-const activePopover = { close: null as (() => void) | null };
-
 type AssignedReportView = "advisory" | "assigned";
 
-const REPORTS_BROWSER_STORAGE_PREFIX = "reports:browser";
 const EMPTY_OPEN_VALUES: string[] = [];
-
-function makeReportsStorageKey(userId: string | undefined, key: string) {
-  return userId ? `${REPORTS_BROWSER_STORAGE_PREFIX}:${userId}:${key}` : null;
-}
 
 function getAppShellScrollContainer(): HTMLElement | null {
   if (typeof document === "undefined") return null;
@@ -157,38 +145,6 @@ function isAssignedReportView(value: unknown): value is AssignedReportView {
   return value === "advisory" || value === "assigned";
 }
 
-function isReportMonitoringTree(value: unknown): value is ReportMonitoringTree {
-  if (value == null || typeof value !== "object") return false;
-  const tree = value as Partial<ReportMonitoringTree>;
-  return (
-    tree.assigned != null &&
-    typeof tree.assigned === "object" &&
-    Array.isArray(tree.assigned.advisorySections) &&
-    Array.isArray(tree.assigned.handledSections) &&
-    Array.isArray(tree.gradeMonitoring) &&
-    Array.isArray(tree.subjectGroupMonitoring) &&
-    tree.allMonitoring != null &&
-    typeof tree.allMonitoring === "object" &&
-    Array.isArray(tree.allMonitoring.gradeLevels) &&
-    Array.isArray(tree.allMonitoring.subjectGroups)
-  );
-}
-
-function readStoredReportsState<T>(
-  storageKey: string | null,
-  fallback: T,
-  validate: (value: unknown) => value is T,
-): T {
-  if (!storageKey || typeof window === "undefined") return fallback;
-  try {
-    const raw = window.sessionStorage.getItem(storageKey);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw) as unknown;
-    return validate(parsed) ? parsed : fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function useReportsSessionState<T>(
   storageKey: string | null,
@@ -209,75 +165,6 @@ function useReportsSessionState<T>(
   }, [storageKey, value]);
 
   return [value, setValue] as const;
-}
-
-function makeReportsTreeScopeKey(reportScope: {
-  canViewAll: boolean;
-  canViewAssigned: boolean;
-  canMonitorGradeLevel: boolean;
-  canMonitorSubjects: boolean;
-}) {
-  return [
-    reportScope.canViewAll ? "all" : "",
-    reportScope.canViewAssigned ? "assigned" : "",
-    reportScope.canMonitorGradeLevel ? "grade" : "",
-    reportScope.canMonitorSubjects ? "subjects" : "",
-  ]
-    .filter(Boolean)
-    .join("-") || "none";
-}
-
-function EllipsisTooltip({ label, children, ...props }: { label: string; children: React.ReactElement } & Omit<React.ComponentProps<typeof Tooltip>, "label" | "children" | "disabled">) {
-  const ref = useRef<HTMLElement>(null);
-  const [truncated, setTruncated] = useState(false);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => setTruncated(el.scrollWidth > el.clientWidth);
-    check();
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [label]);
-  return (
-    <Tooltip label={label} disabled={!truncated} events={{ hover: true, focus: true, touch: true }} {...props}>
-      {React.cloneElement(children as React.ReactElement<{ ref?: React.Ref<HTMLElement> }>, { ref })}
-    </Tooltip>
-  );
-}
-
-function useClickTooltip() {
-  const [opened, setOpened] = useState(false);
-
-  useEffect(() => {
-    if (!opened) return;
-    function handleOutside() {
-      setOpened(false);
-      activePopover.close = null;
-    }
-    // Defer so the opening click doesn't immediately close
-    const id = setTimeout(() => {
-      document.addEventListener("pointerdown", handleOutside, { once: true });
-    }, 0);
-    return () => {
-      clearTimeout(id);
-      document.removeEventListener("pointerdown", handleOutside);
-    };
-  }, [opened]);
-
-  function toggle(e: React.MouseEvent | React.TouchEvent) {
-    e.stopPropagation();
-    if (opened) {
-      setOpened(false);
-      activePopover.close = null;
-    } else {
-      activePopover.close?.();
-      setOpened(true);
-      activePopover.close = () => setOpened(false);
-    }
-  }
-
-  return { opened, toggle };
 }
 
 
@@ -316,205 +203,6 @@ function StatusBadge({ status, dotOnly = false, onClick }: { status: ReportMonit
 }
 
 
-type StatusCounts = {
-  done: number;
-  ongoing: number;
-  notStarted: number;
-};
-
-function statusCountsTotal(counts: StatusCounts) {
-  return counts.done + counts.ongoing + counts.notStarted;
-}
-
-function getRowStatusCounts(rows: ReportMonitoringRow[]): StatusCounts {
-  const done = rows.filter((row) => row.status === "Finalized").length;
-  const ongoing = rows.filter((row) => row.status === "Not Finalized").length;
-  return {
-    done,
-    ongoing,
-    notStarted: Math.max(rows.length - done - ongoing, 0),
-  };
-}
-
-function getSubjectSubgroupStatusCounts(subjects: ReportMonitoringSubjectGroup[]): StatusCounts {
-  return subjects.reduce<StatusCounts>(
-    (counts, subject) => {
-      if (subject.rows.length === 0) {
-        counts.notStarted += 1;
-        return counts;
-      }
-
-      if (subject.rows.every((row) => row.status === "Finalized")) {
-        counts.done += 1;
-      } else if (subject.rows.every((row) => row.status === "No exam yet")) {
-        counts.notStarted += 1;
-      } else {
-        counts.ongoing += 1;
-      }
-
-      return counts;
-    },
-    { done: 0, ongoing: 0, notStarted: 0 },
-  );
-}
-
-
-function classifySubgroupFromCounts(counts: StatusCounts): keyof StatusCounts {
-  const total = statusCountsTotal(counts);
-  if (total === 0) return "notStarted";
-  if (counts.done === total) return "done";
-  if (counts.notStarted === total) return "notStarted";
-  return "ongoing";
-}
-
-function getCoordinatorGroupStatusCounts(groups: ReportMonitoringCoordinatorGroup[]): StatusCounts {
-  return groups.reduce<StatusCounts>(
-    (counts, group) => {
-      counts[classifySubgroupFromCounts(getSubjectSubgroupStatusCounts(group.subjects))] += 1;
-      return counts;
-    },
-    { done: 0, ongoing: 0, notStarted: 0 },
-  );
-}
-
-
-function StatusCircle({ counts, label }: { counts: StatusCounts; label: string }) {
-  const [opened, setOpened] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const total = statusCountsTotal(counts);
-  const doneDeg = total === 0 ? 0 : (counts.done / total) * 360;
-  const ongoingDeg = total === 0 ? 0 : (counts.ongoing / total) * 360;
-  const doneEnd = doneDeg;
-  const ongoingEnd = doneDeg + ongoingDeg;
-  const ringBackground =
-    total === 0
-      ? "#e5e7eb"
-      : `conic-gradient(${STATUS_COLORS.done} 0deg ${doneEnd}deg, ${STATUS_COLORS.ongoing} ${doneEnd}deg ${ongoingEnd}deg, ${STATUS_COLORS.notStarted} ${ongoingEnd}deg 360deg)`;
-
-  const isTouchDevice =
-    typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;
-
-  // On touch: close when tapping anywhere outside
-  useEffect(() => {
-    if (!opened || !isTouchDevice) return;
-    const id = setTimeout(() => {
-      function handleOutside() {
-        setOpened(false);
-        activePopover.close = null;
-      }
-      document.addEventListener("pointerdown", handleOutside, { once: true });
-    }, 0);
-    return () => clearTimeout(id);
-  }, [opened, isTouchDevice]);
-
-  function handleMouseEnter() {
-    if (isTouchDevice) return;
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    setOpened(true);
-  }
-
-  function handleMouseLeave() {
-    if (isTouchDevice) return;
-    closeTimer.current = setTimeout(() => setOpened(false), 80);
-  }
-
-  function handleClick(event: MouseEvent) {
-    if (!isTouchDevice) return;
-    event.stopPropagation();
-    if (opened) {
-      setOpened(false);
-      activePopover.close = null;
-    } else {
-      activePopover.close?.();
-      setOpened(true);
-      activePopover.close = () => setOpened(false);
-    }
-  }
-
-  const statusItems = [
-    { label: "Done", count: counts.done, color: STATUS_COLORS.done },
-    { label: "Ongoing", count: counts.ongoing, color: STATUS_COLORS.ongoing },
-    { label: "Not Started", count: counts.notStarted, color: STATUS_COLORS.notStarted },
-  ];
-
-  return (
-    <Popover
-      opened={opened}
-      onClose={() => { setOpened(false); activePopover.close = null; }}
-      width={220}
-      shadow="sm"
-      withinPortal
-      position="right"
-      closeOnClickOutside={isTouchDevice}
-    >
-      <Popover.Target>
-        <Box
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
-          onClick={handleClick}
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: "50%",
-            display: "grid",
-            placeItems: "center",
-            flex: "0 0 auto",
-            background: ringBackground,
-            cursor: isTouchDevice ? "pointer" : "default",
-          }}
-        >
-          <Box
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              backgroundColor: "#ffffff",
-            }}
-          >
-            <Text size="11px" fw={700} c="#4b5563">
-              {counts.done}/{total}
-            </Text>
-          </Box>
-        </Box>
-      </Popover.Target>
-
-      <Popover.Dropdown
-        style={{ border: "1px solid #d3e9d0", borderRadius: 10, padding: "12px 14px" }}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Text size="10px" fw={700} tt="uppercase" c="#4EAE4A" style={{ letterSpacing: "0.06em" }}>
-          {label}
-        </Text>
-        <Divider my={8} color="#e8f0e8" />
-        <Box style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {statusItems.map((item) => (
-            <Group key={item.label} gap={8} wrap="nowrap" align="center">
-              <Box
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  backgroundColor: item.color,
-                  flexShrink: 0,
-                }}
-              />
-              <Text size="sm" c="dimmed" style={{ lineHeight: 1.4, flex: 1 }}>
-                {item.label}
-              </Text>
-              <Text size="sm" fw={700} c="#4b5563">
-                {item.count}
-              </Text>
-            </Group>
-          ))}
-        </Box>
-      </Popover.Dropdown>
-    </Popover>
-  );
-}
 
 function StatusProgressBar({ counts, label, fullWidth = false }: { counts: StatusCounts; label: string; fullWidth?: boolean }) {
   const isMobile = useMediaQuery("(max-width: 600px)");
@@ -661,43 +349,6 @@ function TreeGuide({ children }: { children: ReactNode }) {
   );
 }
 
-function RoleIconButton({
-  personName,
-  roleLabel,
-  roleIcon,
-}: {
-  personName?: string | null;
-  roleLabel?: string;
-  roleIcon?: ReactNode;
-}) {
-  const { opened, toggle } = useClickTooltip();
-  const isMobile = useMediaQuery("(max-width: 600px)");
-
-  if (roleIcon === undefined) return null;
-
-  if (isMobile) {
-    return (
-      <Tooltip label={personName ?? "Unassigned"} withArrow position="top" opened={opened}>
-        <ActionIcon variant="subtle" color="gray" size="sm" onClick={toggle}>
-          {roleIcon}
-        </ActionIcon>
-      </Tooltip>
-    );
-  }
-
-  return (
-    <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-      <Tooltip label={roleLabel ?? ""} withArrow position="top">
-        <span style={{ display: "flex", alignItems: "center", color: "#6b7280" }}>
-          {roleIcon}
-        </span>
-      </Tooltip>
-      <Text size="sm" c={personName ? undefined : "dimmed"} style={{ whiteSpace: "nowrap" }}>
-        {personName ?? "Unassigned"}
-      </Text>
-    </Group>
-  );
-}
 
 
 function EmptyPanel({ message }: { message: string }) {

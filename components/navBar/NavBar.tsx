@@ -13,6 +13,7 @@ import {
   IconLogout,
   IconMenu2,
   IconUserCircle,
+  IconBell,
 } from "@tabler/icons-react";
 import {
   Badge,
@@ -24,7 +25,9 @@ import {
   Text,
   Button,
   Group,
+  Popover,
 } from "@mantine/core";
+import NotificationsPanel from "@/app/(app)/_components/NotificationsPanel";
 import { useMediaQuery, useDisclosure } from "@mantine/hooks";
 import classes from "./NavBar.module.css";
 import { useAuth } from "@/context/AuthContext";
@@ -184,6 +187,21 @@ export default function Navbar() {
     // Re-check whenever the user navigates so the count stays fresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, isAdmin, isAdviser]);
+
+  const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
+
+  // Unread notification count — shown as bell badge in the mobile top bar
+  const [notificationBellCount, setNotificationBellCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/notifications/count", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { count?: number }) => {
+        if (typeof d.count === "number") setNotificationBellCount(d.count);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // Badge count on the User Management sublink (unread self-registration signups)
   const [usersBadgeCount, setUsersBadgeCount] = useState(0);
@@ -592,7 +610,55 @@ export default function Navbar() {
             <IconMenu2 size={24} stroke={1.5} color="white" />
           </ActionIcon>
           <span className={classes.topBarTitle}>{currentPageLabel}</span>
-          <div style={{ width: 44 }} />
+          <Popover
+            opened={notifPopoverOpen}
+            onChange={setNotifPopoverOpen}
+            position="bottom-end"
+            withinPortal
+            width={300}
+            shadow="md"
+            radius="md"
+          >
+            <Popover.Target>
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setNotifPopoverOpen((o) => !o)}
+                onKeyDown={(e) => e.key === "Enter" && setNotifPopoverOpen((o) => !o)}
+                style={{ position: "relative", width: 44, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                aria-label="Open notifications"
+              >
+                <IconBell size={22} stroke={1.5} color="white" />
+                {notificationBellCount > 0 && (
+                  <Badge
+                    size="xs"
+                    color="red"
+                    variant="filled"
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: 2,
+                      minWidth: 16,
+                      height: 16,
+                      padding: "0 3px",
+                      pointerEvents: "none",
+                      fontSize: 9,
+                    }}
+                  >
+                    {notificationBellCount > 99 ? "99+" : notificationBellCount}
+                  </Badge>
+                )}
+              </div>
+            </Popover.Target>
+            <Popover.Dropdown style={{ padding: 0, zIndex: 2000 }}>
+              <div style={{ padding: "10px 12px 6px", fontWeight: 700, fontSize: "0.85rem", borderBottom: "1px solid #edf0f3", color: "#0f1115" }}>
+                Notifications
+              </div>
+              <div style={{ padding: "4px 4px 6px" }}>
+                <NotificationsPanel onMarkRead={() => setNotificationBellCount((c) => Math.max(0, c - 1))} />
+              </div>
+            </Popover.Dropdown>
+          </Popover>
         </div>
       )}
 

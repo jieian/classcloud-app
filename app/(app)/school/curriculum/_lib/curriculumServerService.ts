@@ -13,7 +13,7 @@ export const CURRICULUM_CACHE_TAG = "curriculums";
 export async function getCurriculumsCached(): Promise<Curriculum[]> {
   "use cache";
   cacheTag(CURRICULUM_CACHE_TAG);
-  cacheLife("minutes");
+  cacheLife("days");
   const [curriculumsRes, activeYearRes] = await Promise.all([
     supabase
       .from("curriculums")
@@ -127,7 +127,7 @@ export async function isCurriculumDeletable(curriculumId: number): Promise<boole
 export async function getCurriculumDetailCached(curriculumId: number): Promise<CurriculumDetail | null> {
   "use cache";
   cacheTag(CURRICULUM_CACHE_TAG);
-  cacheLife("minutes");
+  cacheLife("days");
 
     const [metaRes, groupsRes, subjectsRes] = await Promise.all([
       supabase

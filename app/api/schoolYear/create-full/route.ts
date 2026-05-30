@@ -6,6 +6,7 @@ import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supaba
 import { adminClient } from "@/lib/supabase/admin";
 import { withErrorHandler } from "@/lib/api-error";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/year/create/_lib/wizardServerService";
+import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
 
 // ── Zod validation ─────────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ const _POST = async function (request: Request) {
 
   // 7. Cache invalidation + deferred audit log
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
+  revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
   await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
 
   after(async () => {

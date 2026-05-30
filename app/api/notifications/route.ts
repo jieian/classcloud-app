@@ -19,7 +19,7 @@ const _GET = async function () {
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(30);
+    .limit(20);
 
   if (error)
     return Response.json({ error: "Internal server error." }, { status: 500 });

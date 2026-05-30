@@ -22,16 +22,20 @@ import CurriculumCard from "./CurriculumCard";
 import CurriculumCardSkeleton from "./CurriculumCardSkeleton";
 import EmptySearchState from "@/components/EmptySearchState";
 
-export default function CurriculumSection() {
+export default function CurriculumSection({
+  initialCurriculums,
+}: {
+  initialCurriculums?: Curriculum[];
+}) {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 767.9px)");
-  const [curriculums, setCurriculums] = useState<Curriculum[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [curriculums, setCurriculums] = useState<Curriculum[]>(initialCurriculums ?? []);
+  const [loading, setLoading] = useState(!initialCurriculums);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    load();
+    if (!initialCurriculums) load();
   }, []);
 
   async function load() {

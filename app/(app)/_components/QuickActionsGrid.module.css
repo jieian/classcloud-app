@@ -1,0 +1,79 @@
+.strip {
+  position: relative;
+  padding-top: 14px;
+  padding-bottom: 6px;
+  transition: padding-left 0.22s ease, padding-right 0.22s ease;
+}
+
+.grid {
+  display: flex;
+  justify-content: space-around;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.iconBox {
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
+  background: #f0f7ee;
+  border: 1px solid #d3e9d0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4eae4a;
+  transition: background 0.14s, transform 0.14s;
+}
+
+.item:active .iconBox {
+  background: #dff0dd;
+  transform: scale(0.94);
+}
+
+.label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #1f252c;
+  text-align: center;
+  max-width: 68px;
+  line-height: 1.25;
+}
+
+.navBtn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-top: -3px; /* nudge up to account for label height below icons */
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid #d6d9e0;
+  background: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #4b5563;
+  padding: 0;
+  transition: opacity 0.22s ease, background 0.14s, border-color 0.14s;
+}
+
+.navBtn:active {
+  background: #f0f2f4;
+}
+
+.navBtnPrev {
+  left: 0;
+}
+
+.navBtnNext {
+  right: 0;
+}

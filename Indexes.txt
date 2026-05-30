@@ -1,6 +1,72 @@
 [
   {
     "schemaname": "public",
+    "tablename": "announcement_attachments",
+    "indexname": "announcement_attachments_pkey",
+    "indexdef": "CREATE UNIQUE INDEX announcement_attachments_pkey ON public.announcement_attachments USING btree (attachment_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_attachments",
+    "indexname": "idx_announcement_attachments_announcement_id",
+    "indexdef": "CREATE INDEX idx_announcement_attachments_announcement_id ON public.announcement_attachments USING btree (announcement_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_reads",
+    "indexname": "announcement_reads_pkey",
+    "indexdef": "CREATE UNIQUE INDEX announcement_reads_pkey ON public.announcement_reads USING btree (announcement_id, user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_reads",
+    "indexname": "idx_announcement_reads_user_id",
+    "indexdef": "CREATE INDEX idx_announcement_reads_user_id ON public.announcement_reads USING btree (user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_targets",
+    "indexname": "announcement_targets_pkey",
+    "indexdef": "CREATE UNIQUE INDEX announcement_targets_pkey ON public.announcement_targets USING btree (id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_targets",
+    "indexname": "idx_announcement_targets_announcement_id",
+    "indexdef": "CREATE INDEX idx_announcement_targets_announcement_id ON public.announcement_targets USING btree (announcement_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_targets",
+    "indexname": "idx_announcement_targets_role_id",
+    "indexdef": "CREATE INDEX idx_announcement_targets_role_id ON public.announcement_targets USING btree (role_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "indexname": "announcements_pkey",
+    "indexdef": "CREATE UNIQUE INDEX announcements_pkey ON public.announcements USING btree (announcement_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "indexname": "idx_announcements_author_id",
+    "indexdef": "CREATE INDEX idx_announcements_author_id ON public.announcements USING btree (author_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "indexname": "idx_announcements_scheduled",
+    "indexdef": "CREATE INDEX idx_announcements_scheduled ON public.announcements USING btree (status, published_at) WHERE ((status = 'SCHEDULED'::text) AND (deleted_at IS NULL))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "indexname": "idx_announcements_sy_id",
+    "indexdef": "CREATE INDEX idx_announcements_sy_id ON public.announcements USING btree (sy_id)"
+  },
+  {
+    "schemaname": "public",
     "tablename": "audit_logs",
     "indexname": "audit_logs_pkey",
     "indexdef": "CREATE UNIQUE INDEX audit_logs_pkey ON public.audit_logs USING btree (audit_id)"
@@ -184,6 +250,12 @@
     "tablename": "exams",
     "indexname": "exams_pkey",
     "indexdef": "CREATE UNIQUE INDEX exams_pkey ON public.exams USING btree (exam_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exams",
+    "indexname": "idx_exams_created_at",
+    "indexdef": "CREATE INDEX idx_exams_created_at ON public.exams USING btree (created_at)"
   },
   {
     "schemaname": "public",
@@ -440,6 +512,12 @@
   {
     "schemaname": "public",
     "tablename": "scores",
+    "indexname": "idx_scores_graded_at",
+    "indexdef": "CREATE INDEX idx_scores_graded_at ON public.scores USING btree (graded_at)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "scores",
     "indexname": "scores_enrollment_id_exam_assignment_id_key",
     "indexdef": "CREATE UNIQUE INDEX scores_enrollment_id_exam_assignment_id_key ON public.scores USING btree (enrollment_id, exam_assignment_id)"
   },
@@ -520,83 +598,5 @@
     "tablename": "sections",
     "indexname": "idx_sections_grade_level_id",
     "indexdef": "CREATE INDEX idx_sections_grade_level_id ON public.sections USING btree (grade_level_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "idx_sections_sy_id",
-    "indexdef": "CREATE INDEX idx_sections_sy_id ON public.sections USING btree (sy_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "idx_sections_sy_id_active",
-    "indexdef": "CREATE INDEX idx_sections_sy_id_active ON public.sections USING btree (sy_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "sections_name_grade_level_id_sy_id_key",
-    "indexdef": "CREATE UNIQUE INDEX sections_name_grade_level_id_sy_id_key ON public.sections USING btree (name, grade_level_id, sy_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "sections_pkey",
-    "indexdef": "CREATE UNIQUE INDEX sections_pkey ON public.sections USING btree (section_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "students",
-    "indexname": "students_pkey",
-    "indexdef": "CREATE UNIQUE INDEX students_pkey ON public.students USING btree (lrn)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_coordinators",
-    "indexname": "idx_sc_sy_active",
-    "indexdef": "CREATE INDEX idx_sc_sy_active ON public.subject_coordinators USING btree (sy_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_coordinators",
-    "indexname": "idx_sc_user_active",
-    "indexdef": "CREATE INDEX idx_sc_user_active ON public.subject_coordinators USING btree (user_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_coordinators",
-    "indexname": "subject_coordinators_pkey",
-    "indexdef": "CREATE UNIQUE INDEX subject_coordinators_pkey ON public.subject_coordinators USING btree (sc_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_coordinators",
-    "indexname": "subject_coordinators_subject_group_sy_unique",
-    "indexdef": "CREATE UNIQUE INDEX subject_coordinators_subject_group_sy_unique ON public.subject_coordinators USING btree (subject_group_id, sy_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_group_members",
-    "indexname": "idx_sgm_curriculum_subject_id",
-    "indexdef": "CREATE INDEX idx_sgm_curriculum_subject_id ON public.subject_group_members USING btree (curriculum_subject_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_group_members",
-    "indexname": "subject_group_members_pkey",
-    "indexdef": "CREATE UNIQUE INDEX subject_group_members_pkey ON public.subject_group_members USING btree (subject_group_id, curriculum_subject_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_groups",
-    "indexname": "idx_subject_groups_curriculum_id",
-    "indexdef": "CREATE INDEX idx_subject_groups_curriculum_id ON public.subject_groups USING btree (curriculum_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subject_groups",
-    "indexname": "subject_groups_pkey",
-    "indexdef": "CREATE UNIQUE INDEX subject_groups_pkey ON public.subject_groups USING btree (subject_group_id)"
   }
 ]

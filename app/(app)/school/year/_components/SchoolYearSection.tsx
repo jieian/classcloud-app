@@ -28,11 +28,15 @@ import SchoolYearCard from "./SchoolYearCard";
 import SchoolYearCardSkeleton from "./SchoolYearCardSkeleton";
 import EmptySearchState from "@/components/EmptySearchState";
 
-export default function SchoolYearSection() {
+export default function SchoolYearSection({
+  initialSchoolYears,
+}: {
+  initialSchoolYears?: SchoolYear[];
+}) {
   const router = useRouter();
   const isMobile = useMediaQuery("(max-width: 767.9px)");
-  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [schoolYears, setSchoolYears] = useState<SchoolYear[]>(initialSchoolYears ?? []);
+  const [loading, setLoading] = useState(!initialSchoolYears);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [canCreate, setCanCreate] = useState<CanCreateResult>({
@@ -40,19 +44,16 @@ export default function SchoolYearSection() {
   });
 
   useEffect(() => {
-    loadSchoolYears();
+    checkCanCreateSchoolYear().then(setCanCreate).catch(() => {});
+    if (!initialSchoolYears) loadSchoolYears();
   }, []);
 
   async function loadSchoolYears() {
     try {
       setLoading(true);
       setError(null);
-      const [data, createCheck] = await Promise.all([
-        getSchoolYears(),
-        checkCanCreateSchoolYear(),
-      ]);
+      const data = await getSchoolYears();
       setSchoolYears(data);
-      setCanCreate(createCheck);
     } catch {
       setError("Failed to load school years. Please try again later.");
     } finally {
@@ -124,7 +125,10 @@ export default function SchoolYearSection() {
               size="lg"
               radius="xl"
               aria-label="Refresh school years data"
-              onClick={loadSchoolYears}
+              onClick={() => {
+                loadSchoolYears();
+                checkCanCreateSchoolYear().then(setCanCreate).catch(() => {});
+              }}
             >
               <IconRefresh size={18} stroke={1.5} />
             </ActionIcon>

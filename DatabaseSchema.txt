@@ -1,6 +1,48 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
+CREATE TABLE public.announcement_attachments (
+  attachment_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  announcement_id integer NOT NULL,
+  storage_path text NOT NULL,
+  file_name text NOT NULL,
+  mime_type text NOT NULL CHECK (mime_type = ANY (ARRAY['image/png'::text, 'image/jpeg'::text])),
+  file_size_bytes integer NOT NULL CHECK (file_size_bytes <= 5242880),
+  display_order integer NOT NULL CHECK (display_order >= 1 AND display_order <= 3),
+  CONSTRAINT announcement_attachments_pkey PRIMARY KEY (attachment_id),
+  CONSTRAINT announcement_attachments_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
+);
+CREATE TABLE public.announcement_reads (
+  announcement_id integer NOT NULL,
+  user_id uuid NOT NULL,
+  read_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT announcement_reads_pkey PRIMARY KEY (announcement_id, user_id),
+  CONSTRAINT announcement_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT announcement_reads_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
+);
+CREATE TABLE public.announcement_targets (
+  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  announcement_id integer NOT NULL,
+  role_id integer,
+  CONSTRAINT announcement_targets_pkey PRIMARY KEY (id),
+  CONSTRAINT announcement_targets_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id),
+  CONSTRAINT announcement_targets_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id)
+);
+CREATE TABLE public.announcements (
+  announcement_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  author_id uuid NOT NULL,
+  sy_id integer NOT NULL,
+  status text NOT NULL DEFAULT 'PUBLISHED'::text CHECK (status = ANY (ARRAY['SCHEDULED'::text, 'PUBLISHED'::text])),
+  is_pinned boolean NOT NULL DEFAULT false,
+  published_at timestamp with time zone NOT NULL,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT announcements_pkey PRIMARY KEY (announcement_id),
+  CONSTRAINT announcements_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(uid),
+  CONSTRAINT announcements_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
 CREATE TABLE public.audit_logs (
   audit_id uuid NOT NULL DEFAULT gen_random_uuid(),
   actor_id uuid,
