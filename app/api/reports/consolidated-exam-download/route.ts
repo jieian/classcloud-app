@@ -720,10 +720,10 @@ const _GET = async function (request: Request) {
   const gradeLevelId = Number(url.searchParams.get("gradeLevelId"));
   const subjectId = Number(url.searchParams.get("subjectId"));
   const examId = Number(url.searchParams.get("examId"));
-  const requestedSectionIds = (url.searchParams.get("sections") ?? "")
-    .split(",")
-    .map((value) => Number(value))
-    .filter(Number.isFinite);
+  const sectionsParam = url.searchParams.get("sections");
+  const requestedSectionIds = sectionsParam
+    ? sectionsParam.split(",").map(Number).filter((id) => Number.isFinite(id) && id > 0)
+    : [];
   const sectionFilter = requestedSectionIds.length > 0 ? requestedSectionIds : null;
 
   if (!Number.isFinite(gradeLevelId) || !Number.isFinite(subjectId) || !Number.isFinite(examId)) {

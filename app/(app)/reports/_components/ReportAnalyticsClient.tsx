@@ -1373,7 +1373,6 @@ export default function ReportAnalyticsClient({
 
       if (hasAssigned) {
         const assignedSections = allSections.filter((s) => scopedAssignedSectionIds.has(s.sectionId));
-        const otherSections = allSections.filter((s) => !scopedAssignedSectionIds.has(s.sectionId));
 
         if (fromParam === "assigned") {
           return ssesFirst(assignedSections).map(toAssignedItem);
@@ -1385,9 +1384,8 @@ export default function ReportAnalyticsClient({
         }
 
         return [
-          { group: "Summary", items: [{ value: "all", label: "Consolidated (All Sections)", disabled: false }] },
-          { group: "My Sections", items: ssesFirst(assignedSections).map(toItem) },
-          ...(otherSections.length > 0 ? [{ group: "Other Sections", items: ssesFirst(otherSections).map(toItem) }] : []),
+          { value: "all", label: "Consolidated (All Sections)", disabled: false },
+          ...ssesFirst(allSections).map(toItem),
         ];
       }
 

@@ -1275,11 +1275,12 @@ export default function ReportsBrowser() {
   };
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || reportScope.scopeLoading) return;
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     user?.id,
+    reportScope.scopeLoading,
     reportScope.canViewAll,
     reportScope.canViewAssigned,
     reportScope.canMonitorGradeLevel,
