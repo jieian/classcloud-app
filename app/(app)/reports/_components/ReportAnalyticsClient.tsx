@@ -1412,18 +1412,10 @@ export default function ReportAnalyticsClient({
     });
   }, [scopedCards, mode, selectedGradeId, subjectOverview, finalizedSectionIds, reportScope, fromParam, assignedSectionIdsFromQuery]);
 
-  // Flat list of all leaf section items (value+label) from sectionOptions (handles grouped/flat structures)
-  const flatSectionItems = useMemo(() => {
-    const items: { value: string; label: string }[] = [];
-    for (const opt of sectionOptions) {
-      if ("group" in opt) {
-        for (const item of opt.items) items.push({ value: item.value, label: item.label });
-      } else {
-        items.push({ value: opt.value, label: opt.label });
-      }
-    }
-    return items;
-  }, [sectionOptions]);
+  const flatSectionItems = useMemo(
+    () => sectionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+    [sectionOptions],
+  );
 
   const consolidatedSectionFilter = useMemo(
     () =>
