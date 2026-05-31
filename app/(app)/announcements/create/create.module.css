@@ -1,0 +1,637 @@
+/* ── Page layout ──────────────────────────────────────────── */
+.pageGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.formCol {
+  min-width: 0;
+}
+
+.previewCol {
+  position: sticky;
+  top: 80px;
+}
+
+/* ── Section cards ────────────────────────────────────────── */
+.sectionCard {
+  border: 1px solid #B8B8B8;
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+  background: #fff;
+}
+
+.sectionTitle {
+  margin: 0 0 2px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f1115;
+}
+
+.sectionSubtitle {
+  margin: 0 0 14px;
+  font-size: 14px;
+  color: #808898;
+}
+
+/* ── Media rows ───────────────────────────────────────────── */
+.mediaRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+}
+
+.mediaFileInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.mediaFileName {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f252c;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mediaFileSize {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #808898;
+}
+
+/* ── Recipient field ──────────────────────────────────────── */
+.recipientField {
+  position: relative;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  padding: 7px 36px 7px 10px;
+  cursor: pointer;
+  min-height: 42px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  background: #fff;
+  transition: border-color 0.15s ease;
+}
+.recipientField:hover {
+  border-color: #4eae4a;
+}
+.recipientFieldError {
+  border-color: #fa5252;
+}
+.recipientFieldOpen {
+  border-color: #4eae4a;
+  box-shadow: 0 0 0 2px rgba(78, 174, 74, 0.15);
+}
+
+.recipientPlaceholder {
+  font-size: 15px;
+  color: #adb5bd;
+  user-select: none;
+  line-height: 1;
+}
+
+.recipientChevron {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #868e96;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  transition: transform 0.15s ease;
+}
+.recipientChevronOpen {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.recipientDropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  z-index: 300;
+  overflow: hidden;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.recipientOption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+.recipientOption:hover {
+  background: #f8f9fa;
+}
+.recipientOptionSelected {
+  background: #f0faf0;
+  color: #2e7d32;
+  font-weight: 600;
+}
+.recipientOptionSelected:hover {
+  background: #e8f5e9;
+}
+.recipientDivider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 2px 0;
+}
+
+.recipientErrorText {
+  margin-top: 4px;
+  font-size: 13px;
+  color: #fa5252;
+}
+
+/* ── Schedule section ─────────────────────────────────────── */
+.scheduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.scheduleHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduleHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #495057;
+}
+
+.scheduleBody {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.scheduleDescription {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: #808898;
+}
+
+.scheduleFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ── Char counter ─────────────────────────────────────────── */
+.charCounter {
+  font-size: 13px;
+  color: #adb5bd;
+  text-align: right;
+  margin-top: 4px;
+}
+.charCounterWarn {
+  color: #fa5252;
+}
+
+/* ── Footer visibility ────────────────────────────────────── */
+.desktopFooterOnly {
+  display: block;
+}
+.mobileFooterOnly {
+  display: none;
+}
+.mobileFooterSpacer {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .desktopFooterOnly {
+    display: none;
+  }
+  /* Sticky bottom bar matching WizardNavigationButtons */
+  .mobileFooterOnly {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    background-color: #fff;
+    border-top: 1px solid #e9ecef;
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  /* Spacer so content isn't hidden behind the fixed bar */
+  .mobileFooterSpacer {
+    display: block;
+    height: 72px;
+  }
+}
+
+
+/* ── Preview panel ────────────────────────────────────────── */
+.previewPanel {
+  border: 1px solid #B8B8B8;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.previewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.previewTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f1115;
+}
+
+.previewToggleGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.previewToggleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  background: #fff;
+  color: #868e96;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+.previewToggleBtn:hover {
+  background: #f8f9fa;
+  color: #495057;
+}
+.previewToggleBtnActive {
+  background: #f0faf0;
+  border-color: #4eae4a;
+  color: #4eae4a;
+}
+
+.previewViewport {
+  overflow: hidden;
+  position: relative;
+  background: #f0f2f5;
+}
+
+.previewInner {
+  transform-origin: top left;
+  width: 1100px;
+}
+
+/* ── Mobile phone frame ───────────────────────────────────── */
+.phoneWrapper {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+}
+
+.phoneShell {
+  background: #1a1a1a;
+  border: 3px solid #1a1a1a;
+  border-radius: 36px;
+  padding: 12px;
+  width: 220px;
+}
+
+.phoneDynamicIsland {
+  width: 80px;
+  height: 18px;
+  border-radius: 999px;
+  background: #000;
+  margin: 0 auto 8px;
+}
+
+.phoneScreen {
+  border-radius: 24px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* ── Mini home mock (desktop) ─────────────────────────────── */
+.mockTopBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.mockTopBarLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mockLogo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #4eae4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.mockWelcome {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f1115;
+  line-height: 1.2;
+}
+
+.mockSchool {
+  font-size: 9px;
+  color: #808898;
+}
+
+.mockTermBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #4eae4a;
+  background: #f0faf0;
+  border: 1px solid #d3e9d0;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.mockContent {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: #f5f5f5;
+  min-height: 540px;
+}
+
+.mockLeft {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mockRight {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mockCard {
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.mockSectionLabel {
+  font-size: 10px;
+  font-weight: 800;
+  color: #0f1115;
+  margin: 0 0 8px;
+}
+
+.mockAnnouncementCard {
+  border: 1px solid #d6d9e0;
+  border-left: 5px solid #4eae4a;
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  background: #fff;
+}
+
+.mockAnnouncementImg {
+  width: 72px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: #eef2ef;
+}
+
+.mockAnnouncementImg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mockAnnouncementBody {
+  flex: 1;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.mockAnnouncementTitle {
+  font-size: 10px;
+  font-weight: 700;
+  color: #0f1115;
+  margin: 0 0 4px;
+  line-height: 1.3;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mockAnnouncementTitleEmpty {
+  font-size: 10px;
+  font-weight: 400;
+  color: #ccc;
+  font-style: italic;
+  margin: 0 0 4px;
+}
+
+.mockAnnouncementText {
+  font-size: 8.5px;
+  color: #4b5563;
+  margin: 0 0 6px;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mockAnnouncementTextEmpty {
+  font-size: 8.5px;
+  color: #ccc;
+  font-style: italic;
+  margin: 0 0 6px;
+}
+
+.mockAnnouncementFooter {
+  font-size: 7.5px;
+  color: #808898;
+  display: flex;
+  justify-content: space-between;
+}
+
+.mockCalendar {
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.mockCalendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.mockCalendarCell {
+  font-size: 7.5px;
+  text-align: center;
+  padding: 2px 0;
+  color: #495057;
+  border-radius: 2px;
+}
+
+.mockCalendarCellToday {
+  background: #4eae4a;
+  color: #fff;
+  font-weight: 700;
+  border-radius: 2px;
+}
+
+.mockNotificationPanel {
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.mockNotificationHeader {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #f59e0b;
+  margin: 0 0 8px;
+}
+
+.mockCaughtUp {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.mockCaughtUpIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f0f2f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.mockCaughtUpText {
+  font-size: 7.5px;
+  color: #808898;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.mockQuickActions {
+  background: #fff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  flex: 1;
+}
+
+.mockQuickActionsHeader {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #4eae4a;
+  margin: 0 0 8px;
+}
+
+.mockQARow {
+  height: 18px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  margin-bottom: 5px;
+}
+
+/* Mobile mock strips */
+.mockMobileContent {
+  padding: 8px;
+  background: #f5f5f5;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .pageGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .previewCol {
+    position: static;
+    border-top: 1px solid #e9ecef;
+    padding-top: 16px;
+    margin-top: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sectionCard {
+    padding: 16px;
+  }
+  .scheduleFields {
+    grid-template-columns: 1fr;
+  }
+}

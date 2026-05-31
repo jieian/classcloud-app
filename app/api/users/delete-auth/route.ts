@@ -78,7 +78,7 @@ const _DELETE = async function(request: Request) {
       return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
-    await redis.del("users:active", "faculty:list", "faculty:candidates");
+    await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl");
 
     // Clear JWT claims — user is banned but token still exists until expiry
     syncUserPermissions(uuid).catch((err) =>

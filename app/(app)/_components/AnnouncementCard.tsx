@@ -29,6 +29,8 @@ interface Props {
   onTogglePin: (id: number) => void;
 }
 
+const BODY_LIMIT = 280;
+
 export default function AnnouncementCard({
   announcement,
   isFullAccess,
@@ -36,6 +38,7 @@ export default function AnnouncementCard({
   onTogglePin,
 }: Props) {
   const [imgIndex, setImgIndex] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
   const { attachments } = announcement;
   const hasImages = attachments.length > 0;
@@ -164,7 +167,36 @@ export default function AnnouncementCard({
           ) : null}
         </div>
 
-        <p className={styles.body}>{announcement.body}</p>
+        <p className={styles.body}>
+          {announcement.body.length > BODY_LIMIT && !expanded
+            ? (
+              <>
+                {announcement.body.slice(0, BODY_LIMIT)}…
+                <button
+                  type="button"
+                  className={styles.readMoreBtn}
+                  onClick={() => setExpanded(true)}
+                >
+                  Read more
+                </button>
+              </>
+            )
+            : (
+              <>
+                {announcement.body}
+                {announcement.body.length > BODY_LIMIT && (
+                  <button
+                    type="button"
+                    className={styles.readMoreBtn}
+                    onClick={() => setExpanded(false)}
+                  >
+                    Show less
+                  </button>
+                )}
+              </>
+            )
+          }
+        </p>
 
         <div className={styles.footer}>
           <span>By: {announcement.author_first_name} {announcement.author_last_name}</span>

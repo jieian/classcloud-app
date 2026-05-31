@@ -2,11 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Box, Group, SegmentedControl, Select, Skeleton, Stack, Text } from "@mantine/core";
+import { Box, Collapse, Group, SegmentedControl, Select, Skeleton, Stack, Text } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconChevronDown, IconChevronUp, IconExternalLink } from "@tabler/icons-react";
 import { useAuth } from "@/context/AuthContext";
-import { useReportPermissions } from "@/hooks/useReportPermissions";
 import type {
   ReportMonitoringCoordinatorGroup,
   ReportMonitoringGradeGroup,
@@ -215,17 +214,23 @@ function LoadingSkeleton() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function HomeReportsSection() {
-  const { user } = useAuth();
-  const reportScope = useReportPermissions();
+  const { user, permissions } = useAuth();
+
+  const canViewAll = permissions.includes("reports.view_all");
+  const canViewAssigned = permissions.includes("reports.view_assigned");
+  const canMonitorGradeLevel = permissions.includes("reports.monitor_grade_level");
+  const canMonitorSubjects = permissions.includes("reports.monitor_subjects");
+  const hasAnyReportAccess = canViewAll || canViewAssigned || canMonitorGradeLevel || canMonitorSubjects;
+
 
   const segments = useMemo<ReportSegment[]>(() => {
     const s: ReportSegment[] = [];
-    if (reportScope.canViewAll) s.push("all");
-    if (reportScope.canViewAssigned) s.push("assigned");
-    if (reportScope.canMonitorGradeLevel) s.push("grade");
-    if (reportScope.canMonitorSubjects) s.push("subject-group");
+    if (canViewAll) s.push("all");
+    if (canViewAssigned) s.push("assigned");
+    if (canMonitorGradeLevel) s.push("grade");
+    if (canMonitorSubjects) s.push("subject-group");
     return s;
-  }, [reportScope.canViewAll, reportScope.canViewAssigned, reportScope.canMonitorGradeLevel, reportScope.canMonitorSubjects]);
+  }, [canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects]);
 
   const [activeSegment, setActiveSegment] = useState<ReportSegment | null>(null);
   const [assignedView, setAssignedView] = useState<AssignedView>("advisory");
@@ -242,9 +247,9 @@ export default function HomeReportsSection() {
 
   // Read cache first, then fetch fresh and write back to shared cache
   useEffect(() => {
-    if (!user?.id || !reportScope.hasAnyReportAccess) return;
+    if (!user?.id || !hasAnyReportAccess) return;
 
-    const scopeKey = makeReportsTreeScopeKey(reportScope);
+    const scopeKey = makeReportsTreeScopeKey({ canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects });
     const storageKey = makeReportsStorageKey(user.id, `tree:${scopeKey}`);
     const cached = readStoredReportsState(storageKey, emptyTree, isReportMonitoringTree);
     const hasCached = cached !== emptyTree;
@@ -264,7 +269,7 @@ export default function HomeReportsSection() {
       .catch(() => {/* silently fall back to cached */})
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, reportScope.canViewAll, reportScope.canViewAssigned, reportScope.canMonitorGradeLevel, reportScope.canMonitorSubjects]);
+  }, [user?.id, canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects]);
 
   // Auto-switch inner tab to whichever side has data
   useEffect(() => {
@@ -277,7 +282,7 @@ export default function HomeReportsSection() {
   // Must be called before any early return (Rules of Hooks)
   const isMobile = useMediaQuery("(max-width: 768px)");
 
-  if (!reportScope.hasAnyReportAccess || segments.length === 0) return null;
+  if (!hasAnyReportAccess || segments.length === 0) return null;
   const segmentTitle = activeSegment ? SEGMENT_LABELS[activeSegment] : SEGMENT_LABELS[segments[0]];
   const hasAdvisory = tree.assigned.advisorySections.length > 0;
   const hasHandled = tree.assigned.handledSections.length > 0;
@@ -318,7 +323,7 @@ export default function HomeReportsSection() {
       </div>
 
       {/* ── Body ───────────────────────────────────────────────────── */}
-      {!collapsed && (
+      <Collapse in={!collapsed} transitionDuration={200} animateOpacity>
         <Box p="sm">
           {/* Mobile only: "Mode" dropdown inside body */}
           {segments.length > 1 && isMobile && (
@@ -385,7 +390,7 @@ export default function HomeReportsSection() {
             <AllMonitoringContent tree={tree} />
           )}
         </Box>
-      )}
+      </Collapse>
     </section>
   );
 }

@@ -1,11 +1,11 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
+import { getActiveContext } from "@/lib/active-context";
 import type { AnnouncementItem } from "@/lib/services/announcementsService";
 
 type RawUserRole   = { role_id: number };
-type RawSchoolYear = { sy_id: number };
-type RawTarget     = { role_id: number | null };
 type RawAttachment = { attachment_id: number; storage_path: string; file_name: string; mime_type: string; display_order: number };
 type RawRead       = { announcement_id: number };
 type RawAnnouncement = {
@@ -16,8 +16,10 @@ type RawAnnouncement = {
   published_at: string;
   users: { first_name: string; last_name: string } | null;
   announcement_attachments: RawAttachment[];
-  announcement_targets: RawTarget[];
+  announcement_targets: { role_id: number | null }[];
 };
+
+const CACHE_TTL = 120;
 
 // ─── GET /api/announcements ───────────────────────────────────────────────────
 // Returns PUBLISHED announcements for the active school year, filtered by the
@@ -30,48 +32,54 @@ const _GET = async function () {
   } = await supabase.auth.getUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  // Parallel: user role IDs + active school year
-  const [{ data: userRoles }, { data: schoolYear }] = await Promise.all([
+  // Use Redis-backed active context — avoids a DB round-trip for school year lookup
+  const ctx = await getActiveContext();
+  if (!ctx.sy_id) return Response.json({ announcements: [] });
+  const syId = ctx.sy_id;
+
+  // Parallel: user role IDs + cached announcements list for this SY
+  const CACHE_KEY = `announcements:${syId}`;
+  const [{ data: userRoles }, cachedRows] = await Promise.all([
     admin.from("user_roles").select("role_id").eq("uid", user.id),
-    admin
-      .from("school_years")
-      .select("sy_id")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle(),
+    redis.get<RawAnnouncement[]>(CACHE_KEY),
   ]);
 
-  if (!schoolYear) return Response.json({ announcements: [] });
-
-  const syId = (schoolYear as RawSchoolYear).sy_id;
   const userRoleIds: number[] = (userRoles as RawUserRole[] ?? []).map((r) => r.role_id);
 
-  const { data: rows, error } = await admin
-    .from("announcements")
-    .select(
-      `
-      announcement_id,
-      title,
-      body,
-      is_pinned,
-      published_at,
-      users!author_id ( first_name, last_name ),
-      announcement_attachments ( attachment_id, storage_path, file_name, mime_type, display_order ),
-      announcement_targets ( role_id )
-    `,
-    )
-    .eq("sy_id", syId)
-    .eq("status", "PUBLISHED")
-    .is("deleted_at", null)
-    .order("is_pinned", { ascending: false })
-    .order("published_at", { ascending: false })
-    .limit(50);
+  let allRows: RawAnnouncement[];
 
-  if (error)
-    return Response.json({ error: "Internal server error." }, { status: 500 });
+  if (cachedRows) {
+    allRows = cachedRows;
+  } else {
+    const { data: rows, error } = await admin
+      .from("announcements")
+      .select(
+        `
+        announcement_id,
+        title,
+        body,
+        is_pinned,
+        published_at,
+        users!author_id ( first_name, last_name ),
+        announcement_attachments ( attachment_id, storage_path, file_name, mime_type, display_order ),
+        announcement_targets ( role_id )
+      `,
+      )
+      .eq("sy_id", syId)
+      .eq("status", "PUBLISHED")
+      .is("deleted_at", null)
+      .order("is_pinned", { ascending: false })
+      .order("published_at", { ascending: false })
+      .limit(50);
+
+    if (error)
+      return Response.json({ error: "Internal server error." }, { status: 500 });
+
+    allRows = (rows ?? []) as unknown as RawAnnouncement[];
+    await redis.set(CACHE_KEY, allRows, { ex: CACHE_TTL });
+  }
 
   // Filter by targeting: null role_id = "Everyone", otherwise match user role
-  const allRows = (rows ?? []) as unknown as RawAnnouncement[];
   const visible = allRows.filter((row) => {
     const targets = row.announcement_targets ?? [];
     return (

@@ -6,6 +6,7 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { insertAuditLog } from "@/lib/audit";
+import { redis } from "@/lib/redis";
 
 const _POST = async function (request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
@@ -59,6 +60,8 @@ const _POST = async function (request: Request) {
     console.error("Role Creation Failed:", error.message);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
+
+  await redis.del("roles:all");
 
   // 5. AUDIT
   await insertAuditLog({

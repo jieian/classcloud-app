@@ -54,7 +54,7 @@ const _DELETE = async function(request: Request) {
     );
   }
 
-  await redis.del("faculty:list", "faculty:candidates", "users:active");
+  await redis.del("faculty:list", "faculty:candidates", "users:active", "roles:all");
 
   // 7. Sync JWT claims for all previously affected users after the response is sent.
   // Batched to avoid hitting the Auth admin API rate limit; after() guarantees

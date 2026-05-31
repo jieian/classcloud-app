@@ -66,7 +66,7 @@ const _PATCH = async function (request: Request) {
     );
   }
 
-  await redis.del("users:active", "faculty:list", "faculty:candidates");
+  await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl");
 
   // 5. Sync JWT claims + Redis version (non-fatal)
   syncUserPermissions(uid).catch((err) =>

@@ -4,6 +4,7 @@ import {
 } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
 
 // ─── POST /api/announcements/[id]/pin ────────────────────────────────────────
 // Toggles the pinned state of an announcement (announcements.full_access only).
@@ -59,6 +60,7 @@ const _POST = async function (
   if (error)
     return Response.json({ error: "Internal server error." }, { status: 500 });
 
+  await redis.del(`announcements:${sy_id}`);
   return Response.json({ is_pinned: !is_pinned });
 };
 

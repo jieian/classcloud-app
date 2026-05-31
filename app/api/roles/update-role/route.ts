@@ -64,7 +64,7 @@ const _PUT = async function (request: Request) {
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 
-  await redis.del("faculty:list", "faculty:candidates", "users:active");
+  await redis.del("faculty:list", "faculty:candidates", "users:active", "roles:all");
 
   // 6. Sync JWT claims for all users holding this role after the response is sent.
   // after() guarantees completion even after the serverless function responds.

@@ -4,7 +4,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 
 const CACHE_KEY = "users:pending";
-const CACHE_TTL = 120;
+const CACHE_TTL = 300;
 
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();

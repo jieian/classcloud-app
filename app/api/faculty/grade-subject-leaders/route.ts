@@ -1,6 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { redis } from "@/lib/redis";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import type { GradeSubjectLeaderRow, SubjectLeaderEntry } from "@/app/(app)/school/faculty/_lib/facultyService";
 
@@ -17,17 +18,24 @@ type RpcRow = {
   leader_last_name: string | null;
 };
 
+const CACHE_KEY = "faculty:gsl";
+const CACHE_TTL = 600;
+
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();
 
-  const [{ data: { user } }, { data, error }] = await Promise.all([
+  const [{ data: { user } }, cached] = await Promise.all([
     supabase.auth.getUser(),
-    adminClient.rpc("get_grade_subject_leader_data"),
+    redis.get<GradeSubjectLeaderRow[]>(CACHE_KEY),
   ]);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  if (cached) return Response.json({ data: cached });
+
+  const { data, error } = await adminClient.rpc("get_grade_subject_leader_data");
 
   if (error) {
     if (isRpcError(error, RpcError.NO_ACTIVE_SCHOOL_YEAR)) {
@@ -74,6 +82,7 @@ const _GET = async function () {
     (a, b) => a.level_number - b.level_number,
   );
 
+  await redis.set(CACHE_KEY, result, { ex: CACHE_TTL });
   return Response.json({ data: result });
 };
 

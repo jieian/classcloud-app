@@ -2924,8 +2924,9 @@ export async function fetchConsolidatedSubjectDiagnosticAnalytics(
 export async function fetchSubjectGroupForSubject(
   subjectId: number,
   gradeLevelId: number,
+  db: SupabaseQueryClient = supabase,
 ): Promise<number[]> {
-  const { data: activeContextData } = await supabase
+  const { data: activeContextData } = await db
     .from("school_years")
     .select("curriculum_id")
     .eq("is_active", true)
@@ -2944,7 +2945,7 @@ export async function fetchSubjectGroupForSubject(
     subject_group_members: MemberRow[];
   };
 
-  const { data: groups } = await supabase
+  const { data: groups } = await db
     .from("subject_groups")
     .select(
       "subject_group_id, subject_group_members(curriculum_subject_id, curriculum_subjects!inner(subject_id, grade_level_id))",

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconSpeakerphone, IconCalendarTime, IconPlus } from "@tabler/icons-react";
+import Link from "next/link";
 import {
   fetchAnnouncements,
   markAnnouncementRead,
@@ -100,10 +101,10 @@ export default function AnnouncementsSection() {
               <IconCalendarTime size={15} stroke={1.8} />
               <span className={styles.btnText}>Scheduled</span>
             </button>
-            <button type="button" className={styles.btnFilled} disabled>
+            <Link href="/announcements/create" className={styles.btnFilled}>
               <IconPlus size={15} stroke={2.2} />
               <span className={styles.btnText}>Create Announcement</span>
-            </button>
+            </Link>
           </div>
         )}
       </div>

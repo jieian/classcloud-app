@@ -20,8 +20,8 @@
   {
     "schemaname": "public",
     "tablename": "announcement_reads",
-    "indexname": "idx_announcement_reads_user_id",
-    "indexdef": "CREATE INDEX idx_announcement_reads_user_id ON public.announcement_reads USING btree (user_id)"
+    "indexname": "idx_announcement_reads_user_announcement",
+    "indexdef": "CREATE INDEX idx_announcement_reads_user_announcement ON public.announcement_reads USING btree (user_id, announcement_id)"
   },
   {
     "schemaname": "public",
@@ -56,6 +56,12 @@
   {
     "schemaname": "public",
     "tablename": "announcements",
+    "indexname": "idx_announcements_published_feed",
+    "indexdef": "CREATE INDEX idx_announcements_published_feed ON public.announcements USING btree (sy_id, is_pinned DESC, published_at DESC) WHERE ((status = 'PUBLISHED'::text) AND (deleted_at IS NULL))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
     "indexname": "idx_announcements_scheduled",
     "indexdef": "CREATE INDEX idx_announcements_scheduled ON public.announcements USING btree (status, published_at) WHERE ((status = 'SCHEDULED'::text) AND (deleted_at IS NULL))"
   },
@@ -74,32 +80,14 @@
   {
     "schemaname": "public",
     "tablename": "audit_logs",
-    "indexname": "idx_audit_action_time",
-    "indexdef": "CREATE INDEX idx_audit_action_time ON public.audit_logs USING btree (action, created_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
     "indexname": "idx_audit_actor_time",
     "indexdef": "CREATE INDEX idx_audit_actor_time ON public.audit_logs USING btree (actor_id, created_at DESC)"
   },
   {
     "schemaname": "public",
     "tablename": "audit_logs",
-    "indexname": "idx_audit_category_time",
-    "indexdef": "CREATE INDEX idx_audit_category_time ON public.audit_logs USING btree (category, created_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
     "indexname": "idx_audit_entity_time",
     "indexdef": "CREATE INDEX idx_audit_entity_time ON public.audit_logs USING btree (entity_type, entity_id, created_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
-    "indexname": "idx_audit_time_brin",
-    "indexdef": "CREATE INDEX idx_audit_time_brin ON public.audit_logs USING brin (created_at)"
   },
   {
     "schemaname": "public",
@@ -206,6 +194,12 @@
   {
     "schemaname": "public",
     "tablename": "exam_results_reports",
+    "indexname": "idx_exam_results_reports_exam_section_date",
+    "indexdef": "CREATE INDEX idx_exam_results_reports_exam_section_date ON public.exam_results_reports USING btree (exam_id, section_id, generated_at DESC)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exam_results_reports",
     "indexname": "idx_exam_results_reports_generated_by",
     "indexdef": "CREATE INDEX idx_exam_results_reports_generated_by ON public.exam_results_reports USING btree (generated_by)"
   },
@@ -232,6 +226,12 @@
     "tablename": "exam_results_reports",
     "indexname": "idx_exam_results_reports_sy_id",
     "indexdef": "CREATE INDEX idx_exam_results_reports_sy_id ON public.exam_results_reports USING btree (sy_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exam_results_reports",
+    "indexname": "idx_exam_results_reports_sy_section",
+    "indexdef": "CREATE INDEX idx_exam_results_reports_sy_section ON public.exam_results_reports USING btree (sy_id, section_id)"
   },
   {
     "schemaname": "public",
@@ -326,6 +326,12 @@
   {
     "schemaname": "public",
     "tablename": "item_analysis_reports",
+    "indexname": "idx_item_analysis_reports_exam_section_date",
+    "indexdef": "CREATE INDEX idx_item_analysis_reports_exam_section_date ON public.item_analysis_reports USING btree (exam_id, section_id, generated_at DESC)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "item_analysis_reports",
     "indexname": "idx_item_analysis_reports_generated_by",
     "indexdef": "CREATE INDEX idx_item_analysis_reports_generated_by ON public.item_analysis_reports USING btree (generated_by)"
   },
@@ -352,6 +358,12 @@
     "tablename": "item_analysis_reports",
     "indexname": "idx_item_analysis_reports_sy_id",
     "indexdef": "CREATE INDEX idx_item_analysis_reports_sy_id ON public.item_analysis_reports USING btree (sy_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "item_analysis_reports",
+    "indexname": "idx_item_analysis_reports_sy_section",
+    "indexdef": "CREATE INDEX idx_item_analysis_reports_sy_section ON public.item_analysis_reports USING btree (sy_id, section_id)"
   },
   {
     "schemaname": "public",
@@ -586,17 +598,5 @@
     "tablename": "sections",
     "indexname": "idx_sections_adviser_active",
     "indexdef": "CREATE INDEX idx_sections_adviser_active ON public.sections USING btree (adviser_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "idx_sections_adviser_sy",
-    "indexdef": "CREATE INDEX idx_sections_adviser_sy ON public.sections USING btree (adviser_id, sy_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "sections",
-    "indexname": "idx_sections_grade_level_id",
-    "indexdef": "CREATE INDEX idx_sections_grade_level_id ON public.sections USING btree (grade_level_id)"
   }
 ]
