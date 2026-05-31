@@ -199,10 +199,17 @@ function makeStyles() {
     title: { font: { name: "Sans Serif", sz: 18, bold: true }, alignment: center },
     sectionTitle: { font: { name: "Sans Serif", sz: 11, bold: true }, alignment: left },
     label: { font: { name: "Sans Serif", sz: 10, bold: true }, alignment: left, border },
+    labelNoWrap: { font: { name: "Sans Serif", sz: 10, bold: true }, alignment: { horizontal: "left", vertical: "center" }, border },
     value: { font: { name: "Sans Serif", sz: 10 }, alignment: left, border },
     header: {
       font: { name: "Sans Serif", sz: 10, bold: true, color: { rgb: "FFFFFF" } },
       alignment: center,
+      fill: greenFill,
+      border,
+    },
+    headerNoWrap: {
+      font: { name: "Sans Serif", sz: 10, bold: true, color: { rgb: "FFFFFF" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: false },
       fill: greenFill,
       border,
     },
@@ -214,7 +221,10 @@ function makeStyles() {
     },
     body: { font: { name: "Sans Serif", sz: 10 }, alignment: center, border },
     bodyLeft: { font: { name: "Sans Serif", sz: 10 }, alignment: left, border },
+    bodyLeftNoWrap: { font: { name: "Sans Serif", sz: 10 }, alignment: { horizontal: "left", vertical: "center", wrapText: false }, border },
     note: { font: { name: "Sans Serif", sz: 12, bold: true }, alignment: center, border },
+    generatedBy: { font: { name: "Sans Serif", sz: 10 }, alignment: { horizontal: "left", vertical: "center" } },
+    rightBorder: { border: { right: thin } },
   };
 }
 
@@ -232,10 +242,11 @@ function appendSheet(wb: XLSXStyle.WorkBook, ws: Worksheet, name: string, lastRe
   ws["!ref"] = lastRef;
   ws["!pageSetup"] = { paperSize: 9, orientation: "landscape" };
   ws["!margins"] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
+  ws["!protect"] = {};
   XLSXStyle.utils.book_append_sheet(wb, ws, safeSheetName(name, "Sheet"));
 }
 
-function summaryDetails(summary: ExamDetailsSummary | null): (string | number)[] {
+function summaryDetails(summary: ExamDetailsSummary | null, sd = 0): (string | number)[] {
   if (!summary) return Array.from({ length: 8 }, () => DASH);
   return [
     summary.totalItems,
@@ -245,8 +256,19 @@ function summaryDetails(summary: ExamDetailsSummary | null): (string | number)[]
     formatNumber(summary.pl),
     summary.highestScore,
     summary.lowestScore,
-    `${formatNumber(summary.mps)}%`,
+    formatNumber(sd),
   ];
+}
+
+function computeStats(rows: ProficiencyRow[]): { median: number | null; sd: number | null } {
+  const scores = rows.map((r) => r.testScore).filter((s) => Number.isFinite(s));
+  if (scores.length === 0) return { median: null, sd: null };
+  const sorted = [...scores].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const sd = Math.sqrt(scores.reduce((sum, x) => sum + (x - mean) ** 2, 0) / scores.length);
+  return { median, sd };
 }
 
 function makeMplRows(rows: ProficiencyRow[]) {
@@ -761,6 +783,7 @@ const _GET = async function (request: Request) {
     coordinatorName,
     schoolYear,
     quarterName,
+    userEmail: user.email ?? user.id,
   });
 };
 
@@ -777,6 +800,7 @@ function writeHeaderBlock({
   metadata,
   merges,
   width,
+  generatedBy,
 }: {
   ws: Worksheet;
   styles: ReturnType<typeof makeStyles>;
@@ -784,11 +808,14 @@ function writeHeaderBlock({
   metadata: [string, string | number][];
   merges: XLSXStyle.Range[];
   width: number;
+  generatedBy: string;
 }) {
-  setCell(ws, "A1", title, styles.title);
+  setCell(ws, "A1", generatedBy, styles.generatedBy);
   merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: width - 1 } });
+  setCell(ws, "A2", title, styles.title);
+  merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: width - 1 } });
   metadata.forEach(([label, value], index) => {
-    const row = index + 3;
+    const row = index + 4;
     setCell(ws, `A${row}`, label, styles.label);
     setCell(ws, `B${row}`, value, styles.value, typeof value === "number" ? "n" : "s");
     merges.push({ s: { r: row - 1, c: 1 }, e: { r: row - 1, c: Math.min(width - 1, 4) } });
@@ -803,6 +830,9 @@ function writeTable({
   title,
   headers,
   values,
+  firstColCenter = false,
+  merges,
+  headerStyle,
 }: {
   ws: Worksheet;
   styles: ReturnType<typeof makeStyles>;
@@ -811,10 +841,16 @@ function writeTable({
   title: string;
   headers: string[];
   values: (string | number)[][];
+  firstColCenter?: boolean;
+  merges?: XLSXStyle.Range[];
+  headerStyle?: XLSXStyle.CellObject["s"];
 }) {
   setCell(ws, XLSXStyle.utils.encode_cell({ r: row - 1, c: col }), title, styles.sectionTitle);
+  if (merges && headers.length > 1) {
+    merges.push({ s: { r: row - 1, c: col }, e: { r: row - 1, c: col + headers.length - 1 } });
+  }
   headers.forEach((header, index) =>
-    setCell(ws, XLSXStyle.utils.encode_cell({ r: row, c: col + index }), header, styles.header),
+    setCell(ws, XLSXStyle.utils.encode_cell({ r: row, c: col + index }), header, headerStyle ?? styles.header),
   );
   values.forEach((valueRow, r) =>
     valueRow.forEach((value, c) =>
@@ -822,7 +858,7 @@ function writeTable({
         ws,
         XLSXStyle.utils.encode_cell({ r: row + r + 1, c: col + c }),
         value,
-        c === 0 ? styles.bodyLeft : styles.body,
+        c === 0 && !firstColCenter ? styles.bodyLeft : styles.body,
         typeof value === "number" ? "n" : "s",
       ),
     ),
@@ -852,6 +888,7 @@ function writeLongMatrixTable({
   trailingValues?: (string | number)[];
 }) {
   setCell(ws, XLSXStyle.utils.encode_cell({ r: row - 1, c: col }), title, styles.sectionTitle);
+  merges.push({ s: { r: row - 1, c: col }, e: { r: row - 1, c: col + groups.length * 3 + trailingHeaders.length - 1 } });
   let currentCol = col;
   for (const group of groups) {
     for (let offset = 0; offset < 3; offset++) {
@@ -924,6 +961,7 @@ function writeSummaryTables({
       item.achieved,
       formatPercentage(item.achieved, item.testTakers),
     ]),
+    merges,
   });
   next = writeTable({
     ws,
@@ -938,6 +976,7 @@ function writeSummaryTables({
       item.failed,
       formatPercentage(item.failed, item.testTakers),
     ]),
+    merges,
   });
   const total = rows.length;
   const maleAchieved = maleRows.filter((item) => item.mpl >= MPL_THRESHOLD).length;
@@ -992,12 +1031,14 @@ function addTestResultsSheet({
   exam,
   coordinatorName,
   schoolYear,
+  generatedBy,
 }: {
   wb: XLSXStyle.WorkBook;
   result: ConsolidatedSubjectDiagnosticResult;
   exam: ExamRow;
   coordinatorName: string;
   schoolYear: string;
+  generatedBy: string;
 }) {
   const styles = makeStyles();
   const ws: Worksheet = {};
@@ -1016,6 +1057,7 @@ function addTestResultsSheet({
     ],
     merges,
     width: 12,
+    generatedBy,
   });
   const detailRow = (
     label: string,
@@ -1035,19 +1077,23 @@ function addTestResultsSheet({
     summary?.lowestScore ?? DASH,
     formatDiagnosticValue(sd, 2),
   ];
-  const rows = result.sections.map((section) =>
-    detailRow(section.sectionName, section.summary, section.median, section.sd),
-  );
-  rows.push(detailRow("Total", result.summary, result.median, result.sd));
+  const rows = result.sections.map((section) => {
+    const { median, sd } = computeStats(section.proficiencyRows);
+    return detailRow(section.sectionName, section.summary, median, sd);
+  });
+  const allProfRows = result.sections.flatMap((section) => section.proficiencyRows);
+  const { median: totalMedian, sd: totalSd } = computeStats(allProfRows);
+  rows.push(detailRow("Total", result.summary, totalMedian, totalSd));
   writeTable({
     ws,
     styles,
-    row: 9,
+    row: 10,
     col: 0,
     title: `Diagnostic Test - ${result.examTitle}`,
     headers: ["Section", "No. of Items", "Number of Cases", "Total Score", "Mean", "Median", "PL", "MPS", "Highest Score", "Lowest Score", "SD"],
     values: rows,
   });
+  merges.push({ s: { r: 9, c: 0 }, e: { r: 9, c: 10 } });
   ws["!merges"] = merges;
   appendSheet(wb, ws, "Test Results", `A1:L${Math.max(15, rows.length + 12)}`);
 }
@@ -1061,9 +1107,22 @@ function addItemAnalysisSheet({
 }) {
   const styles = makeStyles();
   const ws: Worksheet = {};
-  ws["!cols"] = baseCols(28);
   const regularSections = result.sections.filter((section) => !section.isSses);
   const ssesSections = result.sections.filter((section) => section.isSses);
+
+  // Dynamic column widths: size each section column to its name, not a fixed width
+  const nameW = (name: string) => Math.min(Math.max(name.length + 1, 8), 20);
+  const colWidths: { wch: number }[] = [
+    { wch: 6 },  // Item
+    ...regularSections.map((s) => ({ wch: nameW(s.sectionName) })),
+    { wch: 8 }, { wch: 7 }, { wch: 2 },  // Total, Rank, gap
+    { wch: 6 }, { wch: 8 }, { wch: 8 }, { wch: 7 }, { wch: 2 },  // SSES table + gap
+    { wch: 6 }, { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 7 }, { wch: 2 },  // Combined + gap
+    { wch: 7 }, { wch: 13 }, { wch: 7 }, { wch: 13 },  // Ranking table
+  ];
+  ws["!cols"] = colWidths;
+  const merges: XLSXStyle.Range[] = [];
+
   const itemNos = Array.from(
     new Set(result.sections.flatMap((section) => section.itemAnalysis.rows.map((row) => row.itemNo))),
   ).sort((a, b) => a - b);
@@ -1091,15 +1150,7 @@ function addItemAnalysisSheet({
     headers: string[],
     values: (string | number)[][],
   ) => {
-    writeTable({
-      ws,
-      styles,
-      row: 3,
-      col,
-      title,
-      headers,
-      values,
-    });
+    writeTable({ ws, styles, row: 3, col, title, headers, values, firstColCenter: true, merges, headerStyle: styles.headerNoWrap });
   };
 
   const regularValues = itemNos.length === 0
@@ -1146,20 +1197,14 @@ function addItemAnalysisSheet({
       ranking.least[index]?.rank ?? DASH,
       ranking.least[index]?.itemNo ?? DASH,
     ]);
-    writeTable({
-      ws,
-      styles,
-      row,
-      col,
-      title,
-      headers: ["Rank", "Most Learned", "Rank", "Least Learned"],
-      values,
-    });
+    writeTable({ ws, styles, row, col, title, headers: ["Rank", "Most Learned", "Rank", "Least Learned"], values, firstColCenter: true, merges, headerStyle: styles.headerNoWrap });
   };
   const rankingCol = combinedCol + 6;
-  writeRankingTable("SSES Item Ranking", ssesSections, 3, rankingCol);
-  writeRankingTable("Regular Item Ranking", regularSections, 13, rankingCol);
-  appendSheet(wb, ws, "Item Analysis", `A1:AB${Math.max(40, itemNos.length + 8)}`);
+  writeRankingTable("SSES", ssesSections, 3, rankingCol);
+  writeRankingTable("Regular", regularSections, 13, rankingCol);
+  ws["!merges"] = merges;
+  const lastCol = XLSXStyle.utils.encode_col(rankingCol + 3);
+  appendSheet(wb, ws, "Item Analysis", `A1:${lastCol}${Math.max(40, itemNos.length + 8)}`);
 }
 
 function addSectionSheet({
@@ -1167,55 +1212,107 @@ function addSectionSheet({
   section,
   result,
   exam,
+  generatedBy,
 }: {
   wb: XLSXStyle.WorkBook;
   section: ConsolidatedSubjectSectionResult;
   result: ConsolidatedSubjectDiagnosticResult;
   exam: ExamRow;
+  generatedBy: string;
 }) {
   const styles = makeStyles();
   const ws: Worksheet = {};
-  const merges: XLSXStyle.Range[] = [];
-  ws["!cols"] = baseCols(22);
+  ws["!cols"] = [
+    { wch: 6 },  { wch: 34 }, { wch: 12 }, { wch: 12 }, { wch: 24 },  // No., Name, Score, MPL, Prof Level
+    { wch: 16 }, { wch: 24 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
+    { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+    { wch: 12 }, { wch: 12 },
+  ];
   if (!section.isFinalized || !section.summary) {
+    const unfinMerges: XLSXStyle.Range[] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 8 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 8 } },
+    ];
     setCell(ws, "A1", section.sectionName, styles.title);
     setCell(ws, "A3", "Section not yet finalized", styles.note);
-    merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } });
-    merges.push({ s: { r: 2, c: 0 }, e: { r: 2, c: 8 } });
-    ws["!merges"] = merges;
+    ws["!merges"] = unfinMerges;
     appendSheet(wb, ws, section.sectionName, "A1:I6");
     return;
   }
-  writeHeaderBlock({
-    ws,
-    styles,
-    title: "Individual Exam Result",
-    metadata: [
-      ["Exam Title", result.examTitle],
-      ["Subject Teacher", "See masterlist"],
-      ["Grade", result.gradeDisplayName],
-      ["Section", section.sectionName],
-      ["Subject", result.subjectName],
-      ["Quarter", firstJoin(exam.quarters)?.name ?? DASH],
-      ["Exam Date", exam.exam_date ?? DASH],
-      ["Total Items", section.summary.totalItems],
-    ],
-    merges,
-    width: 22,
+
+  // Pre-defined merges — mirrors exam-result-download exactly
+  const merges: XLSXStyle.Range[] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },   // generated-by
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },   // title
+    { s: { r: 3, c: 1 }, e: { r: 3, c: 3 } },    // left value row 4
+    { s: { r: 4, c: 1 }, e: { r: 4, c: 3 } },    // left value row 5
+    { s: { r: 5, c: 1 }, e: { r: 5, c: 3 } },    // left value row 6
+    { s: { r: 6, c: 1 }, e: { r: 6, c: 3 } },    // left value row 7
+    { s: { r: 3, c: 7 }, e: { r: 3, c: 10 } },   // right value row 4
+    { s: { r: 4, c: 7 }, e: { r: 4, c: 10 } },   // right value row 5
+    { s: { r: 5, c: 7 }, e: { r: 5, c: 10 } },   // right value row 6
+    { s: { r: 6, c: 7 }, e: { r: 6, c: 10 } },   // right value row 7
+    { s: { r: 9, c: 0 }, e: { r: 9, c: 7 } },    // Details label
+    { s: { r: 13, c: 0 }, e: { r: 13, c: 4 } },  // Proficiency Level label
+  ];
+
+  ws["!rows"] = [
+    { hpt: 14 }, { hpt: 30 }, { hpt: 14 },
+    { hpt: 20 }, { hpt: 20 }, { hpt: 20 }, { hpt: 20 },
+    { hpt: 10 }, { hpt: 10 }, { hpt: 20 },
+    { hpt: 20 }, { hpt: 18 }, { hpt: 10 },
+    { hpt: 20 }, { hpt: 20 },
+  ];
+
+  // Row 1: generated-by | Row 2: title
+  setCell(ws, "A1", generatedBy, styles.generatedBy);
+  setCell(ws, "A2", "Individual Exam Result", styles.title);
+
+  // Metadata — same layout as individual download (labelCol A/G, valueCol B/H, rows 4–7)
+  const metadata: [string, string | number][] = [
+    ["Exam Title", result.examTitle],
+    ["Subject Teacher", "See masterlist"],
+    ["Grade", result.gradeDisplayName],
+    ["Section", section.sectionName],
+    ["Subject", result.subjectName],
+    ["Quarter", firstJoin(exam.quarters)?.name ?? DASH],
+    ["Exam Date", exam.exam_date ?? DASH],
+    ["Total Items", section.summary.totalItems],
+  ];
+  metadata.forEach(([label, value], index) => {
+    const labelCol = index < 4 ? "A" : "G";
+    const valueCol = index < 4 ? "B" : "H";
+    const actualRow = index < 4 ? index + 4 : index;
+    setCell(ws, `${labelCol}${actualRow}`, label, styles.labelNoWrap);
+    setCell(ws, `${valueCol}${actualRow}`, value, styles.value, typeof value === "number" ? "n" : "s");
   });
-  writeTable({
-    ws,
-    styles,
-    row: 9,
-    col: 0,
-    title: "Details",
-    headers: ["No. of Items", "Number of Cases", "Total Score", "Mean", "PL", "Highest Score", "Lowest Score", "Mean Percentage Score"],
-    values: [summaryDetails(section.summary)],
-  });
-  let row = 14;
-  setCell(ws, "A13", "Proficiency Level Obtained", styles.sectionTitle);
-  ["No.", "Name", "Score", "MPL", "Proficiency Level Obtained"].forEach((header, index) =>
-    setCell(ws, XLSXStyle.utils.encode_cell({ r: 13, c: index }), header, styles.header),
+
+  // Right-edge borders (col D and col K, rows 4–7)
+  for (let i = 0; i < 4; i++) {
+    ws[XLSXStyle.utils.encode_cell({ r: 3 + i, c: 3 })]  = { v: "", t: "s", s: styles.rightBorder };
+    ws[XLSXStyle.utils.encode_cell({ r: 3 + i, c: 10 })] = { v: "", t: "s", s: styles.rightBorder };
+  }
+
+  // Details table (row 10 = label, row 11 = headers, row 12 = values)
+  const profRows = section.proficiencyRows;
+  const meanScore = section.summary.mean;
+  const sdValue = profRows.length > 0
+    ? Math.sqrt(profRows.reduce((sum, r) => sum + (r.testScore - meanScore) ** 2, 0) / profRows.length)
+    : 0;
+  setCell(ws, "A10", "Details", styles.sectionTitle);
+  ["No. of Items", "Number of Cases", "Total Score", "Mean", "PL", "Highest Score", "Lowest Score", "SD"].forEach((h, i) =>
+    setCell(ws, XLSXStyle.utils.encode_cell({ r: 10, c: i }), h, styles.headerNoWrap),
+  );
+  summaryDetails(section.summary, sdValue).forEach((v, i) =>
+    setCell(ws, XLSXStyle.utils.encode_cell({ r: 11, c: i }), v, styles.body, typeof v === "number" ? "n" : "s"),
+  );
+
+  // Proficiency table header (row 14 = label, row 15 = headers)
+  let row = 15;
+  setCell(ws, "A14", "Proficiency Level Obtained", styles.sectionTitle);
+  ["No.", "Name", "Score", "MPL", "Proficiency Level Obtained"].forEach((h, i) =>
+    setCell(ws, XLSXStyle.utils.encode_cell({ r: 14, c: i }), h, styles.headerNoWrap),
   );
   const groups = [
     ["Male", section.proficiencyRows.filter((item) => item.sex === "Male")] as const,
@@ -1229,13 +1326,13 @@ function addSectionSheet({
     merges.push({ s: { r: row, c: 0 }, e: { r: row, c: 4 } });
     row++;
     rows.forEach((item, index) => {
-      [index + 1, item.pupilName, `${item.testScore}/${item.totalItems}`, `${formatNumber(item.mpl)}%`, item.proficiencyLevel].forEach((value, c) =>
-        setCell(ws, XLSXStyle.utils.encode_cell({ r: row, c }), value, c === 1 ? styles.bodyLeft : styles.body, typeof value === "number" ? "n" : "s"),
+      [index + 1, item.pupilName, item.testScore, `${formatNumber(item.mpl, 1)}%`, item.proficiencyLevel].forEach((value, c) =>
+        setCell(ws, XLSXStyle.utils.encode_cell({ r: row, c }), value, c === 1 ? styles.bodyLeftNoWrap : styles.body, typeof value === "number" ? "n" : "s"),
       );
       row++;
     });
   }
-  writeSummaryTables({ ws, styles, merges, row: 14, col: 6, rows: section.proficiencyRows });
+  writeSummaryTables({ ws, styles, merges, row: 15, col: 6, rows: section.proficiencyRows });
   ws["!merges"] = merges;
   appendSheet(wb, ws, section.sectionName, `A1:V${Math.max(row, 40)}`);
 }
@@ -1367,8 +1464,10 @@ function addMplResultSheet({
 }) {
   const styles = makeStyles();
   const ws: Worksheet = {};
+  const merges: XLSXStyle.Range[] = [];
   ws["!cols"] = baseCols(8);
   setCell(ws, "A1", "MPL Result", styles.title);
+  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } });
   const makeValues = (sections: ConsolidatedSubjectSectionResult[]) => {
     const rows = sections.flatMap((section) => section.proficiencyRows);
     return makeMplRows(rows).map((item) => [
@@ -1388,6 +1487,7 @@ function addMplResultSheet({
     title: "SSES Exceeded and Failed",
     headers: ["Group", "Test Taker", "Achieved", "Achieved %", "Failed", "Failed %"],
     values: makeValues(result.sections.filter((section) => section.isSses)),
+    merges,
   });
   row = writeTable({
     ws,
@@ -1397,6 +1497,7 @@ function addMplResultSheet({
     title: "Regular Exceeded and Failed",
     headers: ["Group", "Test Taker", "Achieved", "Achieved %", "Failed", "Failed %"],
     values: makeValues(result.sections.filter((section) => !section.isSses)),
+    merges,
   });
   writeTable({
     ws,
@@ -1406,7 +1507,9 @@ function addMplResultSheet({
     title: "Combined Exceeded and Failed",
     headers: ["Group", "Test Taker", "Achieved", "Achieved %", "Failed", "Failed %"],
     values: makeValues(result.sections),
+    merges,
   });
+  ws["!merges"] = merges;
   appendSheet(wb, ws, "MPL Result", "A1:H40");
 }
 
@@ -1416,29 +1519,42 @@ function buildWorkbook({
   coordinatorName,
   schoolYear,
   quarterName: _quarterName,
+  userEmail,
 }: {
   result: ConsolidatedSubjectDiagnosticResult;
   exam: ExamRow;
   coordinatorName: string;
   schoolYear: string;
   quarterName: string;
+  userEmail: string;
 }) {
+  const generatedOn = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
+  const generatedBy = `Generated by ${userEmail} on ${generatedOn}`;
+
   const wb = XLSXStyle.utils.book_new();
-  addTestResultsSheet({ wb, result, exam, coordinatorName, schoolYear });
+  addTestResultsSheet({ wb, result, exam, coordinatorName, schoolYear, generatedBy });
   addItemAnalysisSheet({ wb, result });
   for (const section of result.sections) {
-    addSectionSheet({ wb, section, result, exam });
+    addSectionSheet({ wb, section, result, exam, generatedBy });
   }
   addLevelOfProficiencySheet({ wb, result });
   addLaemplSheet({ wb, result });
   addMplResultSheet({ wb, result });
 
   const buffer = XLSXStyle.write(wb, { type: "buffer", bookType: "xlsx" });
-  const filename = safeFilename(`${result.gradeDisplayName} - ${result.subjectName} - ${result.examTitle} Consolidated Reports.xlsx`);
+  const displayFilename = safeFilename(`${result.gradeDisplayName} • ${result.subjectName} • ${result.examTitle}.xlsx`);
+  const asciiFilename = displayFilename.replace(/[^\x20-\x7E]/g, "_");
   return new Response(buffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(displayFilename)}`,
     },
   });
 }

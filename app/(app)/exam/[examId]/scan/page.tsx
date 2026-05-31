@@ -269,18 +269,14 @@ function StudentMobileRow({
               <Text fz="xs" c="dimmed">LRN: {student.lrn}</Text>
             </div>
           </Group>
-          {!isAdminView && (
+          {!isAdminView && !isLocked && (
             <Group gap={4} wrap="nowrap" onClick={(e) => e.stopPropagation()}>
-              <Tooltip label="This examination has already been proceeded." disabled={!isLocked} withArrow>
-                <Button size="xs" radius="md" w={72} color={hasScanned ? 'yellow' : '#4EAE4A'} onClick={() => onScan(student)} disabled={isLocked}>
-                  {hasScanned ? 'Rescan' : 'Scan'}
-                </Button>
-              </Tooltip>
-              <Tooltip label="Remove scan" withArrow disabled={!hasScanned || isLocked}>
-                <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !isLocked ? 'visible' : 'hidden' }} onClick={() => onUndo(student)}>
-                  <IconX size={12} />
-                </Button>
-              </Tooltip>
+              <Button size="xs" radius="md" w={72} color={hasScanned ? 'yellow' : '#4EAE4A'} onClick={() => onScan(student)}>
+                {hasScanned ? 'Rescan' : 'Scan'}
+              </Button>
+              <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned ? 'visible' : 'hidden' }} onClick={() => onUndo(student)}>
+                <IconX size={12} />
+              </Button>
             </Group>
           )}
         </Group>
@@ -323,6 +319,7 @@ export default function ScanPapersPage() {
   const [examLoading, setExamLoading] = useState(true);
   const [reportsUrl, setReportsUrl] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
+  const [scopeCheckReady, setScopeCheckReady] = useState(false);
 
   const [step, setStep] = useState<Step>('students');
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
@@ -470,14 +467,20 @@ export default function ScanPapersPage() {
       });
   }, [examId, persistScanPageCache]);
 
-  // Scope-check: in faculty view, even full-access admins are treated as teachers
+  // Scope-check: in faculty view, even full-access admins are treated as teachers.
+  // scopeCheckReady gates the page render so no content flashes before the check completes.
   useEffect(() => {
     const hasFullAccess = permissions.includes("exams.full_access");
     const hasLimitedAccess = permissions.includes("exams.limited_access");
     const storedViewMode = localStorage.getItem("examViewMode") ?? "admin";
     const effectiveFullAccess = hasFullAccess && storedViewMode !== "faculty";
-    if (!exam || !user?.id || effectiveFullAccess || (!hasFullAccess && !hasLimitedAccess)) {
+    if (!exam || !user?.id) {
+      // Exam not yet loaded — keep scopeCheckReady false until we have data.
+      return;
+    }
+    if (effectiveFullAccess || (!hasFullAccess && !hasLimitedAccess)) {
       setAccessDenied(false);
+      setScopeCheckReady(true);
       return;
     }
     const examSectionIds = exam.exam_assignments
@@ -485,6 +488,7 @@ export default function ScanPapersPage() {
       .filter((id): id is number => id != null);
     if (examSectionIds.length === 0) {
       setAccessDenied(false);
+      setScopeCheckReady(true);
       return;
     }
     invalidateReportsCache();
@@ -496,6 +500,7 @@ export default function ScanPapersPage() {
         ),
       );
       setAccessDenied(!hasAccess);
+      setScopeCheckReady(true);
     });
   }, [exam, user?.id, permissions]);
 
@@ -1525,7 +1530,7 @@ export default function ScanPapersPage() {
 
   // â"€â"€â"€ Loading â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
-  if (examLoading) {
+  if (examLoading || !scopeCheckReady) {
     return (
       <>
         <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Scan Papers</h1>
@@ -1788,16 +1793,16 @@ export default function ScanPapersPage() {
                                   {!isAdminView && (
                                     <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'end', highlightColor)}>
                                       <Group gap={4} justify="center" wrap="nowrap">
-                                        <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
-                                          <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
-                                            {hasScanned ? 'Rescan' : 'Scan'}
-                                          </Button>
-                                        </Tooltip>
-                                        <Tooltip label="Remove scan" withArrow disabled={!hasScanned || exam.is_locked}>
-                                          <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !exam.is_locked ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
-                                            <IconX size={12} />
-                                          </Button>
-                                        </Tooltip>
+                                        {!exam.is_locked && (
+                                          <>
+                                            <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)}>
+                                              {hasScanned ? 'Rescan' : 'Scan'}
+                                            </Button>
+                                            <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
+                                              <IconX size={12} />
+                                            </Button>
+                                          </>
+                                        )}
                                       </Group>
                                     </TableTd>
                                   )}
@@ -1841,16 +1846,16 @@ export default function ScanPapersPage() {
                                   {!isAdminView && (
                                     <TableTd ta="center" style={studentHighlightCellStyle(isAnyHighlighted, 'end', highlightColor)}>
                                       <Group gap={4} justify="center" wrap="nowrap">
-                                        <Tooltip label="This examination has already been proceeded." disabled={!exam.is_locked} withArrow>
-                                          <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)} disabled={exam.is_locked}>
-                                            {hasScanned ? 'Rescan' : 'Scan'}
-                                          </Button>
-                                        </Tooltip>
-                                        <Tooltip label="Remove scan" withArrow disabled={!hasScanned || exam.is_locked}>
-                                          <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned && !exam.is_locked ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
-                                            <IconX size={12} />
-                                          </Button>
-                                        </Tooltip>
+                                        {!exam.is_locked && (
+                                          <>
+                                            <Button size="xs" radius="md" w={72} color={hasScanned ? "yellow" : "#4EAE4A"} onClick={() => handleScanStudent(student)}>
+                                              {hasScanned ? 'Rescan' : 'Scan'}
+                                            </Button>
+                                            <Button size="xs" variant="subtle" color="gray" px={4} style={{ visibility: hasScanned ? 'visible' : 'hidden' }} onClick={() => handleUndoScan(student)}>
+                                              <IconX size={12} />
+                                            </Button>
+                                          </>
+                                        )}
                                       </Group>
                                     </TableTd>
                                   )}
