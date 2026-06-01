@@ -12,7 +12,8 @@ const _POST = async function () {
   if (!permissions.includes("curriculum.full_access"))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  revalidateTag(CURRICULUM_CACHE_TAG, "max");
+  revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
+  revalidateTag("subjects", "minutes");
   return Response.json({ success: true });
 };
 

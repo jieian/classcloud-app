@@ -6,6 +6,7 @@ import {
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, AssignSubjectTeachersSchema } from "@/lib/api-schemas";
+import { revalidateTag } from "next/cache";
 const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -41,6 +42,7 @@ const _POST = async function(
       { status: 500 },
     );
 
+  revalidateTag("sections", "minutes");
   return Response.json({ success: true });
 }
 

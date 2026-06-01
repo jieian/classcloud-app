@@ -4,6 +4,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 import { redis } from "@/lib/redis";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _PATCH = async function (request: Request) {
   // 1. Verify caller is authenticated
@@ -67,6 +68,7 @@ const _PATCH = async function (request: Request) {
   }
 
   await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl");
+  await invalidateUserAssignmentsContext(uid);
 
   // 5. Sync JWT claims + Redis version (non-fatal)
   syncUserPermissions(uid).catch((err) =>

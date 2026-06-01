@@ -8,6 +8,7 @@ import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { invalidateReportsCache } from "@/lib/services/reportsAnalysisService";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 import { redis } from "@/lib/redis";
 
@@ -86,6 +87,8 @@ const _POST = async function (request: Request) {
   invalidateReportsCache();
   revalidateTag(REPORTS_CACHE_TAG, "minutes");
   await redis.del("faculty:gsl");
+  await invalidateUserAssignmentsContext(user_id);
+  if (oldLeaderId) await invalidateUserAssignmentsContext(oldLeaderId);
 
   after(async () => {
     await insertAuditLog({

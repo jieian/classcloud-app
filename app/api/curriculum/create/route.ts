@@ -24,7 +24,8 @@ const _POST = async function(request: Request) {
 
   if (error) return Response.json({ error: "Internal server error." }, { status: 500 });
 
-  revalidateTag(CURRICULUM_CACHE_TAG, "max");
+  revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
+  revalidateTag("subjects", "minutes");
   return Response.json({ success: true }, { status: 201 });
 }
 

@@ -11,6 +11,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, RenameSectionSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+import { revalidateTag } from "next/cache";
 
 type NestedRelation<T> = T | T[] | null;
 
@@ -225,6 +226,7 @@ const _PATCH = async function(
       { status: 500 },
     );
 
+  revalidateTag("sections", "minutes");
   return Response.json({ success: true });
 }
 

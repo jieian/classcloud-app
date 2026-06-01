@@ -9,6 +9,9 @@ import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 import { sendAccountDeactivationEmail } from "@/lib/email/templates";
 import { redis } from "@/lib/redis";
+import { after } from "next/server";
+import { revalidateTag } from "next/cache";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 const _DELETE = async function(request: Request) {
   // Verify the caller is authenticated
   const supabase = await createServerSupabaseClient();
@@ -79,10 +82,17 @@ const _DELETE = async function(request: Request) {
     }
 
     await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl");
+    revalidateTag("faculty", "minutes");
+    await invalidateUserAssignmentsContext(uuid);
 
-    // Clear JWT claims — user is banned but token still exists until expiry
-    syncUserPermissions(uuid).catch((err) =>
-      console.error("syncUserPermissions failed after soft-delete:", err),
+    // Clear JWT claims — user is banned but token still exists until expiry.
+    // Wrapped in after() so the response returns immediately while the sync
+    // completes in the background; using after() (not fire-and-forget) ensures
+    // the serverless function waits for it before shutting down.
+    after(() =>
+      syncUserPermissions(uuid).catch((err) =>
+        console.error("syncUserPermissions failed after soft-delete:", err),
+      ),
     );
 
     insertAuditLog({

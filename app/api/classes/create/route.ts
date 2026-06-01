@@ -5,6 +5,7 @@ import {
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { revalidateTag } from "next/cache";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -80,6 +81,7 @@ const _POST = async function(request: Request) {
     return Response.json({ error: msg }, { status: isConflict ? 409 : 500 });
   }
 
+  revalidateTag("sections", "minutes");
   return Response.json(
     { success: true, section_id: result.section_id },
     { status: 201 },

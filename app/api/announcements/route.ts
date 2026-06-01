@@ -20,6 +20,9 @@ type RawAnnouncement = {
 };
 
 const CACHE_TTL = 120;
+// Cache invalidation: only pin/unpin (announcements/[id]/pin/route.ts) currently
+// calls redis.del(`announcements:${sy_id}`). When create/update/delete routes are
+// added for announcements, each must also call redis.del with the same key pattern.
 
 // ─── GET /api/announcements ───────────────────────────────────────────────────
 // Returns PUBLISHED announcements for the active school year, filtered by the

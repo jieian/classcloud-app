@@ -49,6 +49,9 @@ function clearSupabaseClientAuthArtifacts() {
       if (key && key.startsWith("sb-")) localKeys.push(key);
     }
     localKeys.forEach((k) => localStorage.removeItem(k));
+    localStorage.removeItem("examViewMode");
+    localStorage.removeItem("classesViewMode");
+    localStorage.removeItem("examHighlight");
   } catch {
     // ignore storage failures
   }

@@ -14,6 +14,11 @@ const CACHE_TTL_SECONDS = 3600; // 1h backstop — primary invalidation is via A
  * Returns the active school year and active quarter IDs.
  * Cached in Redis indefinitely in practice; the 1h TTL is a last-resort
  * self-healing backstop in case all invalidation paths miss.
+ *
+ * Dual-cached intentionally: this Redis layer serves API routes that cannot
+ * use React server caching (e.g. GET /api/announcements). The Next.js Data
+ * Cache layer (homeServerService.ts, tag "active-context") serves server
+ * components. Both are invalidated on the same school year mutation events.
  */
 export async function getActiveContext(): Promise<ActiveContext> {
   const cached = await redis.get<ActiveContext>(ACTIVE_CONTEXT_KEY);

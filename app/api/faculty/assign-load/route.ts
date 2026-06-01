@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { revalidateTag } from "next/cache";
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { redis } from "@/lib/redis";
 import { withErrorHandler } from "@/lib/api-error";
@@ -7,6 +8,7 @@ import { syncUserPermissions } from "@/lib/permissions-sync";
 import { parseBody, AssignAcademicLoadSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _POST = async function (request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -67,6 +69,9 @@ const _POST = async function (request: Request) {
   }
 
   await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
+  revalidateTag("sections", "minutes");
+  revalidateTag("reports", "minutes");
+  await invalidateUserAssignmentsContext(faculty_id);
 
   // Non-blocking audit writes — don't delay the response
   after(async () => {

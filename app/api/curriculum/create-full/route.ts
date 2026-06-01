@@ -35,7 +35,8 @@ const _POST = async function(request: Request) {
     return Response.json({ error: "Failed to create curriculum." }, { status: 500 });
   }
 
-  revalidateTag(CURRICULUM_CACHE_TAG, "max");
+  revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
+  revalidateTag("subjects", "minutes");
   return Response.json({ success: true, curriculum_id: rpcResult?.curriculum_id }, { status: 201 });
 }
 

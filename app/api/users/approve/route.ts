@@ -5,6 +5,8 @@ import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
 import { redis } from "@/lib/redis";
+import { revalidateTag } from "next/cache";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -65,6 +67,8 @@ const _POST = async function(request: Request) {
   }
 
   await redis.del("users:pending", "users:active");
+  revalidateTag("faculty", "minutes");
+  await invalidateUserAssignmentsContext(uid);
 
   // Send approval email (non-fatal — account is already active)
   const email = authData.user?.email;

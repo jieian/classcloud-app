@@ -7,6 +7,13 @@ import {
   type SectionCard,
 } from "@/lib/services/classService";
 import type { SectionUserRow, SectionRow } from "@/lib/types/class.types";
+import { getActiveContext } from "@/lib/active-context";
+import {
+  getUserAssignmentsContext,
+  getTaughtSectionIds,
+  isAdviserOf,
+  isTeacherOf,
+} from "@/lib/services/userAssignmentsCache";
 
 export const SCHOOL_YEARS_CACHE_TAG = "school-years";
 
@@ -52,7 +59,8 @@ export async function buildSectionCardsForSy(
   syId: number,
   userId: string,
 ): Promise<{ sections: SectionCard[]; assignedSectionIds: number[] }> {
-  const [secResult, enrollResult, assignResult] = await Promise.all([
+  // Sections, enrollments, active SY check all run in parallel
+  const [secResult, enrollResult, activeCtx] = await Promise.all([
     admin
       .from("sections")
       .select(
@@ -65,12 +73,7 @@ export async function buildSectionCardsForSy(
       .select("section_id")
       .eq("sy_id", syId)
       .is("deleted_at", null),
-    admin
-      .from("teacher_class_assignments")
-      .select("section_id, sections!inner(sy_id)")
-      .eq("teacher_id", userId)
-      .eq("sections.sy_id", syId)
-      .is("deleted_at", null),
+    getActiveContext(),
   ]);
 
   const countMap: Record<number, number> = {};
@@ -95,58 +98,52 @@ export async function buildSectionCardsForSy(
     };
   });
 
-  const assignedSectionIds = (
-    (assignResult.data ?? []) as { section_id: number }[]
-  ).map((a) => a.section_id);
+  let assignedSectionIds: number[];
+
+  if (activeCtx.sy_id === syId) {
+    // Active SY: read from Redis cache (zero DB query)
+    const userCtx = await getUserAssignmentsContext(userId);
+    assignedSectionIds = getTaughtSectionIds(userCtx);
+  } else {
+    // Historical SY: fall back to a targeted DB query
+    const { data: assignResult } = await admin
+      .from("teacher_class_assignments")
+      .select("section_id, sections!inner(sy_id)")
+      .eq("teacher_id", userId)
+      .eq("sections.sy_id", syId)
+      .is("deleted_at", null);
+    assignedSectionIds = ((assignResult ?? []) as { section_id: number }[]).map(
+      (a) => a.section_id,
+    );
+  }
 
   return { sections, assignedSectionIds };
 }
 
 /**
  * Used by page server components to gate access before rendering.
- * Checks adviser_id and teacher_class_assignments in parallel.
+ * Reads from the user context cache — zero DB queries on the hot path.
  * Returns true if the limited_access user may access this section.
  */
 export async function canLimitedAccessSection(
   userId: string,
   sectionId: number,
 ): Promise<boolean> {
-  const [sectionResult, assignResult] = await Promise.all([
-    admin
-      .from("sections")
-      .select("adviser_id")
-      .eq("section_id", sectionId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    admin
-      .from("teacher_class_assignments")
-      .select("section_id", { count: "exact", head: true })
-      .eq("section_id", sectionId)
-      .eq("teacher_id", userId)
-      .is("deleted_at", null),
-  ]);
-
-  if (!sectionResult.data) return false;
-  const isAdviser = (sectionResult.data as any).adviser_id === userId;
-  const isTeacher = (assignResult.count ?? 0) > 0;
-  return isAdviser || isTeacher;
+  const ctx = await getUserAssignmentsContext(userId);
+  return isAdviserOf(ctx, sectionId) || isTeacherOf(ctx, sectionId);
 }
 
 /**
  * Used by API routes that have already fetched the section and confirmed the
- * user is NOT the adviser. Returns true if a teacher_class_assignment exists.
+ * user is NOT the adviser. Reads from the user context cache — zero DB queries
+ * on the hot path.
  */
 export async function isTeacherInSection(
   userId: string,
   sectionId: number,
 ): Promise<boolean> {
-  const { count } = await admin
-    .from("teacher_class_assignments")
-    .select("section_id", { count: "exact", head: true })
-    .eq("section_id", sectionId)
-    .eq("teacher_id", userId)
-    .is("deleted_at", null);
-  return (count ?? 0) > 0;
+  const ctx = await getUserAssignmentsContext(userId);
+  return isTeacherOf(ctx, sectionId);
 }
 
 /**

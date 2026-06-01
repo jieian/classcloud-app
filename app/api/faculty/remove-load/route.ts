@@ -3,7 +3,9 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 import { after } from "next/server";
+import { revalidateTag } from "next/cache";
 import { redis } from "@/lib/redis";
 const _POST = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -41,6 +43,9 @@ const _POST = async function(request: Request) {
   }
 
   await redis.del("faculty:list", "faculty:candidates", "coordinator:groups");
+  revalidateTag("sections", "minutes");
+  revalidateTag("reports", "minutes");
+  await invalidateUserAssignmentsContext(faculty_id);
 
   // Audit log — non-blocking
   after(async () => {

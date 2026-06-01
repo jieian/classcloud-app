@@ -78,6 +78,7 @@ const _DELETE = async function(request: Request) {
   );
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
   revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
+  revalidateTag("subjects", "minutes");
   return Response.json({ success: true }, { status: 200 });
 }
 

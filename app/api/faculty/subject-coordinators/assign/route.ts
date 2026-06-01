@@ -7,6 +7,7 @@ import { parseBody, AssignSubjectCoordinatorSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
 import { syncUserPermissions } from "@/lib/permissions-sync";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _POST = async function (request: Request) {
   const supabase = await createServerSupabaseClient();
@@ -72,6 +73,8 @@ const _POST = async function (request: Request) {
     ?.old_coordinator_id ?? null;
 
   await redis.del("coordinator:groups", "faculty:candidates");
+  await invalidateUserAssignmentsContext(user_id);
+  if (oldCoordinatorId) await invalidateUserAssignmentsContext(oldCoordinatorId);
 
   syncUserPermissions(user_id).catch((err) =>
     console.error("syncUserPermissions failed for new coordinator:", err),

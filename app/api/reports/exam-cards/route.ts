@@ -1,8 +1,7 @@
 import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
-import { adminClient } from "@/lib/supabase/admin";
-import { fetchMyAssignedScope } from "@/lib/services/reportsAnalysisService";
 import { getReportExamCardsCached } from "@/app/(app)/reports/_lib/reportServerService";
+import { getAssignedScopeForUser } from "@/lib/services/userAssignmentsCache";
 
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();
@@ -25,7 +24,11 @@ const _GET = async function () {
   const cards = await getReportExamCardsCached();
   if (canViewAll) return Response.json(cards);
 
-  const scope = await fetchMyAssignedScope(user.id, adminClient);
+  const scope = await getAssignedScopeForUser(user.id, {
+    needsGlSections: canMonitorGradeLevel,
+    needsSubjectSections: canMonitorSubjects,
+  });
+
   const filtered = cards.filter((card) => {
     if (canViewAssigned) {
       if (

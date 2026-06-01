@@ -1,7 +1,6 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
-import { adminClient } from "@/lib/supabase/admin";
-import { fetchMyAssignedScope } from "@/lib/services/reportsAnalysisService";
+import { getAssignedScopeForUser } from "@/lib/services/userAssignmentsCache";
 
 const _GET = async function () {
   const supabase = await createServerSupabaseClient();
@@ -13,7 +12,13 @@ const _GET = async function () {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const scope = await fetchMyAssignedScope(user.id, adminClient);
+  const permissions = getPermissionsFromUser(user);
+
+  const scope = await getAssignedScopeForUser(user.id, {
+    needsGlSections: permissions.includes("reports.monitor_grade_level"),
+    needsSubjectSections: permissions.includes("reports.monitor_subjects"),
+  });
+
   return Response.json(scope);
 };
 
