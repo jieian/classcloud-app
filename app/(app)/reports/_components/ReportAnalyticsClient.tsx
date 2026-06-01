@@ -613,6 +613,13 @@ function ConsolidatedItemAnalysisTables({
   const ssesRanks = rankByValue(ssesTotals);
   const combinedRanks = rankByValue(combinedTotals);
   const isRegularCrowded = regularSections.length > 4;
+  const total = itemNos.length;
+
+  const getRowStyle = (rank: number): React.CSSProperties | undefined => {
+    if (rank >= 1 && rank <= 10) return CORRECT_HIGHLIGHT_STYLE;
+    if (rank >= total - 9 && rank <= total) return WRONG_HIGHLIGHT_STYLE;
+    return undefined;
+  };
 
   if (itemNos.length === 0) return <SectionEmptyState message="-" />;
 
@@ -634,7 +641,7 @@ function ConsolidatedItemAnalysisTables({
         </TableThead>
         <TableTbody>
           {itemNos.map((itemNo) => {
-            const total = regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const rowTotal = regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
             const rank = regularRanks.get(itemNo) ?? 0;
             return (
               <TableTr key={`regular-${itemNo}`}>
@@ -644,8 +651,8 @@ function ConsolidatedItemAnalysisTables({
                     {getSectionItemValue(section, itemNo) ?? "-"}
                   </MatrixCell>
                 ))}
-                <MatrixCell ta="center">{total}</MatrixCell>
-                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+                <MatrixCell ta="center">{rowTotal}</MatrixCell>
+                <MatrixCell ta="center" style={getRowStyle(rank)}>{rank}</MatrixCell>
               </TableTr>
             );
           })}
@@ -664,14 +671,14 @@ function ConsolidatedItemAnalysisTables({
         </TableThead>
         <TableTbody>
           {itemNos.map((itemNo) => {
-            const total = ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
+            const rowTotal = ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
             const rank = ssesRanks.get(itemNo) ?? 0;
             return (
               <TableTr key={`sses-${itemNo}`}>
                 <MatrixCell ta="center">{itemNo}</MatrixCell>
-                <MatrixCell ta="center">{total}</MatrixCell>
-                <MatrixCell ta="center">{total}</MatrixCell>
-                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+                <MatrixCell ta="center">{rowTotal}</MatrixCell>
+                <MatrixCell ta="center">{rowTotal}</MatrixCell>
+                <MatrixCell ta="center" style={getRowStyle(rank)}>{rank}</MatrixCell>
               </TableTr>
             );
           })}
@@ -692,15 +699,15 @@ function ConsolidatedItemAnalysisTables({
           {itemNos.map((itemNo) => {
             const sses = ssesTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
             const regular = regularTotals.find((row) => row.itemNo === itemNo)?.value ?? 0;
-            const total = sses + regular;
+            const rowTotal = sses + regular;
             const rank = combinedRanks.get(itemNo) ?? 0;
             return (
               <TableTr key={`combined-${itemNo}`}>
                 <MatrixCell ta="center">{itemNo}</MatrixCell>
                 <MatrixCell ta="center">{sses}</MatrixCell>
                 <MatrixCell ta="center">{regular}</MatrixCell>
-                <MatrixCell ta="center">{total}</MatrixCell>
-                <MatrixCell ta="center" style={getRankCellStyle(rank, itemNos.length)}>{rank}</MatrixCell>
+                <MatrixCell ta="center">{rowTotal}</MatrixCell>
+                <MatrixCell ta="center" style={getRowStyle(rank)}>{rank}</MatrixCell>
               </TableTr>
             );
           })}
@@ -753,15 +760,11 @@ function RankingPairTable({
       <Text size="xl" fw={700} mb={10} c="#111827">{title}</Text>
       <ReportTableShell minWidth={360}>
           <TableThead>
-            <TableTr>
-              <th colSpan={2} style={{ ...CORRECT_HIGHLIGHT_STYLE, textAlign: "center", padding: "6px 8px" }}>Most Learned</th>
-              <th colSpan={2} style={{ ...WRONG_HIGHLIGHT_STYLE, textAlign: "center", padding: "6px 8px" }}>Least Learned</th>
-            </TableTr>
             <TableTr style={{ backgroundColor: "#4EAE4A" }}>
               <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
-              <PlainGreenHeader ta="center">Item</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Most Learned</PlainGreenHeader>
               <PlainGreenHeader w={WIDTH.rankingRank} ta="center">Rank</PlainGreenHeader>
-              <PlainGreenHeader ta="center">Item</PlainGreenHeader>
+              <PlainGreenHeader ta="center">Least Learned</PlainGreenHeader>
             </TableTr>
           </TableThead>
           <TableTbody>
@@ -1370,7 +1373,6 @@ export default function ReportAnalyticsClient({
 
       if (hasAssigned) {
         const assignedSections = allSections.filter((s) => scopedAssignedSectionIds.has(s.sectionId));
-        const otherSections = allSections.filter((s) => !scopedAssignedSectionIds.has(s.sectionId));
 
         if (fromParam === "assigned") {
           return ssesFirst(assignedSections).map(toAssignedItem);
@@ -1382,9 +1384,8 @@ export default function ReportAnalyticsClient({
         }
 
         return [
-          { group: "Summary", items: [{ value: "all", label: "Consolidated (All Sections)", disabled: false }] },
-          { group: "My Sections", items: ssesFirst(assignedSections).map(toItem) },
-          ...(otherSections.length > 0 ? [{ group: "Other Sections", items: ssesFirst(otherSections).map(toItem) }] : []),
+          { value: "all", label: "Consolidated (All Sections)", disabled: false },
+          ...ssesFirst(allSections).map(toItem),
         ];
       }
 
@@ -1411,18 +1412,10 @@ export default function ReportAnalyticsClient({
     });
   }, [scopedCards, mode, selectedGradeId, subjectOverview, finalizedSectionIds, reportScope, fromParam, assignedSectionIdsFromQuery]);
 
-  // Flat list of all leaf section items (value+label) from sectionOptions (handles grouped/flat structures)
-  const flatSectionItems = useMemo(() => {
-    const items: { value: string; label: string }[] = [];
-    for (const opt of sectionOptions) {
-      if ("group" in opt) {
-        for (const item of opt.items) items.push({ value: item.value, label: item.label });
-      } else {
-        items.push({ value: opt.value, label: opt.label });
-      }
-    }
-    return items;
-  }, [sectionOptions]);
+  const flatSectionItems = useMemo(
+    () => sectionOptions.map((opt) => ({ value: opt.value, label: opt.label })),
+    [sectionOptions],
+  );
 
   const consolidatedSectionFilter = useMemo(
     () =>
@@ -2065,7 +2058,7 @@ export default function ReportAnalyticsClient({
   }, [consolidatedSectionFilter, isConsolidatedSubjectView, selectedCard, selectedSubject, selectedSubjectId]);
 
 
-  if (routeAccessDenied) return null;
+  if (routeAccessCheckPending || routeAccessDenied) return null;
 
   const selectedGradeLabel = (() => {
     if (selectedGradeId == null) return "Grade";

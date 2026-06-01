@@ -733,6 +733,30 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     [subjectOptions],
   );
 
+  const totalTeacherSections = useMemo(() => {
+    if (effectiveFullAccess) return Infinity;
+    const assignedSectionIds = new Set(teacherAssignments.map((a) => a.section_id));
+    return Array.from(
+      new Set(allSections.filter((s) => assignedSectionIds.has(s.section_id)).map((s) => s.name))
+    ).length;
+  }, [effectiveFullAccess, teacherAssignments, allSections]);
+
+  const totalTeacherSubjects = useMemo(() => {
+    if (effectiveFullAccess) return Infinity;
+    const assignedSubjectIds = new Set(teacherAssignments.map((a) => a.curriculum_subject_id));
+    return Array.from(
+      new Map(
+        subjectCatalog
+          .filter((s) => assignedSubjectIds.has(s.curriculum_subject_id))
+          .map((s) => [s.name, s] as const)
+      ).values()
+    ).length;
+  }, [effectiveFullAccess, teacherAssignments, subjectCatalog]);
+
+  const showGradeLevelFilter = effectiveFullAccess || gradeLevelOptions.length > 1;
+  const showSectionFilter = effectiveFullAccess || totalTeacherSections > 1;
+  const showSubjectFilter = effectiveFullAccess || totalTeacherSubjects > 1;
+
   useEffect(() => {
     setSelectedSection("");
     setSelectedSubject("");
@@ -1173,34 +1197,40 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           </Tooltip>
         </Group>
 	        <Group mb="md" gap="sm" wrap="wrap">
-          <Select
-            data={[{ value: "", label: "All Grade Levels" }, ...gradeLevelOptions]}
-            value={selectedGradeLevel}
-            onChange={(v) => setSelectedGradeLevel(v ?? "")}
-            leftSection={<IconSchool size={16} />}
-            clearable
-            w={{ base: "100%", sm: 200 }}
-            disabled={loading}
-          />
-          <Select
-            data={[{ value: "", label: "All Sections" }, ...sectionOptions]}
-            value={selectedSection}
-            onChange={(v) => setSelectedSection(v ?? "")}
-            leftSection={<IconUsers size={16} />}
-            clearable
-            w={{ base: "100%", sm: 200 }}
-            disabled={loading || sectionOptions.length === 0}
-          />
-          <Select
-            data={subjectFilterOptions}
-            value={selectedSubject}
-            onChange={(v) => setSelectedSubject(v ?? "")}
-            leftSection={<IconBook size={16} />}
-            clearable
-            w={{ base: "100%", sm: 200 }}
-            disabled={loading}
-            nothingFoundMessage="No subjects available for current filters"
-          />
+          {showGradeLevelFilter && (
+            <Select
+              data={[{ value: "", label: "All Grade Levels" }, ...gradeLevelOptions]}
+              value={selectedGradeLevel}
+              onChange={(v) => setSelectedGradeLevel(v ?? "")}
+              leftSection={<IconSchool size={16} />}
+              clearable
+              w={{ base: "100%", sm: 200 }}
+              disabled={loading}
+            />
+          )}
+          {showSectionFilter && (
+            <Select
+              data={[{ value: "", label: "All Sections" }, ...sectionOptions]}
+              value={selectedSection}
+              onChange={(v) => setSelectedSection(v ?? "")}
+              leftSection={<IconUsers size={16} />}
+              clearable
+              w={{ base: "100%", sm: 200 }}
+              disabled={loading || sectionOptions.length === 0}
+            />
+          )}
+          {showSubjectFilter && (
+            <Select
+              data={subjectFilterOptions}
+              value={selectedSubject}
+              onChange={(v) => setSelectedSubject(v ?? "")}
+              leftSection={<IconBook size={16} />}
+              clearable
+              w={{ base: "100%", sm: 200 }}
+              disabled={loading}
+              nothingFoundMessage="No subjects available for current filters"
+            />
+          )}
         </Group>
       </div>
 
