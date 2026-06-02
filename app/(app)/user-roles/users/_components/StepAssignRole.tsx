@@ -8,7 +8,6 @@ import {
   Pagination,
   Skeleton,
   Text,
-  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
 import type { UseFormReturnType } from "@mantine/form";
@@ -178,15 +177,12 @@ export default function StepAssignRole({
                                   : { hover: true, focus: false, touch: false }
                               }
                             >
-                              <ThemeIcon
+                              <IconAlertTriangle
                                 size={18}
-                                radius="xl"
-                                color="yellow.6"
-                                variant="filled"
+                                stroke={2}
+                                color="#c4a827"
                                 style={{ flexShrink: 0, cursor: "default" }}
-                              >
-                                <IconAlertTriangle size={11} stroke={2} />
-                              </ThemeIcon>
+                              />
                             </Tooltip>
                           )}
                         </Group>

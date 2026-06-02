@@ -20,8 +20,7 @@ import {
   TextInput,
   Tooltip,
 } from "@mantine/core";
-import { IconChevronDown } from "@tabler/icons-react";
-import { IconCheck, IconLock, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconChevronDown, IconCheck, IconLock, IconX } from "@tabler/icons-react";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { modals } from "@mantine/modals";
@@ -328,21 +327,12 @@ export default function PendingTableActions({
                                       multiline
                                       w={260}
                                     >
-                                      <Box
-                                        style={{
-                                          width: 16,
-                                          height: 16,
-                                          borderRadius: "50%",
-                                          backgroundColor: "#f59e0b",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          flexShrink: 0,
-                                          cursor: "default",
-                                        }}
-                                      >
-                                        <Text size="xs" fw={700} c="white" lh={1}>!</Text>
-                                      </Box>
+                                      <IconAlertTriangle
+                                        size={18}
+                                        stroke={2}
+                                        color="#c4a827"
+                                        style={{ flexShrink: 0, cursor: "default" }}
+                                      />
                                     </Tooltip>
                                   )}
                                 </Group>

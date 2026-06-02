@@ -1,9 +1,32 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { z } from "zod";
+import {
+  createServerSupabaseClient,
+  getPermissionsFromUser,
+} from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
+import { REDIS_KEYS } from "@/lib/cache-keys";
 import { getActiveContext } from "@/lib/active-context";
 import type { AnnouncementItem } from "@/lib/services/announcementsService";
+
+const AttachmentSchema = z.object({
+  storage_path: z.string().min(1),
+  file_name: z.string().min(1),
+  mime_type: z.enum(["image/png", "image/jpeg"]),
+  file_size_bytes: z.number().int().positive(),
+  display_order: z.number().int().positive(),
+});
+
+const CreateAnnouncementSchema = z.object({
+  title: z.string().trim().min(3).max(50),
+  body: z.string().trim().min(5).max(2000),
+  status: z.enum(["PUBLISHED", "SCHEDULED"]),
+  published_at: z.string().datetime({ offset: true }),
+  everyone: z.boolean(),
+  roleIds: z.array(z.number().int().positive()),
+  attachments: z.array(AttachmentSchema).max(3),
+});
 
 type RawUserRole   = { role_id: number };
 type RawAttachment = { attachment_id: number; storage_path: string; file_name: string; mime_type: string; display_order: number };
@@ -127,3 +150,56 @@ const _GET = async function () {
 };
 
 export const GET = withErrorHandler(_GET);
+
+// ─── POST /api/announcements ──────────────────────────────────────────────────
+// Creates a new PUBLISHED or SCHEDULED announcement.
+
+const _POST = async function (req: Request) {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  if (!getPermissionsFromUser(user).includes("announcements.full_access"))
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+
+  const ctx = await getActiveContext();
+  if (!ctx.sy_id)
+    return Response.json({ error: "No active school year." }, { status: 422 });
+
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const parsed = CreateAnnouncementSchema.safeParse(rawBody);
+  if (!parsed.success)
+    return Response.json({ error: "Validation failed.", details: parsed.error.flatten() }, { status: 400 });
+
+  const { title, body: bodyText, status, published_at, everyone, roleIds, attachments } = parsed.data;
+
+  const { data, error } = await admin.rpc("create_announcement", {
+    p_title: title,
+    p_body: bodyText,
+    p_author_id: user.id,
+    p_sy_id: ctx.sy_id,
+    p_status: status,
+    p_published_at: published_at,
+    p_everyone: everyone ?? false,
+    p_role_ids: roleIds ?? [],
+    p_attachments: attachments ?? [],
+  });
+
+  if (error)
+    return Response.json({ error: "Failed to create announcement." }, { status: 500 });
+
+  if (status === "PUBLISHED")
+    await redis.del(REDIS_KEYS.announcements(ctx.sy_id));
+
+  return Response.json({ announcement_id: data });
+};
+
+export const POST = withErrorHandler(_POST);

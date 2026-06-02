@@ -161,6 +161,13 @@
   transform: scale(1.3);
 }
 
+.titleActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .pinBtn {
   flex-shrink: 0;
   background: none;

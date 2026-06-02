@@ -24,6 +24,7 @@ import "@mantine/dates/styles.css";
 import dayjs from "dayjs";
 import {
   IconCalendarTime,
+  IconCalendarPlus,
   IconCalendar,
   IconChevronDown,
   IconClock,
@@ -38,6 +39,13 @@ import {
   type Role,
 } from "@/app/(app)/user-roles/users/_lib/userRolesService";
 import { sortRoles } from "@/lib/roleUtils";
+import {
+  createAnnouncement,
+  updateAnnouncement,
+  getAttachmentUrl,
+  type ScheduledAnnouncementItem,
+} from "@/lib/services/announcementsService";
+import { getSupabase } from "@/lib/supabase/client";
 import MediaUploadList, { type MediaFile } from "./MediaUploadList";
 import AnnouncementPreviewPanel from "./AnnouncementPreviewPanel";
 import styles from "../create.module.css";
@@ -140,7 +148,17 @@ function createMediaId(): string {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function CreateAnnouncementClient() {
+interface CreateAnnouncementClientProps {
+  mode?: "create" | "edit" | "edit-published";
+  initialData?: ScheduledAnnouncementItem;
+}
+
+export default function CreateAnnouncementClient({
+  mode = "create",
+  initialData,
+}: CreateAnnouncementClientProps = {}) {
+  const isEdit = mode === "edit" || mode === "edit-published";
+  const isEditPublished = mode === "edit-published";
   const router = useRouter();
   const { firstName, lastName, roles: userRoles } = useAuth();
   const authorName = [firstName, lastName].filter(Boolean).join(" ");
@@ -201,15 +219,40 @@ export default function CreateAnnouncementClient() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [recipientOpen]);
 
+  // Build initial values for edit mode from initialData
+  const editRecipients: Recipients = initialData
+    ? initialData.targets.some((t) => t.role_id === null)
+      ? { everyone: true, roleIds: [] }
+      : { everyone: false, roleIds: initialData.targets.map((t) => t.role_id as number) }
+    : { everyone: false, roleIds: [] };
+
+  const editMedia: MediaFile[] = (initialData?.attachments ?? []).map((a) => ({
+    id: `existing-${a.attachment_id}`,
+    previewUrl: getAttachmentUrl(a.storage_path),
+    existingPath: a.storage_path,
+    existingName: a.file_name,
+    existingSizeBytes: a.file_size_bytes,
+  }));
+
+  const editScheduledDate = initialData
+    ? (() => {
+        const d = new Date(initialData.published_at);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })()
+    : null;
+  const editScheduledTime = initialData
+    ? `${String(new Date(initialData.published_at).getHours()).padStart(2, "0")}:${String(new Date(initialData.published_at).getMinutes()).padStart(2, "0")}`
+    : null;
+
   const form = useForm<FormValues>({
     initialValues: {
-      recipients: { everyone: false, roleIds: [] },
-      media: [],
-      subject: "",
-      message: "",
-      scheduleEnabled: false,
-      scheduledDate: null,
-      scheduledTime: null,
+      recipients: isEdit ? editRecipients : { everyone: false, roleIds: [] },
+      media: isEdit ? editMedia : [],
+      subject: isEdit ? (initialData?.title ?? "") : "",
+      message: isEdit ? (initialData?.body ?? "") : "",
+      scheduleEnabled: isEdit,
+      scheduledDate: isEdit ? editScheduledDate : null,
+      scheduledTime: isEdit ? editScheduledTime : null,
     },
     validate: {
       recipients: (v) =>
@@ -226,14 +269,16 @@ export default function CreateAnnouncementClient() {
   });
 
   // ── Dirty guard ──────────────────────────────────────────────────────────────
+  // In edit mode the form starts pre-filled, so compare against initial values.
 
-  const isDirty =
-    form.values.recipients.everyone ||
-    form.values.recipients.roleIds.length > 0 ||
-    form.values.media.length > 0 ||
-    form.values.subject.trim() !== "" ||
-    form.values.message.trim() !== "" ||
-    form.values.scheduleEnabled;
+  const isDirty = isEdit
+    ? form.isDirty()
+    : form.values.recipients.everyone ||
+      form.values.recipients.roleIds.length > 0 ||
+      form.values.media.length > 0 ||
+      form.values.subject.trim() !== "" ||
+      form.values.message.trim() !== "" ||
+      form.values.scheduleEnabled;
 
   // Warn on browser refresh / tab close
   useEffect(() => {
@@ -357,6 +402,8 @@ export default function CreateAnnouncementClient() {
 
   // ── Submit ───────────────────────────────────────────────────────────────────
 
+  const cancelDest = isEditPublished ? "/" : isEdit ? "/announcements/scheduled" : "/";
+
   function handleCancel() {
     if (isDirty) {
       modals.openConfirmModal({
@@ -368,22 +415,185 @@ export default function CreateAnnouncementClient() {
         ),
         labels: { confirm: "Discard", cancel: "Stay" },
         confirmProps: { color: "red" },
-        onConfirm: () => router.push("/"),
+        onConfirm: () => router.push(cancelDest),
         ...confirmModalProps,
       });
     } else {
-      router.push("/");
+      router.push(cancelDest);
+    }
+  }
+
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    const result = form.validate();
+    if (result.hasErrors) return;
+
+    if (!initialData) return;
+
+    modals.openConfirmModal({
+      title: "Save changes?",
+      children: (
+        <Text size="sm">
+          This will update the scheduled announcement. Are you sure you want to save?
+        </Text>
+      ),
+      labels: { confirm: "Save", cancel: "Cancel" },
+      confirmProps: { color: "green" },
+      onConfirm: () => void doSave(),
+      ...confirmModalProps,
+    });
+  }
+
+  async function doSave() {
+    if (!initialData) return;
+    setSaving(true);
+
+    try {
+      const { recipients: rec, media, subject, message, scheduledDate, scheduledTime } = form.values;
+
+      // Upload new files (those with a File object) to Supabase Storage
+      const supabase = getSupabase();
+      const resolvedAttachments: {
+        storage_path: string;
+        file_name: string;
+        mime_type: string;
+        file_size_bytes: number;
+        display_order: number;
+      }[] = [];
+
+      for (let i = 0; i < media.length; i++) {
+        const mf = media[i];
+        if (mf.existingPath) {
+          resolvedAttachments.push({
+            storage_path: mf.existingPath,
+            file_name: mf.existingName ?? mf.existingPath.split("/").pop() ?? "image",
+            mime_type: mf.existingName?.endsWith(".png") ? "image/png" : "image/jpeg",
+            file_size_bytes: mf.existingSizeBytes ?? 0,
+            display_order: i + 1,
+          });
+        } else if (mf.file) {
+          const ext = mf.file.type === "image/png" ? "png" : "jpg";
+          const path = `announcements/${initialData.announcement_id}/${crypto.randomUUID()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from("announcement-images")
+            .upload(path, mf.file, { upsert: false });
+          if (uploadError) throw new Error("Failed to upload image");
+          resolvedAttachments.push({
+            storage_path: path,
+            file_name: mf.file.name,
+            mime_type: mf.file.type,
+            file_size_bytes: mf.file.size,
+            display_order: i + 1,
+          });
+        }
+      }
+
+      const publishedAt = scheduledDate && scheduledTime
+        ? new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString()
+        : initialData.published_at;
+
+      await updateAnnouncement(initialData.announcement_id, {
+        title: subject.trim(),
+        body: message.trim(),
+        published_at: publishedAt,
+        everyone: rec.everyone,
+        roleIds: rec.roleIds,
+        attachments: resolvedAttachments,
+      });
+
+      notify({ type: "success", title: "Saved", message: "Announcement updated." });
+      router.push(isEditPublished ? "/" : "/announcements/scheduled");
+    } catch {
+      notify({ type: "error", title: "Error", message: "Failed to save. Please try again." });
+    } finally {
+      setSaving(false);
     }
   }
 
   function handlePublish() {
     const result = form.validate();
     if (result.hasErrors) return;
-    notify({
-      type: "info",
-      title: "Coming soon",
-      message: "Publish functionality will be wired up in a future session.",
+
+    const { scheduledDate, scheduledTime } = form.values;
+    const isScheduling = scheduleEnabled;
+
+    const confirmTitle = isScheduling ? "Schedule announcement?" : "Publish announcement?";
+    const confirmBody = isScheduling
+      ? `This announcement will auto-post on ${scheduledDate} at ${scheduledTime}.`
+      : "This announcement will be visible to recipients immediately.";
+
+    modals.openConfirmModal({
+      title: confirmTitle,
+      children: <Text size="sm">{confirmBody}</Text>,
+      labels: { confirm: isScheduling ? "Schedule" : "Publish", cancel: "Cancel" },
+      confirmProps: { color: "green" },
+      onConfirm: () => void doPublish(),
+      ...confirmModalProps,
     });
+  }
+
+  const [publishing, setPublishing] = useState(false);
+
+  async function doPublish() {
+    setPublishing(true);
+    try {
+      const { recipients: rec, media, subject, message, scheduledDate, scheduledTime, scheduleEnabled: isScheduling } = form.values;
+
+      const supabase = getSupabase();
+      const resolvedAttachments: {
+        storage_path: string;
+        file_name: string;
+        mime_type: string;
+        file_size_bytes: number;
+        display_order: number;
+      }[] = [];
+
+      for (let i = 0; i < media.length; i++) {
+        const mf = media[i];
+        if (mf.file) {
+          const ext = mf.file.type === "image/png" ? "png" : "jpg";
+          const path = `announcements/new/${crypto.randomUUID()}.${ext}`;
+          const { error: uploadError } = await supabase.storage
+            .from("announcement-images")
+            .upload(path, mf.file, { upsert: false });
+          if (uploadError) throw new Error("Failed to upload image");
+          resolvedAttachments.push({
+            storage_path: path,
+            file_name: mf.file.name,
+            mime_type: mf.file.type,
+            file_size_bytes: mf.file.size,
+            display_order: i + 1,
+          });
+        }
+      }
+
+      const status = isScheduling ? "SCHEDULED" : "PUBLISHED";
+      const published_at = isScheduling && scheduledDate && scheduledTime
+        ? new Date(`${scheduledDate}T${scheduledTime}:00`).toISOString()
+        : new Date().toISOString();
+
+      await createAnnouncement({
+        title: subject.trim(),
+        body: message.trim(),
+        status,
+        published_at,
+        everyone: rec.everyone,
+        roleIds: rec.roleIds,
+        attachments: resolvedAttachments,
+      });
+
+      notify({
+        type: "success",
+        title: isScheduling ? "Scheduled" : "Published",
+        message: isScheduling ? "Announcement scheduled." : "Announcement published.",
+      });
+      router.push(isScheduling ? "/announcements/scheduled" : "/");
+    } catch {
+      notify({ type: "error", title: "Error", message: "Failed to submit. Please try again." });
+    } finally {
+      setPublishing(false);
+    }
   }
 
   // ── Derived values ───────────────────────────────────────────────────────────
@@ -424,8 +634,8 @@ export default function CreateAnnouncementClient() {
 
   return (
     <div>
-      <BackButton href="/" size="sm">
-        Back to Home
+      <BackButton href={cancelDest} size="sm">
+        {isEditPublished ? "Back to Home" : isEdit ? "Back to Scheduled" : "Back to Home"}
       </BackButton>
 
       <div className={styles.pageGrid} style={{ marginTop: 24 }}>
@@ -631,8 +841,8 @@ export default function CreateAnnouncementClient() {
             </div>
           </div>
 
-          {/* Section: Schedule */}
-          <div className={styles.sectionCard}>
+          {/* Section: Schedule — hidden when editing a published announcement */}
+          {!isEditPublished && <div className={styles.sectionCard}>
             <div className={styles.scheduleHeader}>
               <div className={styles.scheduleHeaderLeft}>
                 <IconCalendarTime size={18} stroke={1.8} />
@@ -640,20 +850,22 @@ export default function CreateAnnouncementClient() {
                   Schedule
                 </p>
               </div>
-              <div className={styles.scheduleHeaderRight}>
-                <span>Set date and time</span>
-                <Switch
-                  checked={scheduleEnabled}
-                  onChange={(e) =>
-                    handleScheduleToggle(e.currentTarget.checked)
-                  }
-                  color="#4eae4a"
-                  size="md"
-                />
-              </div>
+              {!isEdit && (
+                <div className={styles.scheduleHeaderRight}>
+                  <span>Set date and time</span>
+                  <Switch
+                    checked={scheduleEnabled}
+                    onChange={(e) =>
+                      handleScheduleToggle(e.currentTarget.checked)
+                    }
+                    color="#4eae4a"
+                    size="md"
+                  />
+                </div>
+              )}
             </div>
 
-            <Collapse in={scheduleEnabled}>
+            <Collapse in={isEdit || scheduleEnabled}>
               <div className={styles.scheduleBody}>
                 <p className={styles.scheduleDescription}>
                   Set a future date and time to automatically publish this
@@ -685,7 +897,7 @@ export default function CreateAnnouncementClient() {
                 </div>
               </div>
             </Collapse>
-          </div>
+          </div>}
 
           {/* Footer — desktop only (sits beside the preview column) */}
           <div className={styles.desktopFooterOnly}>
@@ -699,12 +911,13 @@ export default function CreateAnnouncementClient() {
                 </Text>
               </UnstyledButton>
               <Button
-                onClick={handlePublish}
+                onClick={isEdit ? handleSave : handlePublish}
+                loading={isEdit ? saving : publishing}
                 radius="md"
-                leftSection={<IconSend size={15} stroke={1.8} />}
+                leftSection={isEdit ? undefined : scheduleEnabled ? <IconCalendarPlus size={15} stroke={1.8} /> : <IconSend size={15} stroke={1.8} />}
                 style={{ backgroundColor: "#4EAE4A" }}
               >
-                Publish Now
+                {isEdit ? "Save" : scheduleEnabled ? "Schedule Announcement" : "Publish Now"}
               </Button>
             </Group>
           </div>
@@ -736,12 +949,13 @@ export default function CreateAnnouncementClient() {
             </Text>
           </UnstyledButton>
           <Button
-            onClick={handlePublish}
+            onClick={isEdit ? handleSave : handlePublish}
+            loading={isEdit ? saving : false}
             radius="md"
-            leftSection={<IconSend size={15} stroke={1.8} />}
+            leftSection={isEdit ? undefined : <IconSend size={15} stroke={1.8} />}
             style={{ backgroundColor: "#4EAE4A" }}
           >
-            Publish Now
+            {isEdit ? "Save" : scheduleEnabled ? "Schedule Announcement" : "Publish Now"}
           </Button>
         </Group>
       </div>

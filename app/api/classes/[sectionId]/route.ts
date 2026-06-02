@@ -12,6 +12,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, RenameSectionSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 import { revalidateTag } from "next/cache";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 type NestedRelation<T> = T | T[] | null;
 
@@ -215,18 +216,42 @@ const _PATCH = async function(
   const { name } = parsed.data;
 
 
-  const { error } = await admin.rpc("rename_section", {
-    p_section_id: sectionId,
-    p_name: name,
-  });
+  // Run rename + affected-user lookups in parallel (sectionId is already known)
+  const [renameResult, teachersResult, sectionResult] = await Promise.all([
+    admin.rpc("rename_section", { p_section_id: sectionId, p_name: name }),
+    admin
+      .from("teacher_class_assignments")
+      .select("teacher_id")
+      .eq("section_id", sectionId)
+      .is("deleted_at", null),
+    admin
+      .from("sections")
+      .select("adviser_id")
+      .eq("section_id", sectionId)
+      .is("deleted_at", null)
+      .maybeSingle(),
+  ]);
 
-  if (error)
+  if (renameResult.error)
     return Response.json(
       { error: "Failed to rename section." },
       { status: 500 },
     );
 
   revalidateTag("sections", "minutes");
+
+  // Invalidate UserContext for every user who has this section cached
+  const affectedUids = new Set<string>();
+  for (const row of (teachersResult.data ?? []) as { teacher_id: string | null }[]) {
+    if (row.teacher_id) affectedUids.add(row.teacher_id);
+  }
+  const adviserId = (sectionResult.data as { adviser_id: string | null } | null)?.adviser_id;
+  if (adviserId) affectedUids.add(adviserId);
+
+  await Promise.allSettled(
+    [...affectedUids].map((uid) => invalidateUserAssignmentsContext(uid)),
+  );
+
   return Response.json({ success: true });
 }
 

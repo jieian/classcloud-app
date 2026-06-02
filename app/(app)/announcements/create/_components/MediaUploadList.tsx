@@ -35,8 +35,13 @@ function formatFileSize(bytes: number): string {
 
 export interface MediaFile {
   id: string;
-  file: File;
+  /** Undefined for existing attachments loaded from DB */
+  file?: File;
   previewUrl: string;
+  /** Set for attachments that already exist in storage (no upload needed) */
+  existingPath?: string;
+  existingName?: string;
+  existingSizeBytes?: number;
 }
 
 interface Props {
@@ -84,7 +89,7 @@ function SortableMediaRow({ item, onRemoveRequest }: SortableRowProps) {
       {/* Thumbnail */}
       <img
         src={item.previewUrl}
-        alt={item.file.name}
+        alt={item.file?.name ?? item.existingName ?? "Image"}
         style={{
           width: 44,
           height: 44,
@@ -97,15 +102,21 @@ function SortableMediaRow({ item, onRemoveRequest }: SortableRowProps) {
 
       {/* File info: name + size */}
       <div className={styles.mediaFileInfo}>
-        <p className={styles.mediaFileName}>{item.file.name}</p>
-        <p className={styles.mediaFileSize}>{formatFileSize(item.file.size)}</p>
+        <p className={styles.mediaFileName}>{item.file?.name ?? item.existingName ?? "Image"}</p>
+        <p className={styles.mediaFileSize}>
+          {item.file
+            ? formatFileSize(item.file.size)
+            : item.existingSizeBytes
+              ? formatFileSize(item.existingSizeBytes)
+              : ""}
+        </p>
       </div>
 
       {/* Remove */}
       <ActionIcon
         variant="subtle"
         color="red"
-        aria-label={`Remove ${item.file.name}`}
+        aria-label={`Remove ${item.file?.name ?? item.existingName ?? "image"}`}
         onClick={() => onRemoveRequest(item.id)}
         style={{ flexShrink: 0 }}
       >
@@ -160,7 +171,9 @@ export default function MediaUploadList({ files, onAdd, onRemove, onReorder }: P
         continue;
       }
       const isDuplicate = files.some(
-        (existing) => existing.file.name === file.name && existing.file.size === file.size,
+        (existing) =>
+          (existing.file?.name === file.name && existing.file?.size === file.size) ||
+          (existing.existingName === file.name && existing.existingSizeBytes === file.size),
       );
       if (isDuplicate) {
         notify({ type: "error", title: "Already added", message: "This image has already been added." });
@@ -178,7 +191,7 @@ export default function MediaUploadList({ files, onAdd, onRemove, onReorder }: P
       title: "Remove photo?",
       children: (
         <span style={{ fontSize: 14 }}>
-          {file ? `Remove "${file.file.name}" from the announcement?` : "Remove this photo from the announcement?"}
+          {file ? `Remove "${file.file?.name ?? file.existingName ?? "image"}" from the announcement?` : "Remove this photo from the announcement?"}
         </span>
       ),
       labels: { confirm: "Remove", cancel: "Cancel" },

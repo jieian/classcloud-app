@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Skeleton } from "@mantine/core";
-import { notifications } from "@mantine/notifications";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import { IconSpeakerphone, IconCalendarTime, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
 import {
@@ -13,6 +13,7 @@ import {
 } from "@/lib/services/announcementsService";
 import { useAuth } from "@/context/AuthContext";
 import AnnouncementCard from "./AnnouncementCard";
+import EmptySearchState from "@/components/EmptySearchState";
 import styles from "./AnnouncementsSection.module.css";
 
 function sortAnnouncements(list: AnnouncementItem[]): AnnouncementItem[] {
@@ -49,6 +50,10 @@ export default function AnnouncementsSection() {
     };
   }, []);
 
+  const handleDelete = (id: number) => {
+    setAnnouncements((prev) => prev.filter((a) => a.announcement_id !== id));
+  };
+
   const handleMarkRead = (id: number) => {
     setAnnouncements((prev) =>
       prev.map((a) =>
@@ -70,7 +75,13 @@ export default function AnnouncementsSection() {
     );
 
     try {
+      const nowPinned = !prev.find((a) => a.announcement_id === id)?.is_pinned;
       await toggleAnnouncementPin(id);
+      notify({
+        type: "success",
+        title: nowPinned ? "Pinned" : "Unpinned",
+        message: nowPinned ? "Announcement pinned." : "Announcement unpinned.",
+      });
     } catch (err: unknown) {
       // Revert on failure
       setAnnouncements(prev);
@@ -78,8 +89,8 @@ export default function AnnouncementsSection() {
       const message = err instanceof Error ? err.message : "";
       const isPinLimitError = message === "PIN_LIMIT" || message.includes("PIN_LIMIT");
 
-      notifications.show({
-        color: "red",
+      notify({
+        type: "error",
         title: isPinLimitError ? "Pin limit reached" : "Failed to update pin",
         message: isPinLimitError
           ? "You can only pin up to 3 announcements at a time."
@@ -97,10 +108,10 @@ export default function AnnouncementsSection() {
 
         {isFullAccess && (
           <div className={styles.headerActions}>
-            <button type="button" className={styles.btnOutline} disabled>
+            <Link href="/announcements/scheduled" className={styles.btnOutline}>
               <IconCalendarTime size={15} stroke={1.8} />
               <span className={styles.btnText}>Scheduled</span>
-            </button>
+            </Link>
             <Link href="/announcements/create" className={styles.btnFilled}>
               <IconPlus size={15} stroke={2.2} />
               <span className={styles.btnText}>Create Announcement</span>
@@ -117,15 +128,11 @@ export default function AnnouncementsSection() {
             <Skeleton className={styles.skeletonCard} height={200} radius={8} />
           </>
         ) : announcements.length === 0 ? (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyIcon} aria-hidden="true">
-              <IconSpeakerphone size={28} stroke={1.4} />
-            </div>
-            <p className={styles.emptyTitle}>No announcements yet</p>
-            <p className={styles.emptySubtitle}>
-              Check back later for school-wide updates and notices.
-            </p>
-          </div>
+          <EmptySearchState
+            icon={IconSpeakerphone}
+            title="No announcements yet"
+            description="Check back later for school-wide updates and notices."
+          />
         ) : (
           announcements.map((a) => (
             <AnnouncementCard
@@ -134,6 +141,7 @@ export default function AnnouncementsSection() {
               isFullAccess={isFullAccess}
               onMarkRead={handleMarkRead}
               onTogglePin={handleTogglePin}
+              onDelete={handleDelete}
             />
           ))
         )}

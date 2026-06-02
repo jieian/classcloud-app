@@ -6,12 +6,18 @@ import {
   IconArrowsMaximize,
   IconPin,
   IconPinFilled,
+  IconDotsVertical,
+  IconPencil,
+  IconTrash,
 } from "@tabler/icons-react";
+import { ActionIcon, Menu, Text } from "@mantine/core";
 import { modals } from "@mantine/modals";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMediaQuery } from "@mantine/hooks";
 import type { AnnouncementItem } from "@/lib/services/announcementsService";
-import { getAttachmentUrl } from "@/lib/services/announcementsService";
+import { deleteAnnouncement, getAttachmentUrl } from "@/lib/services/announcementsService";
+import { notify } from "@/components/notificationIcon/notificationIcon";
 import styles from "./AnnouncementCard.module.css";
 
 function formatDate(iso: string): string {
@@ -27,6 +33,7 @@ interface Props {
   isFullAccess: boolean;
   onMarkRead: (id: number) => void;
   onTogglePin: (id: number) => void;
+  onDelete: (id: number) => void;
 }
 
 const BODY_LIMIT = 280;
@@ -36,10 +43,21 @@ export default function AnnouncementCard({
   isFullAccess,
   onMarkRead,
   onTogglePin,
+  onDelete,
 }: Props) {
+  const router = useRouter();
   const [imgIndex, setImgIndex] = useState(0);
   const [expanded, setExpanded] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const isMobile = useMediaQuery("(max-width: 768px)");
+  const confirmModalProps = isMobile
+    ? {
+        styles: {
+          inner: { alignItems: "flex-end", paddingBottom: "20px" },
+          content: { width: "100%", maxWidth: "100%", borderRadius: "12px 12px 0 0" },
+        },
+      }
+    : {};
   const { attachments } = announcement;
   const hasImages = attachments.length > 0;
   const hasMultiple = attachments.length > 1;
@@ -74,6 +92,32 @@ export default function AnnouncementCard({
   };
 
   const isPinned = announcement.is_pinned;
+
+  function handleDeleteClick() {
+    modals.openConfirmModal({
+      title: "Delete announcement?",
+      children: (
+        <Text size="sm">
+          This will permanently delete &ldquo;{announcement.title}&rdquo;. This action cannot be undone.
+        </Text>
+      ),
+      labels: { confirm: "Delete", cancel: "Cancel" },
+      confirmProps: { color: "red", loading: deleting },
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await deleteAnnouncement(announcement.announcement_id);
+          onDelete(announcement.announcement_id);
+          notify({ type: "success", title: "Deleted", message: "Announcement deleted." });
+        } catch {
+          notify({ type: "error", title: "Error", message: "Failed to delete. Please try again." });
+        } finally {
+          setDeleting(false);
+        }
+      },
+      ...confirmModalProps,
+    });
+  }
 
   return (
     <div className={styles.card}>
@@ -142,29 +186,44 @@ export default function AnnouncementCard({
             )}
           </div>
 
-          {/* Pin icon: full_access users can toggle; pinned items show to all as read-only */}
-          {isFullAccess ? (
-            <button
-              type="button"
-              className={
-                isPinned
-                  ? `${styles.pinBtn} ${styles.pinBtnActive}`
-                  : styles.pinBtn
-              }
-              onClick={() => onTogglePin(announcement.announcement_id)}
-              aria-label={isPinned ? "Unpin announcement" : "Pin announcement"}
-            >
-              {isPinned ? (
+          {/* Pin + actions — right side of title row */}
+          <div className={styles.titleActions}>
+            {isFullAccess ? (
+              <button
+                type="button"
+                className={isPinned ? `${styles.pinBtn} ${styles.pinBtnActive}` : styles.pinBtn}
+                onClick={() => onTogglePin(announcement.announcement_id)}
+                aria-label={isPinned ? "Unpin announcement" : "Pin announcement"}
+              >
+                {isPinned ? <IconPinFilled size={15} /> : <IconPin size={15} />}
+              </button>
+            ) : isPinned ? (
+              <span className={styles.pinBtnReadOnly} aria-label="Pinned">
                 <IconPinFilled size={15} />
-              ) : (
-                <IconPin size={15} />
-              )}
-            </button>
-          ) : isPinned ? (
-            <span className={styles.pinBtnReadOnly} aria-label="Pinned">
-              <IconPinFilled size={15} />
-            </span>
-          ) : null}
+              </span>
+            ) : null}
+
+            {isFullAccess && (
+              <Menu position="bottom-end" shadow="sm" withinPortal>
+                <Menu.Target>
+                  <ActionIcon variant="subtle" color="gray" size="sm">
+                    <IconDotsVertical size={15} stroke={1.8} />
+                  </ActionIcon>
+                </Menu.Target>
+                <Menu.Dropdown>
+                  <Menu.Item
+                    leftSection={<IconPencil size={14} />}
+                    onClick={() => router.push(`/announcements/${announcement.announcement_id}/edit`)}
+                  >
+                    Edit
+                  </Menu.Item>
+                  <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={handleDeleteClick}>
+                    Delete
+                  </Menu.Item>
+                </Menu.Dropdown>
+              </Menu>
+            )}
+          </div>
         </div>
 
         <p className={styles.body}>
