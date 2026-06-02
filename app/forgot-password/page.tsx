@@ -77,9 +77,11 @@ export default function ForgotPasswordPage() {
             <Text ta="center" fw={800} fz={28} c="#45903B" mb={10}>
               Forgot your password?
             </Text>
-            <Text ta="center" c="#808898" fz="sm" mb="xl">
-              Enter your email to get a reset link
-            </Text>
+            {!sent && (
+              <Text ta="center" c="#808898" fz="sm" mb="xl">
+                Enter your email to get a reset link
+              </Text>
+            )}
 
             <Paper
               withBorder
@@ -96,7 +98,7 @@ export default function ForgotPasswordPage() {
                       <IconMailForward size={24} stroke={2} />
                     </ThemeIcon>
                   </Group>
-                  <Text size="sm" c="#555" mb="md">
+                  <Text size="sm" c="#555" mb="md" ta="center">
                     A password reset link has been sent to{" "}
                     <strong>{email}</strong>. Check your inbox.
                   </Text>

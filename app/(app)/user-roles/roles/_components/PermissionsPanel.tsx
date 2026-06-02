@@ -29,6 +29,18 @@ type PermGroup = { label: string; rows: PermRow[] };
 
 const PERMISSION_GROUPS: PermGroup[] = [
   {
+    label: "Announcements",
+    rows: [
+      {
+        label: "Announcements",
+        type: "radio",
+        options: [
+          { permName: "announcements.full_access", display: "Full Access" },
+        ],
+      },
+    ],
+  },
+  {
     label: "Users and Roles",
     rows: [
       {

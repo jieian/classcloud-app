@@ -4,14 +4,17 @@ interface MobileStepIndicatorProps {
   activeStep: number;
   totalSteps: number;
   stepDescription: string;
+  hasError?: boolean;
 }
 
 export default function MobileStepIndicator({
   activeStep,
   totalSteps,
   stepDescription,
+  hasError,
 }: MobileStepIndicatorProps) {
   const progress = ((activeStep + 1) / totalSteps) * 100;
+  const accentColor = hasError ? "#dc2626" : "#4EAE4A";
 
   return (
     <div
@@ -26,11 +29,12 @@ export default function MobileStepIndicator({
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, paddingBottom: 14 }}>
         <div
+          className={hasError ? "wizard-pulse" : undefined}
           style={{
             width: 40,
             height: 40,
             borderRadius: "50%",
-            backgroundColor: "#4EAE4A",
+            backgroundColor: accentColor,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -56,7 +60,7 @@ export default function MobileStepIndicator({
           >
             Step {activeStep + 1} / {totalSteps}
           </div>
-          <div style={{ fontSize: 17, fontWeight: 700, color: "#111827", lineHeight: 1.3 }}>
+          <div style={{ fontSize: 17, fontWeight: 700, color: hasError ? "#dc2626" : "#111827", lineHeight: 1.3 }}>
             {stepDescription}
           </div>
         </div>
@@ -65,7 +69,7 @@ export default function MobileStepIndicator({
         <div
           style={{
             height: "100%",
-            backgroundColor: "#4EAE4A",
+            backgroundColor: accentColor,
             width: `${progress}%`,
             transition: "width 0.3s ease",
           }}

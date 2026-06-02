@@ -1,30 +1,34 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { rem, Stepper } from "@mantine/core";
+import { rem } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import MobileStepIndicator from "@/components/MobileStepIndicator";
+import WizardStepper from "@/components/WizardStepper";
 
 export interface VerticalWizardStep {
   label: string;
   description: string;
   content?: ReactNode;
+  hasError?: boolean;
 }
 
 interface VerticalWizardLayoutProps {
   active: number;
   steps: VerticalWizardStep[];
   children?: ReactNode;
-  color?: string;
   sidebarWidth?: string;
+  maxStep?: number;
+  onStepClick?: (idx: number) => void;
 }
 
 export default function VerticalWizardLayout({
   active,
   steps,
   children,
-  color = "#4EAE4A",
   sidebarWidth = "20%",
+  maxStep,
+  onStepClick,
 }: VerticalWizardLayoutProps) {
   const isMobile = useMediaQuery("(max-width: 768px)");
 
@@ -35,6 +39,7 @@ export default function VerticalWizardLayout({
           activeStep={active}
           totalSteps={steps.length}
           stepDescription={steps[active]?.description ?? ""}
+          hasError={steps[active]?.hasError}
         />
         {steps[active]?.content}
         {children && <div style={{ marginTop: rem(20), minWidth: 0 }}>{children}</div>}
@@ -45,15 +50,7 @@ export default function VerticalWizardLayout({
   return (
     <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
       <div style={{ flexShrink: 0, width: sidebarWidth }}>
-        <Stepper active={active} color={color} orientation="vertical">
-          {steps.map((step) => (
-            <Stepper.Step
-              key={`${step.label}-${step.description}`}
-              label={step.label}
-              description={step.description}
-            />
-          ))}
-        </Stepper>
+        <WizardStepper active={active} steps={steps} maxStep={maxStep} onStepClick={onStepClick} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
     </div>

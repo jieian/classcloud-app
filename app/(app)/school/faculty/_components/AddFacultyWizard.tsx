@@ -4,9 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Container,
-  Stepper,
   Text,
-  rem,
 } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
@@ -24,7 +22,7 @@ import StepAssignCoordinator from "./StepAssignCoordinator";
 import StepAssignGSL from "./StepAssignGSL";
 import StepReview from "./StepReview";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
-import MobileStepIndicator from "@/components/MobileStepIndicator";
+import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import WizardBlocker from "@/components/WizardBlocker";
 import {
   assignAcademicLoad,
@@ -56,6 +54,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
   const TOTAL_STEPS = isAddMode ? 6 : 4;
 
   const [submitting, setSubmitting] = useState(false);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(0);
 
   // Pre-populate form from server-fetched data
   const advisoryId = initialData.current_advisory_section_id;
@@ -121,6 +121,8 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
+  // form, router, confirmModalProps are stable or defined before this hook
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirty]);
 
   // Sync subject_assignments when selected_sections changes (add/remove rows)
@@ -133,51 +135,49 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     form.setFieldValue("subject_assignments", synced);
   }
 
-  const nextStep = () => {
+  const validateCurrentStep = (): boolean => {
     const step = form.values.activeStep;
 
     if (step === 1) {
-      // Require at least one section
       if (form.values.selected_sections.length === 0) {
-        notify({
-          type: "error",
-          title: "No Section Selected",
-          message: "Please select at least one section to continue.",
-        });
-        return;
+        notify({ type: "error", title: "No Section Selected", message: "Please select at least one section to continue." });
+        setStepHasError(true);
+        return false;
       }
       // Sync subject_assignments to match selected sections before moving to step 2
       syncSubjectAssignments(form.values.selected_sections);
     }
 
     if (step === 2) {
-      const missingSections = form.values.subject_assignments.filter(
-        (a) => a.subject_ids.length === 0,
-      );
+      const missingSections = form.values.subject_assignments.filter((a) => a.subject_ids.length === 0);
       if (missingSections.length > 0) {
         const sectionNames = missingSections
           .map((a) => {
             const sec = initialData.sections.find((s) => s.section_id === a.section_id);
-            const gl = sec
-              ? initialData.grade_levels.find((g) => g.grade_level_id === sec.grade_level_id)
-              : null;
+            const gl = sec ? initialData.grade_levels.find((g) => g.grade_level_id === sec.grade_level_id) : null;
             return gl ? `${gl.display_name} • ${sec!.name}` : sec?.name ?? `Section ${a.section_id}`;
           })
           .join(", ");
-        notify({
-          type: "error",
-          title: "Missing Subject Assignment",
-          message: `Please assign at least one subject for: ${sectionNames}.`,
-          autoClose: 6000,
-        });
-        return;
+        notify({ type: "error", title: "Missing Subject Assignment", message: `Please assign at least one subject for: ${sectionNames}.`, autoClose: 6000 });
+        setStepHasError(true);
+        return false;
       }
     }
 
-    form.setFieldValue("activeStep", step + 1);
+    return true;
+  };
+
+  const nextStep = () => {
+    const valid = validateCurrentStep();
+    if (!valid) return;
+    setStepHasError(false);
+    const next = form.values.activeStep + 1;
+    setMaxStep((prev) => Math.max(prev, next));
+    form.setFieldValue("activeStep", next);
   };
 
   const prevStep = () => {
+    setStepHasError(false);
     form.setFieldValue("activeStep", form.values.activeStep - 1);
   };
 
@@ -454,14 +454,20 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
     }
   })();
 
-  const mobileSteps = [
-    { description: "Advisory Class" },
-    { description: "Grade & Section" },
-    { description: "Assign Subjects" },
+  const wizardSteps: VerticalWizardStep[] = [
+    { label: "Step 1", description: "Advisory Class" },
+    { label: "Step 2", description: "Grade & Section", hasError: form.values.activeStep === 1 && stepHasError },
+    { label: "Step 3", description: "Assign Subjects", hasError: form.values.activeStep === 2 && stepHasError },
     ...(isAddMode
-      ? [{ description: "Grade Subject Leader" }, { description: "Subject Coordinator" }]
+      ? [
+          { label: "Step 4", description: "Grade Subject Leader" },
+          { label: "Step 5", description: "Subject Coordinator" },
+        ]
       : []),
-    { description: isAddMode ? "Review & Confirm" : "Review & Save" },
+    {
+      label: isAddMode ? "Step 6" : "Step 4",
+      description: isAddMode ? "Review & Confirm" : "Review & Save",
+    },
   ];
 
   const isFinalStep = form.values.activeStep === TOTAL_STEPS - 1;
@@ -480,48 +486,22 @@ export default function AddFacultyWizard({ facultyUid, initialData, isAddMode }:
 
   return (
     <Container fluid py="xl" h="100%">
-      {isMobile ? (
-        <>
-          <MobileStepIndicator
-            activeStep={form.values.activeStep}
-            totalSteps={TOTAL_STEPS}
-            stepDescription={mobileSteps[form.values.activeStep]?.description ?? ""}
-          />
-          {stepContent}
-          {navButtons}
-        </>
-      ) : (
-        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
-          {/* Left side: Stepper */}
-          <div style={{ flexShrink: 0, width: "20%" }}>
-            <Stepper
-              active={form.values.activeStep}
-              color="#4EAE4A"
-              orientation="vertical"
-            >
-              <Stepper.Step label="Step 1" description="Advisory Class" />
-              <Stepper.Step label="Step 2" description="Grade & Section" />
-              <Stepper.Step label="Step 3" description="Assign Subjects" />
-              {isAddMode && (
-                <Stepper.Step label="Step 4" description="Grade Subject Leader" />
-              )}
-              {isAddMode && (
-                <Stepper.Step label="Step 5" description="Subject Coordinator" />
-              )}
-              <Stepper.Step
-                label={isAddMode ? "Step 6" : "Step 4"}
-                description={isAddMode ? "Review & Confirm" : "Review & Save"}
-              />
-            </Stepper>
-          </div>
-
-          {/* Right side: Content */}
-          <div style={{ flex: 1, width: "70%" }}>
-            {stepContent}
-            {navButtons}
-          </div>
-        </div>
-      )}
+      <VerticalWizardLayout
+        active={form.values.activeStep}
+        steps={wizardSteps}
+        maxStep={maxStep}
+        onStepClick={(idx) => {
+          if (idx > form.values.activeStep) {
+            const valid = validateCurrentStep();
+            if (!valid) return;
+          }
+          setStepHasError(false);
+          form.setFieldValue("activeStep", idx);
+        }}
+      >
+        {stepContent}
+        {navButtons}
+      </VerticalWizardLayout>
     </Container>
   );
 }

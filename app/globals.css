@@ -19,6 +19,31 @@
   cursor: not-allowed !important;
 }
 
+/* Wizard stepper animations */
+@keyframes wizard-draw {
+  from { stroke-dashoffset: 24; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes wizard-pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0.4); }
+  70%  { box-shadow: 0 0 0 10px rgba(220, 38, 38, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(220, 38, 38, 0); }
+}
+
+.wizard-check {
+  stroke-dasharray: 24;
+  animation: wizard-draw 0.4s ease forwards;
+}
+
+.wizard-pulse {
+  animation: wizard-pulse 1.5s infinite;
+}
+
+.wizard-step-hover:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
 html,
 body {
   margin: 0;

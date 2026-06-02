@@ -3,7 +3,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Container, Stepper, Button, Group, Text, rem, Paper, Stack,
+  Container, Button, Group, Text, Paper, Stack,
   Select, MultiSelect, Alert, ActionIcon, NumberInput, TextInput, Tooltip,
   Skeleton,
 } from '@mantine/core';
@@ -24,7 +24,7 @@ import { getExamChoiceLetters, normalizeExamNumChoices, type LearningObjective, 
 import { useAuth } from '@/context/AuthContext';
 import WizardNavigationButtons from '@/components/WizardNavigationButtons';
 import NoActivePeriodBanner from '@/components/NoActivePeriodBanner';
-import MobileStepIndicator from '@/components/MobileStepIndicator';
+import VerticalWizardLayout, { type VerticalWizardStep } from '@/components/VerticalWizardLayout';
 
 // Always 2 columns matching the PDF answer sheet layout
 
@@ -217,6 +217,8 @@ export default function CreateExamPage() {
   }
 
   const [activeStep, setActiveStep] = useState(d?.step ?? 0);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(d?.step ?? 0);
   const [saving, setSaving] = useState(false);
   const [draftReady, setDraftReady] = useState(false);
 
@@ -317,7 +319,6 @@ export default function CreateExamPage() {
       setDataLoading(false);
     };
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Runs once auth is ready (user?.id becomes available after session resolves).
@@ -673,8 +674,44 @@ export default function CreateExamPage() {
     }
   };
 
-  const nextStep = () => setActiveStep(s => s + 1);
-  const prevStep = () => setActiveStep(s => s - 1);
+  const validateCurrentStep = (): boolean => {
+    if (activeStep === 0) {
+      if (dataLoading) { showValidationNotification('Please wait while required data is still loading.'); setStepHasError(true); return false; }
+      if (!quarters.some((q) => q.is_active)) { showValidationNotification('No active quarter found. Please activate a quarter first.'); setStepHasError(true); return false; }
+      if (!selectedGradeLevelId) { showValidationNotification('Grade level is required.'); setStepHasError(true); return false; }
+      if (!selectedSubjectId) { showValidationNotification('Subject is required.'); setStepHasError(true); return false; }
+      if (selectedSectionIds.length === 0) { showValidationNotification('Please select at least one section.'); setStepHasError(true); return false; }
+      if (duplicateSectionIds.size > 0) { showValidationNotification('An exam already exists for one or more selected sections in the active quarter.'); setStepHasError(true); return false; }
+    } else if (activeStep === 2) {
+      setTriedToSaveObjectives(true);
+      const err = validateObjectives();
+      if (err) { notify({ type: 'error', title: 'Validation Error', message: err }); setStepHasError(true); return false; }
+    } else if (activeStep === 3) {
+      if (!isAnswerKeyComplete) {
+        setTriedToSave(true);
+        triggerAnswerKeyMissingFlash();
+        const missingCount = unansweredQuestions.length;
+        showValidationNotification(missingCount > 0 ? `Answer key is incomplete. ${missingCount} item${missingCount > 1 ? 's are' : ' is'} missing.` : 'Answer key is incomplete.');
+        setStepHasError(true);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const nextStep = () => {
+    const valid = validateCurrentStep();
+    if (!valid) return;
+    setStepHasError(false);
+    const next = activeStep + 1;
+    setMaxStep(prev => Math.max(prev, next));
+    setActiveStep(next);
+  };
+
+  const prevStep = () => {
+    setStepHasError(false);
+    setActiveStep(s => s - 1);
+  };
   const neutralFocusStyles = {
     input: {},
   };
@@ -917,11 +954,6 @@ export default function CreateExamPage() {
             {objectiveRows.map((row, idx) => {
               const isOverlapping = overlappingRowIds.has(row.id);
               const descriptionMissing = triedToSaveObjectives && !row.objective.trim();
-              const startMissing = triedToSaveObjectives && !Number(row.start_item);
-              const endMissing = triedToSaveObjectives && !Number(row.end_item);
-              const startError = isOverlapping || startMissing;
-              const endError = isOverlapping || endMissing ||
-                (Number(row.start_item) > 0 && Number(row.end_item) > 0 && Number(row.start_item) > Number(row.end_item));
               const startErrorMessage = isOverlapping ? 'Overlap' : '';
               const endErrorMessage = isOverlapping
                 ? 'Overlap'
@@ -1161,9 +1193,6 @@ export default function CreateExamPage() {
 
   const renderStep4 = () => {
     const half = Math.ceil(totalItems / 2);
-    const gradeLabel = gradeLevels.find(g => String(g.grade_level_id) === selectedGradeLevelId)?.display_name ?? '-';
-    const subjectName = filteredSubjects.find(s => String(s.curriculum_subject_id) === selectedSubjectId)?.name ?? '-';
-    const sectionNames = selectedSectionNames.map(n => `Section ${n}`).join(', ');
 
     const renderTable = (startIdx: number, endIdx: number, showHeader = true) => (
       <table className="w-full text-sm table-fixed [&_th]:border-x-0 [&_td]:border-x-0">
@@ -1247,55 +1276,6 @@ export default function CreateExamPage() {
     notify({ type: 'warning', title: 'Please complete required fields', message });
   };
 
-  const handleNext = () => {
-    if (activeStep === 0) {
-      if (dataLoading) {
-        showValidationNotification('Please wait while required data is still loading.');
-        return;
-      }
-      if (!quarters.some((q) => q.is_active)) {
-        showValidationNotification('No active quarter found. Please activate a quarter first.');
-        return;
-      }
-      if (!selectedGradeLevelId) {
-        showValidationNotification('Grade level is required.');
-        return;
-      }
-      if (!selectedSubjectId) {
-        showValidationNotification('Subject is required.');
-        return;
-      }
-      if (selectedSectionIds.length === 0) {
-        showValidationNotification('Please select at least one section.');
-        return;
-      }
-      if (duplicateSectionIds.size > 0) {
-        showValidationNotification('An exam already exists for one or more selected sections in the active quarter.');
-        return;
-      }
-      nextStep();
-    } else if (activeStep === 2) {
-      setTriedToSaveObjectives(true);
-      const err = validateObjectives();
-      if (err) { notify({ type: "error", title: 'Validation Error', message: err }); return; }
-      nextStep();
-    } else if (activeStep === 3) {
-      if (!isAnswerKeyComplete) {
-        setTriedToSave(true);
-        triggerAnswerKeyMissingFlash();
-        const missingCount = unansweredQuestions.length;
-        showValidationNotification(
-          missingCount > 0
-            ? `Answer key is incomplete. ${missingCount} item${missingCount > 1 ? 's are' : ' is'} missing.`
-            : 'Answer key is incomplete.',
-        );
-        return;
-      }
-      nextStep();
-    } else {
-      nextStep();
-    }
-  };
 
   const resetFormState = () => {
     setSelectedGradeLevelId(null);
@@ -1415,11 +1395,11 @@ export default function CreateExamPage() {
     });
   };
 
-  const stepDescriptions = [
-    { label: 'Step 1', description: 'Specify Exam Information' },
+  const wizardSteps: VerticalWizardStep[] = [
+    { label: 'Step 1', description: 'Specify Exam Information', hasError: activeStep === 0 && stepHasError },
     { label: 'Step 2', description: 'Set Items and Choices' },
-    { label: 'Step 3', description: 'Set Learning Objectives' },
-    { label: 'Step 4', description: 'Set Answer Key' },
+    { label: 'Step 3', description: 'Set Learning Objectives', hasError: activeStep === 2 && stepHasError },
+    { label: 'Step 4', description: 'Set Answer Key', hasError: activeStep === 3 && stepHasError },
     { label: 'Step 5', description: 'Review and Create' },
   ];
 
@@ -1431,7 +1411,7 @@ export default function CreateExamPage() {
       onCancel={handleCancel}
       showPrevious={activeStep > 0}
       onPrevious={prevStep}
-      onPrimary={isFinalStep ? handleConfirmFinalSave : handleNext}
+      onPrimary={isFinalStep ? handleConfirmFinalSave : nextStep}
       primaryLabel={isFinalStep ? 'Create Examination' : 'Next'}
       primaryDisabled={false}
       primaryLoading={isFinalStep ? saving : false}
@@ -1460,35 +1440,24 @@ export default function CreateExamPage() {
     <>
       <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Create Examination</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
-        {isMobile ? (
+        <VerticalWizardLayout
+          active={activeStep}
+          steps={wizardSteps}
+          maxStep={maxStep}
+          onStepClick={(idx) => {
+            if (idx > activeStep) {
+              const valid = validateCurrentStep();
+              if (!valid) return;
+            }
+            setStepHasError(false);
+            setActiveStep(idx);
+          }}
+        >
           <>
-            <Stack gap="md">
-              <MobileStepIndicator
-                activeStep={activeStep}
-                totalSteps={stepDescriptions.length}
-                stepDescription={stepDescriptions[activeStep].description}
-              />
-              {stepContent[activeStep]()}
-            </Stack>
+            {stepContent[activeStep]()}
             {navigationButtons}
           </>
-        ) : (
-          <div style={{ display: 'flex', gap: rem(32), height: '100%' }}>
-            {/* Left: Stepper */}
-            <div style={{ flexShrink: 0, width: '20%' }}>
-              <Stepper active={activeStep} color="#4EAE4A" orientation="vertical">
-                {stepDescriptions.map((s, i) => (
-                  <Stepper.Step key={i} label={s.label} description={s.description} />
-                ))}
-              </Stepper>
-            </div>
-            {/* Right: Content */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {stepContent[activeStep]()}
-              {navigationButtons}
-            </div>
-          </div>
-        )}
+        </VerticalWizardLayout>
       </Container>
     </>
   );

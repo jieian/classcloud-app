@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Container, rem, Stepper, Text } from "@mantine/core";
+import { Container, Text } from "@mantine/core";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
 import { modals } from "@mantine/modals";
 import { notify } from "@/components/notificationIcon/notificationIcon";
 import { getSupabase } from "@/lib/supabase/client";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
-import MobileStepIndicator from "@/components/MobileStepIndicator";
+import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import StepCurriculumNameDesc from "./StepCurriculumNameDesc";
 import StepCurriculumSubjects from "./StepCurriculumSubjects";
 import StepCurriculumSubjectGroups from "./StepCurriculumSubjectGroups";
@@ -80,6 +80,8 @@ export default function CreateCurriculumWizard() {
     : {};
   const [loading, setLoading] = useState(false);
   const [checkingName, setCheckingName] = useState(false);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(0);
   const busyRef = useRef(false);
   const verifiedNameRef = useRef<string | null>(null);
 
@@ -127,11 +129,15 @@ export default function CreateCurriculumWizard() {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [form.isDirty()]);
+  // Handler reads form.isDirty() fresh at event time — no need to re-register on dirty change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isDirty = form.isDirty();
 
   // Intercept NavBar link clicks when dirty
   useEffect(() => {
-    if (!form.isDirty()) return;
+    if (!isDirty) return;
     const handleClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest("a[href]");
       if (!anchor) return;
@@ -139,8 +145,7 @@ export default function CreateCurriculumWizard() {
       if (/^(https?:|#|mailto:|tel:)/.test(href)) return;
       e.preventDefault();
       e.stopPropagation();
-      let navModalId!: string;
-      navModalId = modals.openConfirmModal({
+      const navModalId = modals.openConfirmModal({
         title: "Discard changes?",
         children: (
           <>
@@ -156,10 +161,12 @@ export default function CreateCurriculumWizard() {
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [form.isDirty()]);
+  // form, router, confirmModalProps are stable or defined after this hook
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
 
-  const nextStep = async () => {
-    if (busyRef.current) return;
+  const validateCurrentStep = async (): Promise<boolean> => {
+    if (busyRef.current) return false;
 
     if (form.values.activeStep === 0) {
       const result = form.validate();
@@ -171,9 +178,9 @@ export default function CreateCurriculumWizard() {
         } else {
           notify({ type: "error", title: descErrorTitle(descErr!), message: descErr! });
         }
-        return;
+        setStepHasError(true);
+        return false;
       }
-      // Async name uniqueness check
       const trimmed = form.values.name.trim();
       if (verifiedNameRef.current !== trimmed) {
         busyRef.current = true;
@@ -189,7 +196,8 @@ export default function CreateCurriculumWizard() {
             const takenMsg = "A curriculum with this name already exists.";
             form.setFieldError("name", takenMsg);
             notify({ type: "error", title: "Name Already Taken", message: takenMsg });
-            return;
+            setStepHasError(true);
+            return false;
           }
           verifiedNameRef.current = trimmed;
         } catch {
@@ -198,7 +206,8 @@ export default function CreateCurriculumWizard() {
             title: "Name Check Failed",
             message: "Failed to verify curriculum name. Please try again.",
           });
-          return;
+          setStepHasError(true);
+          return false;
         } finally {
           busyRef.current = false;
           setCheckingName(false);
@@ -207,72 +216,58 @@ export default function CreateCurriculumWizard() {
     }
 
     if (form.values.activeStep === 1) {
-      // Every grade level must have at least one subject
-      const coveredGlIds = new Set(
-        form.values.subjects.map((s) => s.grade_level_id),
-      );
+      const coveredGlIds = new Set(form.values.subjects.map((s) => s.grade_level_id));
       const allGlIds = Array.from(gradeLevelNames.keys());
       const missing = allGlIds.filter((id) => !coveredGlIds.has(id));
       if (form.values.subjects.length === 0) {
-        notify({
-          type: "error",
-          title: "No Subjects",
-          message: "Add at least one subject before proceeding.",
-        });
-        return;
+        notify({ type: "error", title: "No Subjects", message: "Add at least one subject before proceeding." });
+        setStepHasError(true);
+        return false;
       }
       if (missing.length > 0) {
-        const names = missing
-          .map((id) => gradeLevelNames.get(id) ?? `Grade ${id}`)
-          .join(", ");
-        notify({
-          type: "error",
-          title: "Missing Subjects",
-          message: `Every grade level needs at least one subject. Missing: ${names}`,
-          autoClose: 7000,
-        });
-        return;
+        const names = missing.map((id) => gradeLevelNames.get(id) ?? `Grade ${id}`).join(", ");
+        notify({ type: "error", title: "Missing Subjects", message: `Every grade level needs at least one subject. Missing: ${names}`, autoClose: 7000 });
+        setStepHasError(true);
+        return false;
       }
     }
 
     if (form.values.activeStep === 2) {
       if (form.values.subject_groups.length === 0) {
-        notify({
-          type: "error",
-          title: "No Subject Groups",
-          message: "Create at least one subject group before proceeding.",
-        });
-        return;
+        notify({ type: "error", title: "No Subject Groups", message: "Create at least one subject group before proceeding." });
+        setStepHasError(true);
+        return false;
       }
-      const occupiedTempIds = new Set(
-        form.values.subject_groups.flatMap((g) => g.memberTempIds),
-      );
-      const unassigned = form.values.subjects.filter(
-        (s) => !occupiedTempIds.has(s.tempId),
-      );
+      const occupiedTempIds = new Set(form.values.subject_groups.flatMap((g) => g.memberTempIds));
+      const unassigned = form.values.subjects.filter((s) => !occupiedTempIds.has(s.tempId));
       if (unassigned.length > 0) {
-        notify({
-          type: "error",
-          title: "Unassigned Subjects",
-          message: `All subjects must be in a group. ${unassigned.length} subject(s) still unassigned.`,
-          autoClose: 6000,
-        });
-        return;
+        notify({ type: "error", title: "Unassigned Subjects", message: `All subjects must be in a group. ${unassigned.length} subject(s) still unassigned.`, autoClose: 6000 });
+        setStepHasError(true);
+        return false;
       }
     }
 
-    form.setFieldValue("activeStep", form.values.activeStep + 1);
+    return true;
+  };
+
+  const nextStep = async () => {
+    const valid = await validateCurrentStep();
+    if (!valid) return;
+    setStepHasError(false);
+    const next = form.values.activeStep + 1;
+    setMaxStep((prev) => Math.max(prev, next));
+    form.setFieldValue("activeStep", next);
   };
 
   const prevStep = () => {
+    setStepHasError(false);
     form.setFieldValue("activeStep", form.values.activeStep - 1);
     verifiedNameRef.current = null;
   };
 
   const handleCancel = () => {
     if (form.isDirty()) {
-      let cancelModalId!: string;
-    cancelModalId = modals.openConfirmModal({
+      const cancelModalId = modals.openConfirmModal({
       title: "Discard changes?",
       children: (
         <>
@@ -292,8 +287,7 @@ export default function CreateCurriculumWizard() {
   };
 
   const handleCreate = () => {
-    let createModalId!: string;
-    createModalId = modals.openConfirmModal({
+    const createModalId = modals.openConfirmModal({
       title: "Create Curriculum?",
       children: (
         <>
@@ -364,10 +358,10 @@ export default function CreateCurriculumWizard() {
     }
   };
 
-  const steps = [
-    { label: "Step 1", description: "Curriculum Information" },
-    { label: "Step 2", description: "Define Subjects" },
-    { label: "Step 3", description: "Define Subject Groups" },
+  const wizardSteps: VerticalWizardStep[] = [
+    { label: "Step 1", description: "Curriculum Information", hasError: form.values.activeStep === 0 && stepHasError },
+    { label: "Step 2", description: "Define Subjects", hasError: form.values.activeStep === 1 && stepHasError },
+    { label: "Step 3", description: "Define Subject Groups", hasError: form.values.activeStep === 2 && stepHasError },
     { label: "Step 4", description: "Review & Create" },
   ];
 
@@ -409,41 +403,22 @@ export default function CreateCurriculumWizard() {
 
   return (
     <Container fluid py="xl" h="100%">
-      {isMobile ? (
-        <>
-          <MobileStepIndicator
-            activeStep={form.values.activeStep}
-            totalSteps={steps.length}
-            stepDescription={steps[form.values.activeStep].description}
-          />
-          {stepContent}
-          {navButtons}
-        </>
-      ) : (
-        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
-          {/* Left: Stepper */}
-          <div style={{ flexShrink: 0, width: "20%" }}>
-            <Stepper
-              active={form.values.activeStep}
-              color="#4EAE4A"
-              orientation="vertical"
-            >
-              {steps.map((s, i) => (
-                <Stepper.Step
-                  key={i}
-                  label={s.label}
-                  description={s.description}
-                />
-              ))}
-            </Stepper>
-          </div>
-          {/* Right: Content */}
-          <div style={{ width: "70%" }}>
-            {stepContent}
-            {navButtons}
-          </div>
-        </div>
-      )}
+      <VerticalWizardLayout
+        active={form.values.activeStep}
+        steps={wizardSteps}
+        maxStep={maxStep}
+        onStepClick={async (idx) => {
+          if (idx > form.values.activeStep) {
+            const valid = await validateCurrentStep();
+            if (!valid) return;
+          }
+          setStepHasError(false);
+          form.setFieldValue("activeStep", idx);
+        }}
+      >
+        {stepContent}
+        {navButtons}
+      </VerticalWizardLayout>
     </Container>
   );
 }

@@ -21,7 +21,7 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { notify } from "@/components/notificationIcon/notificationIcon";
-import { IconCheck, IconMailCheck, IconMailForward, IconX } from "@tabler/icons-react";
+import { IconCheck, IconMailForward, IconX } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import MobileStepIndicator from "@/components/MobileStepIndicator";
 import Link from "next/link";
@@ -543,7 +543,7 @@ export default function SignUpPage() {
                       radius="xl"
                       variant="filled"
                     >
-                      <IconMailCheck size={36} stroke={2} />
+                      <IconMailForward size={36} stroke={2} />
                     </ThemeIcon>
                   </Group>
                   <Text ta="center" fw={700} fz="lg" c="#45903B" mb="xs">

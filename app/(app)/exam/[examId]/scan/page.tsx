@@ -11,7 +11,7 @@ import {
   Container,
   Divider,
   Group,
-  Modal,
+
   Paper,
   ScrollArea,
   Select,
@@ -33,7 +33,7 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import {
-  IconUpload, IconCamera, IconCircleCheck, IconAlertTriangle,
+  IconUpload, IconCamera, IconAlertTriangle,
   IconRefresh,
   IconDownload,
   IconGenderBigender,
@@ -2220,7 +2220,11 @@ export default function ScanPapersPage() {
       <h1 className="text-xl md:text-3xl font-bold mb-2 md:mb-6 text-[#597D37]">Scan Papers</h1>
       <Container fluid py={{ base: 'md', sm: 'xl' }} px={{ base: 0, sm: 'md' }} h="100%">
       <div style={isMobile ? { paddingBottom: 80 } : undefined}>
-      <VerticalWizardLayout active={stepIndex} steps={wizardSteps}>
+      <VerticalWizardLayout
+        active={stepIndex}
+        steps={wizardSteps}
+        onStepClick={(idx) => setStep(STEP_ORDER[idx])}
+      >
 
         {/* STEP: CAPTURE */}
         {step === 'capture' && (

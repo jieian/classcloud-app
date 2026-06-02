@@ -10,7 +10,7 @@ import {
   Text,
   ThemeIcon,
 } from "@mantine/core";
-import { IconAlertCircle, IconCheck, IconInfoCircle } from "@tabler/icons-react";
+import { IconCheck, IconExclamationCircle, IconInfoCircle } from "@tabler/icons-react";
 
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
@@ -164,13 +164,21 @@ export default function ActivateInvitePage() {
                   </Text>
 
                   <Alert
-                    icon={<IconInfoCircle size={16} />}
-                    color="yellow"
+                    variant="filled"
+                    color="blue"
                     radius="md"
                     mb="md"
-                    styles={{ message: { fontSize: "var(--mantine-font-size-sm)" } }}
+                    styles={{
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconInfoCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    You must change your password on first login.
+                    <Text fw={700} size="sm">Password Change Required</Text>
+                    <Text size="sm" fs="italic">You must change your password on first login.</Text>
                   </Alert>
 
                   <Button
@@ -215,12 +223,21 @@ export default function ActivateInvitePage() {
               {pageState === "invalid" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This invitation link is invalid or has already been used.
+                    <Text fw={700} size="sm">Invalid Invitation Link</Text>
+                    <Text size="sm" fs="italic">This invitation link is invalid or has already been used.</Text>
                   </Alert>
                   <Link href="/login" style={{ textDecoration: "none" }}>
                     <Text ta="center" size="sm" c="#4EAE4A">
@@ -234,12 +251,21 @@ export default function ActivateInvitePage() {
               {pageState === "error" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    {errorMessage || "Something went wrong. Please try again."}
+                    <Text fw={700} size="sm">Something Went Wrong</Text>
+                    <Text size="sm" fs="italic">{errorMessage || "Something went wrong. Please try again."}</Text>
                   </Alert>
                   <Group justify="space-between">
                     <Link href="/login" style={{ textDecoration: "none" }}>

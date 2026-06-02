@@ -13,7 +13,7 @@ import {
   Alert,
   ThemeIcon,
 } from "@mantine/core";
-import { IconCheck, IconX, IconMailForward, IconAlertCircle } from "@tabler/icons-react";
+import { IconCheck, IconX, IconMailForward, IconExclamationCircle } from "@tabler/icons-react";
 import Link from "next/link";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import { useRouter } from "next/navigation";
@@ -269,18 +269,27 @@ export default function ResetPasswordPage() {
               {pageState === "invalid" && (
                 <>
                   <Alert
-                    color="orange"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This password reset link is invalid or has expired.
+                    <Text fw={700} size="sm">Link Invalid or Expired</Text>
+                    <Text size="sm" fs="italic">This password reset link is invalid or has expired.</Text>
                   </Alert>
 
                   {resendSent ? (
                     <>
                       <Group justify="center" mb="md">
-                        <ThemeIcon color="teal" size={48} radius="xl" variant="light">
+                        <ThemeIcon color="#4EAE4A" size={48} radius="xl" variant="filled">
                           <IconMailForward size={24} stroke={2} />
                         </ThemeIcon>
                       </Group>
@@ -313,18 +322,29 @@ export default function ResetPasswordPage() {
               {pageState === "wrong-account" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This reset link was sent to a different account.
-                    {loggedInEmail && (
-                      <> You&apos;re currently signed in as <strong>{loggedInEmail}</strong>.</>
-                    )}
+                    <Text fw={700} size="sm">Wrong Account</Text>
+                    <Text size="sm" fs="italic">
+                      This reset link was sent to a different account.
+                      {loggedInEmail && (
+                        <> You&apos;re currently signed in as <strong>{loggedInEmail}</strong>.</>
+                      )}
+                    </Text>
                   </Alert>
                   <Link href="/" style={{ textDecoration: "none" }}>
-                    <Button fullWidth radius="md" color="#4EAE4A" variant="light">
+                    <Button fullWidth radius="md" color="#4EAE4A">
                       Go to Home
                     </Button>
                   </Link>

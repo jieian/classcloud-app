@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Container, rem, Stepper, Text, Tooltip } from "@mantine/core";
+import { Container, Text } from "@mantine/core";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
 import { useForm } from "@mantine/form";
 import { useMediaQuery } from "@mantine/hooks";
@@ -15,7 +15,7 @@ import StepFacultyAssignment from "./StepFacultyAssignment";
 import StepGradeSubjectLeaders from "./StepGradeSubjectLeaders";
 import StepSubjectCoordinators from "./StepSubjectCoordinators";
 import StepReviewCreate from "./StepReviewCreate";
-import MobileStepIndicator from "@/components/MobileStepIndicator";
+import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import type {
   CoordinatorDraftMap,
   CreateSchoolYearForm,
@@ -143,6 +143,8 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
         })
       )
       .finally(() => setLoadingCurriculum(false));
+  // form and initialData.prevSy are stable throughout the wizard session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.values.curriculum_id]);
 
   // ── Load prev SY snapshot (once, memoized) ─────────────────────────────────
@@ -220,10 +222,14 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     };
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
+  // form, router, confirmModalProps are stable throughout the wizard session
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDirty]);
 
   // ── Validation logic per step ───────────────────────────────────────────────
   const [checkingYear, setCheckingYear] = useState(false);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(0);
 
   const validateStep = async (step: number): Promise<boolean> => {
     if (step === 0) {
@@ -419,23 +425,33 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     return true;
   };
 
+  const validateCurrentStep = async (): Promise<boolean> => {
+    const valid = await validateStep(form.values.activeStep);
+    if (!valid) setStepHasError(true);
+    return valid;
+  };
+
   const nextStep = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
     try {
-      const valid = await validateStep(form.values.activeStep);
+      const valid = await validateCurrentStep();
       if (!valid) return;
       // Pre-load snapshot when moving from Step 2 → 3 (if prevSy exists)
       if (form.values.activeStep === 1 && initialData.prevSy) {
         loadSnapshot();
       }
-      form.setFieldValue("activeStep", form.values.activeStep + 1);
+      setStepHasError(false);
+      const next = form.values.activeStep + 1;
+      setMaxStep((prev) => Math.max(prev, next));
+      form.setFieldValue("activeStep", next);
     } finally {
       busyRef.current = false;
     }
   };
 
   const prevStep = () => {
+    setStepHasError(false);
     form.setFieldValue("activeStep", form.values.activeStep - 1);
     setSubmitError(null);
   };
@@ -611,7 +627,7 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
           prevSyCurriculumId={initialData.prevSy?.curriculum_id ?? null}
           curriculumDetail={curriculumDetail}
           loadingCurriculum={loadingCurriculum}
-          onCurriculaRefresh={(list) => {
+          onCurriculaRefresh={() => {
             // Curricula list refreshed via BroadcastChannel — update the prop reference
             // StepSelectCurriculum manages its own local state copy for this
           }}
@@ -707,47 +723,34 @@ export default function CreateSchoolYearWizard({ initialData }: CreateSchoolYear
     />
   );
 
-  const steps = [
-    { label: "Step 1", description: "Academic Period" },
-    { label: "Step 2", description: "Select Curriculum" },
-    { label: "Step 3", description: "Define Classes" },
-    { label: "Step 4", description: "Faculty Assignment" },
-    { label: "Step 5", description: "Grade Subject Leaders" },
-    { label: "Step 6", description: "Subject Coordinators" },
+  const wizardSteps: VerticalWizardStep[] = [
+    { label: "Step 1", description: "Academic Period", hasError: form.values.activeStep === 0 && stepHasError },
+    { label: "Step 2", description: "Select Curriculum", hasError: form.values.activeStep === 1 && stepHasError },
+    { label: "Step 3", description: "Define Classes", hasError: form.values.activeStep === 2 && stepHasError },
+    { label: "Step 4", description: "Faculty Assignment", hasError: form.values.activeStep === 3 && stepHasError },
+    { label: "Step 5", description: "Grade Subject Leaders", hasError: form.values.activeStep === 4 && stepHasError },
+    { label: "Step 6", description: "Subject Coordinators", hasError: form.values.activeStep === 5 && stepHasError },
     { label: "Step 7", description: "Review & Create" },
   ];
 
   return (
     <Container fluid pt={isMobile ? 0 : "xl"} pb="xl" h="100%">
-      {isMobile ? (
-        <>
-          <MobileStepIndicator
-            activeStep={form.values.activeStep}
-            totalSteps={steps.length}
-            stepDescription={steps[form.values.activeStep].description}
-          />
-          {stepContent}
-          {navButtons}
-        </>
-      ) : (
-        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
-          <div style={{ flexShrink: 0, width: "20%" }}>
-            <Stepper
-              active={form.values.activeStep}
-              color="#4EAE4A"
-              orientation="vertical"
-            >
-              {steps.map((s, i) => (
-                <Stepper.Step key={i} label={s.label} description={s.description} />
-              ))}
-            </Stepper>
-          </div>
-          <div style={{ width: "70%" }}>
-            {stepContent}
-            {navButtons}
-          </div>
-        </div>
-      )}
+      <VerticalWizardLayout
+        active={form.values.activeStep}
+        steps={wizardSteps}
+        maxStep={maxStep}
+        onStepClick={async (idx) => {
+          if (idx > form.values.activeStep) {
+            const valid = await validateCurrentStep();
+            if (!valid) return;
+          }
+          setStepHasError(false);
+          form.setFieldValue("activeStep", idx);
+        }}
+      >
+        {stepContent}
+        {navButtons}
+      </VerticalWizardLayout>
     </Container>
   );
 }

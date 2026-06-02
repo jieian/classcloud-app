@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Container, Stepper, Text, rem } from "@mantine/core";
+import { Container, Text } from "@mantine/core";
 import WizardNavigationButtons from "@/components/WizardNavigationButtons";
-import MobileStepIndicator from "@/components/MobileStepIndicator";
+import VerticalWizardLayout, { type VerticalWizardStep } from "@/components/VerticalWizardLayout";
 import { useMediaQuery } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { modals } from "@mantine/modals";
@@ -90,11 +90,15 @@ export default function CreateUserWizard() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [form.isDirty()]);
+  // Handler reads form.isDirty() fresh at event time — no need to re-register on dirty change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isDirty = form.isDirty();
 
   // Intercept client-side navigation (NavBar Link clicks) when form is dirty
   useEffect(() => {
-    if (!form.isDirty()) return;
+    if (!isDirty) return;
 
     const handleClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest("a[href]");
@@ -127,21 +131,22 @@ export default function CreateUserWizard() {
     // Capture phase so we intercept before Next.js processes the click
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [form.isDirty()]);
+  // form, router, confirmModalProps are stable or defined after this hook
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
 
   const [checkingEmail, setCheckingEmail] = useState(false);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(0);
   const busyRef = useRef(false);
   const verifiedEmailRef = useRef<string | null>(null);
 
-  const nextStep = async () => {
-    // Guard against spam clicks — ref is synchronous, not batched like state
-    if (busyRef.current) return;
+  const validateCurrentStep = async (): Promise<boolean> => {
+    if (busyRef.current) return false;
 
     if (form.values.activeStep === 0) {
-      // Validate Step 1 fields only — triggers inline errors
       const validation = form.validate();
 
-      // Build missing required fields list for a targeted notification
       const missingFields: string[] = [];
       if (!form.values.first_name.trim()) missingFields.push("First Name");
       if (!form.values.last_name.trim()) missingFields.push("Last Name");
@@ -155,7 +160,8 @@ export default function CreateUserWizard() {
           title: "Missing Required Fields",
           message: `${missingFields.join(", ")} ${missingFields.length === 1 ? "is" : "are"} missing.`,
         });
-        return;
+        setStepHasError(true);
+        return false;
       }
 
       const step1HasErrors =
@@ -171,7 +177,8 @@ export default function CreateUserWizard() {
           title: "Validation Error",
           message: "Please correct the highlighted errors before proceeding.",
         });
-        return;
+        setStepHasError(true);
+        return false;
       }
 
       // Check email status — skip if same email was already verified
@@ -187,36 +194,29 @@ export default function CreateUserWizard() {
             notify({
               type: "error",
               title: "Email Already In Use",
-              message:
-                "This email is already registered. Please use a different email.",
+              message: "This email is already registered. Please use a different email.",
             });
-            return;
+            setStepHasError(true);
+            return false;
           }
 
           if (emailStatus.status === "pending_invite") {
-            form.setFieldError(
-              "email",
-              "This email already has a pending invitation",
-            );
+            form.setFieldError("email", "This email already has a pending invitation");
             notify({
               type: "warning",
               title: "Pending Invitation",
-              message:
-                "This email already has a pending invitation. Check the Pending section.",
+              message: "This email already has a pending invitation. Check the Pending section.",
               color: "orange",
             });
-            return;
+            setStepHasError(true);
+            return false;
           }
 
-          // Cache verified email so going back + forward skips the check
           verifiedEmailRef.current = trimmedEmail;
         } catch {
-          notify({
-            type: "error",
-            title: "Error",
-            message: "Failed to verify email. Please try again.",
-          });
-          return;
+          notify({ type: "error", title: "Error", message: "Failed to verify email. Please try again." });
+          setStepHasError(true);
+          return false;
         } finally {
           busyRef.current = false;
           setCheckingEmail(false);
@@ -229,22 +229,16 @@ export default function CreateUserWizard() {
         form.setFieldValue("generatedPassword", generated);
       }
     } else if (form.values.activeStep === 1) {
-      // Validate Step 2 — at least one role
       const validation = form.validate();
       if (validation.errors.role_ids) {
-        notify({
-          type: "error",
-          title: "No Role Selected",
-          message: "Select at least one role before proceeding.",
-        });
-        return;
+        notify({ type: "error", title: "No Role Selected", message: "Select at least one role before proceeding." });
+        setStepHasError(true);
+        return false;
       }
 
       // Principal check — soft warning only, does not block
       const selectedRoleNames = form.values.role_ids
-        .map(
-          (id) => availableRoles.find((r) => r.role_id.toString() === id)?.name,
-        )
+        .map((id) => availableRoles.find((r) => r.role_id.toString() === id)?.name)
         .filter(Boolean);
 
       if (selectedRoleNames.includes(PRINCIPAL_ROLE_NAME)) {
@@ -252,7 +246,6 @@ export default function CreateUserWizard() {
           const principalExists = await checkPrincipalExists();
           setPrincipalWarning(principalExists);
         } catch {
-          // Non-fatal — proceed without warning
           setPrincipalWarning(false);
         }
       } else {
@@ -260,10 +253,20 @@ export default function CreateUserWizard() {
       }
     }
 
-    form.setFieldValue("activeStep", form.values.activeStep + 1);
+    return true;
+  };
+
+  const nextStep = async () => {
+    const valid = await validateCurrentStep();
+    if (!valid) return;
+    setStepHasError(false);
+    const next = form.values.activeStep + 1;
+    setMaxStep((prev) => Math.max(prev, next));
+    form.setFieldValue("activeStep", next);
   };
 
   const prevStep = () => {
+    setStepHasError(false);
     form.setFieldValue("activeStep", form.values.activeStep - 1);
     // Clear cached email verification so the check runs again if the user edits it
     verifiedEmailRef.current = null;
@@ -393,7 +396,7 @@ export default function CreateUserWizard() {
       router.refresh();
     } catch (error) {
       console.error("User invitation error:", error);
-      const isEmailFailure = (error as any).code === "EMAIL_DELIVERY_FAILED";
+      const isEmailFailure = (error as { code?: string }).code === "EMAIL_DELIVERY_FAILED";
       const message =
         error instanceof Error
           ? error.message
@@ -419,121 +422,48 @@ export default function CreateUserWizard() {
       }
     : {};
 
-  const steps = [
-    { description: "Specify User information" },
-    { description: "Assign Role" },
-    { description: "Review and Create" },
+  const wizardSteps: VerticalWizardStep[] = [
+    { label: "Step 1", description: "User Information", hasError: form.values.activeStep === 0 && stepHasError },
+    { label: "Step 2", description: "Roles Assignment", hasError: form.values.activeStep === 1 && stepHasError },
+    { label: "Step 3", description: "Review and Create" },
   ];
 
   return (
     <Container fluid py="xl" h="100%">
-      {isMobile ? (
-        // Mobile: Compact step indicator
+      <VerticalWizardLayout
+        active={form.values.activeStep}
+        steps={wizardSteps}
+        maxStep={maxStep}
+        onStepClick={async (idx) => {
+          if (idx > form.values.activeStep) {
+            const valid = await validateCurrentStep();
+            if (!valid) return;
+          }
+          setStepHasError(false);
+          form.setFieldValue("activeStep", idx);
+        }}
+      >
         <>
-          <MobileStepIndicator
-            activeStep={form.values.activeStep}
-            totalSteps={steps.length}
-            stepDescription={steps[form.values.activeStep].description}
-          />
           {form.values.activeStep === 0 && (
-            <StepUserInfo
-              form={form}
-              checkingEmail={checkingEmail}
-              onEmailBlur={handleEmailBlur}
-            />
+            <StepUserInfo form={form} checkingEmail={checkingEmail} onEmailBlur={handleEmailBlur} />
           )}
           {form.values.activeStep === 1 && (
-            <StepAssignRole
-              form={form}
-              availableRoles={availableRoles}
-              loadingRoles={loadingRoles}
-            />
+            <StepAssignRole form={form} availableRoles={availableRoles} loadingRoles={loadingRoles} />
           )}
           {form.values.activeStep === 2 && (
-            <StepReview
-              form={form}
-              availableRoles={availableRoles}
-              principalWarning={principalWarning}
-            />
+            <StepReview form={form} availableRoles={availableRoles} principalWarning={principalWarning} />
           )}
-
           <WizardNavigationButtons
             onCancel={handleCancel}
             showPrevious={form.values.activeStep > 0}
             onPrevious={prevStep}
             onPrimary={form.values.activeStep < 2 ? nextStep : handleCreateUser}
-            primaryLabel={
-              form.values.activeStep < 2 ? "Next" : "Send Invitation"
-            }
-            primaryLoading={
-              form.values.activeStep < 2 ? checkingEmail : loading
-            }
+            primaryLabel={form.values.activeStep < 2 ? "Next" : "Send Invitation"}
+            primaryLoading={form.values.activeStep < 2 ? checkingEmail : loading}
             stickyMobile
           />
         </>
-      ) : (
-        // Desktop: Side-by-side layout
-        <div style={{ display: "flex", gap: rem(32), height: "100%" }}>
-          {/* Left side: Stepper */}
-          <div style={{ flexShrink: 0, width: "20%" }}>
-            <Stepper
-              active={form.values.activeStep}
-              color="#4EAE4A"
-              orientation="vertical"
-            >
-              <Stepper.Step
-                label="Step 1"
-                description="User Information"
-              />
-              <Stepper.Step label="Step 2" description="Roles Assignment" />
-              <Stepper.Step
-                label="Step 3"
-                description="Review and Create"
-              />
-            </Stepper>
-          </div>
-
-          {/* Right side: Content */}
-          <div style={{ flex: 1, width: "70%" }}>
-            {form.values.activeStep === 0 && (
-              <StepUserInfo
-                form={form}
-                checkingEmail={checkingEmail}
-                onEmailBlur={handleEmailBlur}
-              />
-            )}
-            {form.values.activeStep === 1 && (
-              <StepAssignRole
-                form={form}
-                availableRoles={availableRoles}
-                loadingRoles={loadingRoles}
-              />
-            )}
-            {form.values.activeStep === 2 && (
-              <StepReview
-                form={form}
-                availableRoles={availableRoles}
-                principalWarning={principalWarning}
-              />
-            )}
-
-            <WizardNavigationButtons
-              onCancel={handleCancel}
-              showPrevious={form.values.activeStep > 0}
-              onPrevious={prevStep}
-              onPrimary={
-                form.values.activeStep < 2 ? nextStep : handleCreateUser
-              }
-              primaryLabel={
-                form.values.activeStep < 2 ? "Next" : "Send Invitation"
-              }
-              primaryLoading={
-                form.values.activeStep < 2 ? checkingEmail : loading
-              }
-            />
-          </div>
-        </div>
-      )}
+      </VerticalWizardLayout>
     </Container>
   );
 }

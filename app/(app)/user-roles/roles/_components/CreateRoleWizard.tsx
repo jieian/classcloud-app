@@ -81,11 +81,15 @@ export default function CreateRoleWizard() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [form.isDirty()]);
+  // Handler reads form.isDirty() fresh at event time — no need to re-register on dirty change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isDirty = form.isDirty();
 
   // Intercept client-side navigation (NavBar Link clicks) when form is dirty
   useEffect(() => {
-    if (!form.isDirty()) return;
+    if (!isDirty) return;
 
     const handleClick = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest("a[href]");
@@ -118,15 +122,18 @@ export default function CreateRoleWizard() {
     // Capture phase so we intercept before Next.js processes the click
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
-  }, [form.isDirty()]);
+  // form/router are stable refs; confirmModalProps is defined after this hook and can't be listed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
 
   const [checkingName, setCheckingName] = useState(false);
+  const [stepHasError, setStepHasError] = useState(false);
+  const [maxStep, setMaxStep] = useState(0);
   const busyRef = useRef(false);
   const verifiedNameRef = useRef<string | null>(null);
 
-  const nextStep = async () => {
-    // Guard against spam clicks — ref is synchronous, not batched like state
-    if (busyRef.current) return;
+  const validateCurrentStep = async (): Promise<boolean> => {
+    if (busyRef.current) return false;
 
     if (form.values.activeStep === 0) {
       const validation = form.validate();
@@ -141,10 +148,10 @@ export default function CreateRoleWizard() {
             ? "Enter a role name to continue."
             : "Fix the role name error before proceeding.",
         });
-        return;
+        setStepHasError(true);
+        return false;
       }
 
-      // Check name uniqueness — skip if same name was already verified
       const trimmedName = form.values.name.trim();
       if (verifiedNameRef.current !== trimmedName) {
         busyRef.current = true;
@@ -156,27 +163,26 @@ export default function CreateRoleWizard() {
             notify({
               type: "error",
               title: "Role Name Taken",
-              message:
-                "Role name already exists. Please use a different role name.",
+              message: "Role name already exists. Please use a different role name.",
             });
-            return;
+            setStepHasError(true);
+            return false;
           }
-          // Cache verified name so going back + forward skips the check
           verifiedNameRef.current = trimmedName;
-        } catch (error) {
+        } catch {
           notify({
             type: "error",
             title: "Error",
             message: "Failed to verify role name. Please try again.",
           });
-          return;
+          setStepHasError(true);
+          return false;
         } finally {
           busyRef.current = false;
           setCheckingName(false);
         }
       }
     } else if (form.values.activeStep === 1) {
-      // Validate Step 2 — at least one permission
       const validation = form.validate();
       if (validation.errors.permission_ids) {
         notify({
@@ -184,14 +190,25 @@ export default function CreateRoleWizard() {
           title: "No Permissions Selected",
           message: "Select at least one permission to continue.",
         });
-        return;
+        setStepHasError(true);
+        return false;
       }
     }
 
-    form.setFieldValue("activeStep", form.values.activeStep + 1);
+    return true;
+  };
+
+  const nextStep = async () => {
+    const valid = await validateCurrentStep();
+    if (!valid) return;
+    setStepHasError(false);
+    const next = form.values.activeStep + 1;
+    setMaxStep((prev) => Math.max(prev, next));
+    form.setFieldValue("activeStep", next);
   };
 
   const prevStep = () => {
+    setStepHasError(false);
     form.setFieldValue("activeStep", form.values.activeStep - 1);
   };
 
@@ -290,8 +307,8 @@ export default function CreateRoleWizard() {
     : {};
 
   const wizardSteps: VerticalWizardStep[] = [
-    { label: "Step 1", description: "Role Information and Configuration" },
-    { label: "Step 2", description: "Permissions Assignment" },
+    { label: "Step 1", description: "Role Information and Configuration", hasError: form.values.activeStep === 0 && stepHasError },
+    { label: "Step 2", description: "Permissions Assignment", hasError: form.values.activeStep === 1 && stepHasError },
     { label: "Step 3", description: "Review and Create" },
   ];
 
@@ -313,7 +330,19 @@ export default function CreateRoleWizard() {
 
   return (
     <Container fluid py="xl" h="100%">
-      <VerticalWizardLayout active={form.values.activeStep} steps={wizardSteps}>
+      <VerticalWizardLayout
+        active={form.values.activeStep}
+        steps={wizardSteps}
+        maxStep={maxStep}
+        onStepClick={async (idx) => {
+          if (idx > form.values.activeStep) {
+            const valid = await validateCurrentStep();
+            if (!valid) return;
+          }
+          setStepHasError(false);
+          form.setFieldValue('activeStep', idx);
+        }}
+      >
         {activeContent}
       </VerticalWizardLayout>
 

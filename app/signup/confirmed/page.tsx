@@ -12,7 +12,7 @@ import {
   ThemeIcon,
 } from "@mantine/core";
 import { notify } from "@/components/notificationIcon/notificationIcon";
-import { IconAlertCircle, IconCheck, IconMailForward } from "@tabler/icons-react";
+import { IconCheck, IconExclamationCircle, IconMailForward } from "@tabler/icons-react";
 import CircleBackground from "@/components/circleBackground/circleBackground";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -246,15 +246,24 @@ export default function SignUpConfirmedPage() {
               {pageState === "expired" && (
                 <>
                   <Alert
-                    color="orange"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This verification link has expired.
-                    {maskedEmail && (
-                      <> It was sent to <strong>{maskedEmail}</strong>.</>
-                    )}
+                    <Text fw={700} size="sm">Verification Link Expired</Text>
+                    <Text size="sm" fs="italic">
+                      This verification link has expired.
+                      {maskedEmail && <> It was sent to <strong>{maskedEmail}</strong>.</>}
+                    </Text>
                   </Alert>
 
                   {resendSent ? (
@@ -327,13 +336,23 @@ export default function SignUpConfirmedPage() {
               {pageState === "invalid" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This link is invalid. A newer verification email may have been
-                    sent — check your inbox.
+                    <Text fw={700} size="sm">Invalid Link</Text>
+                    <Text size="sm" fs="italic">
+                      This link is invalid. A newer verification email may have been sent — check your inbox.
+                    </Text>
                   </Alert>
                   <Link href="/signup" style={{ textDecoration: "none" }}>
                     <Text ta="center" size="sm" c="#808898">
@@ -347,12 +366,21 @@ export default function SignUpConfirmedPage() {
               {pageState === "not_found" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    This verification link has already been used or has expired.
+                    <Text fw={700} size="sm">Link Already Used or Expired</Text>
+                    <Text size="sm" fs="italic">This verification link has already been used or has expired.</Text>
                   </Alert>
                   <Link href="/login" style={{ textDecoration: "none" }}>
                     <Text ta="center" size="sm" c="#808898">
@@ -366,12 +394,21 @@ export default function SignUpConfirmedPage() {
               {pageState === "error" && (
                 <>
                   <Alert
-                    color="red"
+                    variant="filled"
                     radius="md"
                     mb="md"
-                    icon={<IconAlertCircle size={16} />}
+                    styles={{
+                      root: { backgroundColor: "#FF6666" },
+                      icon: { alignSelf: "center", marginTop: 0 },
+                    }}
+                    icon={
+                      <ThemeIcon color="white" variant="transparent" size="md">
+                        <IconExclamationCircle size={20} />
+                      </ThemeIcon>
+                    }
                   >
-                    {errorMessage || "Something went wrong. Please try again."}
+                    <Text fw={700} size="sm">Something Went Wrong</Text>
+                    <Text size="sm" fs="italic">{errorMessage || "Something went wrong. Please try again."}</Text>
                   </Alert>
                   <Group justify="space-between">
                     <Link href="/login" style={{ textDecoration: "none" }}>
