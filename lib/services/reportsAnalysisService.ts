@@ -567,14 +567,17 @@ async function fetchFinalizedReportKeysForContext(
   syId: number,
   sectionIds: number[],
   db: SupabaseQueryClient = supabase,
+  quarterId: number | null = null,
 ): Promise<Set<string>> {
   if (sectionIds.length === 0) return new Set();
 
-  const { data, error } = await db
+  let query = db
     .from("exam_results_reports")
     .select("exam_id, section_id")
     .eq("sy_id", syId)
     .in("section_id", sectionIds);
+  if (quarterId != null) query = query.eq("quarter_id", quarterId);
+  const { data, error } = await query;
 
   if (error) {
     logReportFetchError(
@@ -904,28 +907,31 @@ async function fetchReportExamCardsForContext(
   sectionsById: Map<number, RawSectionOnly>,
   sectionIds: number[],
   db: SupabaseQueryClient = supabase,
+  quarterId: number | null = null,
 ): Promise<ReportExamCard[]> {
   if (sectionIds.length === 0) return [];
 
   const useCache = db === supabase;
-  const cacheKey = `examCards:sy:${syId}:sections:${sectionIds.slice().sort((a, b) => a - b).join(",")}`;
+  const cacheKey = `examCards:sy:${syId}:q:${quarterId ?? "all"}:sections:${sectionIds.slice().sort((a, b) => a - b).join(",")}`;
   const cached = useCache ? cacheGet<ReportExamCard[]>(cacheKey) : undefined;
   if (cached) return cached;
 
-  const { data, error } = await db
+  let q = db
     .from("exam_assignments")
     .select(
       "id, exam_id, section_id, exams!inner(exam_id, title, total_items, answer_key, exam_date, is_locked, deleted_at, curriculum_subjects(curriculum_subject_id, subject_id, subjects(name, subject_type)))",
     )
     .in("section_id", sectionIds)
     .is("exams.deleted_at", null);
+  if (quarterId != null) q = q.eq("exams.quarter_id", quarterId);
+  const { data, error } = await q;
 
   if (error) {
     logReportFetchError("fetchReportExamCardsForContext error", error.message);
     return useCache ? cacheSet(cacheKey, []) : [];
   }
 
-  const finalizedKeys = await fetchFinalizedReportKeysForContext(syId, sectionIds, db);
+  const finalizedKeys = await fetchFinalizedReportKeysForContext(syId, sectionIds, db, quarterId);
   const grouped = new Map<string, ReportExamCard>();
 
   for (const row of (data ?? []) as RawAssignmentRow[]) {
@@ -2145,6 +2151,14 @@ export async function fetchReportMonitoringTree(
     return useCache ? cacheSet(cacheKey, empty) : empty;
   }
 
+  const { data: activeQuarterData } = await db
+    .from("quarters")
+    .select("quarter_id")
+    .eq("sy_id", activeContext.sy_id)
+    .eq("is_active", true)
+    .maybeSingle();
+  const activeQuarterId = (activeQuarterData as { quarter_id?: number } | null)?.quarter_id ?? null;
+
   const [
     sections,
     activeSubjects,
@@ -2340,6 +2354,7 @@ export async function fetchReportMonitoringTree(
     sectionsById,
     neededSectionIdList,
     db,
+    activeQuarterId,
   );
 
   const assignmentByPair = new Map<string, { teacherId: string | null; teacherName: string | null }>();

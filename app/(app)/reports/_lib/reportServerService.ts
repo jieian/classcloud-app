@@ -114,8 +114,20 @@ async function getFinalizedReportKeysCached(): Promise<Set<string>> {
     .maybeSingle();
   const syId = (syData as { sy_id?: number } | null)?.sy_id ?? null;
 
+  let quarterId: number | null = null;
+  if (syId != null) {
+    const { data: quarterData } = await admin
+      .from("quarters")
+      .select("quarter_id")
+      .eq("sy_id", syId)
+      .eq("is_active", true)
+      .maybeSingle();
+    quarterId = (quarterData as { quarter_id?: number } | null)?.quarter_id ?? null;
+  }
+
   let query = admin.from("exam_results_reports").select("exam_id, section_id");
   if (syId != null) query = query.eq("sy_id", syId);
+  if (quarterId != null) query = query.eq("quarter_id", quarterId);
 
   const { data, error } = await query;
 
@@ -145,6 +157,17 @@ export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     .maybeSingle();
   const activeSyId = (syData as { sy_id?: number } | null)?.sy_id ?? null;
 
+  let activeQuarterId: number | null = null;
+  if (activeSyId != null) {
+    const { data: quarterData } = await admin
+      .from("quarters")
+      .select("quarter_id")
+      .eq("sy_id", activeSyId)
+      .eq("is_active", true)
+      .maybeSingle();
+    activeQuarterId = (quarterData as { quarter_id?: number } | null)?.quarter_id ?? null;
+  }
+
   let q = admin
     .from("exam_assignments")
     .select(
@@ -152,6 +175,7 @@ export async function getReportExamCardsCached(): Promise<ReportExamCard[]> {
     )
     .is("exams.deleted_at", null);
   if (activeSyId != null) q = q.eq("sections.sy_id", activeSyId);
+  if (activeQuarterId != null) q = q.eq("exams.quarter_id", activeQuarterId);
 
   const { data, error } = await q;
 

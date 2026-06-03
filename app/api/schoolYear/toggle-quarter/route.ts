@@ -83,6 +83,24 @@ const _POST = async function (request: Request) {
     );
   }
 
+  // Guard: prevent going backward to a previous term
+  const { data: allQuarters, error: quartersError } = await adminClient
+    .from("quarters")
+    .select("quarter_id, is_active")
+    .eq("sy_id", sy_id)
+    .order("quarter_id", { ascending: true });
+
+  if (quartersError || !allQuarters) {
+    return Response.json({ error: "Internal Server Error" }, { status: 500 });
+  }
+
+  const activeIdx = allQuarters.findIndex((q) => q.is_active);
+  const targetIdx = allQuarters.findIndex((q) => q.quarter_id === quarter_id);
+
+  if (targetIdx !== -1 && activeIdx !== -1 && targetIdx < activeIdx) {
+    return Response.json({ error: "BACKWARD_TERM" }, { status: 400 });
+  }
+
   const { data, error } = await adminClient.rpc("toggle_quarter", {
     p_quarter_id: quarter_id,
     p_sy_id: sy_id,

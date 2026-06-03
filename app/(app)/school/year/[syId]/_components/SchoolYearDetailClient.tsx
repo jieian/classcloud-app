@@ -110,10 +110,9 @@ export default function SchoolYearDetailClient({ detail }: Props) {
 
   async function handleQuarterToggle(quarter_id: number) {
     if (togglingId !== null) return;
-    const already = quarters.find(
-      (q) => q.quarter_id === quarter_id,
-    )?.is_active;
-    if (already) return;
+    const targetIndex = quarters.findIndex((q) => q.quarter_id === quarter_id);
+    const activeIndex = quarters.findIndex((q) => q.is_active);
+    if (targetIndex <= activeIndex) return;
 
     setTogglingId(quarter_id);
     try {
@@ -131,6 +130,12 @@ export default function SchoolYearDetailClient({ detail }: Props) {
             title: "Cannot switch term",
             message:
               "All exam reports for the current term must be submitted before switching.",
+          });
+        } else if (json.error === "BACKWARD_TERM") {
+          notify({
+            type: "error",
+            title: "Cannot go back",
+            message: "Switching to a previous term is not allowed.",
           });
         } else {
           notify({
@@ -288,24 +293,41 @@ export default function SchoolYearDetailClient({ detail }: Props) {
             {termLabel}
           </Text>
           <Stack gap="xs">
-            {quarters.map((q) => (
-              <Group key={q.quarter_id} align="center">
-                <Switch
-                  checked={q.is_active}
-                  onChange={() => void handleQuarterToggle(q.quarter_id)}
-                  disabled={togglingId !== null}
-                  color="#4EAE4A"
-                />
-                <Text size="sm" fw={q.is_active ? 600 : 400}>
-                  {q.name}
-                </Text>
-                {q.is_active && (
-                  <Badge color="#4EAE4A" variant="light" size="sm">
-                    Active
-                  </Badge>
-                )}
-              </Group>
-            ))}
+            {quarters.map((q, index) => {
+              const activeIndex = quarters.findIndex((x) => x.is_active);
+              const isPast = index < activeIndex;
+              const isCurrent = index === activeIndex;
+              const isDisabled = togglingId !== null || isPast || isCurrent;
+              return (
+                <Group key={q.quarter_id} align="center">
+                  <Tooltip
+                    label="Cannot go back to a previous term"
+                    withArrow
+                    disabled={!isPast || togglingId !== null}
+                  >
+                    <Switch
+                      checked={q.is_active}
+                      onChange={() => void handleQuarterToggle(q.quarter_id)}
+                      disabled={isDisabled}
+                      color="#4EAE4A"
+                    />
+                  </Tooltip>
+                  <Text size="sm" fw={q.is_active ? 600 : 400} c={isPast ? "dimmed" : undefined}>
+                    {q.name}
+                  </Text>
+                  {q.is_active && (
+                    <Badge color="#4EAE4A" variant="light" size="sm">
+                      Active
+                    </Badge>
+                  )}
+                  {isPast && (
+                    <Badge color="gray" variant="light" size="sm">
+                      Completed
+                    </Badge>
+                  )}
+                </Group>
+              );
+            })}
           </Stack>
         </Paper>
 
