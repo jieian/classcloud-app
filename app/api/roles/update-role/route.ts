@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncAllUsersWithRole } from "@/lib/permissions-sync";
@@ -8,10 +8,7 @@ import { redis } from "@/lib/redis";
 
 const _PUT = async function (request: Request) {
   // 1. Auth
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

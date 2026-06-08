@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 
@@ -6,10 +6,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 // Returns the last 30 notifications for the current authenticated user.
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { data, error } = await admin

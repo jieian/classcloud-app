@@ -2,7 +2,7 @@ import { after } from "next/server";
 import { revalidateTag } from "next/cache";
 import { redis } from "@/lib/redis";
 import { z } from "zod";
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
 import { withErrorHandler } from "@/lib/api-error";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/year/create/_lib/wizardServerService";
@@ -48,10 +48,7 @@ const PayloadSchema = z.object({
 
 const _POST = async function (request: Request) {
   // 1. Auth
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

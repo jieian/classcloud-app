@@ -1,5 +1,5 @@
 import {
-  createServerSupabaseClient,
+  getServerUser,
   getPermissionsFromUser,
 } from "@/lib/supabase/server";
 
@@ -18,10 +18,7 @@ const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);
@@ -80,8 +77,8 @@ const _POST = async function(
   }
 
   // ── Process each student in parallel ────────────────────────────────────────
-  const settled = await Promise.allSettled(
-    parsed.data.students.map(async (s) => {
+  const prepped = await Promise.allSettled(
+    parsed.data.students.map(async (s): Promise<{ lrn: string; needsEnroll: boolean }> => {
       const lrn = s.lrn;
 
       if (s.action === "new") {
@@ -106,21 +103,10 @@ const _POST = async function(
             throw new Error("A student with this LRN already exists.");
           throw new Error(insertErr.message);
         }
-
-        const { error: enrollErr } = await admin.rpc("upsert_enrollment", {
-          p_lrn: lrn,
-          p_section_id: sectionId,
-          p_sy_id: syId,
-        });
-        if (enrollErr) throw new Error(enrollErr.message);
+        return { lrn, needsEnroll: true };
 
       } else if (s.action === "enroll") {
-        const { error: enrollErr } = await admin.rpc("upsert_enrollment", {
-          p_lrn: lrn,
-          p_section_id: sectionId,
-          p_sy_id: syId,
-        });
-        if (enrollErr) throw new Error(enrollErr.message);
+        return { lrn, needsEnroll: true };
 
       } else if (s.action === "restore_enroll") {
         const { error: restoreErr } = await admin
@@ -128,13 +114,7 @@ const _POST = async function(
           .update({ deleted_at: null })
           .eq("lrn", lrn);
         if (restoreErr) throw new Error(restoreErr.message);
-
-        const { error: enrollErr } = await admin.rpc("upsert_enrollment", {
-          p_lrn: lrn,
-          p_section_id: sectionId,
-          p_sy_id: syId,
-        });
-        if (enrollErr) throw new Error(enrollErr.message);
+        return { lrn, needsEnroll: true };
 
       } else if (s.action === "move") {
         if (!hasFullAccess) {
@@ -167,19 +147,42 @@ const _POST = async function(
           .eq("status", "PENDING");
       }
 
-      return { lrn, success: true as const };
+      return { lrn, needsEnroll: false };
     }),
   );
 
-  const results = settled.map((r, i) =>
-    r.status === "fulfilled"
-      ? r.value
-      : {
-          lrn: parsed.data.students[i].lrn,
-          success: false as const,
-          error: r.reason instanceof Error ? r.reason.message : "An error occurred.",
-        },
-  );
+  // ── Phase 2: one bulk enrollment upsert for every successful new/enroll/restore.
+  // Collapses what used to be one upsert_enrollment RPC per student into a single
+  // upsert_enrollments(jsonb) call. Every row targets this import's section + sy.
+  const enrollRows: { lrn: string; section_id: number; sy_id: number }[] = [];
+  for (const r of prepped) {
+    if (r.status === "fulfilled" && r.value.needsEnroll) {
+      enrollRows.push({ lrn: r.value.lrn, section_id: sectionId, sy_id: syId });
+    }
+  }
+
+  let enrollError: string | null = null;
+  if (enrollRows.length > 0) {
+    const { error } = await admin.rpc("upsert_enrollments", { p_rows: enrollRows });
+    if (error) enrollError = error.message;
+  }
+
+  const results = prepped.map((r, i) => {
+    const lrn = parsed.data.students[i].lrn;
+    if (r.status !== "fulfilled") {
+      return {
+        lrn,
+        success: false as const,
+        error: r.reason instanceof Error ? r.reason.message : "An error occurred.",
+      };
+    }
+    // Per-student prep succeeded; only fail it if its enrollment was in the
+    // batch and the bulk call errored.
+    if (r.value.needsEnroll && enrollError) {
+      return { lrn, success: false as const, error: enrollError };
+    }
+    return { lrn, success: true as const };
+  });
 
   return Response.json({ results });
 }

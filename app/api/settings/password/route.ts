@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { createClient } from "@supabase/supabase-js";
@@ -13,8 +13,7 @@ const PASSWORD_REQUIREMENTS = [
 ];
 
 const _PATCH = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const { oldPassword, newPassword, confirmPassword } = await request.json() as {

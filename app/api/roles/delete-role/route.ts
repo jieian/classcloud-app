@@ -1,8 +1,5 @@
 import { after } from "next/server";
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -11,10 +8,7 @@ import { insertAuditLog } from "@/lib/audit";
 import { redis } from "@/lib/redis";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

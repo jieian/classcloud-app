@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { redis } from "@/lib/redis";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -10,10 +10,7 @@ import { syncUserPermissions } from "@/lib/permissions-sync";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _POST = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -72,7 +69,7 @@ const _POST = async function (request: Request) {
   const oldCoordinatorId = (rpcResult as { old_coordinator_id: string | null } | null)
     ?.old_coordinator_id ?? null;
 
-  await redis.del("coordinator:groups", "faculty:candidates");
+  await redis.del("coordinator:groups", "faculty:candidates", "users:active");
   await invalidateUserAssignmentsContext(user_id);
   if (oldCoordinatorId) await invalidateUserAssignmentsContext(oldCoordinatorId);
 

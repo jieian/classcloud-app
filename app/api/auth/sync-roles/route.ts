@@ -1,12 +1,11 @@
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { syncAllUsersWithRole } from "@/lib/permissions-sync";
 
 // TEMPORARY — delete after use. Syncs JWT claims for all users holding the given roles.
 // POST /api/auth/sync-roles  body: { role_ids: number[] }
 const _POST = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   if (!user || !getPermissionsFromUser(user).includes("roles.full_access")) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

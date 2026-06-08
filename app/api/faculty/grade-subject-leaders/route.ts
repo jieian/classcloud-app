@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -22,10 +22,8 @@ const CACHE_KEY = "faculty:gsl";
 const CACHE_TTL = 600;
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-
-  const [{ data: { user } }, cached] = await Promise.all([
-    supabase.auth.getUser(),
+  const [user, cached] = await Promise.all([
+    getServerUser(),
     redis.get<GradeSubjectLeaderRow[]>(CACHE_KEY),
   ]);
 

@@ -1,7 +1,4 @@
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -10,10 +7,7 @@ import { redis } from "@/lib/redis";
 
 const _POST = async function (request: Request) {
   // 1. SECURITY: Verify the caller is authenticated
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

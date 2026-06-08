@@ -1,7 +1,4 @@
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
@@ -10,10 +7,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 // Returns the count of PENDING requests the current user must review.
 
 const _GET = async function() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ count: 0 });
 
   const permissions = getPermissionsFromUser(user);

@@ -1,13 +1,10 @@
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { getReportExamCardsCached } from "@/app/(app)/reports/_lib/reportServerService";
 import { getAssignedScopeForUser } from "@/lib/services/userAssignmentsCache";
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json([], { status: 401 });
 
   const permissions = getPermissionsFromUser(user);

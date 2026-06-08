@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -52,10 +49,7 @@ const CACHE_TTL = 120;
 // current user's role targets. Includes attachments and read status.
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   // Use Redis-backed active context — avoids a DB round-trip for school year lookup
@@ -155,10 +149,7 @@ export const GET = withErrorHandler(_GET);
 // Creates a new PUBLISHED or SCHEDULED announcement.
 
 const _POST = async function (req: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!getPermissionsFromUser(user).includes("announcements.full_access"))

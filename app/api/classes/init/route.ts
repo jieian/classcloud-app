@@ -1,16 +1,10 @@
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { getClassesInitData } from "@/app/(app)/school/classes/_lib/classesServerService";
 
 import { withErrorHandler } from "@/lib/api-error";
 
 const _GET = async function() {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);

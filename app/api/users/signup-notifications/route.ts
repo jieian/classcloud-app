@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 
@@ -7,10 +7,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 // Each entry carries notification_id (for mark-read) and reference_id (user uid).
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ notifications: [] });
 
   const { data, error } = await admin

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { sendApprovalEmail } from "@/lib/email/templates";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
@@ -8,10 +8,7 @@ import { redis } from "@/lib/redis";
 import { revalidateTag } from "next/cache";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 const _POST = async function(request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   if (!user) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });

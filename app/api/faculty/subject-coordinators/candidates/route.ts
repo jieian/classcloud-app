@@ -1,4 +1,4 @@
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import type { FacultyMember } from "@/app/(app)/school/faculty/_lib/facultyService";
@@ -8,10 +8,7 @@ const CACHE_KEY = "faculty:candidates";
 const CACHE_TTL = 600;
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

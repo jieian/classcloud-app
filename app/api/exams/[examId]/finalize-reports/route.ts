@@ -1,9 +1,6 @@
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
@@ -65,10 +62,7 @@ const _POST = async function (
   _request: Request,
   { params }: { params: Promise<FinalizeParams> },
 ) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -16,6 +16,20 @@ export async function proxy(request: NextRequest) {
   // the reference — the caller kept the stale response without new cookies.
   let response = NextResponse.next({ request });
 
+  // Skip auth work for Next.js prefetch requests. Prefetches are speculative
+  // (link hover / viewport) and must not trigger redirects or poison the router
+  // cache — the real navigation re-runs this middleware with a full getUser()
+  // check. Each getUser() is an Auth-server round-trip that reads
+  // auth.users / sessions / identities / mfa, so skipping prefetches drops a
+  // large share of per-request auth load without weakening security on real
+  // navigations.
+  const isPrefetch =
+    request.headers.get("next-router-prefetch") === "1" ||
+    !!request.headers.get("sec-purpose")?.includes("prefetch");
+  if (isPrefetch) {
+    return response;
+  }
+
   const { url, anonOrPublishableKey } = getSupabasePublicEnv();
 
   const supabase = createServerClient(

@@ -1,7 +1,4 @@
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import type {
   SectionDetail,
   SectionSubjectRow,
@@ -53,10 +50,7 @@ const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);
@@ -196,10 +190,7 @@ const _PATCH = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
 ) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const permissions = getPermissionsFromUser(user);

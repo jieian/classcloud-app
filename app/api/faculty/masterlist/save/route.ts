@@ -1,4 +1,4 @@
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getActiveContext } from "@/lib/active-context";
@@ -10,10 +10,7 @@ import { redis } from "@/lib/redis";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _POST = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -105,7 +102,7 @@ const _POST = async function (request: Request) {
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
-  await redis.del("faculty:list", "faculty:candidates");
+  await redis.del("faculty:list", "faculty:candidates", "users:active");
 
   // Audit log — non-blocking
   after(async () => {

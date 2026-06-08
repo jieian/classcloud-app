@@ -1,402 +1,272 @@
 [
   {
-    "query": "SELECT users.aud, users.banned_until, users.confirmation_sent_at, users.confirmation_token, users.confirmed_at, users.created_at, users.deleted_at, users.email, users.email_change, users.email_change_confirm_status, users.email_change_sent_at, users.email_change_token_current, users.email_change_token_new, users.email_confirmed_at, users.encrypted_password, users.id, users.instance_id, users.invited_at, users.is_anonymous, users.is_sso_user, users.last_sign_in_at, users.phone, users.phone_change, users.phone_change_sent_at, users.phone_change_token, users.phone_confirmed_at, users.raw_app_meta_data, users.raw_user_meta_data, users.reauthentication_sent_at, users.reauthentication_token, users.recovery_sent_at, users.recovery_token, users.role, users.updated_at FROM users AS users WHERE instance_id = $1 and id = $2 LIMIT 1",
-    "calls": 29218,
-    "total_ms": "9668.18",
-    "avg_ms": "0.33",
-    "max_ms": "674.45",
-    "rows": 29218
+    "calls": 26617,
+    "total_ms": "101996.82",
+    "avg_ms": "3.83",
+    "stddev_ms": "40.72",
+    "rows": 26617,
+    "pct_total": "26.64",
+    "query_snippet": "select set_config('search_path', $1, true), set_config('role', $2, true), set_config('request.jwt.claims', $3, true), set_config('request.method', $4, true), set_config('request.path', $5, true), set_"
   },
   {
-    "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM \"public\".\"get_pending_users_with_details\"() pgrst_call) SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM (SELECT \"record\".* FROM \"pgrst_source\" AS \"record\"   LIMIT $1 OFFSET $2) _postgrest_t",
-    "calls": 94,
-    "total_ms": "7813.38",
-    "avg_ms": "83.12",
-    "max_ms": "2202.51",
-    "rows": 94
-  },
-  {
-    "query": "SELECT * FROM pgbouncer.get_auth($1)",
-    "calls": 184,
-    "total_ms": "7649.96",
-    "avg_ms": "41.58",
-    "max_ms": "1397.50",
-    "rows": 184
-  },
-  {
-    "query": "SELECT t.oid, t.typname, t.typsend, t.typreceive, t.typoutput, t.typinput,\n       coalesce(d.typelem, t.typelem), coalesce(r.rngsubtype, $1), ARRAY (\n  SELECT a.atttypid\n  FROM pg_attribute AS a\n  WHERE a.attrelid = t.typrelid AND a.attnum > $2 AND NOT a.attisdropped\n  ORDER BY a.attnum\n)\n\nFROM pg_type AS t\nLEFT JOIN pg_type AS d ON t.typbasetype = d.oid\nLEFT JOIN pg_range AS r ON r.rngtypid = t.oid OR r.rngmultitypid = t.oid OR (t.typbasetype <> $3 AND r.rngtypid = t.typbasetype)\nWHERE (t.typrelid = $4)\nAND (t.typelem = $5 OR NOT EXISTS (SELECT $6 FROM pg_catalog.pg_type s WHERE s.typrelid != $7 AND s.oid = t.typelem))",
-    "calls": 48,
-    "total_ms": "7310.83",
-    "avg_ms": "152.31",
-    "max_ms": "2007.71",
-    "rows": 10896
-  },
-  {
-    "query": "WITH pgrst_source AS (INSERT INTO \"public\".\"audit_logs\"(\"action\", \"actor_id\", \"category\", \"entity_id\", \"entity_type\") SELECT \"pgrst_body\".\"action\", \"pgrst_body\".\"actor_id\", \"pgrst_body\".\"category\", \"pgrst_body\".\"entity_id\", \"pgrst_body\".\"entity_type\" FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"action\", \"actor_id\", \"category\", \"entity_id\", \"entity_type\" FROM json_to_record(pgrst_payload.json_data) AS _(\"action\" text, \"actor_id\" uuid, \"category\" text, \"entity_id\" text, \"entity_type\" text) ) pgrst_body  RETURNING $2) SELECT $3 AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, array[]::text[] AS header, $4::text AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM (SELECT * FROM pgrst_source) _postgrest_t",
-    "calls": 158,
-    "total_ms": "7270.87",
-    "avg_ms": "46.02",
-    "max_ms": "1674.32",
-    "rows": 158
-  },
-  {
-    "query": "SELECT\n  pol.oid :: int8 AS id,\n  n.nspname AS schema,\n  c.relname AS table,\n  c.oid :: int8 AS table_id,\n  pol.polname AS name,\n  CASE\n    WHEN pol.polpermissive THEN $1 :: text\n    ELSE $2 :: text\n  END AS action,\n  CASE\n    WHEN pol.polroles = $3 :: oid [] THEN array_to_json(\n      string_to_array($4 :: text, $5 :: text) :: name []\n    )\n    ELSE array_to_json(\n      ARRAY(\n        SELECT\n          pg_roles.rolname\n        FROM\n          pg_roles\n        WHERE\n          pg_roles.oid = ANY (pol.polroles)\n        ORDER BY\n          pg_roles.rolname\n      )\n    )\n  END AS roles,\n  CASE\n    pol.polcmd\n    WHEN $6 :: \"char\" THEN $7 :: text\n    WHEN $8 :: \"char\" THEN $9 :: text\n    WHEN $10 :: \"char\" THEN $11 :: text\n    WHEN $12 :: \"char\" THEN $13 :: text\n    WHEN $14 :: \"char\" THEN $15 :: text\n    ELSE $16 :: text\n  END AS command,\n  pg_get_expr(pol.polqual, pol.polrelid) AS definition,\n  pg_get_expr(pol.polwithcheck, pol.polrelid) AS check\nFROM\n  pg_policy pol\n  JOIN pg_class c ON c.oid = pol.polrelid\n  LEFT JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE\n  n.nspname NOT IN ($17,$18,$19)",
-    "calls": 97,
-    "total_ms": "6433.59",
-    "avg_ms": "66.33",
-    "max_ms": "1969.55",
-    "rows": 3074
-  },
-  {
-    "query": "SELECT sessions.aal, sessions.created_at, sessions.factor_id, sessions.id, sessions.ip, sessions.not_after, sessions.oauth_client_id, sessions.refresh_token_counter, sessions.refresh_token_hmac_key, sessions.refreshed_at, sessions.scopes, sessions.tag, sessions.updated_at, sessions.user_agent, sessions.user_id FROM sessions AS sessions WHERE id = $1 LIMIT 1",
-    "calls": 29344,
-    "total_ms": "6258.60",
-    "avg_ms": "0.21",
-    "max_ms": "152.58",
-    "rows": 29344
-  },
-  {
-    "query": "SELECT\n    tbl.schemaname,\n    tbl.tablename,\n    tbl.quoted_name,\n    tbl.is_table,\n    json_agg(a) as columns\n  FROM\n    (\n      SELECT\n        n.nspname as schemaname,\n        c.relname as tablename,\n        (quote_ident(n.nspname) || $1 || quote_ident(c.relname)) as quoted_name,\n        $2 as is_table\n      FROM\n        pg_catalog.pg_class c\n        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n      WHERE\n        c.relkind = $3\n        AND n.nspname not in ($4, $5, $6)\n        AND n.nspname not like $7\n        AND n.nspname not like $8\n        AND has_schema_privilege(n.oid, $9) = $10\n        AND has_table_privilege(quote_ident(n.nspname) || $11 || quote_ident(c.relname), $12) = $13\n      union all\n      SELECT\n        n.nspname as schemaname,\n        c.relname as tablename,\n        (quote_ident(n.nspname) || $14 || quote_ident(c.relname)) as quoted_name,\n        $15 as is_table\n      FROM\n        pg_catalog.pg_class c\n        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace\n      WHERE\n        c.relkind in ($16, $17)\n        AND n.nspname not in ($18, $19, $20)\n        AND n.nspname not like $21\n        AND n.nspname not like $22\n        AND has_schema_privilege(n.oid, $23) = $24\n        AND has_table_privilege(quote_ident(n.nspname) || $25 || quote_ident(c.relname), $26) = $27\n    ) as tbl\n    LEFT JOIN (\n      SELECT\n        attrelid,\n        attname,\n        format_type(atttypid, atttypmod) as data_type,\n        attnum,\n        attisdropped\n      FROM\n        pg_attribute\n    ) as a ON (\n      a.attrelid = tbl.quoted_name::regclass\n      AND a.attnum > $28\n      AND NOT a.attisdropped\n      AND has_column_privilege(tbl.quoted_name, a.attname, $29)\n    )\n  \n  GROUP BY schemaname, tablename, quoted_name, is_table",
-    "calls": 54,
-    "total_ms": "5990.54",
-    "avg_ms": "110.94",
-    "max_ms": "2574.11",
-    "rows": 4302
-  },
-  {
-    "query": "select\n  t.oid::int8 as id,\n  t.typname as name,\n  n.nspname as schema,\n  format_type (t.oid, $1) as format,\n  coalesce(t_enums.enums, $2) as enums,\n  coalesce(t_attributes.attributes, $3) as attributes,\n  obj_description (t.oid, $4) as comment,\n  nullif(t.typrelid::int8, $5) as type_relation_id\nfrom\n  pg_type t\n  left join pg_namespace n on n.oid = t.typnamespace\n  left join (\n    select\n      enumtypid,\n      jsonb_agg(enumlabel order by enumsortorder) as enums\n    from\n      pg_enum\n    group by\n      enumtypid\n  ) as t_enums on t_enums.enumtypid = t.oid\n  left join (\n    select\n      oid,\n      jsonb_agg(\n        jsonb_build_object($6, a.attname, $7, a.atttypid::int8)\n        order by a.attnum asc\n      ) as attributes\n    from\n      pg_class c\n      join pg_attribute a on a.attrelid = c.oid\n    where\n      c.relkind = $8 and not a.attisdropped\n    group by\n      c.oid\n  ) as t_attributes on t_attributes.oid = t.typrelid\n  where\n      (\n        t.typrelid = $9\n        or (\n          select\n            c.relkind = $10\n          from\n            pg_class c\n          where\n            c.oid = t.typrelid\n        )\n      )\n      and not exists (\n                 select\n                 from\n                   pg_type el\n                 where\n                   el.oid = t.typelem\n                   and el.typarray = t.oid\n               )\n      and n.nspname NOT IN ($11,$12,$13)",
-    "calls": 139,
-    "total_ms": "5947.25",
-    "avg_ms": "42.79",
-    "max_ms": "1149.25",
-    "rows": 2641
-  },
-  {
-    "query": "CREATE OR REPLACE FUNCTION pg_temp.count_estimate(\n    query text\n) RETURNS integer LANGUAGE plpgsql AS $$\nDECLARE\n    plan jsonb;\nBEGIN\n    EXECUTE 'EXPLAIN (FORMAT JSON)' || query INTO plan;\n    RETURN plan->0->'Plan'->'Plan Rows';\nEND;\n$$",
-    "calls": 149,
-    "total_ms": "5180.75",
-    "avg_ms": "34.77",
-    "max_ms": "1476.49",
-    "rows": 0
-  },
-  {
-    "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"get_active_users_with_roles\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$5, $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"get_active_users_with_roles\".* FROM \"pgrst_source\" AS \"get_active_users_with_roles\"   LIMIT $1 OFFSET $2) _postgrest_t",
-    "calls": 60,
-    "total_ms": "5082.86",
-    "avg_ms": "84.71",
-    "max_ms": "1919.35",
-    "rows": 60
-  },
-  {
-    "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_exam_id\", \"p_generated_by\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_exam_id\" integer, \"p_generated_by\" uuid) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"finalize_exam_reports_atomic\"(\"p_exam_id\" := pgrst_body.\"p_exam_id\", \"p_generated_by\" := pgrst_body.\"p_generated_by\") pgrst_scalar) pgrst_call) SELECT $5::bigint AS total_result_set, $6 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$7, $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM (SELECT \"finalize_exam_reports_atomic\".* FROM \"pgrst_source\" AS \"finalize_exam_reports_atomic\"   LIMIT $2 OFFSET $3) _postgrest_t",
-    "calls": 15,
-    "total_ms": "4379.37",
-    "avg_ms": "291.96",
-    "max_ms": "1415.91",
-    "rows": 15
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"sections\".\"section_id\", \"public\".\"sections\".\"name\", \"public\".\"sections\".\"grade_level_id\", \"public\".\"sections\".\"sy_id\", \"public\".\"sections\".\"adviser_id\", row_to_json(\"sections_grade_levels_1\".*)::jsonb AS \"grade_levels\" FROM \"public\".\"sections\" LEFT JOIN LATERAL ( SELECT \"grade_levels_1\".\"display_name\", \"grade_levels_1\".\"level_number\" FROM \"public\".\"grade_levels\" AS \"grade_levels_1\" WHERE \"grade_levels_1\".\"grade_level_id\" = \"public\".\"sections\".\"grade_level_id\"   LIMIT $1 OFFSET $2 ) AS \"sections_grade_levels_1\" ON $6 WHERE  \"public\".\"sections\".\"sy_id\" = $3 AND  \"public\".\"sections\".\"deleted_at\" IS NULL  ORDER BY \"public\".\"sections\".\"name\" ASC  LIMIT $4 OFFSET $5 )  SELECT $7::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 827,
-    "total_ms": "3348.26",
-    "avg_ms": "4.05",
-    "max_ms": "324.99",
-    "rows": 827
-  },
-  {
-    "query": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id = $1",
-    "calls": 29344,
-    "total_ms": "3232.27",
-    "avg_ms": "0.11",
-    "max_ms": "433.90",
-    "rows": 29344
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"curriculum_subjects\".\"curriculum_subject_id\", \"public\".\"curriculum_subjects\".\"subject_id\", \"public\".\"curriculum_subjects\".\"grade_level_id\", row_to_json(\"curriculum_subjects_subjects_1\".*)::jsonb AS \"subjects\" FROM \"public\".\"curriculum_subjects\" INNER JOIN LATERAL ( SELECT \"subjects_1\".\"name\", \"subjects_1\".\"subject_type\", \"subjects_1\".\"deleted_at\" FROM \"public\".\"subjects\" AS \"subjects_1\" WHERE \"subjects_1\".\"subject_id\" = \"public\".\"curriculum_subjects\".\"subject_id\"   LIMIT $1 OFFSET $2 ) AS \"curriculum_subjects_subjects_1\" ON $6 WHERE  \"public\".\"curriculum_subjects\".\"curriculum_id\" = $3 AND  \"public\".\"curriculum_subjects\".\"deleted_at\" IS NULL   LIMIT $4 OFFSET $5 )  SELECT $7::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 827,
-    "total_ms": "3028.54",
-    "avg_ms": "3.66",
-    "max_ms": "217.11",
-    "rows": 827
-  },
-  {
-    "query": "SELECT mfa_factors.created_at, mfa_factors.factor_type, mfa_factors.friendly_name, mfa_factors.id, mfa_factors.last_challenged_at, mfa_factors.last_webauthn_challenge_data, mfa_factors.phone, mfa_factors.secret, mfa_factors.status, mfa_factors.updated_at, mfa_factors.user_id, mfa_factors.web_authn_aaguid, mfa_factors.web_authn_credential FROM mfa_factors AS mfa_factors WHERE user_id = $1",
-    "calls": 29304,
-    "total_ms": "3015.59",
-    "avg_ms": "0.10",
-    "max_ms": "289.33",
-    "rows": 0
-  },
-  {
-    "query": "SELECT identities.created_at, identities.email, identities.id, identities.identity_data, identities.last_sign_in_at, identities.provider, identities.provider_id, identities.updated_at, identities.user_id FROM identities AS identities WHERE user_id = $1",
-    "calls": 29304,
-    "total_ms": "2987.61",
-    "avg_ms": "0.10",
-    "max_ms": "189.00",
-    "rows": 29304
-  },
-  {
-    "query": "INSERT INTO \"refresh_tokens\" (\"created_at\", \"instance_id\", \"parent\", \"revoked\", \"session_id\", \"token\", \"updated_at\", \"user_id\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) returning id",
-    "calls": 154,
-    "total_ms": "2954.20",
-    "avg_ms": "19.18",
-    "max_ms": "300.66",
-    "rows": 154
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"scores\".\"score_id\", \"public\".\"scores\".\"enrollment_id\", \"public\".\"scores\".\"exam_assignment_id\", \"public\".\"scores\".\"responses\", \"public\".\"scores\".\"calculated_score\", \"public\".\"scores\".\"graded_at\", row_to_json(\"scores_enrollments_1\".*)::jsonb AS \"enrollments\" FROM \"public\".\"scores\" LEFT JOIN LATERAL ( SELECT row_to_json(\"enrollments_students_2\".*)::jsonb AS \"students\" FROM \"public\".\"enrollments\" AS \"enrollments_1\" LEFT JOIN LATERAL ( SELECT \"students_2\".\"full_name\" FROM \"public\".\"students\" AS \"students_2\" WHERE \"students_2\".\"lrn\" = \"enrollments_1\".\"lrn\"   LIMIT $1 OFFSET $2 ) AS \"enrollments_students_2\" ON $8 WHERE \"enrollments_1\".\"enrollment_id\" = \"public\".\"scores\".\"enrollment_id\"   LIMIT $3 OFFSET $4 ) AS \"scores_enrollments_1\" ON $9 WHERE  \"public\".\"scores\".\"exam_assignment_id\" = ANY ($5)   ORDER BY \"public\".\"scores\".\"graded_at\" DESC  LIMIT $6 OFFSET $7 )  SELECT $10::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $11) AS body, nullif(current_setting($12, $13), $14) AS response_headers, nullif(current_setting($15, $16), $17) AS response_status, $18 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 695,
-    "total_ms": "2822.43",
-    "avg_ms": "4.06",
-    "max_ms": "127.40",
-    "rows": 695
-  },
-  {
-    "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_lrn\", \"p_sy_id\", \"p_section_id\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_lrn\" text, \"p_sy_id\" integer, \"p_section_id\" integer) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"move_student_enrollment\"(\"p_lrn\" := pgrst_body.\"p_lrn\", \"p_sy_id\" := pgrst_body.\"p_sy_id\", \"p_section_id\" := pgrst_body.\"p_section_id\") pgrst_scalar) pgrst_call) SELECT $5::bigint AS total_result_set, $6 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$7, $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM (SELECT \"move_student_enrollment\".* FROM \"pgrst_source\" AS \"move_student_enrollment\"   LIMIT $2 OFFSET $3) _postgrest_t",
-    "calls": 147,
-    "total_ms": "2661.76",
-    "avg_ms": "18.11",
-    "max_ms": "441.57",
-    "rows": 147
-  },
-  {
-    "query": "SELECT case when pg_is_in_recovery() then $2 else (pg_walfile_name_offset(lsn)).file_name end, lsn::text, pg_is_in_recovery() FROM pg_backup_start($1, $3) lsn",
-    "calls": 3,
-    "total_ms": "2575.28",
-    "avg_ms": "858.43",
-    "max_ms": "1186.82",
-    "rows": 3
-  },
-  {
-    "query": "UPDATE \"users\" AS users SET \"raw_app_meta_data\" = $1, \"updated_at\" = $2 WHERE users.id = $3",
-    "calls": 40,
-    "total_ms": "2535.55",
-    "avg_ms": "63.39",
-    "max_ms": "1457.73",
-    "rows": 40
-  },
-  {
-    "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_enrollment_id\", \"p_exam_assignment_id\", \"p_responses\", \"p_calculated_score\", \"p_graded_at\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_enrollment_id\" integer, \"p_exam_assignment_id\" integer, \"p_responses\" jsonb, \"p_calculated_score\" integer, \"p_graded_at\" timestamp with time zone) LIMIT $4) pgrst_body , LATERAL \"public\".\"create_score\"(\"p_enrollment_id\" := pgrst_body.\"p_enrollment_id\", \"p_exam_assignment_id\" := pgrst_body.\"p_exam_assignment_id\", \"p_responses\" := pgrst_body.\"p_responses\", \"p_calculated_score\" := pgrst_body.\"p_calculated_score\", \"p_graded_at\" := pgrst_body.\"p_graded_at\") pgrst_call) SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"scores\".* FROM \"pgrst_source\" AS \"scores\"   LIMIT $2 OFFSET $3) _postgrest_t",
-    "calls": 92,
-    "total_ms": "2318.05",
-    "avg_ms": "25.20",
-    "max_ms": "192.76",
-    "rows": 92
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"users\".\"first_name\", \"public\".\"users\".\"last_name\" FROM \"public\".\"users\" WHERE  \"public\".\"users\".\"uid\" = $1   LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 4186,
-    "total_ms": "2281.96",
-    "avg_ms": "0.55",
-    "max_ms": "209.05",
-    "rows": 4186
-  },
-  {
-    "query": "INSERT INTO \"sessions\" (\"aal\", \"created_at\", \"factor_id\", \"id\", \"ip\", \"not_after\", \"oauth_client_id\", \"refresh_token_counter\", \"refresh_token_hmac_key\", \"refreshed_at\", \"scopes\", \"tag\", \"updated_at\", \"user_agent\", \"user_id\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)",
-    "calls": 83,
-    "total_ms": "2053.26",
-    "avg_ms": "24.74",
-    "max_ms": "132.68",
-    "rows": 83
-  },
-  {
-    "query": "SELECT schemaname, tablename\n  FROM pg_publication_tables\n  WHERE pubname = $1",
-    "calls": 29,
-    "total_ms": "1939.60",
-    "avg_ms": "66.88",
-    "max_ms": "491.61",
-    "rows": 207
-  },
-  {
-    "query": "WITH\n-- Recursively get the base types of domains\nbase_types AS (\n  WITH RECURSIVE\n  recurse AS (\n    SELECT\n      oid,\n      typbasetype,\n      typnamespace AS base_namespace,\n      COALESCE(NULLIF(typbasetype, $2), oid) AS base_type\n    FROM pg_type\n    UNION\n    SELECT\n      t.oid,\n      b.typbasetype,\n      b.typnamespace AS base_namespace,\n      COALESCE(NULLIF(b.typbasetype, $3), b.oid) AS base_type\n    FROM recurse t\n    JOIN pg_type b ON t.typbasetype = b.oid\n  )\n  SELECT\n    oid,\n    base_namespace,\n    base_type\n  FROM recurse\n  WHERE typbasetype = $4\n),\ncolumns AS (\n    SELECT\n        c.oid AS relid,\n        a.attname::name AS column_name,\n        d.description AS description,\n        -- typbasetype and typdefaultbin handles `CREATE DOMAIN .. DEFAULT val`,  attidentity/attgenerated handles generated columns, pg_get_expr gets the default of a column\n        CASE\n          WHEN (t.typbasetype != $5) AND (ad.adbin IS NULL) THEN pg_get_expr(t.typdefaultbin, $6)\n          WHEN a.attidentity  = $7 THEN format($8, seq.objid::regclass)\n          WHEN a.attgenerated = $9 THEN $10\n          ELSE pg_get_expr(ad.adbin, ad.adrelid)::text\n        END AS column_default,\n        not (a.attnotnull OR t.typtype = $11 AND t.typnotnull) AS is_nullable,\n        CASE\n            WHEN t.typtype = $12 THEN\n            CASE\n                WHEN bt.base_namespace = $13::regnamespace THEN format_type(bt.base_type, $14::integer)\n                ELSE format_type(a.atttypid, a.atttypmod)\n            END\n            ELSE\n            CASE\n                WHEN t.typnamespace = $15::regnamespace THEN format_type(a.atttypid, $16::integer)\n                ELSE format_type(a.atttypid, a.atttypmod)\n            END\n        END::text AS data_type,\n        format_type(a.atttypid, a.atttypmod)::text AS nominal_data_type,\n        information_schema._pg_char_max_length(\n            information_schema._pg_truetypid(a.*, t.*),\n            information_schema._pg_truetypmod(a.*, t.*)\n        )::integer AS character_maximum_length,\n        bt.base_type,\n        a.attnum::integer AS position\n    FROM pg_attribute a\n        LEFT JOIN pg_description AS d\n            ON d.objoid = a.attrelid and d.objsubid = a.attnum and d.classoid = $17::regclass\n        LEFT JOIN pg_attrdef ad\n            ON a.attrelid = ad.adrelid AND a.attnum = ad.adnum\n        JOIN pg_class c\n            ON a.attrelid = c.oid\n        JOIN pg_type t\n            ON a.atttypid = t.oid\n        LEFT JOIN base_types bt\n            ON t.oid = bt.oid\n        LEFT JOIN pg_depend seq\n            ON seq.refobjid = a.attrelid and seq.refobjsubid = a.attnum and seq.deptype = $18\n    WHERE\n        NOT pg_is_other_temp_schema(c.relnamespace)\n        AND a.attnum > $19\n        AND NOT a.attisdropped\n        AND c.relkind in ($20, $21, $22, $23, $24)\n        AND c.relnamespace = ANY($1::regnamespace[])\n),\ncolumns_agg AS (\n  SELECT\n    relid,\n    array_agg(row(\n      column_name,\n      description,\n      is_nullable::boolean,\n      data_type,\n      nominal_data_type,\n      character_maximum_length,\n      column_default,\n      coalesce(\n        (SELECT array_agg(enumlabel ORDER BY enumsortorder) FROM pg_enum WHERE enumtypid = base_type),\n        $25\n      )\n    ) order by position) as columns\n  FROM columns\n  GROUP BY relid\n),\ntbl_pk_cols AS (\n  SELECT\n    r.oid AS relid,\n    array_agg(a.attname ORDER BY a.attname) AS pk_cols\n  FROM pg_class r\n  JOIN pg_constraint c\n    ON r.oid = c.conrelid\n  JOIN pg_attribute a\n    ON a.attrelid = r.oid AND a.attnum = ANY (c.conkey)\n  WHERE\n    c.contype in ($26)\n    AND r.relkind IN ($27, $28)\n    AND r.relnamespace NOT IN ($29::regnamespace, $30::regnamespace)\n    AND NOT pg_is_other_temp_schema(r.relnamespace)\n    AND NOT a.attisdropped\n  GROUP BY r.oid\n)\nSELECT\n  n.nspname AS table_schema,\n  c.relname AS table_name,\n  d.description AS table_description,\n  c.relkind IN ($31,$32) as is_view,\n  (\n    c.relkind IN ($33,$34)\n    OR (\n      c.relkind in ($35,$36)\n      -- The function `pg_relation_is_updateable` returns a bitmask where 8\n      -- corresponds to `1 << CMD_INSERT` in the PostgreSQL source code, i.e.\n      -- it's possible to insert into the relation.\n      AND (pg_relation_is_updatable(c.oid::regclass, $37) & $38) = $39\n    )\n  ) AS insertable,\n  (\n    c.relkind IN ($40,$41)\n    OR (\n      c.relkind in ($42,$43)\n      -- CMD_UPDATE\n      AND (pg_relation_is_updatable(c.oid::regclass, $44) & $45) = $46\n    )\n  ) AS updatable,\n  (\n    c.relkind IN ($47,$48)\n    OR (\n      c.relkind in ($49,$50)\n      -- CMD_DELETE\n      AND (pg_relation_is_updatable(c.oid::regclass, $51) & $52) = $53\n    )\n  ) AS deletable,\n  coalesce(tpks.pk_cols, $54) as pk_cols,\n  coalesce(cols_agg.columns, $55) as columns\nFROM pg_class c\nJOIN pg_namespace n ON n.oid = c.relnamespace\nLEFT JOIN pg_description d on d.objoid = c.oid and d.objsubid = $56 and d.classoid = $57::regclass\nLEFT JOIN tbl_pk_cols tpks ON c.oid = tpks.relid\nLEFT JOIN columns_agg cols_agg ON c.oid = cols_agg.relid\nWHERE c.relkind IN ($58,$59,$60,$61,$62)\nAND c.relnamespace NOT IN ($63::regnamespace, $64::regnamespace)\nAND not c.relispartition\nORDER BY table_schema, table_name",
-    "calls": 11,
-    "total_ms": "1866.87",
-    "avg_ms": "169.72",
-    "max_ms": "692.84",
-    "rows": 805
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"enrollments\".\"enrollment_id\", \"public\".\"enrollments\".\"lrn\", row_to_json(\"enrollments_students_1\".*)::jsonb AS \"students\" FROM \"public\".\"enrollments\" INNER JOIN LATERAL ( SELECT \"students_1\".\"lrn\", \"students_1\".\"full_name\", \"students_1\".\"sex\" FROM \"public\".\"students\" AS \"students_1\" WHERE  \"students_1\".\"deleted_at\" IS NULL AND \"students_1\".\"lrn\" = \"public\".\"enrollments\".\"lrn\"   LIMIT $1 OFFSET $2 ) AS \"enrollments_students_1\" ON $7 WHERE  \"public\".\"enrollments\".\"section_id\" = $3 AND  \"public\".\"enrollments\".\"sy_id\" = $4 AND  \"public\".\"enrollments\".\"deleted_at\" IS NULL  ORDER BY \"public\".\"enrollments\".\"lrn\" ASC  LIMIT $5 OFFSET $6 )  SELECT $8::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $9) AS body, nullif(current_setting($10, $11), $12) AS response_headers, nullif(current_setting($13, $14), $15) AS response_status, $16 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 710,
-    "total_ms": "1746.23",
-    "avg_ms": "2.46",
-    "max_ms": "229.33",
-    "rows": 710
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"exam_assignments\".\"id\", \"public\".\"exam_assignments\".\"exam_id\", \"public\".\"exam_assignments\".\"section_id\", row_to_json(\"exam_assignments_exams_1\".*)::jsonb AS \"exams\" FROM \"public\".\"exam_assignments\" INNER JOIN LATERAL ( SELECT \"exams_1\".\"exam_id\", \"exams_1\".\"title\", \"exams_1\".\"total_items\", \"exams_1\".\"answer_key\", \"exams_1\".\"exam_date\", \"exams_1\".\"is_locked\", \"exams_1\".\"deleted_at\", row_to_json(\"exams_curriculum_subjects_2\".*)::jsonb AS \"curriculum_subjects\" FROM \"public\".\"exams\" AS \"exams_1\" LEFT JOIN LATERAL ( SELECT \"curriculum_subjects_2\".\"curriculum_subject_id\", \"curriculum_subjects_2\".\"subject_id\", row_to_json(\"curriculum_subjects_subjects_3\".*)::jsonb AS \"subjects\" FROM \"public\".\"curriculum_subjects\" AS \"curriculum_subjects_2\" LEFT JOIN LATERAL ( SELECT \"subjects_3\".\"name\", \"subjects_3\".\"subject_type\" FROM \"public\".\"subjects\" AS \"subjects_3\" WHERE \"subjects_3\".\"subject_id\" = \"curriculum_subjects_2\".\"subject_id\"   LIMIT $1 OFFSET $2 ) AS \"curriculum_subjects_subjects_3\" ON $10 WHERE \"curriculum_subjects_2\".\"curriculum_subject_id\" = \"exams_1\".\"curriculum_subject_id\"   LIMIT $3 OFFSET $4 ) AS \"exams_curriculum_subjects_2\" ON $11 WHERE  \"exams_1\".\"deleted_at\" IS NULL AND \"exams_1\".\"exam_id\" = \"public\".\"exam_assignments\".\"exam_id\"   LIMIT $5 OFFSET $6 ) AS \"exam_assignments_exams_1\" ON $12 WHERE  \"public\".\"exam_assignments\".\"section_id\" = ANY ($7)    LIMIT $8 OFFSET $9 )  SELECT $13::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $14) AS body, nullif(current_setting($15, $16), $17) AS response_headers, nullif(current_setting($18, $19), $20) AS response_status, $21 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 644,
-    "total_ms": "1744.45",
-    "avg_ms": "2.71",
-    "max_ms": "82.33",
-    "rows": 644
-  },
-  {
-    "query": "WITH\n-- Recursively get the base types of domains\nbase_types AS (\n  WITH RECURSIVE\n  recurse AS (\n    SELECT\n      oid,\n      typbasetype,\n      typnamespace AS base_namespace,\n      COALESCE(NULLIF(typbasetype, $3), oid) AS base_type\n    FROM pg_type\n    UNION\n    SELECT\n      t.oid,\n      b.typbasetype,\n      b.typnamespace AS base_namespace,\n      COALESCE(NULLIF(b.typbasetype, $4), b.oid) AS base_type\n    FROM recurse t\n    JOIN pg_type b ON t.typbasetype = b.oid\n  )\n  SELECT\n    oid,\n    base_namespace,\n    base_type\n  FROM recurse\n  WHERE typbasetype = $5\n),\narguments AS (\n  SELECT\n    oid,\n    array_agg((\n      COALESCE(name, $6), -- name\n      type::regtype::text, -- type\n      CASE type\n        WHEN $7::regtype THEN $8\n        WHEN $9::regtype THEN $10\n        WHEN $11::regtype THEN $12\n        WHEN $13::regtype THEN $14\n        ELSE type::regtype::text\n      END, -- convert types that ignore the length and accept any value till maximum size\n      idx <= (pronargs - pronargdefaults), -- is_required\n      COALESCE(mode = $15, $16) -- is_variadic\n    ) ORDER BY idx) AS args,\n    CASE COUNT(*) - COUNT(name) -- number of unnamed arguments\n      WHEN $17 THEN $18\n      WHEN $19 THEN (array_agg(type))[$20] IN ($21::regtype, $22::regtype, $23::regtype, $24::regtype, $25::regtype)\n      ELSE $26\n    END AS callable\n  FROM pg_proc,\n       unnest(proargnames, proargtypes, proargmodes)\n         WITH ORDINALITY AS _ (name, type, mode, idx)\n  WHERE type IS NOT NULL -- only input arguments\n  GROUP BY oid\n)\nSELECT\n  pn.nspname AS proc_schema,\n  p.proname AS proc_name,\n  d.description AS proc_description,\n  COALESCE(a.args, $27) AS args,\n  tn.nspname AS schema,\n  COALESCE(comp.relname, t.typname) AS name,\n  p.proretset AS rettype_is_setof,\n  (t.typtype = $28\n   -- if any TABLE, INOUT or OUT arguments present, treat as composite\n   or COALESCE(proargmodes::text[] && $29, $30)\n  ) AS rettype_is_composite,\n  bt.oid <> bt.base_type as rettype_is_composite_alias,\n  p.provolatile,\n  p.provariadic > $31 as hasvariadic,\n  lower((regexp_split_to_array((regexp_split_to_array(iso_config, $32))[$33], $34))[$35]) AS transaction_isolation_level,\n  coalesce(func_settings.kvs, $36) as kvs\nFROM pg_proc p\nLEFT JOIN arguments a ON a.oid = p.oid\nJOIN pg_namespace pn ON pn.oid = p.pronamespace\nJOIN base_types bt ON bt.oid = p.prorettype\nJOIN pg_type t ON t.oid = bt.base_type\nJOIN pg_namespace tn ON tn.oid = t.typnamespace\nLEFT JOIN pg_class comp ON comp.oid = t.typrelid\nLEFT JOIN pg_description as d ON d.objoid = p.oid AND d.classoid = $37::regclass\nLEFT JOIN LATERAL unnest(proconfig) iso_config ON iso_config LIKE $38\nLEFT JOIN LATERAL (\n  SELECT\n    array_agg(row(\n      substr(setting, $39, strpos(setting, $40) - $41),\n      substr(setting, strpos(setting, $42) + $43)\n    )) as kvs\n  FROM unnest(proconfig) setting\n  WHERE setting ~ ANY($2)\n) func_settings ON $44\nWHERE t.oid <> $45::regtype AND COALESCE(a.callable, $46)\nAND prokind = $47\nAND p.pronamespace = ANY($1::regnamespace[])",
-    "calls": 11,
-    "total_ms": "1647.78",
-    "avg_ms": "149.80",
-    "max_ms": "667.71",
-    "rows": 564
-  },
-  {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"subject_groups\".\"subject_group_id\", \"public\".\"subject_groups\".\"name\", COALESCE( \"subject_groups_subject_group_members_1\".\"subject_groups_subject_group_members_1\", $6) AS \"subject_group_members\" FROM \"public\".\"subject_groups\" LEFT JOIN LATERAL ( SELECT json_agg(\"subject_groups_subject_group_members_1\")::jsonb AS \"subject_groups_subject_group_members_1\" FROM (SELECT \"subject_group_members_1\".\"curriculum_subject_id\" FROM \"public\".\"subject_group_members\" AS \"subject_group_members_1\" WHERE  \"subject_group_members_1\".\"deleted_at\" IS NULL AND \"subject_group_members_1\".\"subject_group_id\" = \"public\".\"subject_groups\".\"subject_group_id\"   LIMIT $1 OFFSET $2 ) AS \"subject_groups_subject_group_members_1\" ) AS \"subject_groups_subject_group_members_1\" ON $7 WHERE  \"public\".\"subject_groups\".\"curriculum_id\" = $3 AND  \"public\".\"subject_groups\".\"deleted_at\" IS NULL   LIMIT $4 OFFSET $5 )  SELECT $8::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $9) AS body, nullif(current_setting($10, $11), $12) AS response_headers, nullif(current_setting($13, $14), $15) AS response_status, $16 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 827,
-    "total_ms": "1606.20",
+    "calls": 37735,
+    "total_ms": "73391.82",
     "avg_ms": "1.94",
-    "max_ms": "73.97",
-    "rows": 827
+    "stddev_ms": "20.38",
+    "rows": 37735,
+    "pct_total": "19.17",
+    "query_snippet": "SELECT users.aud, users.banned_until, users.confirmation_sent_at, users.confirmation_token, users.confirmed_at, users.created_at, users.deleted_at, users.email, users.email_change, users.email_change_"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"exams\".*, row_to_json(\"exams_creator_user_1\".*)::jsonb AS \"creator_user\", row_to_json(\"exams_curriculum_subjects_1\".*)::jsonb AS \"curriculum_subjects\", row_to_json(\"exams_quarters_1\".*)::jsonb AS \"quarters\", COALESCE( \"exams_exam_assignments_1\".\"exams_exam_assignments_1\", $18) AS \"exam_assignments\" FROM \"public\".\"exams\" LEFT JOIN LATERAL ( SELECT \"users_1\".\"first_name\", \"users_1\".\"last_name\" FROM \"public\".\"users\" AS \"users_1\" WHERE \"users_1\".\"uid\" = \"public\".\"exams\".\"creator_teacher_id\"   LIMIT $1 OFFSET $2 ) AS \"exams_creator_user_1\" ON $19  LEFT JOIN LATERAL ( SELECT \"curriculum_subjects_1\".\"subject_id\", row_to_json(\"curriculum_subjects_subjects_2\".*)::jsonb AS \"subjects\" FROM \"public\".\"curriculum_subjects\" AS \"curriculum_subjects_1\" LEFT JOIN LATERAL ( SELECT \"subjects_2\".\"name\", \"subjects_2\".\"code\" FROM \"public\".\"subjects\" AS \"subjects_2\" WHERE \"subjects_2\".\"subject_id\" = \"curriculum_subjects_1\".\"subject_id\"   LIMIT $3 OFFSET $4 ) AS \"curriculum_subjects_subjects_2\" ON $20 WHERE \"curriculum_subjects_1\".\"curriculum_subject_id\" = \"public\".\"exams\".\"curriculum_subject_id\"   LIMIT $5 OFFSET $6 ) AS \"exams_curriculum_subjects_1\" ON $21  LEFT JOIN LATERAL ( SELECT \"quarters_1\".\"name\" FROM \"public\".\"quarters\" AS \"quarters_1\" WHERE \"quarters_1\".\"quarter_id\" = \"public\".\"exams\".\"quarter_id\"   LIMIT $7 OFFSET $8 ) AS \"exams_quarters_1\" ON $22  LEFT JOIN LATERAL ( SELECT json_agg(\"exams_exam_assignments_1\")::jsonb AS \"exams_exam_assignments_1\" FROM (SELECT \"exam_assignments_1\".\"id\", row_to_json(\"exam_assignments_sections_2\".*)::jsonb AS \"sections\" FROM \"public\".\"exam_assignments\" AS \"exam_assignments_1\" LEFT JOIN LATERAL ( SELECT \"sections_2\".\"section_id\", \"sections_2\".\"name\", \"sections_2\".\"grade_level_id\", row_to_json(\"sections_grade_levels_3\".*)::jsonb AS \"grade_levels\" FROM \"public\".\"sections\" AS \"sections_2\" LEFT JOIN LATERAL ( SELECT \"grade_levels_3\".\"display_name\", \"grade_levels_3\".\"level_number\" FROM \"public\".\"grade_levels\" AS \"grade_levels_3\" WHERE \"grade_levels_3\".\"grade_level_id\" = \"sections_2\".\"grade_level_id\"   LIMIT $9 OFFSET $10 ) AS \"sections_grade_levels_3\" ON $23 WHERE \"sections_2\".\"section_id\" = \"exam_assignments_1\".\"section_id\"   LIMIT $11 OFFSET $12 ) AS \"exam_assignments_sections_2\" ON $24 WHERE \"exam_assignments_1\".\"exam_id\" = \"public\".\"exams\".\"exam_id\"   LIMIT $13 OFFSET $14 ) AS \"exams_exam_assignments_1\" ) AS \"exams_exam_assignments_1\" ON $25 WHERE  \"public\".\"exams\".\"exam_id\" = $15 AND  \"public\".\"exams\".\"deleted_at\" IS NULL   LIMIT $16 OFFSET $17 )  SELECT $26::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t)->$27, $28) AS body, nullif(current_setting($29, $30), $31) AS response_headers, nullif(current_setting($32, $33), $34) AS response_status, $35 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 354,
-    "total_ms": "1463.67",
-    "avg_ms": "4.13",
-    "max_ms": "119.85",
-    "rows": 354
+    "calls": 10056,
+    "total_ms": "61702.79",
+    "avg_ms": "6.14",
+    "stddev_ms": "37.65",
+    "rows": 10056,
+    "pct_total": "16.12",
+    "query_snippet": "select set_config('search_path', $1, true), set_config($2, $3, true), set_config('role', $4, true), set_config('request.jwt.claims', $5, true), set_config('request.method', $6, true), set_config('requ"
   },
   {
-    "query": "select pid, query, query_start from pg_stat_activity where state = $1 and datname = $2",
-    "calls": 91,
-    "total_ms": "1376.52",
-    "avg_ms": "15.13",
-    "max_ms": "944.41",
-    "rows": 271
+    "calls": 37704,
+    "total_ms": "28058.30",
+    "avg_ms": "0.74",
+    "stddev_ms": "7.71",
+    "rows": 37692,
+    "pct_total": "7.33",
+    "query_snippet": "SELECT sessions.aal, sessions.created_at, sessions.factor_id, sessions.id, sessions.ip, sessions.not_after, sessions.oauth_client_id, sessions.refresh_token_counter, sessions.refresh_token_hmac_key, s"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"exams\".\"exam_id\", \"public\".\"exams\".\"title\", \"public\".\"exams\".\"total_items\", \"public\".\"exams\".\"exam_date\", \"public\".\"exams\".\"is_locked\", \"public\".\"exams\".\"creator_teacher_id\", \"public\".\"exams\".\"quarter_id\", \"public\".\"exams\".\"curriculum_subject_id\", \"public\".\"exams\".\"created_at\", \"public\".\"exams\".\"answer_key\", \"public\".\"exams\".\"objectives\", COALESCE( \"exams_exam_assignments_1\".\"exams_exam_assignments_1\", $19) AS \"exam_assignments\", row_to_json(\"exams_creator_user_1\".*)::jsonb AS \"creator_user\", row_to_json(\"exams_curriculum_subjects_1\".*)::jsonb AS \"curriculum_subjects\", row_to_json(\"exams_quarters_1\".*)::jsonb AS \"quarters\" FROM \"public\".\"exams\" LEFT JOIN LATERAL ( SELECT json_agg(\"exams_exam_assignments_1\")::jsonb AS \"exams_exam_assignments_1\" FROM (SELECT \"exam_assignments_1\".\"id\", row_to_json(\"exam_assignments_sections_2\".*)::jsonb AS \"sections\" FROM \"public\".\"exam_assignments\" AS \"exam_assignments_1\" LEFT JOIN LATERAL ( SELECT \"sections_2\".\"section_id\", \"sections_2\".\"name\", \"sections_2\".\"sy_id\", \"sections_2\".\"grade_level_id\", row_to_json(\"sections_grade_levels_3\".*)::jsonb AS \"grade_levels\" FROM \"public\".\"sections\" AS \"sections_2\" LEFT JOIN LATERAL ( SELECT \"grade_levels_3\".\"display_name\", \"grade_levels_3\".\"level_number\" FROM \"public\".\"grade_levels\" AS \"grade_levels_3\" WHERE \"grade_levels_3\".\"grade_level_id\" = \"sections_2\".\"grade_level_id\"   LIMIT $1 OFFSET $2 ) AS \"sections_grade_levels_3\" ON $20 WHERE \"sections_2\".\"section_id\" = \"exam_assignments_1\".\"section_id\"   LIMIT $3 OFFSET $4 ) AS \"exam_assignments_sections_2\" ON $21 WHERE  \"exam_assignments_1\".\"section_id\" = ANY ($5)  AND \"exam_assignments_1\".\"exam_id\" = \"public\".\"exams\".\"exam_id\"   LIMIT $6 OFFSET $7 ) AS \"exams_exam_assignments_1\" ) AS \"exams_exam_assignments_1\" ON $22  LEFT JOIN LATERAL ( SELECT \"users_1\".\"first_name\", \"users_1\".\"last_name\" FROM \"public\".\"users\" AS \"users_1\" WHERE \"users_1\".\"uid\" = \"public\".\"exams\".\"creator_teacher_id\"   LIMIT $8 OFFSET $9 ) AS \"exams_creator_user_1\" ON $23  LEFT JOIN LATERAL ( SELECT \"curriculum_subjects_1\".\"subject_id\", row_to_json(\"curriculum_subjects_subjects_2\".*)::jsonb AS \"subjects\" FROM \"public\".\"curriculum_subjects\" AS \"curriculum_subjects_1\" LEFT JOIN LATERAL ( SELECT \"subjects_2\".\"name\", \"subjects_2\".\"code\" FROM \"public\".\"subjects\" AS \"subjects_2\" WHERE \"subjects_2\".\"subject_id\" = \"curriculum_subjects_1\".\"subject_id\"   LIMIT $10 OFFSET $11 ) AS \"curriculum_subjects_subjects_2\" ON $24 WHERE \"curriculum_subjects_1\".\"curriculum_subject_id\" = \"public\".\"exams\".\"curriculum_subject_id\"   LIMIT $12 OFFSET $13 ) AS \"exams_curriculum_subjects_1\" ON $25  LEFT JOIN LATERAL ( SELECT \"quarters_1\".\"name\" FROM \"public\".\"quarters\" AS \"quarters_1\" WHERE \"quarters_1\".\"quarter_id\" = \"public\".\"exams\".\"quarter_id\"   LIMIT $14 OFFSET $15 ) AS \"exams_quarters_1\" ON $26 WHERE  \"public\".\"exams\".\"deleted_at\" IS NULL AND  \"public\".\"exams\".\"quarter_id\" = $16  ORDER BY \"public\".\"exams\".\"created_at\" DESC  LIMIT $17 OFFSET $18 )  SELECT $27::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $28) AS body, nullif(current_setting($29, $30), $31) AS response_headers, nullif(current_setting($32, $33), $34) AS response_status, $35 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 474,
-    "total_ms": "1371.65",
-    "avg_ms": "2.89",
-    "max_ms": "141.93",
-    "rows": 474
+    "calls": 37751,
+    "total_ms": "16842.55",
+    "avg_ms": "0.45",
+    "stddev_ms": "6.64",
+    "rows": 37751,
+    "pct_total": "4.40",
+    "query_snippet": "SELECT identities.created_at, identities.email, identities.id, identities.identity_data, identities.last_sign_in_at, identities.provider, identities.provider_id, identities.updated_at, identities.user"
   },
   {
-    "query": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"get_faculty_list\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, $4 AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar)->$5, $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM (SELECT \"get_faculty_list\".* FROM \"pgrst_source\" AS \"get_faculty_list\"   LIMIT $1 OFFSET $2) _postgrest_t",
-    "calls": 30,
-    "total_ms": "1356.61",
-    "avg_ms": "45.22",
-    "max_ms": "140.83",
-    "rows": 30
+    "calls": 37774,
+    "total_ms": "16440.94",
+    "avg_ms": "0.44",
+    "stddev_ms": "6.59",
+    "rows": 0,
+    "pct_total": "4.29",
+    "query_snippet": "SELECT mfa_factors.created_at, mfa_factors.factor_type, mfa_factors.friendly_name, mfa_factors.id, mfa_factors.last_challenged_at, mfa_factors.last_webauthn_challenge_data, mfa_factors.phone, mfa_fact"
   },
   {
-    "query": "WITH pgrst_source AS (SELECT \"pgrst_call\".* FROM \"public\".\"get_grade_subject_leader_data\"() pgrst_call) SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM (SELECT \"record\".* FROM \"pgrst_source\" AS \"record\"   LIMIT $1 OFFSET $2) _postgrest_t",
-    "calls": 40,
-    "total_ms": "1349.15",
-    "avg_ms": "33.73",
-    "max_ms": "327.80",
-    "rows": 40
+    "calls": 37659,
+    "total_ms": "11431.12",
+    "avg_ms": "0.30",
+    "stddev_ms": "5.52",
+    "rows": 37659,
+    "pct_total": "2.99",
+    "query_snippet": "SELECT mfa_amr_claims.authentication_method, mfa_amr_claims.created_at, mfa_amr_claims.id, mfa_amr_claims.session_id, mfa_amr_claims.updated_at FROM mfa_amr_claims AS mfa_amr_claims WHERE session_id ="
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"notifications\".\"notification_id\" FROM \"public\".\"notifications\" WHERE  \"public\".\"notifications\".\"user_id\" = $1 AND  \"public\".\"notifications\".\"type\" = $2 AND  \"public\".\"notifications\".\"read_at\" IS NULL   LIMIT $3 OFFSET $4 ) , pgrst_source_count AS (SELECT $7  FROM \"public\".\"notifications\" WHERE  \"public\".\"notifications\".\"user_id\" = $5 AND  \"public\".\"notifications\".\"type\" = $6 AND  \"public\".\"notifications\".\"read_at\" IS NULL) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $8::text AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 1617,
-    "total_ms": "1307.84",
-    "avg_ms": "0.81",
-    "max_ms": "86.38",
-    "rows": 1617
+    "calls": 201,
+    "total_ms": "8593.22",
+    "avg_ms": "42.75",
+    "stddev_ms": "142.57",
+    "rows": 201,
+    "pct_total": "2.24",
+    "query_snippet": "INSERT INTO \"refresh_tokens\" (\"created_at\", \"instance_id\", \"parent\", \"revoked\", \"session_id\", \"token\", \"updated_at\", \"user_id\") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) returning id"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"section_transfer_requests\".\"request_id\" FROM \"public\".\"section_transfer_requests\" WHERE  \"public\".\"section_transfer_requests\".\"status\" = $1   LIMIT $2 OFFSET $3 ) , pgrst_source_count AS (SELECT $5  FROM \"public\".\"section_transfer_requests\" WHERE  \"public\".\"section_transfer_requests\".\"status\" = $4) SELECT (SELECT pg_catalog.count(*) FROM pgrst_source_count) AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, $6::text AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 2033,
-    "total_ms": "1300.97",
-    "avg_ms": "0.64",
-    "max_ms": "70.63",
-    "rows": 2033
+    "calls": 88,
+    "total_ms": "7119.22",
+    "avg_ms": "80.90",
+    "stddev_ms": "286.25",
+    "rows": 88,
+    "pct_total": "1.86",
+    "query_snippet": "UPDATE \"refresh_tokens\" AS refresh_tokens SET \"revoked\" = $1, \"updated_at\" = $2 WHERE refresh_tokens.id = $3"
   },
   {
-    "query": "select\n  evt.oid,\n  evt.evtname as name,\n  evt.evtevent as event,\n  case evt.evtenabled\n    when $1 then $2\n    when $3 then $4\n    when $5 then $6\n    when $7 then $8\n  end as enabled_mode,\n  evt.evttags as tags,\n  proc.proname as function_name,\n  namespace.nspname as function_schema,\n  owner.rolname as owner,\n  case\n    when proc.oid is not null then pg_get_functiondef(proc.oid)\n    else $9\n  end as function_definition\nfrom pg_event_trigger as evt\nleft join pg_proc as proc on proc.oid = evt.evtfoid\nleft join pg_namespace as namespace on namespace.oid = proc.pronamespace\nleft join pg_roles as owner on owner.oid = evt.evtowner\norder by evt.evtname",
-    "calls": 78,
-    "total_ms": "1282.86",
-    "avg_ms": "16.45",
-    "max_ms": "838.32",
-    "rows": 546
+    "calls": 115,
+    "total_ms": "6707.53",
+    "avg_ms": "58.33",
+    "stddev_ms": "233.69",
+    "rows": 115,
+    "pct_total": "1.75",
+    "query_snippet": "INSERT INTO \"sessions\" (\"aal\", \"created_at\", \"factor_id\", \"id\", \"ip\", \"not_after\", \"oauth_client_id\", \"refresh_token_counter\", \"refresh_token_hmac_key\", \"refreshed_at\", \"scopes\", \"tag\", \"updated_at\", "
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"exam_results_reports\".\"student_scores\" FROM \"public\".\"exam_results_reports\" WHERE  \"public\".\"exam_results_reports\".\"exam_id\" = $1 AND  \"public\".\"exam_results_reports\".\"section_id\" = $2  ORDER BY \"public\".\"exam_results_reports\".\"generated_at\" DESC  LIMIT $3 OFFSET $4 )  SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 675,
-    "total_ms": "1264.29",
-    "avg_ms": "1.87",
-    "max_ms": "132.59",
-    "rows": 675
+    "calls": 70,
+    "total_ms": "3879.71",
+    "avg_ms": "55.42",
+    "stddev_ms": "186.81",
+    "rows": 70,
+    "pct_total": "1.01",
+    "query_snippet": "UPDATE \"users\" AS users SET \"raw_app_meta_data\" = $1, \"updated_at\" = $2 WHERE users.id = $3"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"item_analysis_reports\".\"item_scores\", \"public\".\"item_analysis_reports\".\"most_learned\", \"public\".\"item_analysis_reports\".\"least_learned\" FROM \"public\".\"item_analysis_reports\" WHERE  \"public\".\"item_analysis_reports\".\"exam_id\" = $1 AND  \"public\".\"item_analysis_reports\".\"section_id\" = $2  ORDER BY \"public\".\"item_analysis_reports\".\"generated_at\" DESC  LIMIT $3 OFFSET $4 )  SELECT $5::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $6) AS body, nullif(current_setting($7, $8), $9) AS response_headers, nullif(current_setting($10, $11), $12) AS response_status, $13 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 682,
-    "total_ms": "1254.70",
-    "avg_ms": "1.84",
-    "max_ms": "124.08",
-    "rows": 682
+    "calls": 237,
+    "total_ms": "3775.24",
+    "avg_ms": "15.93",
+    "stddev_ms": "63.75",
+    "rows": 235,
+    "pct_total": "0.99",
+    "query_snippet": "SELECT refresh_tokens.created_at, refresh_tokens.id, refresh_tokens.instance_id, refresh_tokens.parent, refresh_tokens.revoked, refresh_tokens.session_id, refresh_tokens.token, refresh_tokens.updated_"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"subject_coordinators\".\"user_id\", \"public\".\"subject_coordinators\".\"subject_group_id\", row_to_json(\"subject_coordinators_users_1\".*)::jsonb AS \"users\" FROM \"public\".\"subject_coordinators\" LEFT JOIN LATERAL ( SELECT \"users_1\".\"first_name\", \"users_1\".\"last_name\" FROM \"public\".\"users\" AS \"users_1\" WHERE \"users_1\".\"uid\" = \"public\".\"subject_coordinators\".\"user_id\"   LIMIT $1 OFFSET $2 ) AS \"subject_coordinators_users_1\" ON $6 WHERE  \"public\".\"subject_coordinators\".\"sy_id\" = $3 AND  \"public\".\"subject_coordinators\".\"deleted_at\" IS NULL   LIMIT $4 OFFSET $5 )  SELECT $7::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 827,
-    "total_ms": "1233.49",
-    "avg_ms": "1.49",
-    "max_ms": "60.26",
-    "rows": 827
+    "calls": 380,
+    "total_ms": "2690.88",
+    "avg_ms": "7.08",
+    "stddev_ms": "35.57",
+    "rows": 380,
+    "pct_total": "0.70",
+    "query_snippet": "SELECT\n          set_config('role', $1, true),\n          set_config('request.jwt.claim.role', $2, true),\n          set_config('request.jwt', $3, true),\n          set_config('request.jwt.claim.sub', $4"
   },
   {
-    "query": "SELECT\n  p.oid :: int8 AS id,\n  p.pubname AS name,\n  p.pubowner::regrole::text AS owner,\n  p.pubinsert AS publish_insert,\n  p.pubupdate AS publish_update,\n  p.pubdelete AS publish_delete,\n  p.pubtruncate AS publish_truncate,\n  CASE\n    WHEN p.puballtables THEN $1\n    ELSE pr.tables\n  END AS tables\nFROM\n  pg_catalog.pg_publication AS p\n  LEFT JOIN LATERAL (\n    SELECT\n      COALESCE(\n        array_agg(\n          json_build_object(\n            $2,\n            c.oid :: int8,\n            $3,\n            c.relname,\n            $4,\n            nc.nspname\n          )\n        ),\n        $5\n      ) AS tables\n    FROM\n      pg_catalog.pg_publication_rel AS pr\n      JOIN pg_class AS c ON pr.prrelid = c.oid\n      join pg_namespace as nc on c.relnamespace = nc.oid\n    WHERE\n      pr.prpubid = p.oid\n  ) AS pr ON $6 = $7\nWHERE\n  $8",
-    "calls": 141,
-    "total_ms": "1216.05",
-    "avg_ms": "8.62",
-    "max_ms": "549.77",
-    "rows": 282
+    "calls": 3508,
+    "total_ms": "2580.33",
+    "avg_ms": "0.74",
+    "stddev_ms": "7.80",
+    "rows": 0,
+    "pct_total": "0.67",
+    "query_snippet": "BEGIN ISOLATION LEVEL READ COMMITTED READ ONLY"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"teacher_class_assignments\".\"section_id\", \"public\".\"teacher_class_assignments\".\"teacher_id\", \"public\".\"teacher_class_assignments\".\"curriculum_subject_id\", row_to_json(\"teacher_class_assignments_users_1\".*)::jsonb AS \"users\" FROM \"public\".\"teacher_class_assignments\" LEFT JOIN LATERAL ( SELECT \"users_1\".\"first_name\", \"users_1\".\"last_name\" FROM \"public\".\"users\" AS \"users_1\" WHERE \"users_1\".\"uid\" = \"public\".\"teacher_class_assignments\".\"teacher_id\"   LIMIT $1 OFFSET $2 ) AS \"teacher_class_assignments_users_1\" ON $6 WHERE  \"public\".\"teacher_class_assignments\".\"section_id\" = ANY ($3)  AND  \"public\".\"teacher_class_assignments\".\"deleted_at\" IS NULL   LIMIT $4 OFFSET $5 )  SELECT $7::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 827,
-    "total_ms": "1143.83",
-    "avg_ms": "1.38",
-    "max_ms": "395.39",
-    "rows": 827
+    "calls": 370,
+    "total_ms": "2339.52",
+    "avg_ms": "6.32",
+    "stddev_ms": "34.67",
+    "rows": 370,
+    "pct_total": "0.61",
+    "query_snippet": "SELECT set_config($2, $1, $3)"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"school_years\".\"sy_id\", \"public\".\"school_years\".\"year_range\", \"public\".\"school_years\".\"is_active\" FROM \"public\".\"school_years\" WHERE  \"public\".\"school_years\".\"deleted_at\" IS NULL  ORDER BY \"public\".\"school_years\".\"start_year\" DESC  LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 437,
-    "total_ms": "1080.94",
-    "avg_ms": "2.47",
-    "max_ms": "409.12",
-    "rows": 437
+    "calls": 344,
+    "total_ms": "2239.88",
+    "avg_ms": "6.51",
+    "stddev_ms": "22.38",
+    "rows": 344,
+    "pct_total": "0.59",
+    "query_snippet": "insert into cron.job_run_details (jobid, runid, database, username, command, status) values ($1,$2,$3,$4,$5,$6)"
   },
   {
-    "query": "with views as (\nSELECT\n  c.oid :: int8 AS id,\n  n.nspname AS schema,\n  c.relname AS name,\n  -- See definition of information_schema.views\n  (pg_relation_is_updatable(c.oid, $1) & $2) = $3 AS is_updatable,\n  obj_description(c.oid) AS comment\nFROM\n  pg_class c\n  JOIN pg_namespace n ON n.oid = c.relnamespace\nWHERE\n  n.nspname IN ($4) AND\n  \n  \n  c.relkind = $5\n\n\n)\n  , columns as (\n-- Adapted from information_schema.columns\n\nSELECT\n  c.oid :: int8 AS table_id,\n  nc.nspname AS schema,\n  c.relname AS table,\n  (c.oid || $6 || a.attnum) AS id,\n  a.attnum AS ordinal_position,\n  a.attname AS name,\n  CASE\n    WHEN a.atthasdef THEN pg_get_expr(ad.adbin, ad.adrelid)\n    ELSE $7\n  END AS default_value,\n  CASE\n    WHEN t.typtype = $8 THEN CASE\n      WHEN bt.typelem <> $9 :: oid\n      AND bt.typlen = $10 THEN $11\n      WHEN nbt.nspname = $12 THEN format_type(t.typbasetype, $13)\n      ELSE $14\n    END\n    ELSE CASE\n      WHEN t.typelem <> $15 :: oid\n      AND t.typlen = $16 THEN $17\n      WHEN nt.nspname = $18 THEN format_type(a.atttypid, $19)\n      ELSE $20\n    END\n  END AS data_type,\n  COALESCE(bt.typname, t.typname) AS format,\n  a.attidentity IN ($21, $22) AS is_identity,\n  CASE\n    a.attidentity\n    WHEN $23 THEN $24\n    WHEN $25 THEN $26\n    ELSE $27\n  END AS identity_generation,\n  a.attgenerated IN ($28) AS is_generated,\n  NOT (\n    a.attnotnull\n    OR t.typtype = $29 AND t.typnotnull\n  ) AS is_nullable,\n  (\n    c.relkind IN ($30, $31)\n    OR c.relkind IN ($32, $33) AND pg_column_is_updatable(c.oid, a.attnum, $34)\n  ) AS is_updatable,\n  uniques.table_id IS NOT NULL AS is_unique,\n  check_constraints.definition AS \"check\",\n  array_to_json(\n    array(\n      SELECT\n        enumlabel\n      FROM\n        pg_catalog.pg_enum enums\n      WHERE\n        enums.enumtypid = coalesce(bt.oid, t.oid)\n        OR enums.enumtypid = coalesce(bt.typelem, t.typelem)\n      ORDER BY\n        enums.enumsortorder\n    )\n  ) AS enums,\n  col_description(c.oid, a.attnum) AS comment\nFROM\n  pg_attribute a\n  LEFT JOIN pg_attrdef ad ON a.attrelid = ad.adrelid\n  AND a.attnum = ad.adnum\n  JOIN (\n    pg_class c\n    JOIN pg_namespace nc ON c.relnamespace = nc.oid\n  ) ON a.attrelid = c.oid\n  JOIN (\n    pg_type t\n    JOIN pg_namespace nt ON t.typnamespace = nt.oid\n  ) ON a.atttypid = t.oid\n  LEFT JOIN (\n    pg_type bt\n    JOIN pg_namespace nbt ON bt.typnamespace = nbt.oid\n  ) ON t.typtype = $35\n  AND t.typbasetype = bt.oid\n  LEFT JOIN (\n    SELECT DISTINCT ON (table_id, ordinal_position)\n      conrelid AS table_id,\n      conkey[$36] AS ordinal_position\n    FROM pg_catalog.pg_constraint\n    WHERE contype = $37 AND cardinality(conkey) = $38\n  ) AS uniques ON uniques.table_id = c.oid AND uniques.ordinal_position = a.attnum\n  LEFT JOIN (\n    -- We only select the first column check\n    SELECT DISTINCT ON (table_id, ordinal_position)\n      conrelid AS table_id,\n      conkey[$39] AS ordinal_position,\n      substring(\n        pg_get_constraintdef(pg_constraint.oid, $40),\n        $41,\n        length(pg_get_constraintdef(pg_constraint.oid, $42)) - $43\n      ) AS \"definition\"\n    FROM pg_constraint\n    WHERE contype = $44 AND cardinality(conkey) = $45\n    ORDER BY table_id, ordinal_position, oid asc\n  ) AS check_constraints ON check_constraints.table_id = c.oid AND check_constraints.ordinal_position = a.attnum\nWHERE\n  nc.nspname IN ($46) AND\n  \n  \n  \n  \n  NOT pg_is_other_temp_schema(nc.oid)\n  AND a.attnum > $47\n  AND NOT a.attisdropped\n  AND (c.relkind IN ($48, $49, $50, $51, $52))\n  AND (\n    pg_has_role(c.relowner, $53)\n    OR has_column_privilege(\n      c.oid,\n      a.attnum,\n      $54\n    )\n  )\n\n\n)\nselect\n  *\n  , \nCOALESCE(\n  (\n    SELECT\n      array_agg(row_to_json(columns)) FILTER (WHERE columns.table_id = views.id)\n    FROM\n      columns\n  ),\n  $55\n) AS columns\nfrom views",
-    "calls": 31,
-    "total_ms": "1070.25",
-    "avg_ms": "34.52",
-    "max_ms": "255.57",
-    "rows": 62
+    "calls": 3587,
+    "total_ms": "2052.41",
+    "avg_ms": "0.57",
+    "stddev_ms": "14.62",
+    "rows": 0,
+    "pct_total": "0.54",
+    "query_snippet": "SET client_encoding = 'UTF8'"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"teacher_class_assignments\".\"section_id\", \"public\".\"teacher_class_assignments\".\"curriculum_subject_id\", row_to_json(\"teacher_class_assignments_curriculum_subjects_1\".*)::jsonb AS \"curriculum_subjects\" FROM \"public\".\"teacher_class_assignments\" INNER JOIN LATERAL ( SELECT \"curriculum_subjects_1\".\"subject_id\", \"curriculum_subjects_1\".\"grade_level_id\" FROM \"public\".\"curriculum_subjects\" AS \"curriculum_subjects_1\" WHERE \"curriculum_subjects_1\".\"curriculum_subject_id\" = \"public\".\"teacher_class_assignments\".\"curriculum_subject_id\"   LIMIT $1 OFFSET $2 ) AS \"teacher_class_assignments_curriculum_subjects_1\" ON $6 WHERE  \"public\".\"teacher_class_assignments\".\"teacher_id\" = $3 AND  \"public\".\"teacher_class_assignments\".\"deleted_at\" IS NULL   LIMIT $4 OFFSET $5 )  SELECT $7::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $8) AS body, nullif(current_setting($9, $10), $11) AS response_headers, nullif(current_setting($12, $13), $14) AS response_status, $15 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 479,
-    "total_ms": "1066.60",
-    "avg_ms": "2.23",
-    "max_ms": "134.42",
-    "rows": 479
+    "calls": 105,
+    "total_ms": "1696.90",
+    "avg_ms": "16.16",
+    "stddev_ms": "66.05",
+    "rows": 105,
+    "pct_total": "0.44",
+    "query_snippet": "SELECT id from storage.buckets limit $1"
   },
   {
-    "query": "SELECT\n  COALESCE(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn), $2) >\n    (pg_size_bytes(current_setting($3)) / $4)\nFROM pg_replication_slots\nWHERE slot_name = $1\n  AND current_setting($5) != $6",
-    "calls": 364,
-    "total_ms": "1048.73",
-    "avg_ms": "2.88",
-    "max_ms": "74.70",
-    "rows": 364
+    "calls": 278,
+    "total_ms": "1670.74",
+    "avg_ms": "6.01",
+    "stddev_ms": "43.67",
+    "rows": 278,
+    "pct_total": "0.44",
+    "query_snippet": "select exists(select $1 from auth.users)"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"school_years\".\"sy_id\" FROM \"public\".\"school_years\" WHERE  \"public\".\"school_years\".\"is_active\" = $1 AND  \"public\".\"school_years\".\"deleted_at\" IS NULL   LIMIT $2 OFFSET $3 )  SELECT $4::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $5) AS body, nullif(current_setting($6, $7), $8) AS response_headers, nullif(current_setting($9, $10), $11) AS response_status, $12 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 1666,
-    "total_ms": "1046.71",
-    "avg_ms": "0.63",
-    "max_ms": "234.33",
-    "rows": 1666
+    "calls": 37,
+    "total_ms": "1643.71",
+    "avg_ms": "44.42",
+    "stddev_ms": "259.92",
+    "rows": 0,
+    "pct_total": "0.43",
+    "query_snippet": "CREATE TABLE IF NOT EXISTS realtime.messages_2026_06_06\nPARTITION OF realtime.messages\nFOR VALUES FROM ('2026-06-06') TO ('2026-06-07')"
   },
   {
-    "query": "WITH pgrst_source AS ( SELECT \"public\".\"roles\".\"role_id\", \"public\".\"roles\".\"name\", \"public\".\"roles\".\"is_faculty\", \"public\".\"roles\".\"is_protected\", \"public\".\"roles\".\"is_self_registerable\" FROM \"public\".\"roles\"  ORDER BY \"public\".\"roles\".\"name\" ASC  LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t), $4) AS body, nullif(current_setting($5, $6), $7) AS response_headers, nullif(current_setting($8, $9), $10) AS response_status, $11 AS response_inserted FROM ( SELECT * FROM pgrst_source ) _postgrest_t",
-    "calls": 229,
-    "total_ms": "989.36",
-    "avg_ms": "4.32",
-    "max_ms": "452.13",
-    "rows": 229
+    "calls": 2,
+    "total_ms": "1604.74",
+    "avg_ms": "802.37",
+    "stddev_ms": "802.26",
+    "rows": 0,
+    "pct_total": "0.42",
+    "query_snippet": "CREATE TABLE IF NOT EXISTS realtime.messages_2026_06_09\nPARTITION OF realtime.messages\nFOR VALUES FROM ('2026-06-09') TO ('2026-06-10')"
+  },
+  {
+    "calls": 123,
+    "total_ms": "1384.33",
+    "avg_ms": "11.25",
+    "stddev_ms": "44.05",
+    "rows": 106,
+    "pct_total": "0.36",
+    "query_snippet": "SELECT * FROM \"refresh_tokens\" WHERE token = $1 LIMIT $2 FOR UPDATE SKIP LOCKED"
+  },
+  {
+    "calls": 3587,
+    "total_ms": "1278.19",
+    "avg_ms": "0.36",
+    "stddev_ms": "3.45",
+    "rows": 0,
+    "pct_total": "0.33",
+    "query_snippet": "SET client_min_messages TO WARNING"
+  },
+  {
+    "calls": 135,
+    "total_ms": "1023.28",
+    "avg_ms": "7.58",
+    "stddev_ms": "41.66",
+    "rows": 131,
+    "pct_total": "0.27",
+    "query_snippet": "SELECT users.aud, users.banned_until, users.confirmation_sent_at, users.confirmation_token, users.confirmed_at, users.created_at, users.deleted_at, users.email, users.email_change, users.email_change_"
+  },
+  {
+    "calls": 114,
+    "total_ms": "1004.67",
+    "avg_ms": "8.81",
+    "stddev_ms": "19.04",
+    "rows": 114,
+    "pct_total": "0.26",
+    "query_snippet": "INSERT INTO mfa_amr_claims(id, session_id, created_at, updated_at, authentication_method) values ($1, $2, $3, $4, $5)\n\t\t\tON CONFLICT ON CONSTRAINT mfa_amr_claims_session_id_authentication_method_pkey\n"
+  },
+  {
+    "calls": 876,
+    "total_ms": "894.81",
+    "avg_ms": "1.02",
+    "stddev_ms": "26.77",
+    "rows": 0,
+    "pct_total": "0.23",
+    "query_snippet": "SET idle_session_timeout='58s'"
+  },
+  {
+    "calls": 549,
+    "total_ms": "848.38",
+    "avg_ms": "1.55",
+    "stddev_ms": "9.83",
+    "rows": 0,
+    "pct_total": "0.22",
+    "query_snippet": "BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE"
+  },
+  {
+    "calls": 344,
+    "total_ms": "833.70",
+    "avg_ms": "2.42",
+    "stddev_ms": "16.77",
+    "rows": 344,
+    "pct_total": "0.22",
+    "query_snippet": "update cron.job_run_details set status = $1 where runid = $2"
+  },
+  {
+    "calls": 8,
+    "total_ms": "601.79",
+    "avg_ms": "75.22",
+    "stddev_ms": "182.05",
+    "rows": 0,
+    "pct_total": "0.16",
+    "query_snippet": "explain with _base_query as (select * from public.users order by users.uid asc nulls last limit $1 offset $2)\n  select uid,case\n        when octet_length(last_name::text) > $3 \n        then left(last_"
+  },
+  {
+    "calls": 10,
+    "total_ms": "593.62",
+    "avg_ms": "59.36",
+    "stddev_ms": "175.11",
+    "rows": 0,
+    "pct_total": "0.16",
+    "query_snippet": "with _base_query as (select * from public.pending_registrations order by pending_registrations.id asc nulls last limit $1 offset $2)\n  select id,case\n        when octet_length(email::text) > $3 \n     "
   }
 ]

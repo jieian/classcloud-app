@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 
@@ -12,10 +12,7 @@ import { syncUserPermissions } from "@/lib/permissions-sync";
  * supabase.auth.refreshSession() returns a JWT with the correct claims.
  */
 const _POST = async function (_request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -1,82 +1,6 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE public.announcement_attachments (
-  attachment_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  announcement_id integer NOT NULL,
-  storage_path text NOT NULL,
-  file_name text NOT NULL,
-  mime_type text NOT NULL CHECK (mime_type = ANY (ARRAY['image/png'::text, 'image/jpeg'::text])),
-  file_size_bytes integer NOT NULL CHECK (file_size_bytes <= 5242880),
-  display_order integer NOT NULL CHECK (display_order >= 1 AND display_order <= 3),
-  CONSTRAINT announcement_attachments_pkey PRIMARY KEY (attachment_id),
-  CONSTRAINT announcement_attachments_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
-);
-CREATE TABLE public.announcement_reads (
-  announcement_id integer NOT NULL,
-  user_id uuid NOT NULL,
-  read_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT announcement_reads_pkey PRIMARY KEY (announcement_id, user_id),
-  CONSTRAINT announcement_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
-  CONSTRAINT announcement_reads_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
-);
-CREATE TABLE public.announcement_targets (
-  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  announcement_id integer NOT NULL,
-  role_id integer,
-  CONSTRAINT announcement_targets_pkey PRIMARY KEY (id),
-  CONSTRAINT announcement_targets_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id),
-  CONSTRAINT announcement_targets_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id)
-);
-CREATE TABLE public.announcements (
-  announcement_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  title text NOT NULL,
-  body text NOT NULL,
-  author_id uuid NOT NULL,
-  sy_id integer NOT NULL,
-  status text NOT NULL DEFAULT 'PUBLISHED'::text CHECK (status = ANY (ARRAY['SCHEDULED'::text, 'PUBLISHED'::text])),
-  is_pinned boolean NOT NULL DEFAULT false,
-  published_at timestamp with time zone NOT NULL,
-  deleted_at timestamp with time zone,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT announcements_pkey PRIMARY KEY (announcement_id),
-  CONSTRAINT announcements_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(uid),
-  CONSTRAINT announcements_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
-);
-CREATE TABLE public.audit_logs (
-  audit_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  actor_id uuid,
-  category text NOT NULL CHECK (category = ANY (ARRAY['ACCESS'::text, 'SECURITY'::text, 'ACADEMIC'::text, 'ADMIN'::text, 'SYSTEM'::text])),
-  action text NOT NULL,
-  entity_type text NOT NULL,
-  entity_id text NOT NULL,
-  entity_label text,
-  old_values jsonb,
-  new_values jsonb,
-  metadata jsonb,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT audit_logs_pkey PRIMARY KEY (audit_id),
-  CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(uid)
-);
-CREATE TABLE public.curriculum_subjects (
-  curriculum_subject_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  curriculum_id integer NOT NULL,
-  grade_level_id integer NOT NULL,
-  subject_id integer NOT NULL,
-  deleted_at timestamp with time zone,
-  CONSTRAINT curriculum_subjects_pkey PRIMARY KEY (curriculum_subject_id),
-  CONSTRAINT curriculum_subjects_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id),
-  CONSTRAINT curriculum_subjects_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
-  CONSTRAINT curriculum_subjects_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
-);
-CREATE TABLE public.curriculums (
-  curriculum_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL,
-  description text,
-  deleted_at timestamp with time zone,
-  created_at timestamp with time zone NOT NULL DEFAULT (now() AT TIME ZONE 'utc'::text),
-  CONSTRAINT curriculums_pkey PRIMARY KEY (curriculum_id)
-);
 CREATE TABLE public.enrollments (
   enrollment_id integer NOT NULL DEFAULT nextval('enrollments_enrollment_id_seq'::regclass),
   section_id integer,
@@ -95,73 +19,6 @@ CREATE TABLE public.exam_assignments (
   CONSTRAINT exam_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT exam_assignments_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
   CONSTRAINT exam_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
-);
-CREATE TABLE public.exam_results_reports (
-  report_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  exam_id integer NOT NULL,
-  section_id integer NOT NULL,
-  teacher_id uuid,
-  sy_id integer,
-  curriculum_subject_id integer,
-  grade_level_id integer,
-  quarter_id integer,
-  section_type USER-DEFINED NOT NULL,
-  total_items integer,
-  total_cases integer,
-  total_male_cases integer,
-  total_female_cases integer,
-  total_score integer,
-  mean real,
-  mps real,
-  pl real,
-  sd real,
-  highest_score integer,
-  lowest_score integer,
-  mpl_threshold real,
-  total_male_achieved integer,
-  total_female_achieved integer,
-  total_achieved integer,
-  male_achieved_percent real,
-  female_achieved_percent real,
-  total_achieved_percent real,
-  total_male_failed integer,
-  total_female_failed integer,
-  total_failed integer,
-  male_failed_percent real,
-  female_failed_percent real,
-  total_failed_percent real,
-  total_male_highly integer,
-  total_male_proficient integer,
-  total_male_low integer,
-  total_male_not integer,
-  total_female_highly integer,
-  total_female_proficient integer,
-  total_female_low integer,
-  total_female_not integer,
-  percent_highly real,
-  percent_proficient real,
-  percent_low real,
-  percent_not real,
-  student_scores jsonb,
-  total_enrolled_male integer,
-  total_enrolled_female integer,
-  male_percentage real,
-  female_percentage real,
-  total_percentage real,
-  generated_at timestamp with time zone NOT NULL DEFAULT now(),
-  generated_by uuid,
-  total_male_nearly integer,
-  total_female_nearly integer,
-  percent_nearly real,
-  CONSTRAINT exam_results_reports_pkey PRIMARY KEY (report_id),
-  CONSTRAINT exam_results_reports_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
-  CONSTRAINT exam_results_reports_generated_by_fkey FOREIGN KEY (generated_by) REFERENCES public.users(uid),
-  CONSTRAINT exam_results_reports_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
-  CONSTRAINT exam_results_reports_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),
-  CONSTRAINT exam_results_reports_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
-  CONSTRAINT exam_results_reports_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
-  CONSTRAINT exam_results_reports_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
-  CONSTRAINT exam_results_reports_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
 );
 CREATE TABLE public.exams (
   exam_id integer NOT NULL DEFAULT nextval('exams_exam_id_seq'::regclass),
@@ -187,76 +44,6 @@ CREATE TABLE public.grade_levels (
   level_number integer NOT NULL UNIQUE,
   display_name character varying NOT NULL,
   CONSTRAINT grade_levels_pkey PRIMARY KEY (grade_level_id)
-);
-CREATE TABLE public.grade_subject_leaders (
-  gsl_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  curriculum_subject_id integer NOT NULL,
-  grade_level_id integer NOT NULL,
-  sy_id integer NOT NULL,
-  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
-  deleted_at timestamp with time zone,
-  CONSTRAINT grade_subject_leaders_pkey PRIMARY KEY (gsl_id),
-  CONSTRAINT grade_subject_leaders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
-  CONSTRAINT grade_subject_leaders_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
-  CONSTRAINT grade_subject_leaders_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
-  CONSTRAINT grade_subject_leaders_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
-);
-CREATE TABLE public.item_analysis_reports (
-  report_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  exam_id integer NOT NULL,
-  section_id integer NOT NULL,
-  teacher_id uuid,
-  sy_id integer,
-  curriculum_subject_id integer,
-  grade_level_id integer,
-  quarter_id integer,
-  section_type USER-DEFINED NOT NULL,
-  mpl_threshold real,
-  item_scores jsonb,
-  most_learned jsonb,
-  least_learned jsonb,
-  generated_at timestamp with time zone NOT NULL DEFAULT now(),
-  generated_by uuid,
-  CONSTRAINT item_analysis_reports_pkey PRIMARY KEY (report_id),
-  CONSTRAINT item_analysis_reports_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),
-  CONSTRAINT item_analysis_reports_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
-  CONSTRAINT item_analysis_reports_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
-  CONSTRAINT item_analysis_reports_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
-  CONSTRAINT item_analysis_reports_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
-  CONSTRAINT item_analysis_reports_generated_by_fkey FOREIGN KEY (generated_by) REFERENCES public.users(uid),
-  CONSTRAINT item_analysis_reports_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
-  CONSTRAINT item_analysis_reports_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
-);
-CREATE TABLE public.notifications (
-  notification_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  type text NOT NULL,
-  title text NOT NULL,
-  body text,
-  reference_id text,
-  reference_type text,
-  action_url text,
-  read_at timestamp with time zone,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT notifications_pkey PRIMARY KEY (notification_id),
-  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
-);
-CREATE TABLE public.pending_registrations (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  email text NOT NULL UNIQUE,
-  token_hash text NOT NULL,
-  encrypted_password text NOT NULL,
-  first_name text NOT NULL,
-  middle_name text,
-  last_name text NOT NULL,
-  role_ids ARRAY NOT NULL DEFAULT '{}'::integer[],
-  type text NOT NULL DEFAULT 'new'::text CHECK (type = ANY (ARRAY['new'::text, 'restore'::text])),
-  restore_uid uuid,
-  resend_count integer NOT NULL DEFAULT 0,
-  expires_at timestamp with time zone NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.permissions (
   permission_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
@@ -360,35 +147,6 @@ END),
   deleted_at timestamp with time zone,
   CONSTRAINT students_pkey PRIMARY KEY (lrn)
 );
-CREATE TABLE public.subject_coordinators (
-  sc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  user_id uuid NOT NULL,
-  subject_group_id integer NOT NULL,
-  sy_id integer NOT NULL,
-  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
-  deleted_at timestamp with time zone,
-  CONSTRAINT subject_coordinators_pkey PRIMARY KEY (sc_id),
-  CONSTRAINT subject_coordinators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
-  CONSTRAINT subject_coordinators_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
-  CONSTRAINT subject_coordinators_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
-);
-CREATE TABLE public.subject_group_members (
-  subject_group_id integer NOT NULL,
-  deleted_at timestamp with time zone,
-  curriculum_subject_id integer NOT NULL,
-  CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, curriculum_subject_id),
-  CONSTRAINT subject_group_members_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
-  CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id)
-);
-CREATE TABLE public.subject_groups (
-  subject_group_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL,
-  description text,
-  deleted_at timestamp with time zone,
-  curriculum_id integer NOT NULL,
-  CONSTRAINT subject_groups_pkey PRIMARY KEY (subject_group_id),
-  CONSTRAINT subject_groups_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id)
-);
 CREATE TABLE public.subjects (
   subject_id integer NOT NULL DEFAULT nextval('subjects_subject_id_seq'::regclass),
   name character varying NOT NULL,
@@ -409,15 +167,6 @@ CREATE TABLE public.teacher_class_assignments (
   CONSTRAINT teacher_class_assignments_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
   CONSTRAINT teacher_class_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
 );
-CREATE TABLE public.user_invitations (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  uid uuid NOT NULL UNIQUE,
-  token_hash text NOT NULL UNIQUE,
-  encrypted_password text NOT NULL,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT user_invitations_pkey PRIMARY KEY (id),
-  CONSTRAINT user_invitations_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
-);
 CREATE TABLE public.user_roles (
   uid uuid NOT NULL,
   role_id integer NOT NULL,
@@ -437,4 +186,255 @@ CREATE TABLE public.users (
   must_change_password boolean NOT NULL DEFAULT false,
   CONSTRAINT users_pkey PRIMARY KEY (uid),
   CONSTRAINT users_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
+);
+CREATE TABLE public.subject_groups (
+  subject_group_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name character varying NOT NULL,
+  description text,
+  deleted_at timestamp with time zone,
+  curriculum_id integer NOT NULL,
+  CONSTRAINT subject_groups_pkey PRIMARY KEY (subject_group_id),
+  CONSTRAINT subject_groups_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id)
+);
+CREATE TABLE public.subject_group_members (
+  subject_group_id integer NOT NULL,
+  deleted_at timestamp with time zone,
+  curriculum_subject_id integer NOT NULL,
+  CONSTRAINT subject_group_members_pkey PRIMARY KEY (subject_group_id, curriculum_subject_id),
+  CONSTRAINT subject_group_members_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT subject_group_members_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id)
+);
+CREATE TABLE public.subject_coordinators (
+  sc_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  subject_group_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT subject_coordinators_pkey PRIMARY KEY (sc_id),
+  CONSTRAINT subject_coordinators_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT subject_coordinators_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
+  CONSTRAINT subject_coordinators_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.curriculums (
+  curriculum_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  name character varying NOT NULL,
+  description text,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT (now() AT TIME ZONE 'utc'::text),
+  CONSTRAINT curriculums_pkey PRIMARY KEY (curriculum_id)
+);
+CREATE TABLE public.curriculum_subjects (
+  curriculum_subject_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  curriculum_id integer NOT NULL,
+  grade_level_id integer NOT NULL,
+  subject_id integer NOT NULL,
+  deleted_at timestamp with time zone,
+  CONSTRAINT curriculum_subjects_pkey PRIMARY KEY (curriculum_subject_id),
+  CONSTRAINT curriculum_subjects_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id),
+  CONSTRAINT curriculum_subjects_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT curriculum_subjects_subject_id_fkey FOREIGN KEY (subject_id) REFERENCES public.subjects(subject_id)
+);
+CREATE TABLE public.notifications (
+  notification_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  type text NOT NULL,
+  title text NOT NULL,
+  body text,
+  reference_id text,
+  reference_type text,
+  action_url text,
+  read_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT notifications_pkey PRIMARY KEY (notification_id),
+  CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
+);
+CREATE TABLE public.pending_registrations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  email text NOT NULL UNIQUE,
+  token_hash text NOT NULL,
+  encrypted_password text NOT NULL,
+  first_name text NOT NULL,
+  middle_name text,
+  last_name text NOT NULL,
+  role_ids ARRAY NOT NULL DEFAULT '{}'::integer[],
+  type text NOT NULL DEFAULT 'new'::text CHECK (type = ANY (ARRAY['new'::text, 'restore'::text])),
+  restore_uid uuid,
+  resend_count integer NOT NULL DEFAULT 0,
+  expires_at timestamp with time zone NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.audit_logs (
+  audit_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  actor_id uuid,
+  category text NOT NULL CHECK (category = ANY (ARRAY['ACCESS'::text, 'SECURITY'::text, 'ACADEMIC'::text, 'ADMIN'::text, 'SYSTEM'::text])),
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text NOT NULL,
+  entity_label text,
+  old_values jsonb,
+  new_values jsonb,
+  metadata jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT audit_logs_pkey PRIMARY KEY (audit_id),
+  CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(uid)
+);
+CREATE TABLE public.user_invitations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  uid uuid NOT NULL UNIQUE,
+  token_hash text NOT NULL UNIQUE,
+  encrypted_password text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_invitations_pkey PRIMARY KEY (id),
+  CONSTRAINT user_invitations_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
+);
+CREATE TABLE public.exam_results_reports (
+  report_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  exam_id integer NOT NULL,
+  section_id integer NOT NULL,
+  teacher_id uuid,
+  sy_id integer,
+  curriculum_subject_id integer,
+  grade_level_id integer,
+  quarter_id integer,
+  section_type USER-DEFINED NOT NULL,
+  total_items integer,
+  total_cases integer,
+  total_male_cases integer,
+  total_female_cases integer,
+  total_score integer,
+  mean real,
+  mps real,
+  pl real,
+  sd real,
+  highest_score integer,
+  lowest_score integer,
+  mpl_threshold real,
+  total_male_achieved integer,
+  total_female_achieved integer,
+  total_achieved integer,
+  male_achieved_percent real,
+  female_achieved_percent real,
+  total_achieved_percent real,
+  total_male_failed integer,
+  total_female_failed integer,
+  total_failed integer,
+  male_failed_percent real,
+  female_failed_percent real,
+  total_failed_percent real,
+  total_male_highly integer,
+  total_male_proficient integer,
+  total_male_low integer,
+  total_male_not integer,
+  total_female_highly integer,
+  total_female_proficient integer,
+  total_female_low integer,
+  total_female_not integer,
+  percent_highly real,
+  percent_proficient real,
+  percent_low real,
+  percent_not real,
+  student_scores jsonb,
+  total_enrolled_male integer,
+  total_enrolled_female integer,
+  male_percentage real,
+  female_percentage real,
+  total_percentage real,
+  generated_at timestamp with time zone NOT NULL DEFAULT now(),
+  generated_by uuid,
+  total_male_nearly integer,
+  total_female_nearly integer,
+  percent_nearly real,
+  CONSTRAINT exam_results_reports_pkey PRIMARY KEY (report_id),
+  CONSTRAINT exam_results_reports_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
+  CONSTRAINT exam_results_reports_generated_by_fkey FOREIGN KEY (generated_by) REFERENCES public.users(uid),
+  CONSTRAINT exam_results_reports_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
+  CONSTRAINT exam_results_reports_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),
+  CONSTRAINT exam_results_reports_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT exam_results_reports_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT exam_results_reports_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
+  CONSTRAINT exam_results_reports_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
+);
+CREATE TABLE public.item_analysis_reports (
+  report_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  exam_id integer NOT NULL,
+  section_id integer NOT NULL,
+  teacher_id uuid,
+  sy_id integer,
+  curriculum_subject_id integer,
+  grade_level_id integer,
+  quarter_id integer,
+  section_type USER-DEFINED NOT NULL,
+  mpl_threshold real,
+  item_scores jsonb,
+  most_learned jsonb,
+  least_learned jsonb,
+  generated_at timestamp with time zone NOT NULL DEFAULT now(),
+  generated_by uuid,
+  CONSTRAINT item_analysis_reports_pkey PRIMARY KEY (report_id),
+  CONSTRAINT item_analysis_reports_teacher_id_fkey FOREIGN KEY (teacher_id) REFERENCES public.users(uid),
+  CONSTRAINT item_analysis_reports_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT item_analysis_reports_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT item_analysis_reports_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
+  CONSTRAINT item_analysis_reports_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
+  CONSTRAINT item_analysis_reports_generated_by_fkey FOREIGN KEY (generated_by) REFERENCES public.users(uid),
+  CONSTRAINT item_analysis_reports_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id),
+  CONSTRAINT item_analysis_reports_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
+);
+CREATE TABLE public.grade_subject_leaders (
+  gsl_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  curriculum_subject_id integer NOT NULL,
+  grade_level_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  assigned_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT grade_subject_leaders_pkey PRIMARY KEY (gsl_id),
+  CONSTRAINT grade_subject_leaders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT grade_subject_leaders_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT grade_subject_leaders_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT grade_subject_leaders_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.announcements (
+  announcement_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  author_id uuid NOT NULL,
+  sy_id integer NOT NULL,
+  status text NOT NULL DEFAULT 'PUBLISHED'::text CHECK (status = ANY (ARRAY['SCHEDULED'::text, 'PUBLISHED'::text])),
+  is_pinned boolean NOT NULL DEFAULT false,
+  published_at timestamp with time zone NOT NULL,
+  deleted_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT announcements_pkey PRIMARY KEY (announcement_id),
+  CONSTRAINT announcements_author_id_fkey FOREIGN KEY (author_id) REFERENCES public.users(uid),
+  CONSTRAINT announcements_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.announcement_targets (
+  id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  announcement_id integer NOT NULL,
+  role_id integer,
+  CONSTRAINT announcement_targets_pkey PRIMARY KEY (id),
+  CONSTRAINT announcement_targets_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id),
+  CONSTRAINT announcement_targets_role_id_fkey FOREIGN KEY (role_id) REFERENCES public.roles(role_id)
+);
+CREATE TABLE public.announcement_attachments (
+  attachment_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
+  announcement_id integer NOT NULL,
+  storage_path text NOT NULL,
+  file_name text NOT NULL,
+  mime_type text NOT NULL CHECK (mime_type = ANY (ARRAY['image/png'::text, 'image/jpeg'::text])),
+  file_size_bytes integer NOT NULL CHECK (file_size_bytes <= 5242880),
+  display_order integer NOT NULL CHECK (display_order >= 1 AND display_order <= 3),
+  CONSTRAINT announcement_attachments_pkey PRIMARY KEY (attachment_id),
+  CONSTRAINT announcement_attachments_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
+);
+CREATE TABLE public.announcement_reads (
+  announcement_id integer NOT NULL,
+  user_id uuid NOT NULL,
+  read_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT announcement_reads_pkey PRIMARY KEY (announcement_id, user_id),
+  CONSTRAINT announcement_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
+  CONSTRAINT announcement_reads_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
 );

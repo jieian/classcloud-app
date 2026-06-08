@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -7,14 +7,12 @@ const CACHE_KEY = "faculty:list";
 const CACHE_TTL = 600;
 
 const _GET = async function () {
-  const supabase = await createServerSupabaseClient();
-
-  const [authResult, cached] = await Promise.all([
-    supabase.auth.getUser(),
+  const [user, cached] = await Promise.all([
+    getServerUser(),
     redis.get<{ uid: string }[]>(CACHE_KEY),
   ]);
 
-  if (!authResult.data.user) {
+  if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 

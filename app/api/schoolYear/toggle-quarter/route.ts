@@ -52,7 +52,7 @@
  */
 
 import { revalidateTag } from "next/cache";
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/classes/_lib/classesServerService";
 import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
 import { invalidateActiveContext } from "@/lib/active-context";
@@ -60,10 +60,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 
 const _POST = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user: caller },
-  } = await supabase.auth.getUser();
+  const caller = await getServerUser();
 
   if (!caller) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

@@ -1,4 +1,4 @@
-import { createServerSupabaseClient, getPermissionsFromUser } from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -12,10 +12,7 @@ const _POST = async function (
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   if (!getPermissionsFromUser(user).includes("announcements.full_access"))

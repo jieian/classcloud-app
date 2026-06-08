@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, MarkNotificationsReadSchema } from "@/lib/api-schemas";
@@ -8,10 +8,7 @@ import { parseBody, MarkNotificationsReadSchema } from "@/lib/api-schemas";
 // Empty array = mark ALL of the user's unread notifications as read.
 
 const _POST = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const parsed = parseBody(MarkNotificationsReadSchema, await request.json().catch(() => ({})));

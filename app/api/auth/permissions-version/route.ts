@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
@@ -18,10 +18,7 @@ import { redis } from "@/lib/redis";
  * Both sources return a ms-epoch integer so clients compare them uniformly.
  */
 const _GET = async function (_request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

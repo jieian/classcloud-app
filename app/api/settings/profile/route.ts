@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { createServerSupabaseClient, getAuthUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
@@ -17,9 +17,7 @@ function toTitleCase(str: string): string {
 // ─── GET /api/settings/profile ───────────────────────────────────────────────
 const _GET = async function() {
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser(supabase);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
 
@@ -60,9 +58,7 @@ const _GET = async function() {
 // ─── PATCH /api/settings/profile ─────────────────────────────────────────────
 const _PATCH = async function(request: Request) {
   const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getAuthUser(supabase);
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const parsed = parseBody(UpdateProfileSchema, await request.json());

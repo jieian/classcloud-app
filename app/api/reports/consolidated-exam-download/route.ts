@@ -1,10 +1,7 @@
 import * as XLSXStyle from "xlsx-js-style";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
-import {
-  createServerSupabaseClient,
-  getPermissionsFromUser,
-} from "@/lib/supabase/server";
+import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import {
   fetchMyAssignedScope,
   type ConsolidatedSubjectDiagnosticResult,
@@ -710,10 +707,7 @@ async function buildConsolidatedResultFromSavedReports({
 }
 
 const _GET = async function (request: Request) {
-  const supabase = await createServerSupabaseClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(request.url);
