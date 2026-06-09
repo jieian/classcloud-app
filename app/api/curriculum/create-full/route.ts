@@ -4,6 +4,8 @@ import { CURRICULUM_CACHE_TAG } from "@/app/(app)/school/curriculum/_lib/curricu
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 const _POST = async function(request: Request) {
   const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,6 +38,18 @@ const _POST = async function(request: Request) {
 
   revalidateTag(CURRICULUM_CACHE_TAG, "minutes");
   revalidateTag("subjects", "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "curriculum_created",
+      entity_type: "curriculum",
+      entity_id: String(rpcResult?.curriculum_id ?? ""),
+      entity_label: name.trim(),
+      new_values: { name: name.trim(), subject_count: subjects.length, group_count: subject_groups.length },
+    }).catch(() => {}),
+  );
+
   return Response.json({ success: true, curriculum_id: rpcResult?.curriculum_id }, { status: 201 });
 }
 

@@ -83,7 +83,6 @@ const _POST = async function(request: Request) {
   // Audit log (non-fatal)
   insertAuditLog({
     actor_id: user.id,
-    category: "ADMIN",
     action: "user_approved",
     entity_type: "user",
     entity_id: uid,

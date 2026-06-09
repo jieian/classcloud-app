@@ -26,7 +26,6 @@ const _POST = async function (request: Request) {
   after(() => {
     insertAuditLog({
       actor_id: user.id,
-      category: "SECURITY",
       action: "password_reset",
       entity_type: "user",
       entity_id: user.id,

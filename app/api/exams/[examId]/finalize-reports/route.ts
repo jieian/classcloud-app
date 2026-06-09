@@ -2,6 +2,8 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 
@@ -182,6 +184,21 @@ const _POST = async function (
 
   revalidateTag(EXAMS_CACHE_TAG, "minutes");
   revalidateTag(REPORTS_CACHE_TAG, "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "exam_reports_finalized",
+      entity_type: "exam",
+      entity_id: String(examId),
+      new_values: {
+        section_id: result.sectionId ?? null,
+        reports_saved: result.reportsSaved ?? null,
+        item_analysis_saved: result.itemAnalysisReportsSaved ?? null,
+      },
+    }).catch(() => {}),
+  );
+
   return Response.json(result, { status: 200 });
 };
 

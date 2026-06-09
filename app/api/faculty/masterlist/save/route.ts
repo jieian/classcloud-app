@@ -2,12 +2,25 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getActiveContext } from "@/lib/active-context";
-import { syncUserPermissions } from "@/lib/permissions-sync";
+import { syncUsersBatch } from "@/lib/permissions-sync";
 import { parseBody, SaveMasterlistSchema } from "@/lib/api-schemas";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 import { after } from "next/server";
 import { redis } from "@/lib/redis";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
+
+// Shape returned by save_teaching_load_masterlist (jsonb).
+type MasterlistResult = {
+  permission_changed_uids?: string[];
+  context_changed_uids?: string[];
+  _audit?: {
+    label: string | null;
+    old?: Record<string, unknown> | null;
+    new?: Record<string, unknown> | null;
+    changes?: Array<Record<string, unknown>> | null;
+    metadata?: Record<string, unknown> | null;
+  } | null;
+};
 
 const _POST = async function (request: Request) {
   const caller = await getServerUser();
@@ -51,30 +64,10 @@ const _POST = async function (request: Request) {
     return Response.json({ success: true }, { status: 200 });
   }
 
-  // Collect old assignees so we can sync their JWT claims after role changes
-  const sectionIds = adviser_changes.map((c) => c.section_id);
-  const csIds = assignment_changes.map((c) => c.curriculum_subject_id);
-  const assignmentSectionIds = assignment_changes.map((c) => c.section_id);
-
-  const [{ data: oldAdvisers }, { data: oldTeachers }] = await Promise.all([
-    sectionIds.length > 0
-      ? adminClient
-          .from("sections")
-          .select("adviser_id")
-          .in("section_id", sectionIds)
-          .is("deleted_at", null)
-      : Promise.resolve({ data: [] }),
-    assignmentSectionIds.length > 0 && csIds.length > 0
-      ? adminClient
-          .from("teacher_class_assignments")
-          .select("teacher_id")
-          .in("section_id", assignmentSectionIds)
-          .in("curriculum_subject_id", csIds)
-          .is("deleted_at", null)
-      : Promise.resolve({ data: [] }),
-  ]);
-
-  const { error } = await adminClient.rpc("save_teaching_load_masterlist", {
+  // The RPC computes everything in-transaction: it applies the changes and
+  // returns the audit diff, the minimal permission-sync uid set, and the broad
+  // context-invalidation uid set — so no pre-read queries are needed here.
+  const { data, error } = await adminClient.rpc("save_teaching_load_masterlist", {
     p_advisers: adviser_changes,
     p_assignments: assignment_changes,
   });
@@ -102,44 +95,29 @@ const _POST = async function (request: Request) {
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
+  const result = data as MasterlistResult | null;
+
   await redis.del("faculty:list", "faculty:candidates", "users:active");
 
-  // Audit log — non-blocking
+  const permUids: string[] = result?.permission_changed_uids ?? [];
+  const ctxUids: string[] = result?.context_changed_uids ?? [];
+
   after(async () => {
-    await insertAuditLog({
-      actor_id: caller.id,
-      category: "ACADEMIC",
-      action: "masterlist_saved",
-      entity_type: "school_year",
-      entity_id: String(ctx.sy_id),
-      new_values: {
-        adviser_changes: adviser_changes.length,
-        assignment_changes: assignment_changes.length,
+    // 1) One summary audit row — human-readable, zero extra reads
+    await auditFromRpc(
+      {
+        actor_id: caller.id,
+        action: "masterlist_saved",
+        entity_type: "school_year",
+        entity_id: String(ctx.sy_id),
       },
-    });
+      result?._audit,
+    );
+    // 2) Permission sync — ONLY uids whose Faculty role flipped, capped concurrency
+    await syncUsersBatch(permUids);
+    // 3) Assignment-context cache — broader touched set
+    await Promise.allSettled(ctxUids.map((uid) => invalidateUserAssignmentsContext(uid)));
   });
-
-  // Sync JWT claims for all affected UIDs (old + new), fire-and-forget
-  const affectedUids = new Set<string>();
-  for (const r of (oldAdvisers ?? []) as any[]) {
-    if (r.adviser_id) affectedUids.add(r.adviser_id);
-  }
-  for (const r of (oldTeachers ?? []) as any[]) {
-    if (r.teacher_id) affectedUids.add(r.teacher_id);
-  }
-  for (const c of adviser_changes) {
-    if (c.adviser_id) affectedUids.add(c.adviser_id);
-  }
-  for (const c of assignment_changes) {
-    if (c.teacher_id) affectedUids.add(c.teacher_id);
-  }
-
-  Promise.allSettled([...affectedUids].map((uid) => syncUserPermissions(uid))).catch(
-    (err) => console.error("syncUserPermissions failed after save-masterlist:", err),
-  );
-  Promise.allSettled([...affectedUids].map((uid) => invalidateUserAssignmentsContext(uid))).catch(
-    (err) => console.error("invalidateUserAssignmentsContext failed after save-masterlist:", err),
-  );
 
   return Response.json({ success: true }, { status: 200 });
 };

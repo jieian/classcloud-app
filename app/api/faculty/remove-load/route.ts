@@ -58,7 +58,6 @@ const _POST = async function(request: Request) {
 
     await insertAuditLog({
       actor_id: caller.id,
-      category: "ACADEMIC",
       action: "faculty_load_removed",
       entity_type: "faculty",
       entity_id: faculty_id,

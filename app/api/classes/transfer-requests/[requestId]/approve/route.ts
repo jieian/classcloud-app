@@ -4,6 +4,8 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestApproved } from "@/lib/notifications";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests/[requestId]/approve ──────────────────
 // The RPC validates that the caller is the adviser of the from_section.
 // The entire enrollment swap is atomic inside the Postgres function.
@@ -41,6 +43,16 @@ const _POST = async function(
   }
 
   void dispatchTransferRequestApproved({ requestId });
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "transfer_approved",
+      entity_type: "transfer_request",
+      entity_id: requestId,
+      // student/section names deferred — approve_transfer_request _audit.
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 }

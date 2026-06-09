@@ -97,30 +97,6 @@
   },
   {
     "schemaname": "public",
-    "tablename": "audit_logs",
-    "indexname": "idx_audit_entity_time",
-    "indexdef": "CREATE INDEX idx_audit_entity_time ON public.audit_logs USING btree (entity_type, entity_id, created_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
-    "indexname": "idx_audit_logs_action_trgm",
-    "indexdef": "CREATE INDEX idx_audit_logs_action_trgm ON public.audit_logs USING gin (action gin_trgm_ops)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
-    "indexname": "idx_audit_logs_category_created",
-    "indexdef": "CREATE INDEX idx_audit_logs_category_created ON public.audit_logs USING btree (category, created_at DESC)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "audit_logs",
-    "indexname": "idx_audit_logs_entity_label_trgm",
-    "indexdef": "CREATE INDEX idx_audit_logs_entity_label_trgm ON public.audit_logs USING gin (entity_label gin_trgm_ops)"
-  },
-  {
-    "schemaname": "public",
     "tablename": "curriculum_subjects",
     "indexname": "curriculum_subjects_pkey",
     "indexdef": "CREATE UNIQUE INDEX curriculum_subjects_pkey ON public.curriculum_subjects USING btree (curriculum_subject_id)"
@@ -412,24 +388,6 @@
     "tablename": "item_analysis_reports",
     "indexname": "uq_item_analysis_reports_exam_section",
     "indexdef": "CREATE UNIQUE INDEX uq_item_analysis_reports_exam_section ON public.item_analysis_reports USING btree (exam_id, section_id)"
-  },
-  {
-    "schemaname": "cron",
-    "tablename": "job",
-    "indexname": "job_pkey",
-    "indexdef": "CREATE UNIQUE INDEX job_pkey ON cron.job USING btree (jobid)"
-  },
-  {
-    "schemaname": "cron",
-    "tablename": "job",
-    "indexname": "jobname_username_uniq",
-    "indexdef": "CREATE UNIQUE INDEX jobname_username_uniq ON cron.job USING btree (jobname, username)"
-  },
-  {
-    "schemaname": "cron",
-    "tablename": "job_run_details",
-    "indexname": "job_run_details_pkey",
-    "indexdef": "CREATE UNIQUE INDEX job_run_details_pkey ON cron.job_run_details USING btree (runid)"
   },
   {
     "schemaname": "public",
@@ -784,12 +742,6 @@
     "tablename": "teacher_class_assignments",
     "indexname": "idx_teacher_class_assignments_cs_id_active",
     "indexdef": "CREATE INDEX idx_teacher_class_assignments_cs_id_active ON public.teacher_class_assignments USING btree (curriculum_subject_id) WHERE (deleted_at IS NULL)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "teacher_class_assignments",
-    "indexname": "idx_teacher_class_assignments_section_cs_active",
-    "indexdef": "CREATE INDEX idx_teacher_class_assignments_section_cs_active ON public.teacher_class_assignments USING btree (section_id, curriculum_subject_id) WHERE (deleted_at IS NULL)"
   },
   {
     "schemaname": "public",

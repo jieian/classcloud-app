@@ -15,6 +15,8 @@ import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
 import { invalidateActiveContext } from "@/lib/active-context";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const caller = await getServerUser();
@@ -66,6 +68,17 @@ const _DELETE = async function(request: Request) {
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
   revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
   revalidateTag("subjects", "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: caller.id,
+      action: "school_year_deleted",
+      entity_type: "school_year",
+      entity_id: String(sy_id),
+      // year label deferred — delete_school_year_permanent _audit.
+    }).catch(() => {}),
+  );
+
   return Response.json({ success: true }, { status: 200 });
 }
 

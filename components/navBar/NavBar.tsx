@@ -170,56 +170,30 @@ export default function Navbar() {
   const isAdmin = permissions.includes("students.full_access");
   const isAdviser = permissions.includes("students.limited_access");
 
-  useEffect(() => {
-    if (!isAdmin && !isAdviser) {
-      setBadgeCount(0);
-      return;
-    }
-    const url = isAdmin
-      ? "/api/classes/transfer-requests/count"
-      : "/api/notifications/count";
-    fetch(url, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { count?: number }) => {
-        if (typeof d.count === "number") setBadgeCount(d.count);
-      })
-      .catch(() => {}); // Badge is non-critical — fail silently
-    // Re-check whenever the user navigates so the count stays fresh
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, isAdmin, isAdviser]);
-
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
 
   // Unread notification count — shown as bell badge in the mobile top bar
   const [notificationBellCount, setNotificationBellCount] = useState(0);
 
-  useEffect(() => {
-    fetch("/api/notifications/count", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { count?: number }) => {
-        if (typeof d.count === "number") setNotificationBellCount(d.count);
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname]);
-
   // Badge count on the User Management sublink (unread self-registration signups)
   const [usersBadgeCount, setUsersBadgeCount] = useState(0);
   const hasUsersAccess = permissions.includes("users.full_access");
 
+  // All NavBar badge counts in ONE request (was three separate fetches: classes
+  // sublink, notification bell, user-management sublink). Re-fetched on
+  // navigation so the counts stay fresh. Badges are non-critical — fail silently.
   useEffect(() => {
-    if (!hasUsersAccess) {
-      setUsersBadgeCount(0);
-      return;
-    }
-    fetch("/api/users/signup-notifications/count", { cache: "no-store" })
+    fetch("/api/badges", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: { count?: number }) => {
-        if (typeof d.count === "number") setUsersBadgeCount(d.count);
+      .then((d: { notifications?: number; transferRequests?: number; signupNotifications?: number }) => {
+        const notifications = typeof d.notifications === "number" ? d.notifications : 0;
+        setNotificationBellCount(notifications);
+        setBadgeCount(isAdmin ? (d.transferRequests ?? 0) : isAdviser ? notifications : 0);
+        setUsersBadgeCount(hasUsersAccess ? (d.signupNotifications ?? 0) : 0);
       })
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, hasUsersAccess]);
+  }, [pathname, isAdmin, isAdviser, hasUsersAccess]);
 
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(

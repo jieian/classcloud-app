@@ -5,6 +5,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestCreated } from "@/lib/notifications";
 import { parseBody, CreateTransferRequestSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests ──────────────────────────────────────
 // Creates a transfer request via the atomic Postgres RPC.
 // Only partial_access advisers may call this; the RPC validates adviser ownership.
@@ -44,6 +46,17 @@ const _POST = async function(request: Request) {
     toSectionId,
     requestedByUid: user.id,
   });
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "transfer_requested",
+      entity_type: "transfer_request",
+      entity_id: String(requestId),
+      // student/section names deferred — create_transfer_request _audit.
+      new_values: { lrn, from_section_id: fromSectionId, to_section_id: toSectionId },
+    }).catch(() => {}),
+  );
 
   return Response.json({ request_id: requestId }, { status: 201 });
 }

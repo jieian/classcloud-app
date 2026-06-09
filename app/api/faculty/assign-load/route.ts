@@ -70,59 +70,48 @@ const _POST = async function (request: Request) {
   revalidateTag("reports", "minutes");
   await invalidateUserAssignmentsContext(faculty_id);
 
-  // Non-blocking audit writes — don't delay the response
+  // Non-blocking audit write — ONE summary row, off the response path.
   after(async () => {
+    // Faculty name for a human-readable label (one indexed lookup, post-response).
+    const { data: facultyRow } = await adminClient
+      .from("users")
+      .select("first_name, last_name")
+      .eq("uid", faculty_id)
+      .maybeSingle();
+    const facultyName = facultyRow
+      ? `${facultyRow.first_name ?? ""} ${facultyRow.last_name ?? ""}`.trim() || null
+      : null;
+
+    // Summarize only the managed deltas. Advisory is recorded only when actually
+    // assigned, so we never emit a phantom "advisory removed" when there was none.
+    const changes: Record<string, unknown>[] = [];
+    if (advisory_section_id != null) {
+      changes.push({ type: "advisory", section_id: advisory_section_id });
+    }
+    if (manageCoordinator) {
+      changes.push({ type: "coordinator", subject_group_id: subject_group_id ?? null });
+    }
+    if (manageGSL) {
+      changes.push({
+        type: "gsl",
+        curriculum_subject_id: gsl_curriculum_subject_id ?? null,
+        grade_level_id: gsl_grade_level_id ?? null,
+      });
+    }
+
     await insertAuditLog({
       actor_id: caller.id,
-      category: "ACADEMIC",
       action: "faculty_academic_load_assigned",
       entity_type: "faculty",
       entity_id: faculty_id,
+      entity_label: facultyName,
       new_values: {
         advisory_section_id: advisory_section_id ?? null,
         sections_assigned: new Set(subject_assignments.map((a) => a.section_id)).size,
         subjects_assigned: subject_assignments.length,
+        changes,
       },
     });
-
-    // Dedicated advisory class audit entry
-    await insertAuditLog({
-      actor_id: caller.id,
-      category: "ACADEMIC",
-      action: advisory_section_id != null ? "advisory_class_assigned" : "advisory_class_removed",
-      entity_type: "faculty",
-      entity_id: faculty_id,
-      new_values: { advisory_section_id: advisory_section_id ?? null },
-    });
-
-    if (manageCoordinator) {
-      await insertAuditLog({
-        actor_id: caller.id,
-        category: "ACADEMIC",
-        action: subject_group_id != null
-          ? "subject_coordinator_assigned"
-          : "subject_coordinator_removed",
-        entity_type: "faculty",
-        entity_id: faculty_id,
-        new_values: { subject_group_id: subject_group_id ?? null },
-      });
-    }
-
-    if (manageGSL) {
-      await insertAuditLog({
-        actor_id: caller.id,
-        category: "ACADEMIC",
-        action: gsl_curriculum_subject_id != null
-          ? "grade_subject_leader_assigned"
-          : "grade_subject_leader_removed",
-        entity_type: "faculty",
-        entity_id: faculty_id,
-        new_values: {
-          gsl_curriculum_subject_id: gsl_curriculum_subject_id ?? null,
-          gsl_grade_level_id: gsl_grade_level_id ?? null,
-        },
-      });
-    }
   });
 
   syncUserPermissions(faculty_id).catch((err) =>

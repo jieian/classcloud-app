@@ -183,14 +183,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "signOut",
         );
       } else {
-        const result = await withTimeout<{ error: { message: string } | null }>(
-          supabase.auth.signOut({ scope: "global" }),
-          4000,
-          "signOut",
-        );
-        const error = result.error;
-        if (error && !/session.*missing/i.test(error.message)) {
-          console.error("Logout error:", error.message);
+        // No loaded user. Only call GoTrue if we actually hold a well-formed
+        // session token: a missing or corrupted token (e.g. a dropped Supabase
+        // cookie chunk) would 403 with `bad_jwt`. getSession() is local-only,
+        // so this is a cheap guard. Either way `finally` clears local state.
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const accessToken = session?.access_token;
+        const hasWellFormedJwt =
+          typeof accessToken === "string" && accessToken.split(".").length === 3;
+
+        if (hasWellFormedJwt) {
+          const result = await withTimeout<{ error: { message: string } | null }>(
+            supabase.auth.signOut({ scope: "global" }),
+            4000,
+            "signOut",
+          );
+          const error = result.error;
+          // A session that vanished or expired between the check and the call
+          // just means there's nothing to revoke — only log the unexpected.
+          if (error && !/session.*missing|malformed|jwt/i.test(error.message)) {
+            console.error("Logout error:", error.message);
+          }
         }
       }
     } catch (error) {

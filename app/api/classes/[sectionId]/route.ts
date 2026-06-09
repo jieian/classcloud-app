@@ -9,6 +9,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, RenameSectionSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 type NestedRelation<T> = T | T[] | null;
@@ -241,6 +243,18 @@ const _PATCH = async function(
 
   await Promise.allSettled(
     [...affectedUids].map((uid) => invalidateUserAssignmentsContext(uid)),
+  );
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "section_renamed",
+      entity_type: "section",
+      entity_id: String(sectionId),
+      entity_label: name,
+      // old_name deferred — would require a read or rename_section _audit.
+      new_values: { new_name: name },
+    }).catch(() => {}),
   );
 
   return Response.json({ success: true });

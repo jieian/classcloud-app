@@ -3,6 +3,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 const _POST = async function(request: Request) {
   const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -76,6 +78,18 @@ const _POST = async function(request: Request) {
   }
 
   revalidateTag("sections", "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "section_created",
+      entity_type: "section",
+      entity_id: String(result.section_id),
+      entity_label: name,
+      new_values: { name, grade_level_id: gradeLevelId, section_type: sectionType },
+    }).catch(() => {}),
+  );
+
   return Response.json(
     { success: true, section_id: result.section_id },
     { status: 201 },

@@ -2,6 +2,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 type SaveAnswerKeyBody = {
   examId?: number;
   answerKey?: {
@@ -73,6 +75,16 @@ const _POST = async function(request: Request) {
   if (!data || data.length === 0) {
     return Response.json({ error: "No exam rows updated" }, { status: 404 });
   }
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "exam_answer_key_saved",
+      entity_type: "exam",
+      entity_id: String(examId),
+      new_values: { total_questions: answerKey.total_questions },
+    }).catch(() => {}),
+  );
 
   return Response.json({ exam_id: data[0].exam_id });
 }

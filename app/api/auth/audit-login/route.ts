@@ -14,7 +14,6 @@ const _POST = async function () {
   after(async () => {
     await insertAuditLog({
       actor_id: user.id,
-      category: "ACCESS",
       action: "login",
       entity_type: "user",
       entity_id: user.id,

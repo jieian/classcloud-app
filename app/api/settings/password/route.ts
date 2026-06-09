@@ -57,8 +57,7 @@ const _PATCH = async function (request: Request) {
 
   insertAuditLog({
     actor_id: user.id,
-    category: "SECURITY",
-    action: "forced_password_changed",
+    action: "password_changed",
     entity_type: "user",
     entity_id: user.id,
   }).catch(() => {});

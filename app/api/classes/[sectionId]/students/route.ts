@@ -5,6 +5,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchDirectMove } from "@/lib/notifications";
 import { parseBody, AddStudentSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 
 type NestedRelation<T> = T | T[] | null;
 
@@ -110,6 +112,9 @@ const _POST = async function(
 
   const syId = section.sy_id;
 
+  // Captured in the "move" case for the audit log (from-section before the move).
+  let movedFromSectionId: number | null = null;
+
   // Helper: upsert enrollment — restores soft-deleted record or inserts new
   async function insertEnrollment(): Promise<Response | null> {
     const { error } = await admin.rpc("upsert_enrollment", {
@@ -211,6 +216,7 @@ const _POST = async function(
         .is("deleted_at", null)
         .maybeSingle();
       const fromSectionId = (currentEnroll as EnrollmentSectionRow | null)?.section_id ?? null;
+      movedFromSectionId = fromSectionId;
 
       const { error } = await admin.rpc("move_student_enrollment", {
         p_lrn: lrn,
@@ -239,6 +245,34 @@ const _POST = async function(
     }
 
   }
+
+  // Names only available for actions that carry them in the payload; otherwise just the LRN.
+  const studentName = `${lastName} ${firstName}`.trim() || null;
+  after(() => {
+    if (action === "move") {
+      insertAuditLog({
+        actor_id: user.id,
+        action: "student_moved",
+        entity_type: "student",
+        entity_id: lrn,
+        // section names deferred — would require a read or move_student_enrollment _audit.
+        new_values: { lrn, from_section_id: movedFromSectionId, to_section_id: sectionId },
+      }).catch(() => {});
+    } else {
+      insertAuditLog({
+        actor_id: user.id,
+        action: "student_enrolled",
+        entity_type: "student",
+        entity_id: lrn,
+        new_values: {
+          lrn,
+          enroll_action: action,
+          section_id: sectionId,
+          ...(studentName ? { student: studentName } : {}),
+        },
+      }).catch(() => {});
+    }
+  });
 
   return Response.json({ success: true });
 }

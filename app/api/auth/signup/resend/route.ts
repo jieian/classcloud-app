@@ -19,7 +19,6 @@ const _POST = async function (request: Request) {
   if (!(await resendIpLimiter.check(ip)).allowed) {
     void insertAuditLog({
       actor_id: null,
-      category: "SECURITY",
       action: "rate_limit_exceeded",
       entity_type: "ip_address",
       entity_id: ip,
@@ -44,7 +43,6 @@ const _POST = async function (request: Request) {
   if (!(await resendEmailLimiter.check(email)).allowed) {
     void insertAuditLog({
       actor_id: null,
-      category: "SECURITY",
       action: "rate_limit_exceeded",
       entity_type: "ip_address",
       entity_id: ip,

@@ -4,6 +4,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/cache-keys";
 import { getActiveContext } from "@/lib/active-context";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import type { UpdateAnnouncementPayload } from "@/lib/services/announcementsService";
 
 // ─── DELETE /api/announcements/[id] ───────────────────────────────────────────
@@ -60,6 +62,18 @@ const _DELETE = async function (
 
   if (status === "PUBLISHED")
     await redis.del(REDIS_KEYS.announcements(sy_id));
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "announcement_deleted",
+      entity_type: "announcement",
+      entity_id: String(announcementId),
+      // Title not loaded here (only status, sy_id) — label deferred to RPC _audit.
+      new_values: { status },
+      metadata: { attachment_count: attachments?.length ?? 0 },
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 };
@@ -132,6 +146,17 @@ const _PATCH = async function (
       return Response.json({ error: "Announcement not found" }, { status: 404 });
     return Response.json({ error: "Failed to update announcement" }, { status: 500 });
   }
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "announcement_updated",
+      entity_type: "announcement",
+      entity_id: String(announcementId),
+      entity_label: title.trim(),
+      new_values: { title: title.trim(), audience: everyone ? "everyone" : "roles", status },
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 };

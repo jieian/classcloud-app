@@ -4,6 +4,8 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, UpdateProfileSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 function toTitleCase(str: string): string {
   return str
     .trim()
@@ -87,6 +89,17 @@ const _PATCH = async function(request: Request) {
       return Response.json({ error: "User not found." }, { status: 404 });
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "profile_updated",
+      entity_type: "user",
+      entity_id: user.id,
+      // old_values deferred — would require a read or update_my_profile _audit.
+      new_values: { first_name: firstName, middle_name: middleName || null, last_name: lastName },
+    }).catch(() => {}),
+  );
 
   return Response.json({
     success: true,

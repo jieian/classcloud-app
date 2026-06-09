@@ -12,7 +12,6 @@ const _POST = async function(request: Request) {
   if (!limit.allowed) {
     void insertAuditLog({
       actor_id: null,
-      category: "SECURITY",
       action: "rate_limit_exceeded",
       entity_type: "ip_address",
       entity_id: ip,

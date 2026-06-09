@@ -3,6 +3,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 interface AssignAdviserBody {
   section_id?: number;
@@ -47,6 +49,15 @@ const _POST = async function(request: Request) {
       );
     }
     revalidateTag("sections", "minutes");
+    after(() =>
+      insertAuditLog({
+        actor_id: caller.id,
+        action: "section_adviser_removed",
+        entity_type: "section",
+        entity_id: String(sectionId),
+        // adviser name deferred — set_section_adviser _audit.
+      }).catch(() => {}),
+    );
     return Response.json({ success: true }, { status: 200 });
   }
 
@@ -77,6 +88,18 @@ const _POST = async function(request: Request) {
 
   revalidateTag("sections", "minutes");
   await invalidateUserAssignmentsContext(adviserId);
+
+  after(() =>
+    insertAuditLog({
+      actor_id: caller.id,
+      action: "section_adviser_assigned",
+      entity_type: "section",
+      entity_id: String(sectionId),
+      // adviser/old-adviser names deferred — assign_section_adviser _audit.
+      new_values: { adviser_id: adviserId },
+    }).catch(() => {}),
+  );
+
   return Response.json({ success: true }, { status: 200 });
 }
 

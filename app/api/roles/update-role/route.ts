@@ -34,12 +34,36 @@ const _PUT = async function (request: Request) {
     return Response.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // 4. Fetch old values for audit (non-fatal if it fails)
-  const { data: oldRole } = await adminClient
-    .from("roles")
-    .select("name, is_faculty, is_self_registerable")
-    .eq("role_id", role_id)
-    .single();
+  // 4. Fetch old values + permission names for audit (non-fatal if any fail).
+  //    Small indexed lookups on the roles/permissions reference tables; the old
+  //    permission set must be read BEFORE the RPC reassigns it.
+  const [{ data: oldRole }, { data: oldRolePerms }, { data: newPerms }] = await Promise.all([
+    adminClient
+      .from("roles")
+      .select("name, is_faculty, is_self_registerable")
+      .eq("role_id", role_id)
+      .single(),
+    adminClient
+      .from("role_permissions")
+      .select("permissions(name)")
+      .eq("role_id", role_id),
+    adminClient
+      .from("permissions")
+      .select("name")
+      .in("permission_id", permission_ids),
+  ]);
+
+  // PostgREST embeds can type as object or array depending on the inferred
+  // relationship; normalize both to a flat list of names.
+  const oldPermissionNames = ((oldRolePerms ?? []) as any[])
+    .flatMap((r) => {
+      const p = r.permissions;
+      if (!p) return [];
+      return Array.isArray(p) ? p.map((x: { name: string }) => x.name) : [p.name as string];
+    })
+    .filter((n: unknown): n is string => Boolean(n))
+    .sort();
+  const newPermissionNames = ((newPerms ?? []) as { name: string }[]).map((p) => p.name).sort();
 
   // 5. RPC: Update role + reassign permissions atomically
   const { error } = await adminClient.rpc("update_role_and_permissions", {
@@ -74,17 +98,16 @@ const _PUT = async function (request: Request) {
   // 7. Audit
   await insertAuditLog({
     actor_id: caller.id,
-    category: "ADMIN",
     action: "role_updated",
     entity_type: "role",
     entity_id: String(role_id),
     entity_label: name.trim(),
-    old_values: oldRole ?? null,
+    old_values: { ...(oldRole ?? {}), permissions: oldPermissionNames },
     new_values: {
       name: name.trim(),
       is_faculty,
       is_self_registerable,
-      permission_ids,
+      permissions: newPermissionNames,
     },
   });
 

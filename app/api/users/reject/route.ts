@@ -35,7 +35,14 @@ const _POST = async function(request: Request) {
   const isBanned = authUser.banned_until && new Date(authUser.banned_until) > new Date();
 
   const firstName = (typeof clientFirstName === "string" && clientFirstName.trim()) ? clientFirstName.trim() : "Applicant";
-  const entityLabel = firstName;
+
+  // Prefer the fuller name from the already-loaded auth user over the client-sent
+  // first name (no extra read — authUser is already fetched above).
+  const authMeta = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+  const metaFullName = typeof authMeta.full_name === "string" ? authMeta.full_name.trim() : "";
+  const metaFirst = typeof authMeta.first_name === "string" ? authMeta.first_name.trim() : "";
+  const metaLast = typeof authMeta.last_name === "string" ? authMeta.last_name.trim() : "";
+  const entityLabel = metaFullName || `${metaFirst} ${metaLast}`.trim() || firstName;
 
   if (isBanned) {
     // Restored (previously soft-deleted) user — soft delete: stamp deleted_at + keep banned
@@ -75,7 +82,6 @@ const _POST = async function(request: Request) {
   // Audit log (non-fatal)
   insertAuditLog({
     actor_id: user.id,
-    category: "ADMIN",
     action: "user_rejected",
     entity_type: "user",
     entity_id: uid,

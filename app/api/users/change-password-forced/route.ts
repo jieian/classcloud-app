@@ -60,7 +60,6 @@ const _POST = async function (request: Request) {
   // Audit log (non-fatal)
   insertAuditLog({
     actor_id: user.id,
-    category: "SECURITY",
     action: "forced_password_changed",
     entity_type: "user",
     entity_id: user.id,

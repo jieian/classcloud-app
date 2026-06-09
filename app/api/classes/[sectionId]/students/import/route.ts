@@ -7,6 +7,8 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, BulkImportSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 // ─── POST /api/classes/[sectionId]/students/import ────────────────────────────
 // Bulk-enrolls students that were reviewed and confirmed by the user.
 // Supports actions: new, enroll, restore_enroll, move.
@@ -183,6 +185,20 @@ const _POST = async function(
     }
     return { lrn, success: true as const };
   });
+
+  const importedCount = results.filter((r) => r.success).length;
+  const byAction: Record<string, number> = {};
+  for (const s of parsed.data.students) byAction[s.action] = (byAction[s.action] ?? 0) + 1;
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "students_imported",
+      entity_type: "section",
+      entity_id: String(sectionId),
+      new_values: { imported_count: importedCount, by_action: byAction },
+    }).catch(() => {}),
+  );
 
   return Response.json({ results });
 }

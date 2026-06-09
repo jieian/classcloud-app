@@ -4,6 +4,8 @@ import { hashToken, decryptPassword } from "@/lib/crypto";
 import { sendEmailVerifiedEmail } from "@/lib/email/templates";
 import { dispatchNewSignup } from "@/lib/notifications";
 import { redis } from "@/lib/redis";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 
 /** Masks an email for display: j***@gmail.com */
 function maskEmail(email: string): string {
@@ -178,6 +180,16 @@ const _POST = async function (request: Request) {
   }
 
   void redis.del("users:pending");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: uid,
+      action: "registration_confirmed",
+      entity_type: "user",
+      entity_id: uid,
+      new_values: { email: row.email, type: row.type },
+    }).catch(() => {}),
+  );
 
   // Notify all users.full_access about the new self-registration (fire-and-forget)
   void dispatchNewSignup({ newUserUid: uid, firstName: row.first_name, lastName: row.last_name });

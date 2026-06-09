@@ -64,11 +64,11 @@ const _DELETE = async function(request: Request) {
   // 8. Audit
   await insertAuditLog({
     actor_id: caller.id,
-    category: "ADMIN",
     action: "role_deleted",
     entity_type: "role",
     entity_id: String(role_id),
     entity_label: role_name ?? null,
+    metadata: { affected_user_count: affectedUids.length },
   });
 
   return Response.json({ success: true }, { status: 200 });

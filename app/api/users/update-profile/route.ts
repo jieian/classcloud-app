@@ -74,7 +74,6 @@ const _PATCH = async function (request: Request) {
 
   insertAuditLog({
     actor_id: caller.id,
-    category: "ADMIN",
     action: "user_edited",
     entity_type: "user",
     entity_id: uid,

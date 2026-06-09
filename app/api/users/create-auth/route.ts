@@ -235,7 +235,6 @@ const _POST = async function (request: Request) {
 
     insertAuditLog({
       actor_id: caller.id,
-      category: "ADMIN",
       action: "user_invited",
       entity_type: "user",
       entity_id: uid,
@@ -325,7 +324,6 @@ const _POST = async function (request: Request) {
 
     insertAuditLog({
       actor_id: caller.id,
-      category: "ADMIN",
       action: "user_invited",
       entity_type: "user",
       entity_id: newAuthUserUuid,

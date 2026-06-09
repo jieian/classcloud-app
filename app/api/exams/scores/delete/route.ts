@@ -1,6 +1,8 @@
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 
 const _DELETE = async function (request: Request) {
   const user = await getServerUser();
@@ -69,6 +71,15 @@ const _DELETE = async function (request: Request) {
     console.error("[api/exams/scores/delete] delete error:", deleteError.message);
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "exam_score_deleted",
+      entity_type: "score",
+      entity_id: String(scoreId),
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true }, { status: 200 });
 };

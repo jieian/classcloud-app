@@ -91,7 +91,6 @@ const _DELETE = async function(request: Request) {
 
     insertAuditLog({
       actor_id: user.id,
-      category: "ADMIN",
       action: "user_deleted",
       entity_type: "user",
       entity_id: uuid,

@@ -4,6 +4,7 @@ import { redis } from "@/lib/redis";
 import { z } from "zod";
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { adminClient } from "@/lib/supabase/admin";
+import { insertAuditLog } from "@/lib/audit";
 import { withErrorHandler } from "@/lib/api-error";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/year/create/_lib/wizardServerService";
 import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
@@ -152,21 +153,16 @@ const _POST = async function (request: Request) {
   revalidateTag("sections", "minutes");
   await redis.del("faculty:list", "faculty:candidates", "coordinator:groups", "faculty:gsl");
 
-  after(async () => {
-    try {
-      await adminClient.from("audit_logs").insert({
-        actor_id: caller.id,
-        category: "ACADEMIC",
-        action: "CREATE",
-        entity_type: "school_year",
-        entity_id: String(result.sy_id),
-        entity_label: `${start_year}–${end_year}`,
-        new_values: { start_year, end_year, curriculum_id, num_quarters },
-      });
-    } catch {
-      // Audit log failure is non-fatal
-    }
-  });
+  after(() =>
+    insertAuditLog({
+      actor_id: caller.id,
+      action: "school_year_created",
+      entity_type: "school_year",
+      entity_id: String(result.sy_id),
+      entity_label: `${start_year}–${end_year}`,
+      new_values: { start_year, end_year, curriculum_id, num_quarters },
+    }),
+  );
 
   return Response.json({ success: true, sy_id: result.sy_id }, { status: 201 });
 };

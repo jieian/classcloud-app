@@ -5,6 +5,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestRejected } from "@/lib/notifications";
 import { parseBody, RejectTransferRequestSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests/[requestId]/reject ───────────────────
 
 const _POST = async function(
@@ -40,6 +42,16 @@ const _POST = async function(
   }
 
   void dispatchTransferRequestRejected({ requestId, notes });
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "transfer_rejected",
+      entity_type: "transfer_request",
+      entity_id: requestId,
+      metadata: notes ? { notes } : null,
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 }

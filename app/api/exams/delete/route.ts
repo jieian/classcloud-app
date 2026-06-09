@@ -2,6 +2,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 const _DELETE = async function(request: Request) {
   const user = await getServerUser();
@@ -94,6 +96,18 @@ const _DELETE = async function(request: Request) {
   }
 
   revalidateTag(EXAMS_CACHE_TAG, "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "exam_deleted",
+      entity_type: "exam",
+      entity_id: String(examId),
+      // title/subject names deferred — would require a read or an exam-delete RPC _audit.
+      new_values: { curriculum_subject_id: examCurriculumSubjectId },
+    }).catch(() => {}),
+  );
+
   return Response.json({ success: true }, { status: 200 });
 }
 

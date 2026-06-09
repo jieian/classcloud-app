@@ -57,10 +57,16 @@ const _POST = async function (request: Request) {
 
   await redis.del("roles:all");
 
-  // 5. AUDIT
+  // 5. AUDIT — resolve permission names (one indexed lookup on the small
+  // permissions reference table) so the log stores labels, not raw IDs.
+  const { data: perms } = await adminClient
+    .from("permissions")
+    .select("name")
+    .in("permission_id", permission_ids);
+  const permissionNames = ((perms ?? []) as { name: string }[]).map((p) => p.name).sort();
+
   await insertAuditLog({
     actor_id: caller.id,
-    category: "ADMIN",
     action: "role_created",
     entity_type: "role",
     entity_id: String(data),
@@ -69,7 +75,7 @@ const _POST = async function (request: Request) {
       name: name.trim(),
       is_faculty,
       is_self_registerable,
-      permission_ids,
+      permissions: permissionNames,
     },
   });
 

@@ -237,6 +237,7 @@ export default function HomeReportsSection() {
   const [collapsed, setCollapsed] = useState(true);
   const [tree, setTree] = useState<ReportMonitoringTree>(emptyTree);
   const [loading, setLoading] = useState(true);
+  const [hasRequested, setHasRequested] = useState(false);
 
   // Set default segment once permissions resolve
   useEffect(() => {
@@ -245,9 +246,14 @@ export default function HomeReportsSection() {
     }
   }, [segments, activeSegment]);
 
-  // Read cache first, then fetch fresh and write back to shared cache
+  // Lazy-load: only fetch the (heavy) monitoring tree once the section is
+  // actually expanded. The home page renders it collapsed by default, so most
+  // loads shouldn't pay for it at all. sessionStorage still gives instant
+  // display on re-expand, and we fetch at most once per mount.
   useEffect(() => {
+    if (collapsed || hasRequested) return;
     if (!user?.id || !hasAnyReportAccess) return;
+    setHasRequested(true);
 
     const scopeKey = makeReportsTreeScopeKey({ canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects });
     const storageKey = makeReportsStorageKey(user.id, `tree:${scopeKey}`);
@@ -269,7 +275,7 @@ export default function HomeReportsSection() {
       .catch(() => {/* silently fall back to cached */})
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects]);
+  }, [collapsed, hasRequested, user?.id, canViewAll, canViewAssigned, canMonitorGradeLevel, canMonitorSubjects]);
 
   // Auto-switch inner tab to whichever side has data
   useEffect(() => {

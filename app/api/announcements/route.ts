@@ -5,6 +5,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/cache-keys";
 import { getActiveContext } from "@/lib/active-context";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 import type { AnnouncementItem } from "@/lib/services/announcementsService";
 
 const AttachmentSchema = z.object({
@@ -189,6 +191,23 @@ const _POST = async function (req: Request) {
 
   if (status === "PUBLISHED")
     await redis.del(REDIS_KEYS.announcements(ctx.sy_id));
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "announcement_created",
+      entity_type: "announcement",
+      entity_id: String(data),
+      entity_label: title,
+      new_values: {
+        title,
+        status,
+        audience: everyone ? "everyone" : "roles",
+        role_ids: everyone ? [] : roleIds,
+        attachment_count: attachments.length,
+      },
+    }).catch(() => {}),
+  );
 
   return Response.json({ announcement_id: data });
 };

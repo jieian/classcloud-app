@@ -4,6 +4,8 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/cache-keys";
 import { getActiveContext } from "@/lib/active-context";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 
 // ─── POST /api/announcements/[id]/publish ─────────────────────────────────────
 // Immediately publishes a SCHEDULED announcement.
@@ -35,6 +37,15 @@ const _POST = async function (
 
   const ctx = await getActiveContext();
   if (ctx.sy_id) await redis.del(REDIS_KEYS.announcements(ctx.sy_id));
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "announcement_published",
+      entity_type: "announcement",
+      entity_id: String(announcementId),
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 };

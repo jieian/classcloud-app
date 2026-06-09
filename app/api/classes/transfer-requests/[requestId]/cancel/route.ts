@@ -2,6 +2,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests/[requestId]/cancel ───────────────────
 // Allows the original requester to cancel their own PENDING request.
 
@@ -38,6 +40,16 @@ const _POST = async function(
 
   if (!data || data.length === 0)
     return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "transfer_cancelled",
+      entity_type: "transfer_request",
+      entity_id: requestId,
+      metadata: { reason: "MANUAL" },
+    }).catch(() => {}),
+  );
 
   return Response.json({ success: true });
 }

@@ -83,22 +83,34 @@ const _POST = async function (request: Request) {
   }
 
   after(async () => {
+    // Resolve faculty + displaced-coordinator names in one indexed lookup.
+    const ids = [user_id, oldCoordinatorId].filter((v): v is string => Boolean(v));
+    const { data: users } = await adminClient
+      .from("users")
+      .select("uid, first_name, last_name")
+      .in("uid", ids);
+    const nameByUid = new Map(
+      ((users ?? []) as { uid: string; first_name: string | null; last_name: string | null }[]).map(
+        (u) => [u.uid, `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || null] as const,
+      ),
+    );
+
     await insertAuditLog({
       actor_id: caller.id,
-      category: "ACADEMIC",
       action: "subject_coordinator_assigned",
       entity_type: "faculty",
       entity_id: user_id,
+      entity_label: nameByUid.get(user_id) ?? null,
       new_values: { subject_group_id },
     });
 
     if (oldCoordinatorId) {
       await insertAuditLog({
         actor_id: caller.id,
-        category: "ACADEMIC",
         action: "subject_coordinator_removed",
         entity_type: "faculty",
         entity_id: oldCoordinatorId,
+        entity_label: nameByUid.get(oldCoordinatorId) ?? null,
         new_values: { subject_group_id, reason: "replaced" },
       });
     }

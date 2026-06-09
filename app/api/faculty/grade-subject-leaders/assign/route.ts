@@ -88,22 +88,34 @@ const _POST = async function (request: Request) {
   if (oldLeaderId) await invalidateUserAssignmentsContext(oldLeaderId);
 
   after(async () => {
+    // Resolve faculty + displaced-leader names in one indexed lookup.
+    const ids = [user_id, oldLeaderId].filter((v): v is string => Boolean(v));
+    const { data: users } = await adminClient
+      .from("users")
+      .select("uid, first_name, last_name")
+      .in("uid", ids);
+    const nameByUid = new Map(
+      ((users ?? []) as { uid: string; first_name: string | null; last_name: string | null }[]).map(
+        (u) => [u.uid, `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || null] as const,
+      ),
+    );
+
     await insertAuditLog({
       actor_id: caller.id,
-      category: "ACADEMIC",
       action: "grade_subject_leader_assigned",
       entity_type: "faculty",
       entity_id: user_id,
+      entity_label: nameByUid.get(user_id) ?? null,
       new_values: { curriculum_subject_id, grade_level_id },
     });
 
     if (oldLeaderId) {
       await insertAuditLog({
         actor_id: caller.id,
-        category: "ACADEMIC",
         action: "grade_subject_leader_removed",
         entity_type: "faculty",
         entity_id: oldLeaderId,
+        entity_label: nameByUid.get(oldLeaderId) ?? null,
         new_values: { curriculum_subject_id, grade_level_id, reason: "replaced" },
       });
     }

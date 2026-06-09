@@ -178,7 +178,6 @@ const _PATCH = async function (request: Request) {
   // Audit log (non-fatal)
   insertAuditLog({
     actor_id: caller.id,
-    category: "ADMIN",
     action: "user_invite_edited",
     entity_type: "user",
     entity_id: uid,

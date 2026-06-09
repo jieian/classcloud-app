@@ -4,6 +4,8 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, AssignSubjectTeachersSchema } from "@/lib/api-schemas";
 import { revalidateTag } from "next/cache";
+import { after } from "next/server";
+import { insertAuditLog } from "@/lib/audit";
 const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -37,6 +39,18 @@ const _POST = async function(
     );
 
   revalidateTag("sections", "minutes");
+
+  after(() =>
+    insertAuditLog({
+      actor_id: user.id,
+      action: "subject_teachers_assigned",
+      entity_type: "section",
+      entity_id: String(sectionId),
+      // per-subject old/new teacher names deferred — set_section_subject_teachers _audit.
+      new_values: { assignment_count: parsed.data.assignments.length },
+    }).catch(() => {}),
+  );
+
   return Response.json({ success: true });
 }
 
