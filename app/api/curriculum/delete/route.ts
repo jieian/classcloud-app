@@ -5,7 +5,7 @@ import { CURRICULUM_CACHE_TAG } from "@/app/(app)/school/curriculum/_lib/curricu
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -32,13 +32,10 @@ const _DELETE = async function(request: Request) {
   revalidateTag("subjects", "minutes");
 
   after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "curriculum_deleted",
-      entity_type: "curriculum",
-      entity_id: String(curriculumId),
-      // name deferred — delete_curriculum _audit.
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: user.id, action: "curriculum_deleted", entity_type: "curriculum", entity_id: String(curriculumId) },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true }, { status: 200 });

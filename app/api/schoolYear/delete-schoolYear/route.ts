@@ -16,7 +16,7 @@ import { invalidateActiveContext } from "@/lib/active-context";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   // 1. Verify the caller is authenticated
   const caller = await getServerUser();
@@ -38,7 +38,7 @@ const _DELETE = async function(request: Request) {
     return Response.json({ error: "Missing required field: sy_id" }, { status: 400 });
   }
 
-  // 5. Permanent delete via RPC (CASCADE). Returns { success, code? }.
+  // 5. Permanent delete via RPC (CASCADE). Returns { success, code?, _audit? }.
   const { data, error } = await adminClient.rpc("delete_school_year_permanent", {
     p_sy_id: sy_id,
   });
@@ -70,13 +70,10 @@ const _DELETE = async function(request: Request) {
   revalidateTag("subjects", "minutes");
 
   after(() =>
-    insertAuditLog({
-      actor_id: caller.id,
-      action: "school_year_deleted",
-      entity_type: "school_year",
-      entity_id: String(sy_id),
-      // year label deferred — delete_school_year_permanent _audit.
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: caller.id, action: "school_year_deleted", entity_type: "school_year", entity_id: String(sy_id) },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true }, { status: 200 });

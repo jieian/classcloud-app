@@ -3,7 +3,7 @@ import { revalidateTag } from "next/cache";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 function getAutoTotalItems(levelNumber: number | null | undefined): number {
   if (!levelNumber) return 30;
@@ -159,7 +159,7 @@ const _POST = async function (request: Request) {
   });
 
   // ── Single atomic bulk write (was 2 round-trips per section + JS rollback) ──
-  const { data: created, error: createError } = await adminClient.rpc("create_exams_for_sections", {
+  const { data, error: createError } = await adminClient.rpc("create_exams_for_sections", {
     p_creator_teacher_id: user.id,
     p_curriculum_subject_id: payload.curriculum_subject_id,
     p_quarter_id: payload.quarter_id,
@@ -174,26 +174,15 @@ const _POST = async function (request: Request) {
     return Response.json({ error: "Failed to create exam." }, { status: 500 });
   }
 
-  const createdExamIds = ((created ?? []) as { exam_id: number }[]).map((r) => r.exam_id);
+  const createdExamIds = (((data as { exams?: { exam_id: number }[] } | null)?.exams ?? [])).map((r) => r.exam_id);
 
   revalidateTag(EXAMS_CACHE_TAG, "minutes");
 
   after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "exam_created",
-      entity_type: "exam",
-      entity_id: String(createdExamIds[0] ?? ""),
-      entity_label: payload.title,
-      // subject/quarter names deferred — would require a read.
-      new_values: {
-        title: payload.title,
-        curriculum_subject_id: payload.curriculum_subject_id,
-        quarter_id: payload.quarter_id,
-        section_count: examsToCreate.length,
-      },
-      metadata: { exam_ids: createdExamIds },
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: user.id, action: "exam_created", entity_type: "exam", entity_id: String(createdExamIds[0] ?? "") },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({

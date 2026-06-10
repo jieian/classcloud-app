@@ -5,7 +5,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestApproved } from "@/lib/notifications";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests/[requestId]/approve ──────────────────
 // The RPC validates that the caller is the adviser of the from_section.
 // The entire enrollment swap is atomic inside the Postgres function.
@@ -26,12 +26,13 @@ const _POST = async function(
     return Response.json({ error: "Missing request ID." }, { status: 400 });
 
 
-  const { error } = await admin.rpc("approve_transfer_request", {
+  const { data, error } = await admin.rpc("approve_transfer_request", {
     p_request_id: requestId,
     p_reviewed_by: user.id,
   });
 
   if (error) {
+    console.error("approve_transfer_request error:", error.message);
     if (isRpcError(error, RpcError.REQUEST_NOT_PENDING))
       return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
     if (isRpcError(error, RpcError.ENROLLMENT_NOT_FOUND))
@@ -45,13 +46,10 @@ const _POST = async function(
   void dispatchTransferRequestApproved({ requestId });
 
   after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "transfer_approved",
-      entity_type: "transfer_request",
-      entity_id: requestId,
-      // student/section names deferred — approve_transfer_request _audit.
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: user.id, action: "transfer_approved", entity_type: "transfer_request", entity_id: requestId },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true });

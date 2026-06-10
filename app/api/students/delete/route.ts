@@ -3,6 +3,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, DeleteStudentSchema } from "@/lib/api-schemas";
+import { after } from "next/server";
+import { auditFromRpc } from "@/lib/audit";
 const _DELETE = async function(request: Request) {
   const user = await getServerUser();
   if (!user) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -52,7 +54,7 @@ const _DELETE = async function(request: Request) {
     return Response.json({ error: "Student not found." }, { status: 404 });
   }
 
-  const { error } = await admin.rpc("soft_delete_student", {
+  const { data, error } = await admin.rpc("soft_delete_student", {
     p_lrn: lrn,
   });
 
@@ -62,6 +64,13 @@ const _DELETE = async function(request: Request) {
       { status: 500 },
     );
   }
+
+  after(() =>
+    auditFromRpc(
+      { actor_id: user.id, action: "student_deleted", entity_type: "student", entity_id: lrn },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
+  );
 
   return Response.json({ success: true });
 }

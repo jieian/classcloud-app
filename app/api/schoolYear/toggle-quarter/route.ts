@@ -59,7 +59,7 @@ import { invalidateActiveContext } from "@/lib/active-context";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 
 const _POST = async function (request: Request) {
   const caller = await getServerUser();
@@ -125,16 +125,11 @@ const _POST = async function (request: Request) {
   revalidateTag(SCHOOL_YEARS_CACHE_TAG, "minutes");
   revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
 
-  const fromQuarterId = activeIdx !== -1 ? allQuarters[activeIdx].quarter_id : null;
   after(() =>
-    insertAuditLog({
-      actor_id: caller.id,
-      action: "quarter_toggled",
-      entity_type: "school_year",
-      entity_id: String(sy_id),
-      // quarter names deferred — toggle_quarter _audit.
-      new_values: { from_quarter_id: fromQuarterId, to_quarter_id: quarter_id },
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: caller.id, action: "quarter_toggled", entity_type: "school_year", entity_id: String(sy_id) },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true }, { status: 200 });

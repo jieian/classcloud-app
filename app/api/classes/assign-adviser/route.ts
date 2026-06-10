@@ -4,7 +4,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 interface AssignAdviserBody {
   section_id?: number;
@@ -38,7 +38,7 @@ const _POST = async function(request: Request) {
 
   // Unassigning: plain overwrite is fine (last-write-wins on null is idempotent)
   if (adviserId === null || adviserId === "") {
-    const { error } = await adminClient.rpc("set_section_adviser", {
+    const { data: unassignData, error } = await adminClient.rpc("set_section_adviser", {
       p_section_id: sectionId,
       p_adviser_id: null,
     });
@@ -50,19 +50,16 @@ const _POST = async function(request: Request) {
     }
     revalidateTag("sections", "minutes");
     after(() =>
-      insertAuditLog({
-        actor_id: caller.id,
-        action: "section_adviser_removed",
-        entity_type: "section",
-        entity_id: String(sectionId),
-        // adviser name deferred — set_section_adviser _audit.
-      }).catch(() => {}),
+      auditFromRpc(
+        { actor_id: caller.id, action: "section_adviser_removed", entity_type: "section", entity_id: String(sectionId) },
+        (unassignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+      ),
     );
     return Response.json({ success: true }, { status: 200 });
   }
 
   // Assigning: use the safe RPC that locks rows and validates all invariants
-  const { error } = await adminClient.rpc("assign_section_adviser", {
+  const { data: assignData, error } = await adminClient.rpc("assign_section_adviser", {
     p_section_id: sectionId,
     p_adviser_id: adviserId,
   });
@@ -90,14 +87,10 @@ const _POST = async function(request: Request) {
   await invalidateUserAssignmentsContext(adviserId);
 
   after(() =>
-    insertAuditLog({
-      actor_id: caller.id,
-      action: "section_adviser_assigned",
-      entity_type: "section",
-      entity_id: String(sectionId),
-      // adviser/old-adviser names deferred — assign_section_adviser _audit.
-      new_values: { adviser_id: adviserId },
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: caller.id, action: "section_adviser_assigned", entity_type: "section", entity_id: String(sectionId) },
+      (assignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true }, { status: 200 });

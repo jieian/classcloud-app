@@ -6,7 +6,7 @@ import { dispatchDirectMove } from "@/lib/notifications";
 import { parseBody, AddStudentSchema } from "@/lib/api-schemas";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { insertAuditLog, auditFromRpc } from "@/lib/audit";
 
 type NestedRelation<T> = T | T[] | null;
 
@@ -112,8 +112,8 @@ const _POST = async function(
 
   const syId = section.sy_id;
 
-  // Captured in the "move" case for the audit log (from-section before the move).
-  let movedFromSectionId: number | null = null;
+  // Captured in the "move" case from move_student_enrollment's _audit envelope.
+  let moveAudit: Parameters<typeof auditFromRpc>[1];
 
   // Helper: upsert enrollment — restores soft-deleted record or inserts new
   async function insertEnrollment(): Promise<Response | null> {
@@ -216,13 +216,13 @@ const _POST = async function(
         .is("deleted_at", null)
         .maybeSingle();
       const fromSectionId = (currentEnroll as EnrollmentSectionRow | null)?.section_id ?? null;
-      movedFromSectionId = fromSectionId;
 
-      const { error } = await admin.rpc("move_student_enrollment", {
+      const { data: moveData, error } = await admin.rpc("move_student_enrollment", {
         p_lrn: lrn,
         p_sy_id: syId,
         p_section_id: sectionId,
       });
+      moveAudit = (moveData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit;
       if (error) {
         if (error.code === "23505")
           return Response.json(
@@ -250,14 +250,10 @@ const _POST = async function(
   const studentName = `${lastName} ${firstName}`.trim() || null;
   after(() => {
     if (action === "move") {
-      insertAuditLog({
-        actor_id: user.id,
-        action: "student_moved",
-        entity_type: "student",
-        entity_id: lrn,
-        // section names deferred — would require a read or move_student_enrollment _audit.
-        new_values: { lrn, from_section_id: movedFromSectionId, to_section_id: sectionId },
-      }).catch(() => {});
+      void auditFromRpc(
+        { actor_id: user.id, action: "student_moved", entity_type: "student", entity_id: lrn },
+        moveAudit,
+      );
     } else {
       insertAuditLog({
         actor_id: user.id,

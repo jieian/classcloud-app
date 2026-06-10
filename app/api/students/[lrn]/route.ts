@@ -3,6 +3,8 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, UpdateStudentSchema } from "@/lib/api-schemas";
+import { after } from "next/server";
+import { auditFromRpc } from "@/lib/audit";
 const _PATCH = async function(
   request: Request,
   { params }: { params: Promise<{ lrn: string }> },
@@ -40,7 +42,7 @@ const _PATCH = async function(
       );
   }
 
-  const { error } = await admin.rpc("update_student_info", {
+  const { data, error } = await admin.rpc("update_student_info", {
     p_old_lrn: oldLrn,
     p_new_lrn: newLrn,
     p_last_name: lastName,
@@ -54,6 +56,13 @@ const _PATCH = async function(
       { error: "Failed to update student." },
       { status: 500 },
     );
+
+  after(() =>
+    auditFromRpc(
+      { actor_id: user.id, action: "student_updated", entity_type: "student", entity_id: newLrn },
+      (data as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
+  );
 
   return Response.json({ success: true });
 }

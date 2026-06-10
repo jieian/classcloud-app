@@ -5,7 +5,7 @@ import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, AssignSubjectTeachersSchema } from "@/lib/api-schemas";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -27,7 +27,7 @@ const _POST = async function(
 
 
   // Single atomic RPC — soft-delete + re-insert in one transaction
-  const { error } = await admin.rpc("set_section_subject_teachers", {
+  const { data: assignData, error } = await admin.rpc("set_section_subject_teachers", {
     p_section_id: sectionId,
     p_assignments: parsed.data.assignments,
   });
@@ -41,14 +41,10 @@ const _POST = async function(
   revalidateTag("sections", "minutes");
 
   after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "subject_teachers_assigned",
-      entity_type: "section",
-      entity_id: String(sectionId),
-      // per-subject old/new teacher names deferred — set_section_subject_teachers _audit.
-      new_values: { assignment_count: parsed.data.assignments.length },
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: user.id, action: "subject_teachers_assigned", entity_type: "section", entity_id: String(sectionId) },
+      (assignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
   );
 
   return Response.json({ success: true });

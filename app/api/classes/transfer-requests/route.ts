@@ -6,7 +6,7 @@ import { dispatchTransferRequestCreated } from "@/lib/notifications";
 import { parseBody, CreateTransferRequestSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
 // ─── POST /api/classes/transfer-requests ──────────────────────────────────────
 // Creates a transfer request via the atomic Postgres RPC.
 // Only partial_access advisers may call this; the RPC validates adviser ownership.
@@ -24,7 +24,7 @@ const _POST = async function(request: Request) {
   const { lrn, from_section_id: fromSectionId, to_section_id: toSectionId } = parsed.data;
 
 
-  const { data: requestId, error } = await admin.rpc("create_transfer_request", {
+  const { data, error } = await admin.rpc("create_transfer_request", {
     p_lrn: lrn,
     p_from_section_id: fromSectionId,
     p_to_section_id: toSectionId,
@@ -39,6 +39,9 @@ const _POST = async function(request: Request) {
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
+  const result = data as { request_id?: string; _audit?: Parameters<typeof auditFromRpc>[1] } | null;
+  const requestId = result?.request_id;
+
   void dispatchTransferRequestCreated({
     requestId: requestId as string,
     lrn,
@@ -48,14 +51,10 @@ const _POST = async function(request: Request) {
   });
 
   after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "transfer_requested",
-      entity_type: "transfer_request",
-      entity_id: String(requestId),
-      // student/section names deferred — create_transfer_request _audit.
-      new_values: { lrn, from_section_id: fromSectionId, to_section_id: toSectionId },
-    }).catch(() => {}),
+    auditFromRpc(
+      { actor_id: user.id, action: "transfer_requested", entity_type: "transfer_request", entity_id: String(requestId) },
+      result?._audit,
+    ),
   );
 
   return Response.json({ request_id: requestId }, { status: 201 });

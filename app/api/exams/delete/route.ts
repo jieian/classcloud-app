@@ -30,7 +30,7 @@ const _DELETE = async function(request: Request) {
 
   const { data: examData, error: examFetchError } = await adminClient
     .from("exams")
-    .select("exam_id, curriculum_subject_id, creator_teacher_id")
+    .select("exam_id, curriculum_subject_id, creator_teacher_id, title, curriculum_subjects!inner(subjects!inner(name))")
     .eq("exam_id", examId)
     .is("deleted_at", null)
     .single();
@@ -40,6 +40,14 @@ const _DELETE = async function(request: Request) {
   }
 
   const examCurriculumSubjectId = examData.curriculum_subject_id;
+
+  // Names for the audit log — pulled from the auth select above (no extra read).
+  const examTitle = (examData as { title?: string | null }).title ?? null;
+  const csEmbed = (examData as { curriculum_subjects?: unknown }).curriculum_subjects;
+  const csObj = (Array.isArray(csEmbed) ? csEmbed[0] : csEmbed) as { subjects?: unknown } | null;
+  const subjEmbed = csObj?.subjects;
+  const subjObj = (Array.isArray(subjEmbed) ? subjEmbed[0] : subjEmbed) as { name?: string | null } | null;
+  const examSubject = subjObj?.name ?? null;
 
   const { data: examAssignments, error: examAssignmentsError } = await adminClient
     .from("exam_assignments")
@@ -103,8 +111,8 @@ const _DELETE = async function(request: Request) {
       action: "exam_deleted",
       entity_type: "exam",
       entity_id: String(examId),
-      // title/subject names deferred — would require a read or an exam-delete RPC _audit.
-      new_values: { curriculum_subject_id: examCurriculumSubjectId },
+      entity_label: examTitle,
+      new_values: { title: examTitle, subject: examSubject, curriculum_subject_id: examCurriculumSubjectId },
     }).catch(() => {}),
   );
 
