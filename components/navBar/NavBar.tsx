@@ -14,6 +14,7 @@ import {
   IconMenu2,
   IconUserCircle,
   IconBell,
+  IconFoodsteps,
 } from "@tabler/icons-react";
 import {
   Badge,
@@ -544,6 +545,20 @@ export default function Navbar() {
 
   const settingsAndLogout = (
     <div className={classes.bottomActions}>
+      {(permissions.includes("audit_logs.view_all") || permissions.includes("audit_logs.view_own")) && (
+        <Tooltip label={permissions.includes("audit_logs.view_all") ? "Audit Logs" : "My Activity"} position="right" withArrow disabled={isMobile}>
+          <Link href="/audit-logs" style={{ textDecoration: "none" }}>
+            <UnstyledButton
+              onClick={handleSimpleLinkClick}
+              className={classes.mainLink}
+              data-active={pathname === "/audit-logs" || undefined}
+            >
+              <IconFoodsteps size={22} stroke={1.5} />
+              {isMobile && <span>{permissions.includes("audit_logs.view_all") ? "Audit Logs" : "My Activity"}</span>}
+            </UnstyledButton>
+          </Link>
+        </Tooltip>
+      )}
       <Tooltip label="My Profile" position="right" withArrow disabled={isMobile}>
         <Link href="/settings" style={{ textDecoration: "none" }}>
           <UnstyledButton

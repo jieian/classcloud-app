@@ -126,6 +126,19 @@ const PERMISSION_GROUPS: PermGroup[] = [
       },
     ],
   },
+  {
+    label: "Audit Logs",
+    rows: [
+      {
+        label: "Audit",
+        type: "radio",
+        options: [
+          { permName: "audit_logs.view_all", display: "All" },
+          { permName: "audit_logs.view_own", display: "Own" },
+        ],
+      },
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
