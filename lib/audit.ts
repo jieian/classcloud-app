@@ -88,8 +88,6 @@ export const AUDIT_ACTIONS = {
   curriculum_deleted:             { label: "Curriculum Deleted",             category: "ACADEMIC" }, // NEW
   exam_created:                   { label: "Exam Created",                   category: "ACADEMIC" }, // NEW
   exam_deleted:                   { label: "Exam Deleted",                   category: "ACADEMIC" }, // NEW
-  exam_answer_key_saved:          { label: "Answer Key Saved",               category: "ACADEMIC" }, // NEW
-  exam_objectives_saved:          { label: "Exam Objectives Saved",          category: "ACADEMIC" }, // NEW
   exam_score_deleted:             { label: "Exam Score Deleted",             category: "ACADEMIC" }, // NEW
   exam_reports_finalized:         { label: "Exam Reports Finalized",         category: "ACADEMIC" }, // NEW
   school_year_created:            { label: "School Year Created",            category: "ACADEMIC" }, // replaces raw "CREATE"

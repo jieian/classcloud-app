@@ -2,8 +2,6 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
-import { after } from "next/server";
-import { insertAuditLog } from "@/lib/audit";
 type SaveObjectivesBody = {
   examId?: number;
   objectives?: { objective: string; start_item: number; end_item: number }[];
@@ -67,16 +65,6 @@ const _POST = async function(request: Request) {
   if (!data || data.length === 0) {
     return Response.json({ error: "No exam rows updated" }, { status: 404 });
   }
-
-  after(() =>
-    insertAuditLog({
-      actor_id: user.id,
-      action: "exam_objectives_saved",
-      entity_type: "exam",
-      entity_id: String(examId),
-      new_values: { objective_count: objectives.length },
-    }).catch(() => {}),
-  );
 
   return Response.json({ exam_id: data[0].exam_id });
 }

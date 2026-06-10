@@ -16,6 +16,7 @@ import {
 import { IconChevronDown } from "@tabler/icons-react";
 import type { AuditLogRow } from "@/lib/services/auditLogsService";
 import { CATEGORY_COLORS } from "./categoryColors";
+import PRESENTERS, { type FieldDef } from "./actionPresenters";
 
 const MASTERLIST_CAP = 50;
 
@@ -30,18 +31,14 @@ function formatTimestamp(ts: string): string {
   });
 }
 
-type SecurityMeta = {
-  ip?: string;
-  endpoint?: string;
-  limit_type?: string;
-};
-
 type MasterlistChange = {
   section_id?: number;
   adviser_id?: string | null;
   teacher_id?: string | null;
   curriculum_subject_id?: number;
 };
+
+// ── Raw KV block (fallback for RPC-backed actions with unstable shapes) ────────
 
 function KVBlock({
   data,
@@ -82,6 +79,116 @@ function KVBlock({
     </Stack>
   );
 }
+
+// ── Humanized single-section block ─────────────────────────────────────────────
+
+function resolveFieldValue(
+  field: FieldDef,
+  log: AuditLogRow,
+): unknown {
+  if (field.getValue) return field.getValue(log);
+  const source = field.source ?? "new";
+  const obj =
+    source === "new"
+      ? log.new_values
+      : source === "old"
+      ? log.old_values
+      : (log.metadata as Record<string, unknown> | null);
+  return (obj as Record<string, unknown> | null)?.[field.key] ?? null;
+}
+
+function HumanizedKVBlock({
+  fields,
+  log,
+}: {
+  fields: FieldDef[];
+  log: AuditLogRow;
+}) {
+  const rows = fields
+    .map((field) => {
+      const raw = resolveFieldValue(field, log);
+      if (field.omitIfNull && (raw === null || raw === undefined)) return null;
+      const display = raw === null || raw === undefined
+        ? "(none)"
+        : field.format
+        ? field.format(raw)
+        : String(raw);
+      return { label: field.label, display };
+    })
+    .filter(Boolean) as { label: string; display: string }[];
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Stack gap={6}>
+      {rows.map(({ label, display }) => (
+        <Box key={label} px={8} py={4}>
+          <Text fz="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+            {label}
+          </Text>
+          <Text fz="sm" style={{ wordBreak: "break-all" }}>
+            {display}
+          </Text>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+// ── Humanized diff block (before / after) ──────────────────────────────────────
+
+function HumanizedDiffBlock({
+  fields,
+  data,
+  log,
+  changedKeys,
+}: {
+  fields: FieldDef[];
+  data: Record<string, unknown> | null;
+  log: AuditLogRow;
+  changedKeys?: Set<string>;
+}) {
+  const rows = fields
+    .map((field) => {
+      const raw = data?.[field.key] ?? null;
+      if (field.omitIfNull && raw === null) return null;
+      const display = raw === null
+        ? "(none)"
+        : field.format
+        ? field.format(raw)
+        : String(raw);
+      const isChanged = !!changedKeys?.has(field.key);
+      return { label: field.label, display, isChanged };
+    })
+    .filter(Boolean) as { label: string; display: string; isChanged: boolean }[];
+
+  if (rows.length === 0) return null;
+
+  return (
+    <Stack gap={6}>
+      {rows.map(({ label, display, isChanged }) => (
+        <Box
+          key={label}
+          px={8}
+          py={4}
+          style={{
+            borderRadius: 4,
+            background: isChanged ? "#fffbcc" : undefined,
+          }}
+        >
+          <Text fz="xs" c="dimmed" fw={600} tt="uppercase" style={{ letterSpacing: "0.04em" }}>
+            {label}
+          </Text>
+          <Text fz="sm" style={{ wordBreak: "break-all" }}>
+            {display}
+          </Text>
+        </Box>
+      ))}
+    </Stack>
+  );
+}
+
+// ── Masterlist renderer (unchanged) ───────────────────────────────────────────
 
 function MasterlistSection({ new_values }: { new_values: Record<string, unknown> }) {
   const [adviserOpen, setAdviserOpen] = useState(false);
@@ -163,6 +270,8 @@ function MasterlistSection({ new_values }: { new_values: Record<string, unknown>
   );
 }
 
+// ── Main drawer ───────────────────────────────────────────────────────────────
+
 type Props = {
   log: AuditLogRow | null;
   hasViewAll: boolean;
@@ -172,8 +281,8 @@ type Props = {
 export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props) {
   if (!log) return null;
 
+  const presenter = PRESENTERS[log.action];
   const isMasterlist = log.action === "Teaching Load Masterlist Saved";
-  const isSecurity = log.category === "SECURITY";
 
   const changedKeys: Set<string> = (() => {
     if (!log.old_values || !log.new_values) return new Set();
@@ -183,6 +292,10 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
       ),
     );
   })();
+
+  const hasDiff = !!(log.old_values && log.new_values);
+  const hasNewOnly = !!(log.new_values && !log.old_values);
+  const hasOldOnly = !!(log.old_values && !log.new_values);
 
   return (
     <Drawer
@@ -203,6 +316,13 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
       <ScrollArea.Autosize mah="60vh">
         <Stack gap="md" pb="md">
           <Text fz="xs" c="dimmed">{formatTimestamp(log.created_at)}</Text>
+
+          {/* Summary sentence */}
+          {presenter && (
+            <Text fz="sm" c="dimmed" fs="italic">
+              {presenter.getSummary(log)}
+            </Text>
+          )}
 
           <Divider />
 
@@ -229,32 +349,7 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
 
           <Divider />
 
-          {/* Security metadata */}
-          {isSecurity && log.metadata && (
-            <Box>
-              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
-                Security Details
-              </Text>
-              {(() => {
-                const meta = log.metadata as SecurityMeta;
-                return (
-                  <Stack gap={4}>
-                    {meta.ip && (
-                      <Text fz="sm"><Text span fw={500}>IP Address: </Text>{meta.ip}</Text>
-                    )}
-                    {meta.endpoint && (
-                      <Text fz="sm"><Text span fw={500}>Endpoint: </Text>{meta.endpoint}</Text>
-                    )}
-                    {meta.limit_type && (
-                      <Text fz="sm"><Text span fw={500}>Type: </Text>{meta.limit_type}</Text>
-                    )}
-                  </Stack>
-                );
-              })()}
-            </Box>
-          )}
-
-          {/* Masterlist special rendering */}
+          {/* Masterlist */}
           {isMasterlist && log.new_values && (
             <Box>
               <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
@@ -264,42 +359,79 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
             </Box>
           )}
 
-          {/* Before / After diff */}
-          {!isMasterlist && log.old_values && log.new_values && (
+          {/* Humanized: fields (single section) */}
+          {!isMasterlist && presenter?.fields && (
+            <Box>
+              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                Details
+              </Text>
+              <HumanizedKVBlock fields={presenter.fields} log={log} />
+            </Box>
+          )}
+
+          {/* Humanized: diffFields (before / after) */}
+          {!isMasterlist && presenter?.diffFields && hasDiff && (
             <Group align="flex-start" grow gap="md">
               <Box>
                 <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
                   Before
                 </Text>
-                <KVBlock data={log.old_values} changedKeys={changedKeys} highlight={false} />
+                <HumanizedDiffBlock
+                  fields={presenter.diffFields}
+                  data={log.old_values}
+                  log={log}
+                />
               </Box>
               <Box>
                 <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
                   After
                 </Text>
-                <KVBlock data={log.new_values} changedKeys={changedKeys} highlight />
+                <HumanizedDiffBlock
+                  fields={presenter.diffFields}
+                  data={log.new_values}
+                  log={log}
+                  changedKeys={changedKeys}
+                />
               </Box>
             </Group>
           )}
 
-          {/* New values only (create / assign events) */}
-          {!isMasterlist && !log.old_values && log.new_values && (
-            <Box>
-              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
-                Details
-              </Text>
-              <KVBlock data={log.new_values} />
-            </Box>
-          )}
-
-          {/* Old values only (delete events) */}
-          {!isMasterlist && log.old_values && !log.new_values && (
-            <Box>
-              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
-                Removed
-              </Text>
-              <KVBlock data={log.old_values} />
-            </Box>
+          {/* Raw KVBlock fallback — no field mapping defined (unknown actions or RPC-backed shapes) */}
+          {!isMasterlist && !presenter?.fields && !presenter?.diffFields && (
+            <>
+              {hasDiff && (
+                <Group align="flex-start" grow gap="md">
+                  <Box>
+                    <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                      Before
+                    </Text>
+                    <KVBlock data={log.old_values!} changedKeys={changedKeys} highlight={false} />
+                  </Box>
+                  <Box>
+                    <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                      After
+                    </Text>
+                    <KVBlock data={log.new_values!} changedKeys={changedKeys} highlight />
+                  </Box>
+                </Group>
+              )}
+              {hasNewOnly && (
+                <Box>
+                  <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                    Details
+                  </Text>
+                  <KVBlock data={log.new_values!} />
+                </Box>
+              )}
+              {hasOldOnly && (
+                <Box>
+                  <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                    Removed
+                  </Text>
+                  <KVBlock data={log.old_values!} />
+                </Box>
+              )}
+            </>
           )}
         </Stack>
       </ScrollArea.Autosize>

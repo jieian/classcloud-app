@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useDisclosure } from "@mantine/hooks";
+import { useClickOutside, useDisclosure } from "@mantine/hooks";
 import {
   ActionIcon,
   Badge,
@@ -135,6 +135,15 @@ type Props = {
 
 export default function AuditLogsTable({ logs, hasViewAll, onDetail }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const tableRef = useClickOutside(() => setSelectedId(null));
+
+  function handleRowClick(log: AuditLogRow) {
+    if (selectedId === log.audit_id) {
+      onDetail(log);
+    } else {
+      setSelectedId(log.audit_id);
+    }
+  }
 
   if (logs.length === 0) return null;
 
@@ -144,7 +153,7 @@ export default function AuditLogsTable({ logs, hasViewAll, onDetail }: Props) {
     return (
       <TableTr
         key={log.audit_id}
-        onClick={() => setSelectedId(log.audit_id === selectedId ? null : log.audit_id)}
+        onClick={(e) => { e.stopPropagation(); handleRowClick(log); }}
         style={{
           cursor: "pointer",
           backgroundColor: isSelected ? "#f0f7ee" : undefined,
@@ -198,7 +207,7 @@ export default function AuditLogsTable({ logs, hasViewAll, onDetail }: Props) {
     <>
       {/* Desktop table */}
       <div className="hidden sm:block">
-        <TableScrollContainer minWidth={600}>
+        <TableScrollContainer minWidth={600} ref={tableRef}>
           <Table verticalSpacing="sm" highlightOnHover>
             <TableThead>
               <TableTr>
