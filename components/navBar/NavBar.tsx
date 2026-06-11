@@ -1,7 +1,7 @@
 // components/NavBar.tsx
 "use client";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome2,
@@ -140,6 +140,34 @@ const navigationData: NavigationLink[] = [
 // Badge counts refresh at most this often, regardless of how many times the user
 // navigates. Prevents /api/badges from being re-fetched on every route change.
 const BADGE_REFRESH_MS = 30_000;
+
+// A main nav button that reflects in-flight navigation: while the enclosing
+// <Link> is navigating, it shows the same active highlight as the destination
+// page, so a click registers instantly (no spinner, no dead time). `pending`
+// stays false for drawer-opening links that call preventDefault (no navigation).
+function MainLinkButton({
+  isActive,
+  onClick,
+  onMouseEnter,
+  children,
+}: {
+  isActive: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onMouseEnter: () => void;
+  children: React.ReactNode;
+}) {
+  const { pending } = useLinkStatus();
+  return (
+    <UnstyledButton
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      className={classes.mainLink}
+      data-active={isActive || pending || undefined}
+    >
+      {children}
+    </UnstyledButton>
+  );
+}
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -438,15 +466,14 @@ export default function Navbar() {
           disabled={isMobile}
         >
           <Link href={link.href} style={{ textDecoration: "none" }}>
-            <UnstyledButton
+            <MainLinkButton
+              isActive={isActive}
               onClick={(e: React.MouseEvent) => handleMainLinkClick(e, link)}
               onMouseEnter={() => handleMainLinkHover(link)}
-              className={classes.mainLink}
-              data-active={isActive || undefined}
             >
-              {showUsersDot ? (
-                <div style={{ position: "relative", display: "inline-flex" }}>
-                  <link.icon size={22} stroke={1.5} />
+              <span style={{ position: "relative", display: "inline-flex" }}>
+                <link.icon size={22} stroke={1.5} />
+                {showUsersDot && (
                   <span
                     style={{
                       position: "absolute",
@@ -459,12 +486,10 @@ export default function Navbar() {
                       border: "1.5px solid white",
                     }}
                   />
-                </div>
-              ) : (
-                <link.icon size={22} stroke={1.5} />
-              )}
+                )}
+              </span>
               {isMobile && <span>{link.label}</span>}
-            </UnstyledButton>
+            </MainLinkButton>
           </Link>
         </Tooltip>
 

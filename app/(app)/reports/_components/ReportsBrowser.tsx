@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Accordion,
-  ActionIcon,
   Badge,
   Box,
   Button,
@@ -21,7 +20,6 @@ import {
 } from "@mantine/core";
 import {
   IconChalkboardTeacher,
-  IconRefresh,
   IconUserCog,
   IconUserEdit,
 } from "@tabler/icons-react";
@@ -45,11 +43,9 @@ import {
   makeReportsStorageKey,
   makeReportsTreeScopeKey,
   readStoredReportsState,
-  REPORTS_BROWSER_STORAGE_PREFIX,
 } from "@/lib/services/reportsMonitoringCache";
 import {
   activePopover,
-  classifySubgroupFromCounts,
   EllipsisTooltip,
   getCoordinatorGroupStatusCounts,
   getRowStatusCounts,
@@ -59,7 +55,6 @@ import {
   StatusCircle,
   statusCountsTotal,
   type StatusCounts,
-  useClickTooltip,
 } from "./ReportsShared";
 
 const subAccordionStyles = {
@@ -973,56 +968,6 @@ function ReportsSubjectGroupMonitoring({
   );
 }
 
-function AdvisoryList({
-  sections,
-  onOpenReport,
-}: {
-  sections: ReportMonitoringSectionGroup[];
-  onOpenReport: (href: string) => void;
-}) {
-  if (sections.length === 0) return <EmptyPanel message="No advisory reports found." />;
-  return (
-    <Stack gap="xs">
-      {sections.map((section) => {
-        const href = `/reports/${section.gradeLevelId}/${section.sectionId}?from=advisory`;
-        return (
-          <Group
-            key={section.sectionId}
-            justify="space-between"
-            align="center"
-            wrap="nowrap"
-            px="sm"
-            py="xs"
-            className="rounded-lg border border-[#E5E7EB] bg-white hover:bg-gray-50"
-          >
-            <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
-              <StatusCircle
-                counts={getRowStatusCounts(section.rows)}
-                label={`${section.gradeDisplayName} • ${section.sectionName}`}
-              />
-              <EllipsisTooltip label={`${section.gradeDisplayName} • ${section.sectionName}`} position="top-start" withArrow>
-                <Text fw={700} size="md" truncate="end" maw={260}>
-                  {section.gradeDisplayName}
-                  {" • "}
-                  {section.sectionName}
-                </Text>
-              </EllipsisTooltip>
-            </Group>
-            <Button
-              size="compact-sm"
-              color="#4EAE4A"
-              px={6}
-              onClick={() => onOpenReport(href)}
-            >
-              View
-            </Button>
-          </Group>
-        );
-      })}
-    </Stack>
-  );
-}
-
 function AssignedReports({
   tree,
   view,
@@ -1044,7 +989,7 @@ function AssignedReports({
   useEffect(() => {
     if (!hasAdvisory && hasHandled) onViewChange("assigned");
     if (hasAdvisory && !hasHandled) onViewChange("advisory");
-  }, [hasAdvisory, hasHandled]);
+  }, [hasAdvisory, hasHandled, onViewChange]);
 
   // Group handled sections by curriculum subject → subject-first view
   const handledSubjectGroups = useMemo<ReportMonitoringSubjectGroup[]>(() => {
@@ -1325,12 +1270,14 @@ export default function ReportsBrowser() {
     }
   }, [hasAnyVisibleSection, loading, reportScope.scopeLoading, storageKeys.scroll]);
 
-  if (loading || reportScope.scopeLoading) return <LoadingState />;
+  if (!loading && !reportScope.scopeLoading && !hasAnyVisibleSection)
+    return <EmptySearchState />;
 
-  if (!hasAnyVisibleSection) return <EmptySearchState />;
+  const isLoading = loading || reportScope.scopeLoading;
 
   return (
     <div className="space-y-5">
+      {/* Page header stays out of the skeleton — always rendered, like other modules */}
       <Box>
         <h1 className="text-3xl font-bold text-[#597D37]">Reports</h1>
         <Box style={{ minWidth: 0 }}>
@@ -1338,6 +1285,10 @@ export default function ReportsBrowser() {
         </Box>
       </Box>
 
+      {isLoading ? (
+        <LoadingState />
+      ) : (
+        <>
       {loadError && (
         <Box
           p="sm"
@@ -1413,6 +1364,8 @@ export default function ReportsBrowser() {
           </FixedReportSection>
         )}
       </Stack>
+        </>
+      )}
     </div>
   );
 }
