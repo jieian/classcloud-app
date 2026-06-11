@@ -6,7 +6,6 @@ import {
   useImperativeHandle,
   forwardRef,
   useMemo,
-  useRef,
 } from "react";
 import { usePathname } from "next/navigation";
 import { Alert } from "@mantine/core";
@@ -50,21 +49,16 @@ export default forwardRef<
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pathname = usePathname();
-  const hasMounted = useRef(false);
 
   useImperativeHandle(ref, () => ({ refresh: loadUsers }));
 
-  // Fetch on mount
+  // Fetch on mount and when navigating back to this page (client-side). A single
+  // pathname-keyed effect runs loadUsers once per mount. The previous two-effect
+  // + hasMounted guard fired it twice on every mount — effect 1 set the flag
+  // before effect 2 read it — doubling the pending-with-email + roles fetches.
   useEffect(() => {
     loadUsers();
-    hasMounted.current = true;
-  }, []);
-
-  // Re-fetch when navigating back to this page (client-side)
-  useEffect(() => {
-    if (hasMounted.current) {
-      loadUsers();
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
   async function loadUsers() {

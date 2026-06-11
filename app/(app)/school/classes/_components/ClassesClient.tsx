@@ -118,6 +118,8 @@ export default function ClassesClient({ initialData }: Props = {}) {
       : "faculty";
   });
   const initDoneRef = useRef(!!initialData);
+  const transferCountDoneRef = useRef(false);
+  const notifCountDoneRef = useRef(false);
   const adminSelectedSyIdRef = useRef<number | null>(null);
   const hasSearchQuery = search.trim().length > 0;
 
@@ -151,12 +153,17 @@ export default function ClassesClient({ initialData }: Props = {}) {
   useEffect(() => {
     if (!user) return;
 
-    if (isAdmin) {
+    // Fetch each badge count at most once. This effect re-runs as user/isAdmin/
+    // isAdviser hydrate (and twice under StrictMode); the refs keep it to one
+    // /api/classes/transfer-requests/count and one /api/notifications/count.
+    if (isAdmin && !transferCountDoneRef.current) {
+      transferCountDoneRef.current = true;
       fetchPendingTransferCount()
         .then(setPendingTransferCount)
         .catch(() => {});
     }
-    if (isAdviser) {
+    if (isAdviser && !notifCountDoneRef.current) {
+      notifCountDoneRef.current = true;
       fetchUnreadNotificationCount()
         .then(setUnreadNotifCount)
         .catch(() => {});

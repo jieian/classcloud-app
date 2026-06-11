@@ -1,44 +1,8 @@
 [
   {
     "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_entity_time",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "144 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_logs_entity_label_trgm",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "144 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_logs_action_trgm",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "88 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_logs_category_created",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "64 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "roles",
-    "index_name": "idx_roles_lower_name",
+    "table_name": "curriculum_subjects",
+    "index_name": "idx_curriculum_subjects_curriculum_active",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -46,17 +10,8 @@
   },
   {
     "schemaname": "public",
-    "table_name": "roles",
-    "index_name": "idx_roles_is_faculty",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "idx_str_reviewed_by",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_sy_section",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -66,6 +21,15 @@
     "schemaname": "public",
     "table_name": "school_years",
     "index_name": "idx_school_years_curriculum_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "idx_str_originally_intended_reviewer",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -91,6 +55,51 @@
   },
   {
     "schemaname": "public",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_generated_by",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "section_transfer_requests_pkey",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "roles",
+    "index_name": "idx_roles_lower_name",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "roles",
+    "index_name": "idx_roles_is_faculty",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "idx_str_pending_from_requested_at",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "sections",
     "index_name": "idx_sections_adviser_active",
     "times_used": 0,
@@ -100,8 +109,98 @@
   },
   {
     "schemaname": "public",
+    "table_name": "subjects",
+    "index_name": "subjects_code_subject_type_key",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "sections",
     "index_name": "idx_sections_sy_id_active",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "subjects",
+    "index_name": "subjects_code_unique",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_grade_level_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "announcement_targets",
+    "index_name": "idx_announcement_targets_role_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_quarter_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "idx_str_lrn_status",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "pending_registrations",
+    "index_name": "pending_registrations_expires_at_idx",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "idx_str_to_section",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "announcements",
+    "index_name": "idx_announcements_published_feed",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "curriculum_subjects",
+    "index_name": "idx_curriculum_subjects_grade_level_id",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -127,170 +226,8 @@
   },
   {
     "schemaname": "public",
-    "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_sy_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_generated_by",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_teacher_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "quarters",
-    "index_name": "idx_quarters_sy_id_is_active",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "curriculum_subjects",
-    "index_name": "idx_curriculum_subjects_curriculum_active",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "pending_registrations",
-    "index_name": "pending_registrations_expires_at_idx",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "curriculum_subjects",
-    "index_name": "idx_curriculum_subjects_grade_level_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_curriculum_subject_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_generated_by",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_grade_level_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_quarter_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "idx_str_pending_from_requested_at",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "item_analysis_reports",
     "index_name": "idx_item_analysis_reports_sy_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_teacher_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "idx_str_to_section",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "item_analysis_reports",
-    "index_name": "idx_item_analysis_reports_sy_section",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "grade_subject_leaders",
-    "index_name": "idx_gsl_sy_user_active",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "grade_subject_leaders",
-    "index_name": "idx_grade_subject_leaders_grade_level_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "grade_subject_leaders",
-    "index_name": "idx_grade_subject_leaders_user_id",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -307,8 +244,8 @@
   },
   {
     "schemaname": "public",
-    "table_name": "announcements",
-    "index_name": "idx_announcements_published_feed",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_teacher_id",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -316,8 +253,8 @@
   },
   {
     "schemaname": "public",
-    "table_name": "announcement_targets",
-    "index_name": "announcement_targets_pkey",
+    "table_name": "exam_results_reports",
+    "index_name": "idx_exam_results_reports_sy_id",
     "times_used": 0,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
@@ -334,56 +271,74 @@
   },
   {
     "schemaname": "public",
+    "table_name": "exam_results_reports",
+    "index_name": "idx_exam_results_reports_generated_by",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "section_transfer_requests",
+    "index_name": "idx_str_reviewed_by",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "grade_subject_leaders",
+    "index_name": "idx_grade_subject_leaders_user_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "grade_subject_leaders",
+    "index_name": "idx_grade_subject_leaders_grade_level_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "exam_results_reports",
+    "index_name": "idx_exam_results_reports_teacher_id",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "grade_subject_leaders",
+    "index_name": "idx_gsl_sy_user_active",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "quarters",
+    "index_name": "idx_quarters_sy_id_is_active",
+    "times_used": 0,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "announcement_targets",
-    "index_name": "idx_announcement_targets_role_id",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "idx_str_lrn_status",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "subjects",
-    "index_name": "subjects_code_unique",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "subjects",
-    "index_name": "subjects_code_subject_type_key",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "section_transfer_requests_pkey",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "section_transfer_requests",
-    "index_name": "idx_str_originally_intended_reviewer",
-    "times_used": 0,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
+    "index_name": "announcement_targets_pkey",
+    "times_used": 2,
+    "rows_read_via_index": 8,
+    "rows_fetched_via_index": 2,
     "index_size": "16 kB"
   },
   {
@@ -415,11 +370,11 @@
   },
   {
     "schemaname": "public",
-    "table_name": "sections",
-    "index_name": "idx_sections_grade_level_id",
+    "table_name": "users",
+    "index_name": "idx_users_status_name_active",
     "times_used": 4,
-    "rows_read_via_index": 12,
-    "rows_fetched_via_index": 12,
+    "rows_read_via_index": 14,
+    "rows_fetched_via_index": 4,
     "index_size": "16 kB"
   },
   {
@@ -433,11 +388,11 @@
   },
   {
     "schemaname": "public",
-    "table_name": "users",
-    "index_name": "idx_users_status_name_active",
+    "table_name": "sections",
+    "index_name": "idx_sections_grade_level_id",
     "times_used": 4,
-    "rows_read_via_index": 14,
-    "rows_fetched_via_index": 4,
+    "rows_read_via_index": 12,
+    "rows_fetched_via_index": 12,
     "index_size": "16 kB"
   },
   {
@@ -451,29 +406,11 @@
   },
   {
     "schemaname": "public",
-    "table_name": "grade_subject_leaders",
-    "index_name": "grade_subject_leaders_unique",
-    "times_used": 7,
-    "rows_read_via_index": 8,
-    "rows_fetched_via_index": 5,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "exam_results_reports",
     "index_name": "idx_exam_results_reports_sy_section",
     "times_used": 8,
     "rows_read_via_index": 65,
     "rows_fetched_via_index": 64,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "announcement_attachments",
-    "index_name": "announcement_attachments_pkey",
-    "times_used": 9,
-    "rows_read_via_index": 30,
-    "rows_fetched_via_index": 19,
     "index_size": "16 kB"
   },
   {
@@ -496,9 +433,36 @@
   },
   {
     "schemaname": "public",
+    "table_name": "announcement_attachments",
+    "index_name": "announcement_attachments_pkey",
+    "times_used": 11,
+    "rows_read_via_index": 34,
+    "rows_fetched_via_index": 21,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "announcements",
     "index_name": "idx_announcements_scheduled",
     "times_used": 11,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "grade_subject_leaders",
+    "index_name": "grade_subject_leaders_unique",
+    "times_used": 11,
+    "rows_read_via_index": 16,
+    "rows_fetched_via_index": 9,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "item_analysis_reports",
+    "index_name": "idx_item_analysis_reports_curriculum_subject_id",
+    "times_used": 14,
     "rows_read_via_index": 0,
     "rows_fetched_via_index": 0,
     "index_size": "16 kB"
@@ -516,37 +480,10 @@
     "schemaname": "public",
     "table_name": "announcement_reads",
     "index_name": "announcement_reads_pkey",
-    "times_used": 20,
+    "times_used": 26,
     "rows_read_via_index": 2,
     "rows_fetched_via_index": 1,
     "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_curriculum_subject_id",
-    "times_used": 25,
-    "rows_read_via_index": 39,
-    "rows_fetched_via_index": 34,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_category_time",
-    "times_used": 29,
-    "rows_read_via_index": 517,
-    "rows_fetched_via_index": 517,
-    "index_size": "56 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "idx_audit_actor_time",
-    "times_used": 30,
-    "rows_read_via_index": 432,
-    "rows_fetched_via_index": 417,
-    "index_size": "96 kB"
   },
   {
     "schemaname": "public",
@@ -559,20 +496,20 @@
   },
   {
     "schemaname": "public",
-    "table_name": "user_roles",
-    "index_name": "idx_user_roles_role_id",
-    "times_used": 30,
-    "rows_read_via_index": 66,
-    "rows_fetched_via_index": 41,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "quarters",
     "index_name": "quarters_name_sy_id_key",
     "times_used": 30,
     "rows_read_via_index": 120,
     "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "user_roles",
+    "index_name": "idx_user_roles_role_id",
+    "times_used": 31,
+    "rows_read_via_index": 73,
+    "rows_fetched_via_index": 44,
     "index_size": "16 kB"
   },
   {
@@ -605,19 +542,19 @@
   {
     "schemaname": "public",
     "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_quarter_id",
-    "times_used": 39,
-    "rows_read_via_index": 0,
-    "rows_fetched_via_index": 0,
+    "index_name": "idx_exam_results_reports_curriculum_subject_id",
+    "times_used": 41,
+    "rows_read_via_index": 41,
+    "rows_fetched_via_index": 36,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "enrollments",
     "index_name": "idx_enrollments_sy_id",
-    "times_used": 41,
-    "rows_read_via_index": 264,
-    "rows_fetched_via_index": 0,
+    "times_used": 43,
+    "rows_read_via_index": 608,
+    "rows_fetched_via_index": 296,
     "index_size": "16 kB"
   },
   {
@@ -628,6 +565,24 @@
     "rows_read_via_index": 292,
     "rows_fetched_via_index": 42,
     "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "exam_results_reports",
+    "index_name": "idx_exam_results_reports_quarter_id",
+    "times_used": 46,
+    "rows_read_via_index": 0,
+    "rows_fetched_via_index": 0,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "audit_logs",
+    "index_name": "idx_audit_category_time",
+    "times_used": 47,
+    "rows_read_via_index": 664,
+    "rows_fetched_via_index": 616,
+    "index_size": "56 kB"
   },
   {
     "schemaname": "public",
@@ -685,6 +640,15 @@
   },
   {
     "schemaname": "public",
+    "table_name": "audit_logs",
+    "index_name": "idx_audit_actor_time",
+    "times_used": 76,
+    "rows_read_via_index": 937,
+    "rows_fetched_via_index": 826,
+    "index_size": "96 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "curriculum_subjects",
     "index_name": "curriculum_subjects_unique",
     "times_used": 78,
@@ -703,20 +667,11 @@
   },
   {
     "schemaname": "public",
-    "table_name": "audit_logs",
-    "index_name": "audit_logs_pkey",
-    "times_used": 83,
-    "rows_read_via_index": 9340,
-    "rows_fetched_via_index": 8986,
-    "index_size": "56 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "exam_results_reports",
     "index_name": "exam_results_reports_pkey",
-    "times_used": 89,
-    "rows_read_via_index": 785,
-    "rows_fetched_via_index": 769,
+    "times_used": 90,
+    "rows_read_via_index": 868,
+    "rows_fetched_via_index": 851,
     "index_size": "16 kB"
   },
   {
@@ -730,6 +685,15 @@
   },
   {
     "schemaname": "public",
+    "table_name": "audit_logs",
+    "index_name": "idx_audit_created_at",
+    "times_used": 92,
+    "rows_read_via_index": 1256,
+    "rows_fetched_via_index": 1256,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "exam_results_reports",
     "index_name": "uq_exam_results_reports_exam_section",
     "times_used": 107,
@@ -739,11 +703,20 @@
   },
   {
     "schemaname": "public",
+    "table_name": "audit_logs",
+    "index_name": "audit_logs_pkey",
+    "times_used": 114,
+    "rows_read_via_index": 13340,
+    "rows_fetched_via_index": 11486,
+    "index_size": "56 kB"
+  },
+  {
+    "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "teacher_class_assignments_pkey",
-    "times_used": 113,
-    "rows_read_via_index": 6054,
-    "rows_fetched_via_index": 5968,
+    "times_used": 114,
+    "rows_read_via_index": 6154,
+    "rows_fetched_via_index": 6068,
     "index_size": "16 kB"
   },
   {
@@ -753,15 +726,6 @@
     "times_used": 117,
     "rows_read_via_index": 569,
     "rows_fetched_via_index": 569,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "exam_results_reports",
-    "index_name": "idx_exam_results_reports_section_id",
-    "times_used": 122,
-    "rows_read_via_index": 8498,
-    "rows_fetched_via_index": 8488,
     "index_size": "16 kB"
   },
   {
@@ -786,7 +750,7 @@
     "schemaname": "public",
     "table_name": "exam_results_reports",
     "index_name": "idx_exam_results_reports_exam_section_date",
-    "times_used": 137,
+    "times_used": 139,
     "rows_read_via_index": 133,
     "rows_fetched_via_index": 131,
     "index_size": "16 kB"
@@ -822,9 +786,9 @@
     "schemaname": "public",
     "table_name": "audit_logs",
     "index_name": "idx_audit_created",
-    "times_used": 156,
-    "rows_read_via_index": 4333,
-    "rows_fetched_via_index": 4333,
+    "times_used": 191,
+    "rows_read_via_index": 9489,
+    "rows_fetched_via_index": 7580,
     "index_size": "56 kB"
   },
   {
@@ -838,20 +802,29 @@
   },
   {
     "schemaname": "public",
-    "table_name": "role_permissions",
-    "index_name": "idx_role_permissions_permission_id",
-    "times_used": 214,
-    "rows_read_via_index": 227,
-    "rows_fetched_via_index": 160,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "pending_registrations",
     "index_name": "pending_registrations_email_key",
     "times_used": 215,
     "rows_read_via_index": 30,
     "rows_fetched_via_index": 8,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "exam_results_reports",
+    "index_name": "idx_exam_results_reports_section_id",
+    "times_used": 227,
+    "rows_read_via_index": 17108,
+    "rows_fetched_via_index": 17098,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "role_permissions",
+    "index_name": "idx_role_permissions_permission_id",
+    "times_used": 234,
+    "rows_read_via_index": 248,
+    "rows_fetched_via_index": 162,
     "index_size": "16 kB"
   },
   {
@@ -883,15 +856,6 @@
   },
   {
     "schemaname": "public",
-    "table_name": "announcement_targets",
-    "index_name": "idx_announcement_targets_announcement_id",
-    "times_used": 438,
-    "rows_read_via_index": 537,
-    "rows_fetched_via_index": 3,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "roles",
     "index_name": "roles_pkey",
     "times_used": 440,
@@ -910,126 +874,126 @@
   },
   {
     "schemaname": "public",
-    "table_name": "announcement_attachments",
-    "index_name": "idx_announcement_attachments_announcement_id",
-    "times_used": 454,
-    "rows_read_via_index": 1096,
-    "rows_fetched_via_index": 9,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
     "table_name": "item_analysis_reports",
     "index_name": "idx_item_analysis_reports_exam_section_date",
-    "times_used": 460,
+    "times_used": 462,
     "rows_read_via_index": 422,
     "rows_fetched_via_index": 411,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
-    "table_name": "curriculums",
-    "index_name": "curriculums_pkey",
-    "times_used": 510,
-    "rows_read_via_index": 572,
-    "rows_fetched_via_index": 567,
+    "table_name": "announcement_targets",
+    "index_name": "idx_announcement_targets_announcement_id",
+    "times_used": 479,
+    "rows_read_via_index": 578,
+    "rows_fetched_via_index": 3,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "announcement_attachments",
+    "index_name": "idx_announcement_attachments_announcement_id",
+    "times_used": 495,
+    "rows_read_via_index": 1137,
+    "rows_fetched_via_index": 9,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "idx_tca_section_id",
-    "times_used": 519,
-    "rows_read_via_index": 8397,
+    "times_used": 523,
+    "rows_read_via_index": 8501,
     "rows_fetched_via_index": 43,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "curriculums",
+    "index_name": "curriculums_pkey",
+    "times_used": 536,
+    "rows_read_via_index": 599,
+    "rows_fetched_via_index": 592,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "subject_coordinators",
     "index_name": "idx_sc_user_active",
-    "times_used": 537,
-    "rows_read_via_index": 724,
-    "rows_fetched_via_index": 442,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "announcement_reads",
-    "index_name": "idx_announcement_reads_user_announcement",
-    "times_used": 597,
-    "rows_read_via_index": 4,
-    "rows_fetched_via_index": 3,
+    "times_used": 560,
+    "rows_read_via_index": 747,
+    "rows_fetched_via_index": 465,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "exams",
     "index_name": "idx_exams_created_at",
-    "times_used": 608,
-    "rows_read_via_index": 38922,
-    "rows_fetched_via_index": 38891,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "teacher_class_assignments",
-    "index_name": "idx_teacher_class_assignments_section_cs_active",
-    "times_used": 622,
-    "rows_read_via_index": 5667,
-    "rows_fetched_via_index": 4471,
+    "times_used": 615,
+    "rows_read_via_index": 39510,
+    "rows_fetched_via_index": 39479,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "enrollments",
     "index_name": "enrollments_unique_student_section_sy",
-    "times_used": 641,
-    "rows_read_via_index": 9677,
-    "rows_fetched_via_index": 9476,
+    "times_used": 646,
+    "rows_read_via_index": 9681,
+    "rows_fetched_via_index": 9479,
     "index_size": "40 kB"
   },
   {
     "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "teacher_class_assignments_unique_active",
-    "times_used": 645,
-    "rows_read_via_index": 3106,
-    "rows_fetched_via_index": 2852,
+    "times_used": 656,
+    "rows_read_via_index": 3122,
+    "rows_fetched_via_index": 2863,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "enrollments",
     "index_name": "uq_enrollments_lrn_sy_active",
-    "times_used": 696,
-    "rows_read_via_index": 34369,
-    "rows_fetched_via_index": 34152,
+    "times_used": 719,
+    "rows_read_via_index": 34401,
+    "rows_fetched_via_index": 34179,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "announcement_reads",
+    "index_name": "idx_announcement_reads_user_announcement",
+    "times_used": 757,
+    "rows_read_via_index": 4,
+    "rows_fetched_via_index": 3,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "subject_group_members",
     "index_name": "idx_sgm_curriculum_subject_id",
-    "times_used": 914,
-    "rows_read_via_index": 914,
-    "rows_fetched_via_index": 914,
+    "times_used": 946,
+    "rows_read_via_index": 962,
+    "rows_fetched_via_index": 946,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "idx_teacher_class_assignments_cs_id_active",
-    "times_used": 1045,
-    "rows_read_via_index": 18272,
-    "rows_fetched_via_index": 13727,
+    "times_used": 1103,
+    "rows_read_via_index": 18956,
+    "rows_fetched_via_index": 14046,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "scores",
     "index_name": "idx_scores_exam_assignment_enrollment",
-    "times_used": 1134,
+    "times_used": 1135,
     "rows_read_via_index": 4295,
     "rows_fetched_via_index": 4098,
     "index_size": "16 kB"
@@ -1047,52 +1011,52 @@
     "schemaname": "public",
     "table_name": "sections",
     "index_name": "idx_sections_adviser_sy",
-    "times_used": 1223,
-    "rows_read_via_index": 5386,
-    "rows_fetched_via_index": 5368,
+    "times_used": 1231,
+    "rows_read_via_index": 5395,
+    "rows_fetched_via_index": 5376,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "idx_teacher_class_assignments_section_id_active",
-    "times_used": 1255,
-    "rows_read_via_index": 6697,
-    "rows_fetched_via_index": 6542,
+    "times_used": 1331,
+    "rows_read_via_index": 7339,
+    "rows_fetched_via_index": 6706,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "curriculum_subjects",
     "index_name": "idx_curriculum_subjects_subject_id",
-    "times_used": 1269,
-    "rows_read_via_index": 1269,
-    "rows_fetched_via_index": 1269,
+    "times_used": 1343,
+    "rows_read_via_index": 1343,
+    "rows_fetched_via_index": 1343,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "enrollments",
     "index_name": "idx_enrollments_section_sy_active",
-    "times_used": 1763,
-    "rows_read_via_index": 35123,
-    "rows_fetched_via_index": 30239,
+    "times_used": 1998,
+    "rows_read_via_index": 37404,
+    "rows_fetched_via_index": 31967,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "subject_coordinators",
     "index_name": "idx_sc_sy_active",
-    "times_used": 2003,
-    "rows_read_via_index": 13931,
-    "rows_fetched_via_index": 13926,
+    "times_used": 2117,
+    "rows_read_via_index": 14729,
+    "rows_fetched_via_index": 14724,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "teacher_class_assignments",
     "index_name": "idx_tca_curriculum_subject_id",
-    "times_used": 2105,
+    "times_used": 2120,
     "rows_read_via_index": 3768,
     "rows_fetched_via_index": 3181,
     "index_size": "16 kB"
@@ -1110,36 +1074,27 @@
     "schemaname": "public",
     "table_name": "sections",
     "index_name": "sections_pkey",
-    "times_used": 2779,
-    "rows_read_via_index": 9383,
-    "rows_fetched_via_index": 9311,
+    "times_used": 2871,
+    "rows_read_via_index": 9475,
+    "rows_fetched_via_index": 9403,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "curriculum_subjects",
     "index_name": "curriculum_subjects_pkey",
-    "times_used": 3036,
-    "rows_read_via_index": 30494,
-    "rows_fetched_via_index": 30338,
+    "times_used": 3090,
+    "rows_read_via_index": 30548,
+    "rows_fetched_via_index": 30392,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "enrollments",
     "index_name": "enrollments_pkey",
-    "times_used": 3246,
-    "rows_read_via_index": 6310,
-    "rows_fetched_via_index": 6164,
-    "index_size": "16 kB"
-  },
-  {
-    "schemaname": "public",
-    "table_name": "exams",
-    "index_name": "idx_exams_quarter_id",
-    "times_used": 3324,
-    "rows_read_via_index": 1786,
-    "rows_fetched_via_index": 1682,
+    "times_used": 3252,
+    "rows_read_via_index": 6615,
+    "rows_fetched_via_index": 6467,
     "index_size": "16 kB"
   },
   {
@@ -1153,65 +1108,74 @@
   },
   {
     "schemaname": "public",
-    "table_name": "teacher_class_assignments",
-    "index_name": "idx_teacher_class_assignments_teacher_id_active",
-    "times_used": 4795,
-    "rows_read_via_index": 70102,
-    "rows_fetched_via_index": 38225,
+    "table_name": "exams",
+    "index_name": "idx_exams_quarter_id",
+    "times_used": 4343,
+    "rows_read_via_index": 2832,
+    "rows_fetched_via_index": 2726,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "role_permissions",
     "index_name": "role_permissions_pkey",
-    "times_used": 4845,
-    "rows_read_via_index": 7470,
+    "times_used": 4846,
+    "rows_read_via_index": 7472,
     "rows_fetched_via_index": 5726,
+    "index_size": "16 kB"
+  },
+  {
+    "schemaname": "public",
+    "table_name": "teacher_class_assignments",
+    "index_name": "idx_teacher_class_assignments_teacher_id_active",
+    "times_used": 4957,
+    "rows_read_via_index": 71599,
+    "rows_fetched_via_index": 38370,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "subject_coordinators",
     "index_name": "subject_coordinators_subject_group_sy_unique",
-    "times_used": 5694,
-    "rows_read_via_index": 2594,
-    "rows_fetched_via_index": 2589,
+    "times_used": 5836,
+    "rows_read_via_index": 2706,
+    "rows_fetched_via_index": 2701,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "grade_levels",
     "index_name": "grade_levels_level_number_key",
-    "times_used": 6462,
-    "rows_read_via_index": 38767,
-    "rows_fetched_via_index": 38767,
+    "times_used": 6491,
+    "rows_read_via_index": 38941,
+    "rows_fetched_via_index": 38941,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "notifications",
     "index_name": "notifications_user_id_read_at_idx",
-    "times_used": 12507,
-    "rows_read_via_index": 1924,
-    "rows_fetched_via_index": 1893,
+    "times_used": 12773,
+    "rows_read_via_index": 2006,
+    "rows_fetched_via_index": 1975,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "users",
     "index_name": "users_pkey",
-    "times_used": 13947,
-    "rows_read_via_index": 13941,
-    "rows_fetched_via_index": 13749,
+    "times_used": 14383,
+    "rows_read_via_index": 14378,
+    "rows_fetched_via_index": 14185,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "user_roles",
     "index_name": "user_roles_pkey",
-    "times_used": 17177,
-    "rows_read_via_index": 19269,
-    "rows_fetched_via_index": 11249,
+    "times_used": 17530,
+    "rows_read_via_index": 20195,
+    "rows_fetched_via_index": 12166,
     "index_size": "16 kB"
   },
   {
@@ -1227,45 +1191,45 @@
     "schemaname": "public",
     "table_name": "students",
     "index_name": "students_pkey",
-    "times_used": 67229,
-    "rows_read_via_index": 73211,
-    "rows_fetched_via_index": 72869,
+    "times_used": 67385,
+    "rows_read_via_index": 73474,
+    "rows_fetched_via_index": 73132,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "permissions",
     "index_name": "permissions_pkey",
-    "times_used": 140846,
-    "rows_read_via_index": 143822,
-    "rows_fetched_via_index": 143797,
+    "times_used": 140866,
+    "rows_read_via_index": 143842,
+    "rows_fetched_via_index": 143817,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "grade_levels",
     "index_name": "grade_levels_pkey",
-    "times_used": 152058,
-    "rows_read_via_index": 152798,
-    "rows_fetched_via_index": 152798,
+    "times_used": 154053,
+    "rows_read_via_index": 154793,
+    "rows_fetched_via_index": 154793,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "exams",
     "index_name": "exams_pkey",
-    "times_used": 186547,
-    "rows_read_via_index": 199279,
-    "rows_fetched_via_index": 198881,
+    "times_used": 195377,
+    "rows_read_via_index": 208109,
+    "rows_fetched_via_index": 207711,
     "index_size": "16 kB"
   },
   {
     "schemaname": "public",
     "table_name": "subjects",
     "index_name": "subjects_pkey",
-    "times_used": 559049,
-    "rows_read_via_index": 566786,
-    "rows_fetched_via_index": 566639,
+    "times_used": 575712,
+    "rows_read_via_index": 583555,
+    "rows_fetched_via_index": 583396,
     "index_size": "16 kB"
   }
 ]

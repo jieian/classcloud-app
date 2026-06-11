@@ -137,6 +137,10 @@ const navigationData: NavigationLink[] = [
   },
 ];
 
+// Badge counts refresh at most this often, regardless of how many times the user
+// navigates. Prevents /api/badges from being re-fetched on every route change.
+const BADGE_REFRESH_MS = 30_000;
+
 export default function Navbar() {
   const pathname = usePathname();
   const isMobile = useMediaQuery("(max-width: 767.9px)");
@@ -164,37 +168,67 @@ export default function Navbar() {
 
   const { signOut, permissions, firstName, lastName } = useAuth();
 
-  // Badge count on the Classes sublink:
-  //   admins (students.full_access)   → pending transfer request count
-  //   advisers (students.limited_access) → unread notification count
-  const [badgeCount, setBadgeCount] = useState(0);
+  // Permission flags that decide which badges this user sees.
   const isAdmin = permissions.includes("students.full_access");
   const isAdviser = permissions.includes("students.limited_access");
+  const hasUsersAccess = permissions.includes("users.full_access");
 
   const [notifPopoverOpen, setNotifPopoverOpen] = useState(false);
 
-  // Unread notification count — shown as bell badge in the mobile top bar
-  const [notificationBellCount, setNotificationBellCount] = useState(0);
+  // Raw badge counts from /api/badges (one request for all three). The visible
+  // badges are derived below, so a permission change re-maps them without a refetch.
+  const [badgeCounts, setBadgeCounts] = useState({
+    notifications: 0,
+    transferRequests: 0,
+    signupNotifications: 0,
+  });
 
-  // Badge count on the User Management sublink (unread self-registration signups)
-  const [usersBadgeCount, setUsersBadgeCount] = useState(0);
-  const hasUsersAccess = permissions.includes("users.full_access");
+  // Classes sublink: admins → pending transfers, advisers → unread notifications.
+  const badgeCount = isAdmin
+    ? badgeCounts.transferRequests
+    : isAdviser
+      ? badgeCounts.notifications
+      : 0;
+  // Bell badge (mobile top bar): unread notifications.
+  const notificationBellCount = badgeCounts.notifications;
+  // User Management sublink: unread self-registration signups.
+  const usersBadgeCount = hasUsersAccess ? badgeCounts.signupNotifications : 0;
 
-  // All NavBar badge counts in ONE request (was three separate fetches: classes
-  // sublink, notification bell, user-management sublink). Re-fetched on
-  // navigation so the counts stay fresh. Badges are non-critical — fail silently.
-  useEffect(() => {
+  // All NavBar badge counts in ONE request. Previously this re-fired on every
+  // navigation (pathname dep) — a burst of /api/badges hits per session. Now it
+  // refreshes at most once per BADGE_REFRESH_MS, plus when the tab regains focus.
+  // Badges are non-critical — fail silently.
+  const fetchBadges = useCallback(() => {
     fetch("/api/badges", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: { notifications?: number; transferRequests?: number; signupNotifications?: number }) => {
-        const notifications = typeof d.notifications === "number" ? d.notifications : 0;
-        setNotificationBellCount(notifications);
-        setBadgeCount(isAdmin ? (d.transferRequests ?? 0) : isAdviser ? notifications : 0);
-        setUsersBadgeCount(hasUsersAccess ? (d.signupNotifications ?? 0) : 0);
-      })
+      .then((d: { notifications?: number; transferRequests?: number; signupNotifications?: number }) =>
+        setBadgeCounts({
+          notifications: typeof d.notifications === "number" ? d.notifications : 0,
+          transferRequests: typeof d.transferRequests === "number" ? d.transferRequests : 0,
+          signupNotifications: typeof d.signupNotifications === "number" ? d.signupNotifications : 0,
+        }),
+      )
       .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, isAdmin, isAdviser, hasUsersAccess]);
+  }, []);
+
+  const lastBadgeFetchRef = useRef(0);
+  const maybeRefreshBadges = useCallback(() => {
+    const now = Date.now();
+    if (now - lastBadgeFetchRef.current < BADGE_REFRESH_MS) return;
+    lastBadgeFetchRef.current = now;
+    fetchBadges();
+  }, [fetchBadges]);
+
+  // Initial load + throttled refresh on navigation.
+  useEffect(() => {
+    maybeRefreshBadges();
+  }, [pathname, maybeRefreshBadges]);
+
+  // Refresh when the user returns to the tab (counts may have changed elsewhere).
+  useEffect(() => {
+    window.addEventListener("focus", maybeRefreshBadges);
+    return () => window.removeEventListener("focus", maybeRefreshBadges);
+  }, [maybeRefreshBadges]);
 
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(
@@ -644,7 +678,11 @@ export default function Navbar() {
                 Notifications
               </div>
               <div style={{ padding: "4px 4px 6px" }}>
-                <NotificationsPanel onMarkRead={() => setNotificationBellCount((c) => Math.max(0, c - 1))} />
+                <NotificationsPanel
+                  onMarkRead={() =>
+                    setBadgeCounts((c) => ({ ...c, notifications: Math.max(0, c.notifications - 1) }))
+                  }
+                />
               </div>
             </Popover.Dropdown>
           </Popover>

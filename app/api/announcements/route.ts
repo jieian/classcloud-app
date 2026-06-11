@@ -27,9 +27,8 @@ const CreateAnnouncementSchema = z.object({
   attachments: z.array(AttachmentSchema).max(3),
 });
 
-type RawUserRole   = { role_id: number };
 type RawAttachment = { attachment_id: number; storage_path: string; file_name: string; mime_type: string; display_order: number };
-type RawRead       = { announcement_id: number };
+type AnnouncementUserState = { role_ids: number[]; read_ids: number[] };
 type RawAnnouncement = {
   announcement_id: number;
   title: string;
@@ -59,20 +58,14 @@ const _GET = async function () {
   if (!ctx.sy_id) return Response.json({ announcements: [] });
   const syId = ctx.sy_id;
 
-  // Parallel: user role IDs + cached announcements list for this SY
+  // The heavy announcements list (join over targets/attachments/author) is cached
+  // in Redis for all users of this SY. Only the per-user bits — the caller's role
+  // IDs (for targeting) and their read status — vary, and those are fetched in a
+  // single RPC below instead of two separate PostgREST round-trips.
   const CACHE_KEY = `announcements:${syId}`;
-  const [{ data: userRoles }, cachedRows] = await Promise.all([
-    admin.from("user_roles").select("role_id").eq("uid", user.id),
-    redis.get<RawAnnouncement[]>(CACHE_KEY),
-  ]);
+  let allRows = await redis.get<RawAnnouncement[]>(CACHE_KEY);
 
-  const userRoleIds: number[] = (userRoles as RawUserRole[] ?? []).map((r) => r.role_id);
-
-  let allRows: RawAnnouncement[];
-
-  if (cachedRows) {
-    allRows = cachedRows;
-  } else {
+  if (!allRows) {
     const { data: rows, error } = await admin
       .from("announcements")
       .select(
@@ -101,6 +94,18 @@ const _GET = async function () {
     await redis.set(CACHE_KEY, allRows, { ex: CACHE_TTL });
   }
 
+  if (allRows.length === 0) return Response.json({ announcements: [] });
+
+  // One round-trip for both per-user bits: role IDs (targeting) + read status.
+  const allIds = allRows.map((r) => r.announcement_id);
+  const { data: stateData } = await admin.rpc("get_announcement_user_state", {
+    p_user_id: user.id,
+    p_announcement_ids: allIds,
+  });
+  const state = (stateData ?? { role_ids: [], read_ids: [] }) as AnnouncementUserState;
+  const userRoleIds = state.role_ids;
+  const readSet = new Set<number>(state.read_ids);
+
   // Filter by targeting: null role_id = "Everyone", otherwise match user role
   const visible = allRows.filter((row) => {
     const targets = row.announcement_targets ?? [];
@@ -111,16 +116,6 @@ const _GET = async function () {
   });
 
   if (visible.length === 0) return Response.json({ announcements: [] });
-
-  // Fetch read status only for visible announcements
-  const visibleIds = visible.map((r) => r.announcement_id);
-  const { data: reads } = await admin
-    .from("announcement_reads")
-    .select("announcement_id")
-    .eq("user_id", user.id)
-    .in("announcement_id", visibleIds);
-
-  const readSet = new Set((reads as RawRead[] ?? []).map((r) => r.announcement_id));
 
   const announcements: AnnouncementItem[] = visible.map((row) => ({
     announcement_id: row.announcement_id,
