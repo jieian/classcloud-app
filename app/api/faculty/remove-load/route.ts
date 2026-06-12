@@ -3,6 +3,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { dispatchFacultyLoadRemoved } from "@/lib/notifications";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 import { after } from "next/server";
 import { revalidateTag } from "next/cache";
@@ -64,6 +65,9 @@ const _POST = async function(request: Request) {
       entity_label: label,
     });
   });
+
+  // Notify the faculty member their load was removed (skipped if self-actioned).
+  after(() => dispatchFacultyLoadRemoved({ facultyId: faculty_id, actorUid: caller.id }));
 
   // Sync JWT claims — remove_faculty_academic_load strips the Faculty role
   syncUserPermissions(faculty_id).catch((err) =>

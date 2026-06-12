@@ -4,6 +4,7 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { insertAuditLog } from "@/lib/audit";
+import { dispatchReportCompletions } from "@/lib/notifications";
 import { EXAMS_CACHE_TAG } from "@/app/(app)/exam/_lib/examServerService";
 import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 
@@ -198,6 +199,12 @@ const _POST = async function (
       },
     }).catch(() => {}),
   );
+
+  // Detect newly-completed report milestones and notify the responsible
+  // monitors (GSL / coordinator / principal). Runs off the response path; the
+  // promise is returned (not voided) so after() keeps the instance alive until
+  // the in-app inserts AND emails flush. The dispatcher never throws.
+  after(() => dispatchReportCompletions({ examId, actorUid: user.id }));
 
   return Response.json(result, { status: 200 });
 };

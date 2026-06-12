@@ -438,3 +438,19 @@ CREATE TABLE public.announcement_reads (
   CONSTRAINT announcement_reads_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid),
   CONSTRAINT announcement_reads_announcement_id_fkey FOREIGN KEY (announcement_id) REFERENCES public.announcements(announcement_id)
 );
+CREATE TABLE public.report_completion_milestones (
+  milestone_id bigint NOT NULL DEFAULT nextval('report_completion_milestones_milestone_id_seq'::regclass),
+  milestone_type text NOT NULL CHECK (milestone_type = ANY (ARRAY['subject'::text, 'subject_group'::text, 'all'::text])),
+  curriculum_subject_id integer,
+  grade_level_id integer,
+  subject_group_id integer,
+  quarter_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  completed_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT report_completion_milestones_pkey PRIMARY KEY (milestone_id),
+  CONSTRAINT report_completion_milestones_curriculum_subject_id_fkey FOREIGN KEY (curriculum_subject_id) REFERENCES public.curriculum_subjects(curriculum_subject_id),
+  CONSTRAINT report_completion_milestones_grade_level_id_fkey FOREIGN KEY (grade_level_id) REFERENCES public.grade_levels(grade_level_id),
+  CONSTRAINT report_completion_milestones_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
+  CONSTRAINT report_completion_milestones_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
+  CONSTRAINT report_completion_milestones_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);

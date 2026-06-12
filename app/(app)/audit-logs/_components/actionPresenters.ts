@@ -244,11 +244,17 @@ const PRESENTERS: Record<string, ActionPresenter> = {
 
   // ── ACADEMIC · Faculty Load ───────────────────────────────────────────────────
   "Academic Load Assigned": {
-    getSummary: (log) => `${name(log)}'s academic load was assigned`,
-    fields: [
-      { key: "sections_assigned", label: "Sections" },
-      { key: "subjects_assigned", label: "Subjects" },
-    ],
+    // Detail is rendered by the dedicated AcademicLoadSection in the drawer
+    // (reads new_values.changes — the real deltas from the RPC envelope), so no
+    // `fields` here. The summary reflects whether anything actually changed.
+    getSummary: (log) => {
+      const changes = (log.new_values as Record<string, unknown> | null)?.changes;
+      const n = Array.isArray(changes) ? changes.length : 0;
+      if (Array.isArray(changes) && n === 0) {
+        return `No changes were made to ${name(log)}'s academic load`;
+      }
+      return `${name(log)}'s academic load was updated`;
+    },
   },
   "Academic Load Removed": {
     getSummary: (log) => `${name(log)}'s academic load was cleared`,
@@ -276,6 +282,20 @@ const PRESENTERS: Record<string, ActionPresenter> = {
     fields: [
       { key: "reason", label: "Reason", format: fmtReason },
     ],
+  },
+  "Subject Teachers Assigned": {
+    // Detail is rendered by the dedicated SubjectTeachersSection in the drawer
+    // (reads new_values.changes — per-subject teacher deltas from the RPC
+    // envelope), so no `fields` here. The summary reflects whether anything
+    // actually changed.
+    getSummary: (log) => {
+      const changes = (log.new_values as Record<string, unknown> | null)?.changes;
+      const n = Array.isArray(changes) ? changes.length : 0;
+      if (Array.isArray(changes) && n === 0) {
+        return `No subject teacher assignments changed for ${name(log)}`;
+      }
+      return `Subject teacher assignments were updated for ${name(log)}`;
+    },
   },
 
   // ── ACADEMIC · Classes & Students ─────────────────────────────────────────────

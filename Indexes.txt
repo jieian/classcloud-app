@@ -92,8 +92,8 @@
   {
     "schemaname": "public",
     "tablename": "audit_logs",
-    "indexname": "idx_audit_created",
-    "indexdef": "CREATE INDEX idx_audit_created ON public.audit_logs USING btree (created_at DESC)"
+    "indexname": "idx_audit_created_at",
+    "indexdef": "CREATE INDEX idx_audit_created_at ON public.audit_logs USING btree (created_at DESC)"
   },
   {
     "schemaname": "public",
@@ -460,6 +460,18 @@
     "tablename": "quarters",
     "indexname": "quarters_pkey",
     "indexdef": "CREATE UNIQUE INDEX quarters_pkey ON public.quarters USING btree (quarter_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "report_completion_milestones",
+    "indexname": "report_completion_milestones_pkey",
+    "indexdef": "CREATE UNIQUE INDEX report_completion_milestones_pkey ON public.report_completion_milestones USING btree (milestone_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "report_completion_milestones",
+    "indexname": "report_completion_milestones_uq",
+    "indexdef": "CREATE UNIQUE INDEX report_completion_milestones_uq ON public.report_completion_milestones USING btree (milestone_type, quarter_id, COALESCE(curriculum_subject_id, '-1'::integer), COALESCE(grade_level_id, '-1'::integer), COALESCE(subject_group_id, '-1'::integer))"
   },
   {
     "schemaname": "public",

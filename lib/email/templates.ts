@@ -82,18 +82,7 @@ export async function sendPasswordResetEmail({
             </td>
           </tr>
 
-          <!-- Footer -->
-          <tr>
-            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-                This is an automated message, please do not reply.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </div>
+          ${endEmailLayout()}
     `,
   });
 }
@@ -176,17 +165,7 @@ export async function sendVerificationEmail({
             </td>
           </tr>
 
-          <tr>
-            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-                This is an automated message, please do not reply.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </div>
+          ${endEmailLayout()}
     `,
   });
 }
@@ -250,17 +229,7 @@ export async function sendEmailVerifiedEmail({
             </td>
           </tr>
 
-          <tr>
-            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-                This is an automated message, please do not reply.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </div>
+          ${endEmailLayout()}
     `,
   });
 }
@@ -323,17 +292,7 @@ export async function sendApprovalEmail({
           </td>
         </tr>
 
-        <tr>
-          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-              &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-              This is an automated message, please do not reply.
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </div>
+        ${endEmailLayout()}
     `,
   });
 }
@@ -397,17 +356,7 @@ export async function sendRejectionEmail({
           </td>
         </tr>
 
-        <tr>
-          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-              &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-              This is an automated message, please do not reply.
-            </p>
-          </td>
-        </tr>
-
-      </table>
-    </div>
+        ${endEmailLayout()}
     `,
   });
 }
@@ -505,17 +454,7 @@ export async function sendWelcomeEmail({
             </td>
           </tr>
 
-          <tr>
-            <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-              <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-                &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-                This is an automated message, please do not reply.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </div>
+          ${endEmailLayout()}
     `,
   });
 }
@@ -538,8 +477,9 @@ function startEmailLayout(): string {
 function endEmailLayout(): string {
   return `
         <tr>
-          <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-            <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
+          <td bgcolor="#1a1a1a" style="background-color: #1a1a1a; padding: 22px 40px;">
+            <div style="font-size: 15px; font-weight: 800; color: #ffffff; margin-bottom: 6px; letter-spacing: -0.3px;">Class<span style="color: rgba(255,255,255,0.45);">Cloud</span></div>
+            <p style="font-size: 11.5px; color: rgba(255,255,255,0.4); line-height: 1.6; margin: 0;">
               &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
               This is an automated message, please do not reply.
             </p>
@@ -817,16 +757,7 @@ export async function sendAccountDeactivationEmail({
           </p>
         </td>
       </tr>
-      <tr>
-        <td bgcolor="#f4f4f4" style="padding: 20px; text-align: center;">
-          <p style="color: #999; font-size: 12px; margin: 0; line-height: 1.5;">
-            &copy; ${new Date().getFullYear()} ClassCloud. All rights reserved.<br>
-            This is an automated security notification.
-          </p>
-        </td>
-      </tr>
-    </table>
-  </div>
+      ${endEmailLayout()}
     `,
   });
 }
@@ -1135,6 +1066,95 @@ export async function sendDirectMoveToToAdviser({
         { label: "Your Section", value: toSection },
         { label: "Date", value: emailDate() },
       ])}
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+// ─── Report Completion ────────────────────────────────────────────────────────
+
+export async function sendSubjectReportsCompleted({
+  to,
+  firstName,
+  subjectLabel,
+  term,
+  actionUrl,
+}: {
+  to: string; firstName: string; subjectLabel: string; term: string; actionUrl: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Subject Reports Completed",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 30px 40px;">
+          <p style="font-size: 16px; color: #1a1a1a; margin: 0 0 16px 0;">Dear ${firstName},</p>
+          <p style="font-size: 16px; color: #4a4a4a; line-height: 1.7; margin: 0;">
+            All examination reports for <strong>${subjectLabel}</strong>, which you coordinate as Grade Subject Leader for the <strong>${term}</strong>, have been successfully submitted and finalized.
+          </p>
+        </td>
+      </tr>
+      ${ctaButton("View Reports", actionUrl)}
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+export async function sendSubjectGroupReportsCompleted({
+  to,
+  firstName,
+  groupName,
+  term,
+  actionUrl,
+}: {
+  to: string; firstName: string; groupName: string; term: string; actionUrl: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] Subject Group Reports Completed",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 30px 40px;">
+          <p style="font-size: 16px; color: #1a1a1a; margin: 0 0 16px 0;">Dear ${firstName},</p>
+          <p style="font-size: 16px; color: #4a4a4a; line-height: 1.7; margin: 0;">
+            All examination reports for the <strong>${groupName}</strong> subject group, which you coordinate as Subject Coordinator for the <strong>${term}</strong>, have been successfully submitted and finalized.
+          </p>
+        </td>
+      </tr>
+      ${ctaButton("View Reports", actionUrl)}
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+export async function sendAllReportsCompleted({
+  to,
+  firstName,
+  term,
+  schoolYear,
+  actionUrl,
+}: {
+  to: string; firstName: string; term: string; schoolYear: string; actionUrl: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "[ClassCloud] All Reports Completed",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 30px 40px;">
+          <p style="font-size: 16px; color: #1a1a1a; margin: 0 0 16px 0;">Dear ${firstName},</p>
+          <p style="font-size: 16px; color: #4a4a4a; line-height: 1.7; margin: 0;">
+            All examination reports for the <strong>${term}</strong> (S.Y. ${schoolYear}) have been successfully submitted and finalized.
+          </p>
+        </td>
+      </tr>
+      ${ctaButton("View Reports", actionUrl)}
       ${endEmailLayout()}
     `,
   });

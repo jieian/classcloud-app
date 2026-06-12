@@ -1,8 +1,10 @@
+import { after } from "next/server";
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { insertAuditLog } from "@/lib/audit";
+import { dispatchRoleChange } from "@/lib/notifications";
 import { redis } from "@/lib/redis";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
@@ -86,6 +88,16 @@ const _PATCH = async function (request: Request) {
     },
     new_values: { first_name, middle_name, last_name, role_ids },
   }).catch(() => {});
+
+  // Notify the target user if their roles actually changed (skips self-edits).
+  after(() =>
+    dispatchRoleChange({
+      targetUid: uid,
+      oldRoleIds: (result.old_role_ids ?? []) as number[],
+      newRoleIds: role_ids as number[],
+      actorUid: caller.id,
+    }),
+  );
 
   return Response.json({ success: true });
 };

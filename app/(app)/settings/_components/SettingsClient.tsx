@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   ActionIcon,
   Alert,
@@ -73,6 +74,9 @@ const NAME_REGEX = /^[a-zA-Z][a-zA-Z']*(?:\s[a-zA-Z][a-zA-Z']*)*$/;
 
 export default function SettingsClient() {
   const { refreshUserName } = useAuth();
+  const searchParams = useSearchParams();
+  const rolesRef = useRef<HTMLDivElement>(null);
+  const assignmentsRef = useRef<HTMLDivElement>(null);
   const isMobile = useMediaQuery("(max-width: 640px)");
   const isMobileModal = useMediaQuery("(max-width: 768px)");
   const confirmModalProps = isMobileModal
@@ -187,6 +191,22 @@ export default function SettingsClient() {
     }
     void load();
   }, [loadProfile]);
+
+  // Deep-link scroll: notifications link here with ?section=roles|assignments.
+  // Wait until the profile has loaded (the cards aren't rendered before that).
+  useEffect(() => {
+    if (loading) return;
+    const section = searchParams.get("section");
+    const target =
+      section === "roles"
+        ? rolesRef.current
+        : section === "assignments"
+          ? assignmentsRef.current
+          : null;
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [loading, searchParams]);
 
   const openEditModal = () => {
     if (!profile) return;
@@ -517,7 +537,7 @@ export default function SettingsClient() {
       </Paper>
 
       {/* ── Roles ─────────────────────────────────────────────────────────── */}
-      <Paper withBorder p="md" radius="md">
+      <Paper ref={rolesRef} withBorder p="md" radius="md">
         <Text fw={700} c="#298925" mb="sm">
           Roles{" "}
           <Text span size="xs" c="dimmed" fw={400}>
@@ -556,7 +576,9 @@ export default function SettingsClient() {
       </Paper>
 
       {/* ── My Assignments ────────────────────────────────────────────────── */}
-      <MyAssignmentCard />
+      <div ref={assignmentsRef}>
+        <MyAssignmentCard />
+      </div>
 
       {/* ── Password ──────────────────────────────────────────────────────── */}
       <Paper withBorder p="md" radius="md">

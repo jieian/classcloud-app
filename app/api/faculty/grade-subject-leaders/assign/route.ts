@@ -6,6 +6,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { parseBody, AssignGradeSubjectLeaderSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
+import { dispatchGslChange } from "@/lib/notifications";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { invalidateReportsCache } from "@/lib/services/reportsAnalysisService";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
@@ -120,6 +121,15 @@ const _POST = async function (request: Request) {
       });
     }
   });
+
+  // Notify new GSL (assigned) + displaced prior holder (removed).
+  after(() =>
+    dispatchGslChange({
+      newLeaderId: user_id,
+      oldLeaderId,
+      actorUid: caller.id,
+    }),
+  );
 
   return Response.json({ success: true }, { status: 200 });
 };

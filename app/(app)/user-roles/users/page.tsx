@@ -1,4 +1,5 @@
 // app/(app)/user-roles/users/page.tsx
+import { Suspense } from "react";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import { PendingSection } from "./_components/PendingSection";
 import { ActiveUsersSection } from "./_components/ActiveUsersSection";
@@ -11,7 +12,9 @@ export default function UserRoles() {
         User Management
       </h1>
       <Divider my="lg" />
-      <PendingSection />
+      <Suspense fallback={null}>
+        <PendingSection />
+      </Suspense>
       <Divider my="lg" />
       <ActiveUsersSection />
     </ProtectedRoute>

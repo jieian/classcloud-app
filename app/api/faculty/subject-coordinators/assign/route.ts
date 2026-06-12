@@ -6,6 +6,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { parseBody, AssignSubjectCoordinatorSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { insertAuditLog } from "@/lib/audit";
+import { dispatchCoordinatorChange } from "@/lib/notifications";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
@@ -115,6 +116,15 @@ const _POST = async function (request: Request) {
       });
     }
   });
+
+  // Notify new coordinator (assigned) + displaced prior holder (removed).
+  after(() =>
+    dispatchCoordinatorChange({
+      newCoordinatorId: user_id,
+      oldCoordinatorId,
+      actorUid: caller.id,
+    }),
+  );
 
   return Response.json({ success: true }, { status: 200 });
 };

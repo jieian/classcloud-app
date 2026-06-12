@@ -7,7 +7,8 @@ import { adminClient } from "@/lib/supabase/admin";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { parseBody, AssignAcademicLoadSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
-import { insertAuditLog } from "@/lib/audit";
+import { auditFromRpc } from "@/lib/audit";
+import { dispatchFacultyLoadChanged } from "@/lib/notifications";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 
 const _POST = async function (request: Request) {
@@ -37,7 +38,7 @@ const _POST = async function (request: Request) {
   // gsl_curriculum_subject_id presence (even if null) means add mode — manage GSL
   const manageGSL = gsl_curriculum_subject_id !== undefined;
 
-  const { error } = await adminClient.rpc("assign_faculty_academic_load", {
+  const { data: rpcData, error } = await adminClient.rpc("assign_faculty_academic_load", {
     p_faculty_id: faculty_id,
     p_advisory_section_id: advisory_section_id ?? null,
     p_subject_assignments: subject_assignments,
@@ -70,49 +71,33 @@ const _POST = async function (request: Request) {
   revalidateTag("reports", "minutes");
   await invalidateUserAssignmentsContext(faculty_id);
 
-  // Non-blocking audit write — ONE summary row, off the response path.
-  after(async () => {
-    // Faculty name for a human-readable label (one indexed lookup, post-response).
-    const { data: facultyRow } = await adminClient
-      .from("users")
-      .select("first_name, last_name")
-      .eq("uid", faculty_id)
-      .maybeSingle();
-    const facultyName = facultyRow
-      ? `${facultyRow.first_name ?? ""} ${facultyRow.last_name ?? ""}`.trim() || null
-      : null;
-
-    // Summarize only the managed deltas. Advisory is recorded only when actually
-    // assigned, so we never emit a phantom "advisory removed" when there was none.
-    const changes: Record<string, unknown>[] = [];
-    if (advisory_section_id != null) {
-      changes.push({ type: "advisory", section_id: advisory_section_id });
-    }
-    if (manageCoordinator) {
-      changes.push({ type: "coordinator", subject_group_id: subject_group_id ?? null });
-    }
-    if (manageGSL) {
-      changes.push({
-        type: "gsl",
-        curriculum_subject_id: gsl_curriculum_subject_id ?? null,
-        grade_level_id: gsl_grade_level_id ?? null,
-      });
-    }
-
-    await insertAuditLog({
-      actor_id: caller.id,
-      action: "faculty_academic_load_assigned",
-      entity_type: "faculty",
-      entity_id: faculty_id,
-      entity_label: facultyName,
-      new_values: {
-        advisory_section_id: advisory_section_id ?? null,
-        sections_assigned: new Set(subject_assignments.map((a) => a.section_id)).size,
-        subjects_assigned: subject_assignments.length,
-        changes,
+  // Non-blocking audit write, off the response path. The envelope carries the
+  // faculty name (label) and the REAL change deltas computed inside the RPC
+  // transaction — no longer fabricated from payload presence. An empty
+  // changes[] (re-submit with no real change) writes new_values { changes: [] }.
+  after(() =>
+    auditFromRpc(
+      {
+        actor_id: caller.id,
+        action: "faculty_academic_load_assigned",
+        entity_type: "faculty",
+        entity_id: faculty_id,
       },
-    });
-  });
+      (rpcData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
+    ),
+  );
+
+  // Change-type-driven pointer notifications (Part 2a): fires only the change
+  // types actually present in the real delta; empty changes → nothing fires.
+  after(() =>
+    dispatchFacultyLoadChanged({
+      facultyId: faculty_id,
+      changes:
+        (rpcData as { _audit?: { changes?: Record<string, unknown>[] } } | null)
+          ?._audit?.changes ?? null,
+      actorUid: caller.id,
+    }),
+  );
 
   syncUserPermissions(faculty_id).catch((err) =>
     console.error("syncUserPermissions failed after assign-load:", err),

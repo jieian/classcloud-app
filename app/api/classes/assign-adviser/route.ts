@@ -5,6 +5,7 @@ import { adminClient } from "@/lib/supabase/admin";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { auditFromRpc } from "@/lib/audit";
+import { dispatchAdviserChange } from "@/lib/notifications";
 import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
 interface AssignAdviserBody {
   section_id?: number;
@@ -48,12 +49,28 @@ const _POST = async function(request: Request) {
         { status: 500 },
       );
     }
+    const removedAdviserId =
+      (unassignData as { old_adviser_id?: string | null } | null)?.old_adviser_id ?? null;
+
     revalidateTag("sections", "minutes");
+    // The removed adviser's dashboard reads their cached advisory; refresh it.
+    if (removedAdviserId) await invalidateUserAssignmentsContext(removedAdviserId);
+
     after(() =>
       auditFromRpc(
         { actor_id: caller.id, action: "section_adviser_removed", entity_type: "section", entity_id: String(sectionId) },
         (unassignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
       ),
+    );
+    // Notify the displaced adviser (uid surfaced by the RPC; no extra read).
+    after(() =>
+      dispatchAdviserChange({
+        sectionLabel:
+          (unassignData as { _audit?: { label?: string | null } } | null)?._audit?.label ?? null,
+        assignedUid: null,
+        removedUid: removedAdviserId,
+        actorUid: caller.id,
+      }),
     );
     return Response.json({ success: true }, { status: 200 });
   }
@@ -91,6 +108,18 @@ const _POST = async function(request: Request) {
       { actor_id: caller.id, action: "section_adviser_assigned", entity_type: "section", entity_id: String(sectionId) },
       (assignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
     ),
+  );
+
+  // Notify the newly-assigned adviser (the assign RPC never displaces a prior
+  // adviser — it requires the section to be unassigned first).
+  after(() =>
+    dispatchAdviserChange({
+      sectionLabel:
+        (assignData as { _audit?: { label?: string | null } } | null)?._audit?.label ?? null,
+      assignedUid: adviserId,
+      removedUid: null,
+      actorUid: caller.id,
+    }),
   );
 
   return Response.json({ success: true }, { status: 200 });

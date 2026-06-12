@@ -6,6 +6,10 @@ import { parseBody, AssignSubjectTeachersSchema } from "@/lib/api-schemas";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { auditFromRpc } from "@/lib/audit";
+import { dispatchSubjectTeachersChanged } from "@/lib/notifications";
+import { invalidateUserAssignmentsContext } from "@/lib/services/userAssignmentsCache";
+import { invalidateReportsCache } from "@/lib/services/reportsAnalysisService";
+import { REPORTS_CACHE_TAG } from "@/app/(app)/reports/_lib/reportServerService";
 const _POST = async function(
   request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -38,13 +42,33 @@ const _POST = async function(
       { status: 500 },
     );
 
+  const affectedTeacherIds =
+    (assignData as { affected_teacher_ids?: string[] } | null)?.affected_teacher_ids ?? [];
+
   revalidateTag("sections", "minutes");
+  // Teacher assignments feed the report section/subject cards (teacher names),
+  // and each affected teacher's dashboard reads their cached teaching load.
+  revalidateTag(REPORTS_CACHE_TAG, "minutes");
+  invalidateReportsCache();
+  await Promise.allSettled(
+    affectedTeacherIds.map((uid) => invalidateUserAssignmentsContext(uid)),
+  );
 
   after(() =>
     auditFromRpc(
       { actor_id: user.id, action: "subject_teachers_assigned", entity_type: "section", entity_id: String(sectionId) },
       (assignData as { _audit?: Parameters<typeof auditFromRpc>[1] } | null)?._audit,
     ),
+  );
+
+  // Notify the section's currently-assigned subject teachers (actor excluded).
+  after(() =>
+    dispatchSubjectTeachersChanged({
+      sectionLabel:
+        (assignData as { _audit?: { label?: string | null } } | null)?._audit?.label ?? null,
+      teacherUids: parsed.data.assignments.map((a) => a.teacher_id),
+      actorUid: user.id,
+    }),
   );
 
   return Response.json({ success: true });

@@ -687,7 +687,7 @@ export default function TransferRequestsClient() {
         .finally(() => setLoadingOutgoing(false));
     }
     setLoadingNotifs(true);
-    fetchNotifications()
+    fetchNotifications({ referenceType: "transfer_request", limit: 50 })
       .then(setNotifs)
       .catch(() => {})
       .finally(() => setLoadingNotifs(false));

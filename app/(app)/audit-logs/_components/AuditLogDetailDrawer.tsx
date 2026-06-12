@@ -38,6 +38,130 @@ type MasterlistChange = {
   curriculum_subject_id?: number;
 };
 
+// ── Academic load (assign_faculty_academic_load `_audit.changes`) ──────────────
+
+type LoadChange = {
+  type?: string;
+  section?: string | null;
+  subject?: string | null;
+  subject_group?: string | null;
+  grade?: string | null;
+};
+
+const LOAD_CHANGE_LABEL: Record<string, string> = {
+  adviser_assigned: "Advisory assigned",
+  adviser_removed: "Advisory removed",
+  assignment_added: "Subject assigned",
+  assignment_removed: "Subject removed",
+  coordinator_assigned: "Coordinator assigned",
+  coordinator_removed: "Coordinator removed",
+  gsl_assigned: "Grade leader assigned",
+  gsl_removed: "Grade leader removed",
+};
+
+function loadChangeDetail(c: LoadChange): string {
+  switch (c.type) {
+    case "adviser_assigned":
+    case "adviser_removed":
+      return c.section ?? "";
+    case "assignment_added":
+    case "assignment_removed":
+      return [c.subject, c.section].filter(Boolean).join(" — ");
+    case "coordinator_assigned":
+    case "coordinator_removed":
+      return c.subject_group ?? "";
+    case "gsl_assigned":
+    case "gsl_removed":
+      return [c.subject, c.grade].filter(Boolean).join(" — ");
+    default:
+      return "";
+  }
+}
+
+function AcademicLoadSection({ new_values }: { new_values: Record<string, unknown> }) {
+  // Legacy rows (pre-rework) carried sections_assigned/subjects_assigned and no
+  // `changes` key — fall back to those counts so history still reads sensibly.
+  if (!("changes" in new_values)) {
+    return (
+      <Stack gap={4}>
+        <Text fz="sm">Sections: {String(new_values.sections_assigned ?? "—")}</Text>
+        <Text fz="sm">Subjects: {String(new_values.subjects_assigned ?? "—")}</Text>
+      </Stack>
+    );
+  }
+
+  const changes = Array.isArray(new_values.changes)
+    ? (new_values.changes as LoadChange[])
+    : [];
+
+  if (changes.length === 0) {
+    return <Text fz="sm" c="dimmed" fs="italic">No changes were made.</Text>;
+  }
+
+  return (
+    <Stack gap={6}>
+      {changes.map((c, i) => {
+        const label = LOAD_CHANGE_LABEL[c.type ?? ""] ?? c.type ?? "Change";
+        const detail = loadChangeDetail(c);
+        const isRemoval = (c.type ?? "").endsWith("_removed");
+        return (
+          <Group key={i} gap={8} wrap="nowrap" align="center">
+            <Badge color={isRemoval ? "red" : "green"} variant="light" size="sm">
+              {label}
+            </Badge>
+            <Text fz="sm">{detail || "—"}</Text>
+          </Group>
+        );
+      })}
+    </Stack>
+  );
+}
+
+// ── Subject teachers (set_section_subject_teachers `_audit.changes`) ───────────
+
+type SubjectTeacherChange = {
+  subject?: string | null;
+  old_teacher?: string | null;
+  new_teacher?: string | null;
+};
+
+function SubjectTeachersSection({ new_values }: { new_values: Record<string, unknown> }) {
+  const changes = Array.isArray(new_values.changes)
+    ? (new_values.changes as SubjectTeacherChange[])
+    : [];
+
+  if (changes.length === 0) {
+    return <Text fz="sm" c="dimmed" fs="italic">No changes were made.</Text>;
+  }
+
+  return (
+    <Stack gap={8}>
+      {changes.map((c, i) => {
+        const isAssigned = !c.old_teacher && !!c.new_teacher;
+        const isRemoved = !!c.old_teacher && !c.new_teacher;
+        const label = isAssigned ? "Assigned" : isRemoved ? "Removed" : "Reassigned";
+        return (
+          <Box key={i}>
+            <Group gap={8} wrap="nowrap" align="center" mb={2}>
+              <Badge color={isRemoved ? "red" : "green"} variant="light" size="sm">
+                {label}
+              </Badge>
+              <Text fz="sm" fw={500}>{c.subject ?? "—"}</Text>
+            </Group>
+            <Text fz="xs" c="dimmed" pl={2}>
+              {isAssigned
+                ? c.new_teacher
+                : isRemoved
+                ? `${c.old_teacher} (removed)`
+                : `${c.old_teacher} → ${c.new_teacher}`}
+            </Text>
+          </Box>
+        );
+      })}
+    </Stack>
+  );
+}
+
 // ── Raw KV block (fallback for RPC-backed actions with unstable shapes) ────────
 
 function KVBlock({
@@ -283,6 +407,8 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
 
   const presenter = PRESENTERS[log.action];
   const isMasterlist = log.action === "Teaching Load Masterlist Saved";
+  const isAcademicLoad = log.action === "Academic Load Assigned";
+  const isSubjectTeachers = log.action === "Subject Teachers Assigned";
 
   const changedKeys: Set<string> = (() => {
     if (!log.old_values || !log.new_values) return new Set();
@@ -359,6 +485,26 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
             </Box>
           )}
 
+          {/* Academic load — real change deltas from the RPC envelope */}
+          {isAcademicLoad && log.new_values && (
+            <Box>
+              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                Changes
+              </Text>
+              <AcademicLoadSection new_values={log.new_values} />
+            </Box>
+          )}
+
+          {/* Subject teachers — per-subject deltas from the RPC envelope */}
+          {isSubjectTeachers && log.new_values && (
+            <Box>
+              <Text fz="xs" c="dimmed" fw={600} tt="uppercase" mb={6} style={{ letterSpacing: "0.04em" }}>
+                Changes
+              </Text>
+              <SubjectTeachersSection new_values={log.new_values} />
+            </Box>
+          )}
+
           {/* Humanized: fields (single section) */}
           {!isMasterlist && presenter?.fields && (
             <Box>
@@ -397,7 +543,7 @@ export default function AuditLogDetailDrawer({ log, hasViewAll, onClose }: Props
           )}
 
           {/* Raw KVBlock fallback — no field mapping defined (unknown actions or RPC-backed shapes) */}
-          {!isMasterlist && !presenter?.fields && !presenter?.diffFields && (
+          {!isMasterlist && !isAcademicLoad && !isSubjectTeachers && !presenter?.fields && !presenter?.diffFields && (
             <>
               {hasDiff && (
                 <Group align="flex-start" grow gap="md">

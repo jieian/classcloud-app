@@ -576,22 +576,34 @@ export async function createSection(data: {
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 
-export async function fetchNotifications(): Promise<NotificationItem[]> {
+/**
+ * Fetches the current user's notifications, unread-first by recency.
+ *
+ * @param referenceType - when set, keeps only notifications of this reference_type
+ *   (e.g. "transfer_request" for the Transfer Requests page). Applied BEFORE the
+ *   limit so the cap never hides matching items behind newer non-matching ones.
+ * @param limit - max items to return (default 5 for the global bell).
+ */
+export async function fetchNotifications(
+  opts: { referenceType?: string; limit?: number } = {},
+): Promise<NotificationItem[]> {
+  const { referenceType, limit = 5 } = opts;
   const res = await fetch("/api/notifications", { cache: "no-store" });
   if (!res.ok) return [];
   const parsed = await readResponsePayload(res);
   const data = asApiJson(parsed.json);
   const all = (data.notifications as NotificationItem[]) ?? [];
 
-  // Unread first (by recency), then read (by recency), max 5
-  return [...all]
+  // Unread first (by recency), then read (by recency).
+  return all
+    .filter((n) => !referenceType || n.reference_type === referenceType)
     .sort((a, b) => {
       const aUnread = !a.read_at;
       const bUnread = !b.read_at;
       if (aUnread !== bUnread) return aUnread ? -1 : 1;
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     })
-    .slice(0, 5);
+    .slice(0, limit);
 }
 
 export async function fetchUnreadNotificationCount(): Promise<number> {

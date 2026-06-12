@@ -2,6 +2,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Group,
   Collapse,
@@ -28,12 +29,24 @@ const FILTER_OPTIONS = [
 type UnreadNotification = { notification_id: string; reference_id: string };
 
 export function PendingSection() {
-  const [opened, { toggle }] = useDisclosure(false);
+  const [opened, { toggle, open }] = useDisclosure(false);
   const [pendingCount, setPendingCount] = useState<number | null>(null);
   const [selfRegCount, setSelfRegCount] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<PendingFilter>("all");
   const tableRef = useRef<PendingUsersTableWrapperRef>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
+  const searchParams = useSearchParams();
+
+  // Deep-link: new-signup notifications link here with ?pending=open. Open the
+  // collapsible, preselect the self-registration filter (it carries the unread
+  // badge), and scroll the section into view.
+  useEffect(() => {
+    if (searchParams.get("pending") !== "open") return;
+    open();
+    setFilter("self_register");
+    sectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [searchParams, open]);
 
   // uid → notifId map for unread new_signup notifications
   const [unreadMap, setUnreadMap] = useState<Map<string, string>>(new Map());
@@ -71,7 +84,7 @@ export function PendingSection() {
   );
 
   return (
-    <div className="mb-6">
+    <div className="mb-6" ref={sectionRef}>
       <UnstyledButton onClick={toggle} w="99%">
         <Group justify="space-between">
           <h1

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { IconBellOff } from "@tabler/icons-react";
 import {
   fetchNotifications,
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export default function NotificationsPanel({ onMarkRead }: Props) {
+  const router = useRouter();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,17 +30,20 @@ export default function NotificationsPanel({ onMarkRead }: Props) {
   }, []);
 
   const handleClick = (notif: NotificationItem) => {
-    if (notif.read_at) return;
-    // Optimistic update — don't reorder, just flip the dot
-    setNotifications((prev) =>
-      prev.map((n) =>
-        n.notification_id === notif.notification_id
-          ? { ...n, read_at: new Date().toISOString() }
-          : n,
-      ),
-    );
-    onMarkRead?.();
-    markNotificationsRead([notif.notification_id]).catch(() => {});
+    // Mark read (only when unread) — optimistic, don't reorder, just flip the dot.
+    if (!notif.read_at) {
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.notification_id === notif.notification_id
+            ? { ...n, read_at: new Date().toISOString() }
+            : n,
+        ),
+      );
+      onMarkRead?.();
+      markNotificationsRead([notif.notification_id]).catch(() => {});
+    }
+    // Always navigate to the notification's destination, read or not.
+    if (notif.action_url) router.push(notif.action_url);
   };
 
   if (loading) {
@@ -82,7 +87,10 @@ export default function NotificationsPanel({ onMarkRead }: Props) {
             className={`${styles.dot} ${notif.read_at ? styles.dotRead : ""}`}
             aria-hidden="true"
           />
-          <span className={styles.title}>{notif.title}</span>
+          <span className={styles.content}>
+            <span className={styles.title}>{notif.title}</span>
+            {notif.body && <span className={styles.body}>{notif.body}</span>}
+          </span>
         </li>
       ))}
     </ul>
