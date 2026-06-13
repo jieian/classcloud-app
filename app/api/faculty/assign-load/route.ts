@@ -38,6 +38,46 @@ const _POST = async function (request: Request) {
   // gsl_curriculum_subject_id presence (even if null) means add mode — manage GSL
   const manageGSL = gsl_curriculum_subject_id !== undefined;
 
+  // The RPC vacates OTHER teachers' conflicting teaching slots and overwrites
+  // the advisory section's adviser, but only surfaces the primary faculty's
+  // audit — not the displaced users. Capture them BEFORE the RPC mutates so
+  // their cached assignment context can be invalidated too; otherwise the
+  // classes page shows their stale assignedSectionIds until the cache TTL.
+  const displacedUids = new Set<string>();
+
+  if (subject_assignments.length > 0) {
+    const sectionIds = [...new Set(subject_assignments.map((a) => a.section_id))];
+    const pairSet = new Set(
+      subject_assignments.map((a) => `${a.section_id}:${a.curriculum_subject_id}`),
+    );
+    const { data: holders } = await adminClient
+      .from("teacher_class_assignments")
+      .select("teacher_id, section_id, curriculum_subject_id")
+      .in("section_id", sectionIds)
+      .is("deleted_at", null)
+      .neq("teacher_id", faculty_id);
+    for (const h of (holders ?? []) as {
+      teacher_id: string | null;
+      section_id: number;
+      curriculum_subject_id: number;
+    }[]) {
+      if (h.teacher_id && pairSet.has(`${h.section_id}:${h.curriculum_subject_id}`)) {
+        displacedUids.add(h.teacher_id);
+      }
+    }
+  }
+
+  if (advisory_section_id) {
+    const { data: sec } = await adminClient
+      .from("sections")
+      .select("adviser_id")
+      .eq("section_id", advisory_section_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+    const prevAdviser = (sec as { adviser_id: string | null } | null)?.adviser_id;
+    if (prevAdviser && prevAdviser !== faculty_id) displacedUids.add(prevAdviser);
+  }
+
   const { data: rpcData, error } = await adminClient.rpc("assign_faculty_academic_load", {
     p_faculty_id: faculty_id,
     p_advisory_section_id: advisory_section_id ?? null,
@@ -70,6 +110,11 @@ const _POST = async function (request: Request) {
   revalidateTag("sections", "minutes");
   revalidateTag("reports", "minutes");
   await invalidateUserAssignmentsContext(faculty_id);
+  if (displacedUids.size > 0) {
+    await Promise.allSettled(
+      [...displacedUids].map((uid) => invalidateUserAssignmentsContext(uid)),
+    );
+  }
 
   // Non-blocking audit write, off the response path. The envelope carries the
   // faculty name (label) and the REAL change deltas computed inside the RPC

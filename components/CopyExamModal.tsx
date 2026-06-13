@@ -45,7 +45,7 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
       try {
         const [secs, assignments] = await Promise.all([
           fetchActiveSections(),
-          user?.id ? fetchTeacherClassAssignments(user.id) : Promise.resolve([]),
+          user?.id ? fetchTeacherClassAssignments() : Promise.resolve([]),
         ]);
 
         // Determine the grade level of the source exam from its current section assignments.

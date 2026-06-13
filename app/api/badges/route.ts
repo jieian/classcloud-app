@@ -1,18 +1,13 @@
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
-import { adminClient as admin } from "@/lib/supabase/admin";
+import { getNotificationBadge, getPendingTransferBadge } from "@/lib/services/badgeCache";
 
 // ─── GET /api/badges ──────────────────────────────────────────────────────────
-// Combined NavBar badge counts in ONE request (replaces three separate fetches:
-// notifications/count, classes/transfer-requests/count, users/signup-notifications/count).
-// A single get_badge_counts RPC returns all three counts in one DB round-trip;
-// the two permission flags gate the privileged counts server-side.
-
-type BadgeCounts = {
-  notifications?: number;
-  transferRequests?: number;
-  signupNotifications?: number;
-};
+// Combined NavBar badge counts, polled per navigation. Served from Redis
+// (audit #4): per-user notification counts + a shared global pending-transfer
+// count, both short-TTL cached with precise invalidation on the mutating paths.
+// Permission flags gate the privileged counts server-side; the per-user notif
+// cache is permission-independent (signup count is just zeroed when not allowed).
 
 const ZERO_COUNTS = { notifications: 0, transferRequests: 0, signupNotifications: 0 };
 
@@ -21,24 +16,24 @@ const _GET = async function () {
   if (!user) return Response.json(ZERO_COUNTS);
 
   const permissions = getPermissionsFromUser(user);
+  const canReview = permissions.includes("students.full_access");
+  const canManage = permissions.includes("users.full_access");
 
-  const { data, error } = await admin.rpc("get_badge_counts", {
-    p_user_id: user.id,
-    p_can_review_transfers: permissions.includes("students.full_access"),
-    p_can_manage_users: permissions.includes("users.full_access"),
-  });
+  try {
+    const [notif, transferRequests] = await Promise.all([
+      getNotificationBadge(user.id),
+      canReview ? getPendingTransferBadge() : Promise.resolve(0),
+    ]);
 
-  if (error) {
-    console.error("[api/badges] rpc error:", error.message);
+    return Response.json({
+      notifications: notif.notifications,
+      transferRequests,
+      signupNotifications: canManage ? notif.signupNotifications : 0,
+    });
+  } catch (err) {
+    console.error("[api/badges] error:", err);
     return Response.json(ZERO_COUNTS);
   }
-
-  const counts = (data ?? {}) as BadgeCounts;
-  return Response.json({
-    notifications: counts.notifications ?? 0,
-    transferRequests: counts.transferRequests ?? 0,
-    signupNotifications: counts.signupNotifications ?? 0,
-  });
 };
 
 export const GET = withErrorHandler(_GET);

@@ -326,7 +326,7 @@ export default function CreateExamPage() {
   // when user is still null at mount.
   useEffect(() => {
     if (!user?.id) return;
-    void fetchTeacherClassAssignments(user.id).then(assignments => {
+    void fetchTeacherClassAssignments().then(assignments => {
       setTeacherAssignments(assignments);
       if (isRestricted) {
         setAllowedSectionIds(new Set(assignments.map(a => a.section_id)));

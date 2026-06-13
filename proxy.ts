@@ -18,7 +18,7 @@ export async function proxy(request: NextRequest) {
 
   // Skip auth work for Next.js prefetch requests. Prefetches are speculative
   // (link hover / viewport) and must not trigger redirects or poison the router
-  // cache — the real navigation re-runs this middleware with a full getUser()
+  // cache — the real navigation re-runs this middleware with a full auth
   // check. Each getUser() is an Auth-server round-trip that reads
   // auth.users / sessions / identities / mfa, so skipping prefetches drops a
   // large share of per-request auth load without weakening security on real
@@ -53,11 +53,25 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  // getUser() validates the JWT AND refreshes expired tokens.
-  // The refresh triggers setAll above, updating `response` with new cookies.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Fast path: getClaims() verifies the JWT LOCALLY against the cached JWKS —
+  // no Auth-server round-trip — when the project uses asymmetric JWT signing
+  // keys. (With a legacy HS256 secret it transparently calls the Auth server,
+  // same cost as getUser(), so this is always safe.) This mirrors
+  // getAuthUser() in lib/supabase/server.ts.
+  //
+  // Fallback: getUser() validates AND refreshes expired tokens. The refresh
+  // triggers setAll above, updating `response` with new cookies — so expired
+  // sessions still recover exactly as before.
+  let isAuthenticated = false;
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  if (!claimsError && claimsData?.claims?.sub) {
+    isAuthenticated = true;
+  } else {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    isAuthenticated = !!user;
+  }
 
   const { pathname } = request.nextUrl;
   const nextPath = request.nextUrl.pathname + request.nextUrl.search;
@@ -74,14 +88,14 @@ export async function proxy(request: NextRequest) {
   const unauthOnlyPaths = ["/login", "/forgot-password", "/signup"];
   const publicPaths = [...alwaysPublicPaths, ...unauthOnlyPaths];
 
-  if (!user && !publicPaths.includes(pathname)) {
+  if (!isAuthenticated && !publicPaths.includes(pathname)) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", nextPath);
     return NextResponse.redirect(loginUrl);
   }
 
   // Redirect to home if already authenticated and trying to access unauthenticated-only pages
-  if (user && unauthOnlyPaths.includes(pathname) && !isLogoutFlow) {
+  if (isAuthenticated && unauthOnlyPaths.includes(pathname) && !isLogoutFlow) {
     const homeUrl = new URL(safeNext, request.url);
     return NextResponse.redirect(homeUrl);
   }

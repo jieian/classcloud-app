@@ -3,6 +3,7 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestCreated } from "@/lib/notifications";
+import { invalidatePendingTransferBadge } from "@/lib/services/badgeCache";
 import { parseBody, CreateTransferRequestSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { after } from "next/server";
@@ -49,6 +50,9 @@ const _POST = async function(request: Request) {
     toSectionId,
     requestedByUid: user.id,
   });
+
+  // PENDING count went up — refresh reviewers' shared badge (audit #4).
+  await invalidatePendingTransferBadge().catch(() => {});
 
   after(() =>
     auditFromRpc(

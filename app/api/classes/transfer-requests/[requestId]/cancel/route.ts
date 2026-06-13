@@ -4,6 +4,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { after } from "next/server";
 import { insertAuditLog } from "@/lib/audit";
+import { invalidatePendingTransferBadge } from "@/lib/services/badgeCache";
 // ─── POST /api/classes/transfer-requests/[requestId]/cancel ───────────────────
 // Allows the original requester to cancel their own PENDING request.
 
@@ -40,6 +41,9 @@ const _POST = async function(
 
   if (!data || data.length === 0)
     return Response.json({ error: "REQUEST_NOT_PENDING" }, { status: 409 });
+
+  // PENDING count went down — refresh reviewers' shared badge (audit #4).
+  await invalidatePendingTransferBadge().catch(() => {});
 
   after(() =>
     insertAuditLog({

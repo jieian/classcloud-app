@@ -429,7 +429,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
           applyAssignments(cachedAssignments);
         }
 
-        const assignments = await fetchTeacherClassAssignments(user.id);
+        const assignments = await fetchTeacherClassAssignments();
         setTeacherAssignments(assignments);
         applyAssignments(assignments);
       } else {

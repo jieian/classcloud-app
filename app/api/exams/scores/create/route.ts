@@ -144,11 +144,15 @@ const _POST = async function(request: Request) {
       // Compute mpl and proficiency_level for the update path
       const totalItems = examJoin.total_items ?? 0;
       const mpl = totalItems > 0 ? Math.round((calculatedScore / totalItems) * 100) : 0;
+      // Full labels — the app-wide canonical convention (matches the
+      // create_score RPC / proficiency_band and every report reader). The
+      // earlier short labels ('Nearly'/'Low'/'Not') were miscounted by report
+      // aggregations that filter on the full label (audit #32).
       const proficiencyLevel =
         mpl >= 90 ? "Highly Proficient" :
         mpl >= 75 ? "Proficient" :
-        mpl >= 50 ? "Nearly" :
-        mpl >= 25 ? "Low" : "Not";
+        mpl >= 50 ? "Nearly Proficient" :
+        mpl >= 25 ? "Low Proficient" : "Not Proficient";
 
       const { data: updated, error: updateError } = await adminClient
         .from("scores")

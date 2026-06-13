@@ -3,6 +3,7 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { dispatchTransferRequestRejected } from "@/lib/notifications";
+import { invalidatePendingTransferBadge } from "@/lib/services/badgeCache";
 import { parseBody, RejectTransferRequestSchema } from "@/lib/api-schemas";
 import { isRpcError, RpcError } from "@/lib/rpc-errors";
 import { after } from "next/server";
@@ -42,6 +43,9 @@ const _POST = async function(
   }
 
   void dispatchTransferRequestRejected({ requestId, notes });
+
+  // PENDING count went down — refresh reviewers' shared badge (audit #4).
+  await invalidatePendingTransferBadge().catch(() => {});
 
   after(() =>
     insertAuditLog({

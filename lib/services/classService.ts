@@ -1,8 +1,6 @@
-import { getSupabase } from "@/lib/supabase/client";
 import type {
   SchoolYearOption,
   GradeLevelRow,
-  SectionCard,
   SectionDetail,
   SectionSubjectRow,
   AdviserCandidate,
@@ -37,22 +35,6 @@ export type {
   SectionCheckResult,
   NotificationItem,
 } from "@/lib/types/class.types";
-
-interface RawSection {
-  section_id: number;
-  name: string;
-  section_type: string;
-  grade_level_id: number;
-  adviser_id: string | null;
-  users:
-    | { first_name: string | null; last_name: string | null }
-    | { first_name: string | null; last_name: string | null }[]
-    | null;
-}
-
-interface RawEnrollment {
-  section_id: number;
-}
 
 type ApiJson = Record<string, unknown>;
 type ParsedResponsePayload = {
@@ -103,94 +85,37 @@ export function resolveDefaultSyId(
 }
 
 export async function fetchSchoolYears(): Promise<SchoolYearOption[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("school_years")
-    .select("sy_id, year_range, is_active")
-    .is("deleted_at", null)
-    .order("start_year", { ascending: false });
-
-  if (error) throw new Error(error.message);
-  return data ?? [];
+  const res = await fetch("/api/school-years");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load school years."),
+    );
+  }
+  return (asApiJson(parsed.json).schoolYears as SchoolYearOption[]) ?? [];
 }
 
 export async function fetchGradeLevels(): Promise<GradeLevelRow[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("grade_levels")
-    .select("grade_level_id, level_number, display_name")
-    .order("level_number");
-
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
-
-/**
- * Fetches all sections for a school year with adviser names and student counts.
- * Two parallel queries: sections (+ adviser join) and enrollment section_ids.
- */
-export async function fetchSectionsForYear(
-  syId: number,
-): Promise<SectionCard[]> {
-  const supabase = getSupabase();
-
-  const [
-    { data: sectionsData, error: secError },
-    { data: enrollData, error: enrollError },
-  ] = await Promise.all([
-    supabase
-      .from("sections")
-      .select(
-        "section_id, name, section_type, grade_level_id, adviser_id, users(first_name, last_name)",
-      )
-      .eq("sy_id", syId)
-      .is("deleted_at", null),
-    supabase
-      .from("enrollments")
-      .select("section_id")
-      .eq("sy_id", syId)
-      .is("deleted_at", null),
-  ]);
-
-  if (secError) throw new Error(secError.message);
-  if (enrollError) throw new Error(enrollError.message);
-
-  // Build student count map in O(n)
-  const countMap: Record<number, number> = {};
-  for (const e of (enrollData ?? []) as RawEnrollment[]) {
-    countMap[e.section_id] = (countMap[e.section_id] ?? 0) + 1;
+  const res = await fetch("/api/grade-levels");
+  const parsed = await readResponsePayload(res);
+  if (!res.ok) {
+    throw new Error(
+      getErrorMessageFromPayload(parsed, "Failed to load grade levels."),
+    );
   }
-
-  return ((sectionsData ?? []) as RawSection[]).map((s) => {
-    const user = Array.isArray(s.users) ? s.users[0] : s.users;
-    const adviserName = user
-      ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || null
-      : null;
-
-    return {
-      section_id: s.section_id,
-      name: s.name,
-      section_type: s.section_type as "SSES" | "REGULAR",
-      adviser_id: s.adviser_id,
-      adviser_name: adviserName,
-      student_count: countMap[s.section_id] ?? 0,
-      grade_level_id: s.grade_level_id,
-    };
-  });
+  return (asApiJson(parsed.json).gradeLevels as GradeLevelRow[]) ?? [];
 }
 
 export async function checkLrnExists(
   lrn: string,
   excludeLrn: string,
 ): Promise<boolean> {
-  const supabase = getSupabase();
-  const { data } = await supabase
-    .from("students")
-    .select("lrn")
-    .eq("lrn", lrn)
-    .neq("lrn", excludeLrn)
-    .maybeSingle();
-  return data !== null;
+  const params = new URLSearchParams({ lrn });
+  if (excludeLrn) params.set("exclude", excludeLrn);
+  const res = await fetch(`/api/students/check-lrn?${params.toString()}`);
+  if (!res.ok) return false;
+  const parsed = await readResponsePayload(res);
+  return asApiJson(parsed.json).exists === true;
 }
 
 export async function updateStudent(
@@ -413,43 +338,21 @@ export async function fetchSectionDetail(sectionId: number): Promise<{
 }
 
 /**
- * Returns the set of section_ids where the given teacher has an assignment
- * for the specified school year (via teacher_class_assignments).
+ * Returns the caller's own active teaching assignments (all school years).
+ * The uid is derived from the session server-side, so callers no longer pass
+ * one — a user can only read their own assignments.
  */
-export async function fetchTeacherAssignedSectionIds(
-  uid: string,
-  syId: number,
-): Promise<Set<number>> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("teacher_class_assignments")
-    .select("section_id, sections!inner(sy_id)")
-    .eq("teacher_id", uid)
-    .eq("sections.sy_id", syId)
-    .is("deleted_at", null);
-
-  if (error) return new Set();
-  return new Set(
-    (data ?? []).map((r: { section_id: number }) => r.section_id),
-  );
-}
-
-export async function fetchTeacherClassAssignments(
-  uid: string,
-): Promise<{ section_id: number; curriculum_subject_id: number; subject_id: number }[]> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("teacher_class_assignments")
-    .select("section_id, curriculum_subject_id, curriculum_subjects!inner(subject_id)")
-    .eq("teacher_id", uid)
-    .is("deleted_at", null);
-
-  if (error) return [];
-  return ((data ?? []) as any[]).map((r: any) => ({
-    section_id: r.section_id as number,
-    curriculum_subject_id: r.curriculum_subject_id as number,
-    subject_id: (r.curriculum_subjects as any)?.subject_id as number,
-  }));
+export async function fetchTeacherClassAssignments(): Promise<
+  { section_id: number; curriculum_subject_id: number; subject_id: number }[]
+> {
+  const res = await fetch("/api/me/teaching-assignments");
+  if (!res.ok) return [];
+  const parsed = await readResponsePayload(res);
+  return (asApiJson(parsed.json).assignments as {
+    section_id: number;
+    curriculum_subject_id: number;
+    subject_id: number;
+  }[]) ?? [];
 }
 
 export async function fetchAvailableAdviserCandidates(
@@ -505,16 +408,15 @@ export async function checkSectionNameExists(
   name: string,
   excludeSectionId: number,
 ): Promise<boolean> {
-  const supabase = getSupabase();
-  const { data } = await supabase
-    .from("sections")
-    .select("section_id")
-    .eq("grade_level_id", gradeLevelId)
-    .ilike("name", name)
-    .neq("section_id", excludeSectionId)
-    .is("deleted_at", null)
-    .limit(1);
-  return (data?.length ?? 0) > 0;
+  const params = new URLSearchParams({
+    gradeLevelId: String(gradeLevelId),
+    name,
+    excludeSectionId: String(excludeSectionId),
+  });
+  const res = await fetch(`/api/classes/check-name?${params.toString()}`);
+  if (!res.ok) return false;
+  const parsed = await readResponsePayload(res);
+  return asApiJson(parsed.json).exists === true;
 }
 
 export async function assignSubjectTeachers(

@@ -3,9 +3,9 @@
 
 CREATE TABLE public.enrollments (
   enrollment_id integer NOT NULL DEFAULT nextval('enrollments_enrollment_id_seq'::regclass),
-  section_id integer,
-  sy_id integer,
-  lrn text,
+  section_id integer NOT NULL,
+  sy_id integer NOT NULL,
+  lrn text NOT NULL,
   deleted_at timestamp with time zone,
   CONSTRAINT enrollments_pkey PRIMARY KEY (enrollment_id),
   CONSTRAINT enrollments_lrn_fkey FOREIGN KEY (lrn) REFERENCES public.students(lrn),
@@ -14,8 +14,8 @@ CREATE TABLE public.enrollments (
 );
 CREATE TABLE public.exam_assignments (
   id integer NOT NULL DEFAULT nextval('exam_assignments_id_seq'::regclass),
-  exam_id integer,
-  section_id integer,
+  exam_id integer NOT NULL,
+  section_id integer NOT NULL,
   CONSTRAINT exam_assignments_pkey PRIMARY KEY (id),
   CONSTRAINT exam_assignments_exam_id_fkey FOREIGN KEY (exam_id) REFERENCES public.exams(exam_id),
   CONSTRAINT exam_assignments_section_id_fkey FOREIGN KEY (section_id) REFERENCES public.sections(section_id)
@@ -29,7 +29,7 @@ CREATE TABLE public.exams (
   exam_date date NOT NULL,
   is_locked boolean DEFAULT false,
   creator_teacher_id uuid,
-  quarter_id integer,
+  quarter_id integer NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,
   objectives jsonb,
@@ -68,7 +68,7 @@ CREATE TABLE public.role_permissions (
 );
 CREATE TABLE public.roles (
   role_id integer GENERATED ALWAYS AS IDENTITY NOT NULL,
-  name character varying NOT NULL DEFAULT '50'::character varying UNIQUE,
+  name character varying NOT NULL UNIQUE,
   is_faculty boolean NOT NULL DEFAULT false,
   is_self_registerable boolean NOT NULL DEFAULT false,
   is_protected boolean NOT NULL DEFAULT false,
@@ -79,16 +79,16 @@ CREATE TABLE public.school_years (
   is_active boolean NOT NULL DEFAULT false,
   end_year integer NOT NULL,
   start_year integer NOT NULL,
-  year_range character varying DEFAULT ((start_year || '-'::text) || end_year),
   deleted_at timestamp with time zone,
   curriculum_id integer,
+  year_range character varying DEFAULT (((start_year)::text || '-'::text) || (end_year)::text),
   CONSTRAINT school_years_pkey PRIMARY KEY (sy_id),
   CONSTRAINT school_years_curriculum_id_fkey FOREIGN KEY (curriculum_id) REFERENCES public.curriculums(curriculum_id)
 );
 CREATE TABLE public.scores (
   score_id integer NOT NULL DEFAULT nextval('scores_score_id_seq'::regclass),
-  enrollment_id integer,
-  exam_assignment_id integer,
+  enrollment_id integer NOT NULL,
+  exam_assignment_id integer NOT NULL,
   responses jsonb NOT NULL,
   calculated_score integer NOT NULL,
   graded_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -138,13 +138,13 @@ CREATE TABLE public.students (
   last_name character varying NOT NULL,
   first_name character varying NOT NULL,
   middle_name character varying,
+  sex character NOT NULL CHECK (sex = ANY (ARRAY['M'::bpchar, 'F'::bpchar])),
+  deleted_at timestamp with time zone,
   full_name character varying DEFAULT ((((last_name)::text || ', '::text) || (first_name)::text) ||
 CASE
     WHEN (middle_name IS NOT NULL) THEN (', '::text || (middle_name)::text)
     ELSE ''::text
 END),
-  sex character NOT NULL CHECK (sex = ANY (ARRAY['M'::bpchar, 'F'::bpchar])),
-  deleted_at timestamp with time zone,
   CONSTRAINT students_pkey PRIMARY KEY (lrn)
 );
 CREATE TABLE public.subjects (
@@ -263,7 +263,8 @@ CREATE TABLE public.pending_registrations (
   resend_count integer NOT NULL DEFAULT 0,
   expires_at timestamp with time zone NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id)
+  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id),
+  CONSTRAINT pending_registrations_restore_uid_fkey FOREIGN KEY (restore_uid) REFERENCES public.users(uid)
 );
 CREATE TABLE public.audit_logs (
   audit_id uuid NOT NULL DEFAULT gen_random_uuid(),

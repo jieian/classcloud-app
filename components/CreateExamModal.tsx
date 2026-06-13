@@ -79,7 +79,7 @@ export default function CreateExamModal({ onClose, onProceed, initialDraft, exis
     });
 
     const assignmentLoad = !hasFullAccess && user?.id
-      ? fetchTeacherClassAssignments(user.id).then((assignments) => {
+      ? fetchTeacherClassAssignments().then((assignments) => {
           setAllowedSectionIds(new Set(assignments.map((a) => a.section_id)));
           setAllowedSubjectIds(new Set(assignments.map((a) => a.curriculum_subject_id)));
         })

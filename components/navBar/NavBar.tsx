@@ -32,6 +32,7 @@ import NotificationsPanel from "@/app/(app)/_components/NotificationsPanel";
 import { useMediaQuery, useDisclosure } from "@mantine/hooks";
 import classes from "./NavBar.module.css";
 import { useAuth } from "@/context/AuthContext";
+import { useBadgeSync } from "@/hooks/useBadgeSync";
 
 // Add type definitions
 type Sublink = {
@@ -137,9 +138,11 @@ const navigationData: NavigationLink[] = [
   },
 ];
 
-// Badge counts refresh at most this often, regardless of how many times the user
-// navigates. Prevents /api/badges from being re-fetched on every route change.
-const BADGE_REFRESH_MS = 30_000;
+// Fallback throttle for the navigation/focus badge refresh. Realtime Broadcast
+// (useBadgeSync) now provides liveness, so this only needs to catch signals
+// missed while the websocket was down — raised 30s → 1min to cut redundant
+// /api/badges hits accordingly.
+const BADGE_REFRESH_MS = 60_000;
 
 // A main nav button that reflects in-flight navigation: while the enclosing
 // <Link> is navigating, it shows the same active highlight as the destination
@@ -194,7 +197,7 @@ export default function Navbar() {
     active: false,
   });
 
-  const { signOut, permissions, firstName, lastName } = useAuth();
+  const { user, signOut, permissions, firstName, lastName } = useAuth();
 
   // Permission flags that decide which badges this user sees.
   const isAdmin = permissions.includes("students.full_access");
@@ -257,6 +260,12 @@ export default function Navbar() {
     window.addEventListener("focus", maybeRefreshBadges);
     return () => window.removeEventListener("focus", maybeRefreshBadges);
   }, [maybeRefreshBadges]);
+
+  // Live badge updates via Realtime Broadcast (audit #2): re-fetch immediately on
+  // a "changed" signal rather than waiting for the next navigation/focus. Admins
+  // (transfer reviewers) also get the shared pending-transfer signal. The
+  // navigation/focus refresh above and the hook's fallback poll cover missed signals.
+  useBadgeSync(user?.id ?? null, isAdmin, fetchBadges);
 
   // Helper function to check if user has required permissions
   const hasPermission = useCallback(

@@ -2,6 +2,12 @@
   {
     "schemaname": "public",
     "tablename": "announcement_attachments",
+    "indexname": "announcement_attachments_display_order_uq",
+    "indexdef": "CREATE UNIQUE INDEX announcement_attachments_display_order_uq ON public.announcement_attachments USING btree (announcement_id, display_order)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcement_attachments",
     "indexname": "announcement_attachments_pkey",
     "indexdef": "CREATE UNIQUE INDEX announcement_attachments_pkey ON public.announcement_attachments USING btree (attachment_id)"
   },
@@ -56,8 +62,8 @@
   {
     "schemaname": "public",
     "tablename": "announcements",
-    "indexname": "idx_announcements_published_feed",
-    "indexdef": "CREATE INDEX idx_announcements_published_feed ON public.announcements USING btree (sy_id, is_pinned DESC, published_at DESC) WHERE ((status = 'PUBLISHED'::text) AND (deleted_at IS NULL))"
+    "indexname": "idx_announcements_feed",
+    "indexdef": "CREATE INDEX idx_announcements_feed ON public.announcements USING btree (sy_id, is_pinned DESC, published_at DESC) WHERE (deleted_at IS NULL)"
   },
   {
     "schemaname": "public",
@@ -194,6 +200,12 @@
   {
     "schemaname": "public",
     "tablename": "exam_results_reports",
+    "indexname": "idx_err_section_cs_quarter",
+    "indexdef": "CREATE INDEX idx_err_section_cs_quarter ON public.exam_results_reports USING btree (section_id, curriculum_subject_id, quarter_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exam_results_reports",
     "indexname": "idx_exam_results_reports_curriculum_subject_id",
     "indexdef": "CREATE INDEX idx_exam_results_reports_curriculum_subject_id ON public.exam_results_reports USING btree (curriculum_subject_id)"
   },
@@ -220,12 +232,6 @@
     "tablename": "exam_results_reports",
     "indexname": "idx_exam_results_reports_quarter_id",
     "indexdef": "CREATE INDEX idx_exam_results_reports_quarter_id ON public.exam_results_reports USING btree (quarter_id)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "exam_results_reports",
-    "indexname": "idx_exam_results_reports_section_id",
-    "indexdef": "CREATE INDEX idx_exam_results_reports_section_id ON public.exam_results_reports USING btree (section_id)"
   },
   {
     "schemaname": "public",
@@ -272,8 +278,14 @@
   {
     "schemaname": "public",
     "tablename": "exams",
-    "indexname": "idx_exams_curriculum_subject_active",
-    "indexdef": "CREATE INDEX idx_exams_curriculum_subject_active ON public.exams USING btree (curriculum_subject_id) WHERE (deleted_at IS NULL)"
+    "indexname": "idx_exams_cs_quarter_active",
+    "indexdef": "CREATE INDEX idx_exams_cs_quarter_active ON public.exams USING btree (curriculum_subject_id, quarter_id) WHERE (deleted_at IS NULL)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "exams",
+    "indexname": "idx_exams_quarter_created_active",
+    "indexdef": "CREATE INDEX idx_exams_quarter_created_active ON public.exams USING btree (quarter_id, created_at DESC) WHERE (deleted_at IS NULL)"
   },
   {
     "schemaname": "public",
@@ -718,12 +730,6 @@
     "tablename": "subject_groups",
     "indexname": "subject_groups_unique",
     "indexdef": "CREATE UNIQUE INDEX subject_groups_unique ON public.subject_groups USING btree (curriculum_id, name)"
-  },
-  {
-    "schemaname": "public",
-    "tablename": "subjects",
-    "indexname": "subjects_code_subject_type_key",
-    "indexdef": "CREATE UNIQUE INDEX subjects_code_subject_type_key ON public.subjects USING btree (code, subject_type)"
   },
   {
     "schemaname": "public",

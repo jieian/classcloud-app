@@ -28,6 +28,7 @@ import {
   sendAllReportsCompleted,
 } from "@/lib/email/templates";
 import { getHomeActiveContextCached } from "@/lib/services/homeServerService";
+import { invalidateNotificationBadge } from "@/lib/services/badgeCache";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -182,7 +183,15 @@ async function resolveEmails(uids: string[]): Promise<Map<string, string>> {
 async function insertNotifications(rows: NotificationInsert[]): Promise<void> {
   if (rows.length === 0) return;
   const { error } = await admin.from("notifications").insert(rows);
-  if (error) console.error("[notifications] insert failed:", error.message);
+  if (error) {
+    console.error("[notifications] insert failed:", error.message);
+    return;
+  }
+  // Single chokepoint for every TS-side notification insert: evict each
+  // recipient's cached badge count so the bell updates promptly (audit #4).
+  await invalidateNotificationBadge(rows.map((r) => r.user_id)).catch((e) =>
+    console.error("[notifications] badge invalidation failed:", e),
+  );
 }
 
 /**
@@ -261,12 +270,24 @@ export async function dispatchNewSignup({
 }): Promise<void> {
   try {
     const fullName = `${firstName} ${lastName}`.trim();
-    const { error } = await admin.rpc("notify_new_signup", {
+    const { data, error } = await admin.rpc("notify_new_signup", {
       p_uid: newUserUid,
       p_full_name: fullName,
       p_action_url: SIGNUP_URL,
     });
-    if (error) console.error("[notifications] notify_new_signup RPC:", error.message);
+    if (error) {
+      console.error("[notifications] notify_new_signup RPC:", error.message);
+      return;
+    }
+    // The RPC inserts directly (bypassing insertNotifications), so evict each
+    // recipient admin's badge cache and push the live "changed" signal here —
+    // the RPC now returns the recipient uids for exactly this (audit #2/#4).
+    const uids = ((data ?? []) as { uid: string }[])
+      .map((r) => r.uid)
+      .filter(Boolean);
+    await invalidateNotificationBadge(uids).catch((e) =>
+      console.error("[notifications] new-signup badge invalidation failed:", e),
+    );
   } catch (err) {
     console.error("[notifications] dispatchNewSignup:", err);
   }

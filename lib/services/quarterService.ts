@@ -1,38 +1,28 @@
 /**
  * quarterService.ts
- * Fetches quarters from public.quarters, filtered to the active school year.
+ * Fetches active-school-year quarters via the cached /api/quarters/active route
+ * (Next.js data cache, tags: school-years + active-context) instead of a
+ * browser-direct PostgREST read.
  */
-import { supabase, Quarter } from '@/lib/exam-supabase';
+import type { Quarter } from '@/lib/exam-supabase';
 
 /**
  * Fetches all quarters belonging to the currently active school year.
- * Falls back to all quarters if no school year is marked active.
+ * Falls back to all quarters if no school year is marked active (server-side).
  */
 export async function fetchActiveQuarters(): Promise<Quarter[]> {
-  // First, find the active school year
-  const { data: syData } = await supabase
-    .from('school_years')
-    .select('sy_id')
-    .eq('is_active', true)
-    .single();
-
-  let query = supabase
-    .from('quarters')
-    .select('*')
-    .order('quarter_id', { ascending: true });
-
-  // If an active SY exists, filter to only its quarters
-  if (syData?.sy_id) {
-    query = query.eq('sy_id', syData.sy_id);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('[quarterService] fetchActiveQuarters error:', error.message);
+  try {
+    const res = await fetch('/api/quarters/active');
+    if (!res.ok) {
+      console.error('[quarterService] fetchActiveQuarters HTTP', res.status);
+      return [];
+    }
+    const data = await res.json();
+    return (data?.quarters as Quarter[]) ?? [];
+  } catch (err) {
+    console.error('[quarterService] fetchActiveQuarters error:', err);
     return [];
   }
-  return data ?? [];
 }
 
 export function abbreviateQuarterName(name: string): string {

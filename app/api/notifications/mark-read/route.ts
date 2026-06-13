@@ -2,6 +2,7 @@ import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { parseBody, MarkNotificationsReadSchema } from "@/lib/api-schemas";
+import { invalidateNotificationBadge } from "@/lib/services/badgeCache";
 
 // ─── POST /api/notifications/mark-read ────────────────────────────────────────
 // Body: { notification_ids: string[] }
@@ -30,6 +31,11 @@ const _POST = async function (request: Request) {
   const { error } = await query;
   if (error)
     return Response.json({ error: "Internal server error." }, { status: 500 });
+
+  // Unread count dropped — refresh the user's cached badge (audit #4).
+  await invalidateNotificationBadge(user.id).catch((e) =>
+    console.error("[notifications/mark-read] badge invalidation failed:", e),
+  );
 
   return Response.json({ success: true });
 };

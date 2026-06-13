@@ -266,10 +266,16 @@ export function userAssignmentsCacheKey(uid: string): string {
  */
 export async function getUserAssignmentsContext(uid: string): Promise<UserContext> {
   const key = userAssignmentsCacheKey(uid);
-  const cached = await redis.get<UserContext>(key);
-  if (cached) return cached;
 
+  // Resolve the active SY first (itself Redis-cached) so we can validate the
+  // cached context against it. School-year rollover (create_school_year_full,
+  // delete, etc.) does NOT evict per-user contexts, so a stale entry would
+  // otherwise carry the previous SY's assignments until TTL. Treating an
+  // activeSyId mismatch as a miss self-heals regardless of which mutation
+  // changed the active SY.
   const activeCtx = await getActiveContext();
+  const cached = await redis.get<UserContext>(key);
+  if (cached && cached.activeSyId === (activeCtx.sy_id ?? null)) return cached;
 
   if (!activeCtx.sy_id) {
     const empty: UserContext = {

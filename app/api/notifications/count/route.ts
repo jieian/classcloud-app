@@ -1,23 +1,21 @@
 import { getServerUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
-import { adminClient as admin } from "@/lib/supabase/admin";
+import { getNotificationBadge } from "@/lib/services/badgeCache";
 
 // ─── GET /api/notifications/count ─────────────────────────────────────────────
-// Returns the count of unread notifications for the current user.
+// Unread notification count for the current user. Served from the shared Redis
+// badge cache (audit #4) so it doesn't re-query on every poll.
 
 const _GET = async function () {
   const user = await getServerUser();
   if (!user) return Response.json({ count: 0 });
 
-  const { count, error } = await admin
-    .from("notifications")
-    .select("notification_id", { count: "exact", head: true })
-    .eq("user_id", user.id)
-    .is("read_at", null);
-
-  if (error) return Response.json({ count: 0 });
-
-  return Response.json({ count: count ?? 0 });
+  try {
+    const { notifications } = await getNotificationBadge(user.id);
+    return Response.json({ count: notifications });
+  } catch {
+    return Response.json({ count: 0 });
+  }
 };
 
 export const GET = withErrorHandler(_GET);

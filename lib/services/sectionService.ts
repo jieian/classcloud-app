@@ -1,43 +1,26 @@
 /**
  * sectionService.ts
- * Fetches sections from public.sections, joined with grade_levels.
+ * Fetches active-school-year sections via the cached /api/sections/active route
+ * (Next.js data cache, tags: sections + active-context) instead of a
+ * browser-direct PostgREST read.
  */
-import { supabase, Section } from '@/lib/exam-supabase';
+import type { Section } from '@/lib/exam-supabase';
 
 /**
  * Fetches all sections for the active school year, joined with grade_levels.
- * Falls back to all sections if no active school year is found.
+ * Falls back to all sections if no active school year is found (server-side).
  */
 export async function fetchActiveSections(): Promise<Section[]> {
-  // Find the active school year
-  const { data: syData } = await supabase
-    .from('school_years')
-    .select('sy_id')
-    .eq('is_active', true)
-    .single();
-
-  let query = supabase
-    .from('sections')
-    .select(`
-      section_id,
-      name,
-      grade_level_id,
-      sy_id,
-      adviser_id,
-      section_type,
-      grade_levels ( display_name )
-    `)
-    .order('name', { ascending: true });
-
-  if (syData?.sy_id) {
-    query = query.eq('sy_id', syData.sy_id);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('[sectionService] fetchActiveSections error:', error.message);
+  try {
+    const res = await fetch('/api/sections/active');
+    if (!res.ok) {
+      console.error('[sectionService] fetchActiveSections HTTP', res.status);
+      return [];
+    }
+    const data = await res.json();
+    return (data?.sections as Section[]) ?? [];
+  } catch (err) {
+    console.error('[sectionService] fetchActiveSections error:', err);
     return [];
   }
-  return (data as Section[]) ?? [];
 }

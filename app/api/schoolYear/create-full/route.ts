@@ -8,6 +8,7 @@ import { insertAuditLog } from "@/lib/audit";
 import { withErrorHandler } from "@/lib/api-error";
 import { SCHOOL_YEARS_CACHE_TAG } from "@/app/(app)/school/year/create/_lib/wizardServerService";
 import { ACTIVE_CONTEXT_CACHE_TAG } from "@/lib/services/homeServerService";
+import { invalidateActiveContext } from "@/lib/active-context";
 
 // ── Zod validation ─────────────────────────────────────────────────────────────
 
@@ -151,6 +152,13 @@ const _POST = async function (request: Request) {
   revalidateTag(ACTIVE_CONTEXT_CACHE_TAG, "minutes");
   revalidateTag("subjects", "minutes");
   revalidateTag("sections", "minutes");
+  // Creating a school year activates it (deactivating the prior one), so the
+  // Redis active-context cache must be evicted too — otherwise getActiveContext
+  // returns the stale prior sy_id for up to its TTL. Mirrors the other three
+  // school-year-mutating routes (toggle-quarter, hard-delete, delete-schoolYear).
+  await invalidateActiveContext().catch((err) =>
+    console.error("invalidateActiveContext failed after create-full:", err),
+  );
   await redis.del("faculty:list", "faculty:candidates", "coordinator:groups", "faculty:gsl");
 
   after(() =>
