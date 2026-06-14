@@ -1,8 +1,9 @@
 // layout.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { MantineProvider } from "@mantine/core";
 import { ModalsProvider } from "@mantine/modals";
+import { SerwistProvider } from "@serwist/next/react";
 import "@mantine/core/styles.css";
 import "./globals.css";
 
@@ -23,12 +24,32 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ClassCloud",
+  applicationName: "ClassCloud",
+  title: {
+    default: "ClassCloud",
+    template: "%s · ClassCloud",
+  },
   description:
     "A Centralized Quarterly Test Reports System for Baliwag North Central School",
+  // <link rel="manifest"> is auto-injected by app/manifest.ts.
+  appleWebApp: {
+    capable: true, // launch standalone (no Safari chrome) when added to Home Screen
+    statusBarStyle: "default",
+    title: "ClassCloud",
+  },
+  formatDetection: { telephone: false },
   icons: {
     icon: "/icon.png",
+    apple: "/icons/apple-touch-icon.png", // iOS Home Screen icon (opaque)
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#4EAE4A",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover", // respect iOS safe-area / notch in standalone
+  // Intentionally NOT locking maximumScale — keep pinch-zoom for accessibility.
 };
 
 export default function RootLayout({
@@ -41,20 +62,27 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <MantineProvider
-          forceColorScheme="light"
-          theme={{
-            fontFamily: "Geist, sans-serif",
-            headings: { fontFamily: "Geist, sans-serif" },
-          }}
+        {/* Registers /sw.js client-side. Disabled in dev (no SW is built there),
+            so Turbopack `next dev` is unaffected. */}
+        <SerwistProvider
+          swUrl="/sw.js"
+          disable={process.env.NODE_ENV === "development"}
         >
-          <ModalsProvider>
-            <AppNotifications />
-            {children}
-            <SpeedInsights />
-            <Analytics />
-          </ModalsProvider>
-        </MantineProvider>
+          <MantineProvider
+            forceColorScheme="light"
+            theme={{
+              fontFamily: "Geist, sans-serif",
+              headings: { fontFamily: "Geist, sans-serif" },
+            }}
+          >
+            <ModalsProvider>
+              <AppNotifications />
+              {children}
+              <SpeedInsights />
+              <Analytics />
+            </ModalsProvider>
+          </MantineProvider>
+        </SerwistProvider>
       </body>
     </html>
   );

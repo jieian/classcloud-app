@@ -13,4 +13,9 @@ const nextConfig: NextConfig = {
   turbopack: {},
 };
 
+// PWA service worker is built by Serwist in "configurator mode" (see
+// serwist.config.mjs) as a post-build step — `next build && serwist build`.
+// This keeps the integration bundler-agnostic so it works with Turbopack,
+// unlike the webpack-based `withSerwistInit` plugin. The SW is registered
+// client-side via <SerwistProvider> in app/layout.tsx.
 export default nextConfig;
