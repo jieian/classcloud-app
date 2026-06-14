@@ -68,6 +68,12 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
           visibleSections = visibleSections.filter(s => s.grade_level_id === sourceGradeLevelId);
         }
 
+        // SSES-exclusive subjects can only be copied to SSES sections. Regular sections
+        // never take an SSES subject, so they must not be offered as copy targets.
+        if (exam.curriculum_subjects?.subjects?.subject_type === 'SSES') {
+          visibleSections = visibleSections.filter(s => s.section_type === 'SSES');
+        }
+
         setAllSections(visibleSections);
 
         if (exam.quarter_id) {
@@ -147,6 +153,7 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
 
   const termName = exam?.quarters?.name ?? '—';
   const subjectName = (exam?.curriculum_subjects as { subjects?: { name?: string } } | null)?.subjects?.name ?? '—';
+  const isSsesSubject = exam?.curriculum_subjects?.subjects?.subject_type === 'SSES';
 
   return (
     <Modal
@@ -173,6 +180,14 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
             {loading ? <Skeleton height={20} mt={4} /> : <Text size="sm" fw={600}>{subjectName}</Text>}
           </div>
         </div>
+
+        {!loading && isSsesSubject && (
+          <Alert color="blue" variant="light" py="xs">
+            <Text size="xs">
+              {subjectName} is exclusive to SSES sections, so only SSES sections can be selected.
+            </Text>
+          </Alert>
+        )}
 
         <MultiSelect
           label="Section"

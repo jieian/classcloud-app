@@ -88,7 +88,7 @@ export interface ExamAssignment {
 }
 
 export interface ExamWithRelations extends Exam {
-  curriculum_subjects: { subject_id: number; subjects: { name: string; code: string } | null } | null;
+  curriculum_subjects: { subject_id: number; subjects: { name: string; code: string; subject_type: 'BOTH' | 'SSES' | null } | null } | null;
   quarters: { name: string } | null;
   creator_user: { first_name: string; last_name: string } | null;
   exam_assignments: {

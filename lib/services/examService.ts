@@ -118,7 +118,7 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
       creator_teacher_id, quarter_id, curriculum_subject_id, created_at,
       answer_key, objectives,
       creator_user:users!creator_teacher_id ( first_name, last_name ),
-      curriculum_subjects ( subject_id, subjects ( name, code ) ),
+      curriculum_subjects ( subject_id, subjects ( name, code, subject_type ) ),
       quarters ( name ),
       exam_assignments (
         id,
@@ -172,7 +172,7 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
     .select(`
       *,
       creator_user:users!creator_teacher_id ( first_name, last_name ),
-      curriculum_subjects ( subject_id, subjects ( name, code ) ),
+      curriculum_subjects ( subject_id, subjects ( name, code, subject_type ) ),
       quarters ( name ),
       exam_assignments (
         id,

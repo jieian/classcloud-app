@@ -216,8 +216,8 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
   const PAGE_SIZE = 4;
   const [openMenuExamId, setOpenMenuExamId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"admin" | "faculty">(() => {
-    if (typeof window === "undefined") return "admin";
-    return localStorage.getItem("examViewMode") === "faculty" ? "faculty" : "admin";
+    if (typeof window === "undefined") return "faculty";
+    return localStorage.getItem("examViewMode") === "admin" ? "admin" : "faculty";
   });
   const storageKeys = useMemo(
     () => ({
@@ -611,9 +611,15 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         : null;
       if (!gradeLevelId) continue;
 
+      // SSES-exclusive subjects only ever apply to SSES sections; regular sections
+      // can never hold this exam, so they must not count toward "fully covered".
+      const isSsesSubject =
+        exam.curriculum_subjects?.subjects?.subject_type === "SSES";
+
       // Sections of the same grade level this faculty handles (all if admin).
       const relevantSections = allSections.filter(
         s => s.grade_level_id === gradeLevelId &&
+          (!isSsesSubject || s.section_type === "SSES") &&
           (effectiveFullAccess || teacherSectionIds.has(s.section_id)),
       );
       if (relevantSections.length === 0) continue;

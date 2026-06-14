@@ -203,43 +203,22 @@ function normalizeScoreRows(rows: Record<string, unknown>[]): ExamScore[] {
 }
 
 async function fetchScoresForExamViaAssignments(examId: number): Promise<ExamScore[] | null> {
-  const { data: assignments, error: assignmentError } = await supabase
-    .from("exam_assignments")
-    .select("id")
-    .eq("exam_id", examId);
-
-  if (assignmentError) {
-    console.error("[attemptService] fetch assignments for scores failed:", assignmentError.message);
+  // Scores are service-role-only (audit #17); read them through the
+  // section-authorized server route instead of PostgREST.
+  try {
+    const res = await fetch(`/api/exams/${examId}/scores`);
+    if (res.ok) {
+      const { scores } = (await res.json()) as { scores?: Record<string, unknown>[] };
+      return normalizeScoreRows(scores ?? []);
+    }
+    // No access to this exam → no scores (and no legacy fallback).
+    if (res.status === 403) return [];
+    // Other errors → null so fetchAttemptsForExam can try the legacy table.
+    return null;
+  } catch (error) {
+    console.error("[attemptService] fetch scores request failed:", error);
     return null;
   }
-
-  const assignmentIds = ((assignments ?? []) as { id: number }[]).map((a) => a.id);
-  if (assignmentIds.length === 0) return [];
-
-  const selectCandidates = [
-    "score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at, enrollments!left(students!left(full_name))",
-    "score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at, enrollments(students(full_name))",
-    "score_id, enrollment_id, exam_assignment_id, responses, calculated_score, graded_at",
-  ];
-
-  for (const selectClause of selectCandidates) {
-    const { data, error } = await supabase
-      .from("scores")
-      .select(selectClause)
-      .in("exam_assignment_id", assignmentIds)
-      .order("graded_at", { ascending: false });
-
-    if (!error) {
-      return normalizeScoreRows((data ?? []) as Record<string, unknown>[]);
-    }
-
-    if (!isMissingResourceError(error.message)) {
-      console.error("[attemptService] fetch scores failed:", error.message);
-      return [];
-    }
-  }
-
-  return [];
 }
 
 async function fetchLegacyAttemptsForExam(examId: number): Promise<ExamScore[]> {
@@ -297,21 +276,22 @@ export async function fetchExamIdsWithScores(
 
   if (assignmentIds.length === 0) return result;
 
-  const { data, error } = await supabase
-    .from("scores")
-    .select("exam_assignment_id")
-    .in("exam_assignment_id", assignmentIds);
-
-  if (error) {
-    if (!isMissingResourceError(error.message)) {
-      console.error("[attemptService] fetchExamIdsWithScores failed:", error.message);
+  // Scores are service-role-only (audit #17); ask the section-authorized route
+  // which of these assignments have scores.
+  try {
+    const res = await fetch("/api/exams/scores/exists", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assignmentIds }),
+    });
+    if (!res.ok) return result;
+    const { withScores } = (await res.json()) as { withScores?: number[] };
+    for (const assignmentId of withScores ?? []) {
+      const examId = assignmentIdToExamId.get(assignmentId);
+      if (examId != null) result.add(examId);
     }
-    return result;
-  }
-
-  for (const row of data ?? []) {
-    const examId = assignmentIdToExamId.get(row.exam_assignment_id);
-    if (examId != null) result.add(examId);
+  } catch (error) {
+    console.error("[attemptService] fetchExamIdsWithScores request failed:", error);
   }
 
   return result;

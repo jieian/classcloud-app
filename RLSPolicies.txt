@@ -153,16 +153,6 @@
       },
       {
         "schemaname": "public",
-        "tablename": "scores",
-        "policyname": "Enable read access for all users",
-        "permissive": "PERMISSIVE",
-        "roles": "{authenticated}",
-        "cmd": "SELECT",
-        "qual": "( SELECT is_active_staff() AS is_active_staff)",
-        "with_check": null
-      },
-      {
-        "schemaname": "public",
         "tablename": "section_transfer_requests",
         "policyname": "str_select",
         "permissive": "PERMISSIVE",
