@@ -41,19 +41,19 @@ export default function manifest(): MetadataRoute.Manifest {
         name: "Classes",
         short_name: "Classes",
         url: "/school/classes?source=pwa-shortcut",
-        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/icons/classes-192.png", sizes: "192x192" }],
       },
       {
         name: "Examinations",
         short_name: "Exams",
         url: "/exam?source=pwa-shortcut",
-        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/icons/examinations-192.png", sizes: "192x192" }],
       },
       {
         name: "Reports",
         short_name: "Reports",
         url: "/reports?source=pwa-shortcut",
-        icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }],
+        icons: [{ src: "/icons/reports-192.png", sizes: "192x192" }],
       },
     ],
   };
