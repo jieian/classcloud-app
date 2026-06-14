@@ -112,7 +112,9 @@ export const config = {
      * - favicon.ico (favicon file)
      * - api routes
      * - logo directory
+     * - manifest.webmanifest & sw.js (Critical PWA files)
+     * - icon files (e.g., icon-192x192.png)
      */
-    "/((?!_next/static|_next/image|favicon.ico|api|logo).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api|logo|icons|manifest\\.webmanifest|sw\\.js).*)",
   ],
 };
