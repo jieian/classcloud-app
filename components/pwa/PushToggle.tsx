@@ -142,6 +142,7 @@ export default function PushToggle() {
       checked={checked}
       onChange={onToggle}
       disabled={disabled}
+      color="#4EAE4A"
       aria-label="Toggle push notifications"
     />
   );
