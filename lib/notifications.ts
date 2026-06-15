@@ -29,6 +29,7 @@ import {
 } from "@/lib/email/templates";
 import { getHomeActiveContextCached } from "@/lib/services/homeServerService";
 import { invalidateNotificationBadge } from "@/lib/services/badgeCache";
+import { sendPushToUsers } from "@/lib/push/webPush";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -192,6 +193,16 @@ async function insertNotifications(rows: NotificationInsert[]): Promise<void> {
   await invalidateNotificationBadge(rows.map((r) => r.user_id)).catch((e) =>
     console.error("[notifications] badge invalidation failed:", e),
   );
+  // Same chokepoint fans out Web Push (PWA Phase 2). Generic text keyed by
+  // type — built straight from the inserted rows so push recipients are a
+  // faithful echo of the bell notifications. Fire-and-forget.
+  void sendPushToUsers(
+    rows.map((r) => ({
+      user_id: r.user_id,
+      type: r.type,
+      action_url: r.action_url,
+    })),
+  ).catch((e) => console.error("[notifications] push fan-out failed:", e));
 }
 
 /**
@@ -287,6 +298,16 @@ export async function dispatchNewSignup({
       .filter(Boolean);
     await invalidateNotificationBadge(uids).catch((e) =>
       console.error("[notifications] new-signup badge invalidation failed:", e),
+    );
+    // Push the SAME uids the RPC inserted notifications for (no recomputation).
+    void sendPushToUsers(
+      uids.map((uid) => ({
+        user_id: uid,
+        type: "new_signup",
+        action_url: SIGNUP_URL,
+      })),
+    ).catch((e) =>
+      console.error("[notifications] new-signup push fan-out failed:", e),
     );
   } catch (err) {
     console.error("[notifications] dispatchNewSignup:", err);
@@ -962,6 +983,20 @@ export async function dispatchReportCompletions({
     const term = ctx.termName ?? "";
     const schoolYear = ctx.yearRange ?? "";
     const reportsUrl = `${SITE_URL}/reports`;
+
+    // Web Push: fan out to the EXACT milestone recipients the RPC inserted
+    // notifications for (no independent recomputation). Generic text by type.
+    void sendPushToUsers(
+      milestones.flatMap((m) =>
+        (m.recipients ?? []).map((r) => ({
+          user_id: r.uid,
+          type: m.type,
+          action_url: reportsUrl,
+        })),
+      ),
+    ).catch((e) =>
+      console.error("[notifications] report-completion push fan-out failed:", e),
+    );
 
     // Collect every send so we can await them: this dispatcher runs inside the
     // route's after(), which only keeps the serverless instance alive until the

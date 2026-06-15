@@ -151,3 +151,14 @@ export const UpdateProfileSchema = z.object({
   middle_name: z.string().trim().optional(),
   last_name: z.string().trim().optional(),
 });
+
+// ── Web Push (PWA) ──────────────────────────────────────────────────────────────
+export const PushSubscribeSchema = z.object({
+  endpoint: z.string().url("Invalid subscription endpoint."),
+  p256dh: z.string().min(1, "Missing p256dh key."),
+  auth: z.string().min(1, "Missing auth key."),
+});
+
+export const PushUnsubscribeSchema = z.object({
+  endpoint: z.string().url("Invalid subscription endpoint."),
+});

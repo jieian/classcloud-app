@@ -33,6 +33,7 @@ import {
 import { useAuth } from "@/context/AuthContext";
 import { getPasswordStrength, passwordRequirements } from "@/app/(app)/user-roles/users/_lib/utils";
 import MyAssignmentCard from "./MyAssignmentCard";
+import PushToggle from "@/components/pwa/PushToggle";
 
 function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
@@ -594,6 +595,9 @@ export default function SettingsClient() {
           Change Password
         </Button>
       </Paper>
+
+      {/* ── Push Notifications ─────────────────────────────────────────────── */}
+      <PushToggle />
     </Stack>
   );
 }
