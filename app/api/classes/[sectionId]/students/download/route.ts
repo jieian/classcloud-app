@@ -4,6 +4,7 @@ import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient as admin } from "@/lib/supabase/admin";
 import { isTeacherInSection } from "@/app/(app)/school/classes/_lib/classesServerService";
+import { insertAuditLog } from "@/lib/audit";
 const _GET = async function(
   _request: Request,
   { params }: { params: Promise<{ sectionId: string }> },
@@ -216,6 +217,16 @@ const _GET = async function(
     /[<>:"/\\|?*]/g,
     "_",
   );
+
+  // RA 10173 read-access trail: who exported student PII, and how much.
+  void insertAuditLog({
+    actor_id: user.id,
+    action: "roster_exported",
+    entity_type: "section",
+    entity_id: String(sectionId),
+    entity_label: `${gradeLevel} - ${sec.name}`,
+    metadata: { student_count: allStudents.length },
+  });
 
   return new Response(buffer, {
     headers: {

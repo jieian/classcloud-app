@@ -285,6 +285,11 @@ export default function LoginPage() {
                 Sign Up
               </Anchor>
             </Text>
+            <Text ta="center" mt={6} c="#808898" fz="xs">
+              <Anchor href="/privacy" c="#808898" underline="hover" fz="inherit">
+                Privacy Notice
+              </Anchor>
+            </Text>
           </div>
         </Container>
       </div>

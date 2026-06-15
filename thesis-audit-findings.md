@@ -352,7 +352,13 @@ Enforced on `POST /api/auth/signup` and `POST /api/auth/forgot-password`. Server
 
 ## PART 9 — RA 10173 (DATA PRIVACY ACT) COMPLIANCE
 
-No explicit RA 10173 compliance code was found. The following maps existing system features to the Act's requirements:
+> **Superseded — see [`dpa-compliance.md`](dpa-compliance.md).** As of 2026-06-15, compliance work was
+> implemented (privacy notice page, signup consent capture with lifetime consent columns, read-access
+> audit on PII exports) and the RLS PII hardening was confirmed applied against the live database. The
+> obligation-by-obligation mapping with current status now lives in `dpa-compliance.md`. The original
+> snapshot below is retained for historical reference.
+
+The following maps existing system features to the Act's requirements:
 
 ### Already satisfied (frame these in the paper):
 

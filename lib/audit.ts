@@ -17,9 +17,19 @@ export type AuditCategory = "ACCESS" | "SECURITY" | "ACADEMIC" | "ADMIN" | "SYST
 // category, so the category can never drift from the action.
 export const AUDIT_ACTIONS = {
   // ── ACCESS ────────────────────────────────────────────────────────────────
+  // CONTRACT: the ACCESS category covers (1) authentication/session events and
+  // (2) access to sensitive personal data (e.g. exporting student PII). Both are
+  // retained for 12 months (security-grade retention; see the compliance plan
+  // Phase 5b). DO NOT file low-sensitivity events here (e.g. "viewed own profile",
+  // routine page views) — they would be over-retained for no purpose; put those
+  // in ACADEMIC/ADMIN/SYSTEM.
   login:                          { label: "Logged In",                      category: "ACCESS"   },
   logout:                         { label: "Logged Out",                     category: "ACCESS"   },
   registration_confirmed:         { label: "Registration Confirmed",         category: "ACCESS"   },
+  // Sensitive personal-data exports (RA 10173 accountability — read-access trail):
+  roster_exported:                { label: "Student Roster Exported",        category: "ACCESS"   },
+  exam_report_exported:           { label: "Exam Result Report Exported",    category: "ACCESS"   },
+  consolidated_report_exported:   { label: "Consolidated Report Exported",   category: "ACCESS"   },
 
   // ── SECURITY ──────────────────────────────────────────────────────────────
   password_reset:                 { label: "Password Reset",                 category: "SECURITY" },

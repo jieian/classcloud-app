@@ -179,6 +179,24 @@ const _POST = async function (request: Request) {
     return Response.json({ status: "error" }, { status: 500 });
   }
 
+  // ── Carry consent evidence onto the users row (RA 10173) ──────────────────
+  // confirm_pending_registration creates the public.users row; copy the consent
+  // captured at signup so it lives for the lifetime of the account (the system of
+  // record — never in audit_logs, which is subject to retention purges).
+  if (row.privacy_consent_at) {
+    const { error: consentError } = await adminClient
+      .from("users")
+      .update({
+        privacy_consent_at: row.privacy_consent_at,
+        privacy_consent_version: row.privacy_consent_version ?? null,
+      })
+      .eq("uid", uid);
+    if (consentError) {
+      // Non-fatal: account is created; log for follow-up rather than failing confirm.
+      console.error("[confirm] Failed to persist consent on users row:", consentError.message);
+    }
+  }
+
   void redis.del("users:pending");
 
   after(() =>

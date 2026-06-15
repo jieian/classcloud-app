@@ -4,6 +4,17 @@ Validation pass performed against the live codebase: lib/redis.ts, lib/cache-key
 
 ## Progress
 
+- **RLS hardening CONFIRMED APPLIED (verified 2026-06-15 against live `RLSPolicies.txt`)** — re-dumped the live policy set during the RA 10173 compliance pass. Confirmed in the database, NOT pending:
+  - **#15** — `pending_registrations` (and `scores`, `audit_logs`) have ZERO client policies → RLS-enabled, service-role-only. ✅
+  - **#16** — `exams` is now `exams_select_authenticated` (SELECT-only under the `is_active_staff()` floor); the old `FOR ALL USING (true)` is gone. ✅
+  - **#17** — every remaining read table (`students`, `enrollments`, `users`, `sections`, reports, etc.) is floored by `( SELECT is_active_staff() )`. ✅
+  - **#18** — `section_transfer_requests.str_select` uses the `role_permissions → permissions` join on `students.full_access` (no more `roles.name` literal). ✅
+  - **#20** — `str_insert` / `str_update` are gone; only `str_select` remains. ✅
+  - **#19 (RPC EXECUTE revoke) — NOT verifiable from the file dumps** (RPCs.txt holds definitions, not grants). Confirm directly against the live DB before claiming it; run:
+    `SELECT p.proname, array_agg(DISTINCT r.rolname) FILTER (WHERE has_function_privilege(r.rolname, p.oid, 'EXECUTE')) AS can_exec FROM pg_proc p CROSS JOIN (VALUES ('anon'),('authenticated'),('service_role')) AS r(rolname) WHERE p.pronamespace = 'public'::regnamespace GROUP BY p.proname ORDER BY p.proname;`
+    Expect `anon`/`authenticated` absent for every privileged SECURITY DEFINER fn (except the deliberately-kept `check_email_status`/`update_my_profile`).
+  - The per-item "PENDING DB APPLY" labels below are therefore **stale for #15–#18/#20** — left in place as historical record but superseded by this confirmation.
+
 - **#3 DONE (code, 2026-06-12)** — proxy.ts now getClaims()-first, getUser() fallback-only. Payoff requires asymmetric JWT signing keys in the Supabase dashboard.
 - **#19 migration written** — `supabase/migrations/20260612120000_revoke_rpc_execute.sql` (keeps `check_email_exists` + `update_my_profile` for authenticated — verified client-side callers; all other privileged RPCs → service_role only). PENDING DB APPLY.
 - **#15 + #16 migration written** — `supabase/migrations/20260612120100_rls_lockdown_pending_registrations_exams.sql` (pending_registrations → no client read policy; exams → SELECT-only, verified client reads exist / client writes don't). REVISED 2026-06-12: first apply left the pending_registrations public-read policy in place (single `DROP POLICY IF EXISTS` no-ops on any name mismatch); rewrote to ENABLE RLS + a DO-block that drops ALL policies on the table by name (idempotent, name-independent). Verification now also checks `relrowsecurity = true`. RE-RUN the pending_registrations block. exams part already applied correctly.

@@ -6,6 +6,7 @@ import { insertAuditLog } from "@/lib/audit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { adminClient } from "@/lib/supabase/admin";
 import { generateRawToken, hashToken, encryptPassword } from "@/lib/crypto";
+import { PRIVACY_NOTICE_VERSION } from "@/lib/privacy";
 
 // 5 signup attempts per IP per 10 minutes
 const signupLimiter = createRateLimiter({ maxRequests: 5, windowMs: 10 * 60_000, prefix: "rl:signup" });
@@ -52,7 +53,7 @@ const _POST = async function (request: Request) {
 
   // ── Parse + validate body ─────────────────────────────────────────────────
   const body = await request.json();
-  const { first_name, middle_name, last_name, email, password, role_ids, website, turnstile_token } = body;
+  const { first_name, middle_name, last_name, email, password, role_ids, website, turnstile_token, privacy_consent } = body;
 
   if (website) {
     void insertAuditLog({
@@ -86,6 +87,15 @@ const _POST = async function (request: Request) {
   }
   if (!Array.isArray(role_ids) || role_ids.length === 0) {
     return Response.json({ error: "At least one role must be selected." }, { status: 400 });
+  }
+
+  // ── Privacy Notice consent (RA 10173) ─────────────────────────────────────
+  // Required, server-enforced (the disabled submit button is only a UX guard).
+  if (privacy_consent !== true) {
+    return Response.json(
+      { error: "You must agree to the Privacy Notice to create an account." },
+      { status: 400 },
+    );
   }
 
   // ── Email format + domain ─────────────────────────────────────────────────
@@ -206,6 +216,9 @@ const _POST = async function (request: Request) {
       restore_uid:        restoreUid,
       resend_count:       0,
       expires_at:         expiresAt,
+      // Consent evidence — stamped server-side, carried to users on confirm.
+      privacy_consent_at:      new Date().toISOString(),
+      privacy_consent_version: PRIVACY_NOTICE_VERSION,
     },
     { onConflict: "email" },
   );

@@ -2,6 +2,7 @@ import * as XLSXStyle from "xlsx-js-style";
 import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
+import { insertAuditLog } from "@/lib/audit";
 import {
   fetchMyAssignedScope,
   type ConsolidatedSubjectDiagnosticResult,
@@ -770,6 +771,16 @@ const _GET = async function (request: Request) {
   ]);
   const schoolYear = (schoolYearData as SchoolYearRow | null)?.school_year ?? DASH;
   const quarterName = firstJoin(exam.quarters)?.name ?? DASH;
+
+  // RA 10173 read-access trail: who exported a consolidated (multi-section) report.
+  void insertAuditLog({
+    actor_id: user.id,
+    action: "consolidated_report_exported",
+    entity_type: "exam",
+    entity_id: String(examId),
+    entity_label: `${result.gradeDisplayName} • ${result.subjectName} • ${result.examTitle}`,
+    metadata: { grade_level_id: gradeLevelId, subject_id: subjectId },
+  });
 
   return buildWorkbook({
     result,
@@ -1545,6 +1556,7 @@ function buildWorkbook({
   const buffer = XLSXStyle.write(wb, { type: "buffer", bookType: "xlsx" });
   const displayFilename = safeFilename(`${result.gradeDisplayName} • ${result.subjectName} • ${result.examTitle}.xlsx`);
   const asciiFilename = displayFilename.replace(/[^\x20-\x7E]/g, "_");
+
   return new Response(buffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

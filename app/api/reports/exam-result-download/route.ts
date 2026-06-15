@@ -3,6 +3,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { getServerUser, getPermissionsFromUser } from "@/lib/supabase/server";
 import { fetchMyAssignedScope } from "@/lib/services/reportsAnalysisService";
+import { insertAuditLog } from "@/lib/audit";
 
 type MaybeArray<T> = T | T[] | null;
 type Worksheet = XLSXStyle.WorkSheet & {
@@ -310,6 +311,16 @@ const _GET = async function (request: Request) {
   if (rows.length === 0) {
     return Response.json({ error: "No saved student scores found for this report." }, { status: 404 });
   }
+
+  // RA 10173 read-access trail: who exported per-section exam results (student PII + scores).
+  void insertAuditLog({
+    actor_id: user.id,
+    action: "exam_report_exported",
+    entity_type: "exam",
+    entity_id: String(examId),
+    entity_label: `${gradeName} • ${subjectName} • ${sectionName}`,
+    metadata: { section_id: sectionId },
+  });
 
   return buildWorkbook({
     examTitle: exam.title,

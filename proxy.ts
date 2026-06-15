@@ -83,7 +83,7 @@ export async function proxy(request: NextRequest) {
       : "/";
 
   // Pages anyone can access (unauthenticated or authenticated)
-  const alwaysPublicPaths = ["/reset-password", "/auth/callback", "/signup/confirmed", "/invite/activate"];
+  const alwaysPublicPaths = ["/reset-password", "/auth/callback", "/signup/confirmed", "/invite/activate", "/privacy"];
   // Pages only unauthenticated users should see (authenticated users get redirected away)
   const unauthOnlyPaths = ["/login", "/forgot-password", "/signup"];
   const publicPaths = [...alwaysPublicPaths, ...unauthOnlyPaths];

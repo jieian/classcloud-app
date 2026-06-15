@@ -2,6 +2,7 @@
 
 import {
   Alert,
+  Anchor,
   Box,
   Button,
   Center,
@@ -119,6 +120,8 @@ export default function SignUpPage() {
 
   // ── Honeypot ──
   const [honeypot, setHoneypot] = useState("");
+  // RA 10173 consent — required to submit (server also enforces).
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
 
   // ── Turnstile ──
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
@@ -441,6 +444,7 @@ export default function SignUpPage() {
           role_ids: selectedRoles.map(Number),
           website: honeypot,
           turnstile_token: turnstileToken,
+          privacy_consent: agreedToPrivacy,
         }),
       });
 
@@ -952,6 +956,30 @@ export default function SignUpPage() {
                         })()
                       )}
 
+                      <Checkbox
+                        mt="md"
+                        size="sm"
+                        color="#4EAE4A"
+                        checked={agreedToPrivacy}
+                        onChange={(e) => setAgreedToPrivacy(e.currentTarget.checked)}
+                        label={
+                          <Text size="xs" c="#808898">
+                            I have read and agree to the{" "}
+                            <Anchor
+                              component={Link}
+                              href="/privacy"
+                              target="_blank"
+                              c="#4EAE4A"
+                              fw={600}
+                              fz="inherit"
+                            >
+                              Privacy Notice
+                            </Anchor>
+                            .
+                          </Text>
+                        }
+                      />
+
                       <Turnstile
                         ref={turnstileRef}
                         style={{ marginTop: "0.75rem" }}
@@ -979,6 +1007,7 @@ export default function SignUpPage() {
                             !firstName.trim() ||
                             !lastName.trim() ||
                             selectedRoles.length === 0 ||
+                            !agreedToPrivacy ||
                             !turnstileToken
                           }
                           onClick={handleSubmit}
