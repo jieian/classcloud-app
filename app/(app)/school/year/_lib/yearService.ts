@@ -111,10 +111,27 @@ export async function checkCanCreateSchoolYear(): Promise<CanCreateResult> {
 
   const { data: quarters } = await supabase
     .from("quarters")
-    .select("quarter_id")
+    .select("quarter_id, name")
     .eq("sy_id", (prevSY as any).sy_id);
 
-  const quarterIds = ((quarters ?? []) as any[]).map((q) => q.quarter_id as number);
+  // Only the LAST term gates creation: if the final term's reports are complete,
+  // the year is considered wrapped up. Quarters are named with ordinal words by
+  // create_school_year_full ("First/Second/Third Quarter|Term"), so we rank by
+  // that leading word and keep only the highest-ranked quarter.
+  const ORDINAL_RANK: Record<string, number> = {
+    first: 1,
+    second: 2,
+    third: 3,
+    fourth: 4,
+  };
+  const rankOf = (name: string): number =>
+    ORDINAL_RANK[(name ?? "").trim().split(/\s+/)[0]?.toLowerCase()] ?? 0;
+
+  const lastQuarter = ((quarters ?? []) as any[]).reduce<
+    { quarter_id: number; name: string } | null
+  >((last, q) => (last && rankOf(last.name) >= rankOf(q.name) ? last : q), null);
+
+  const quarterIds = lastQuarter ? [lastQuarter.quarter_id] : [];
   if (quarterIds.length === 0)
     return {
       allowed: false,
