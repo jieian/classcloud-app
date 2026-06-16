@@ -13,6 +13,7 @@ import { fetchTeacherClassAssignments } from '@/lib/services/classService';
 import {
   checkExamDuplicates,
   createExamWithAssignments,
+  fetchExamGradingData,
   saveAnswerKey,
   saveObjectives,
 } from '@/lib/services/examService';
@@ -33,6 +34,12 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
+  // answer_key/objectives are omitted from the list exam — fetched here on open
+  // so the copy carries the source key. The Create button is gated on `loading`.
+  const [gradingData, setGradingData] = useState<{
+    answer_key: AnswerKeyJsonb | null;
+    objectives: LearningObjective[] | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!opened || !exam) return;
@@ -40,13 +47,16 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
     setSelectedSectionIds([]);
     setLoadError(null);
     setLoading(true);
+    setGradingData(null);
 
     void (async () => {
       try {
-        const [secs, assignments] = await Promise.all([
+        const [secs, assignments, grading] = await Promise.all([
           fetchActiveSections(),
           user?.id ? fetchTeacherClassAssignments() : Promise.resolve([]),
+          fetchExamGradingData(exam.exam_id),
         ]);
+        setGradingData(grading);
 
         // Determine the grade level of the source exam from its current section assignments.
         const examSectionIds = new Set(
@@ -126,12 +136,11 @@ export default function CopyExamModal({ exam, opened, onClose, onCopied }: CopyE
       await Promise.all(
         exam_ids.flatMap(id => {
           const tasks: Promise<boolean>[] = [];
-          if (exam.answer_key) {
-            tasks.push(saveAnswerKey(id, exam.answer_key as AnswerKeyJsonb));
+          if (gradingData?.answer_key) {
+            tasks.push(saveAnswerKey(id, gradingData.answer_key));
           }
-          const objectives = exam.objectives as LearningObjective[] | null;
-          if (objectives?.length) {
-            tasks.push(saveObjectives(id, objectives));
+          if (gradingData?.objectives?.length) {
+            tasks.push(saveObjectives(id, gradingData.objectives));
           }
           return tasks;
         }),

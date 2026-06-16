@@ -1,5 +1,6 @@
 import { cacheTag, cacheLife } from "next/cache";
 import { adminClient as admin } from "@/lib/supabase/admin";
+import { getActiveContext } from "@/lib/active-context";
 import type { GradeLevel, Section } from "@/lib/exam-supabase";
 import type { SubjectWithGradeLevel } from "@/lib/services/subjectService";
 
@@ -19,25 +20,6 @@ export type ExamInitialData = {
   activeSyId: number | null;
   activeQuarterId: number | null;
 };
-
-async function fetchActiveSyId(): Promise<number | null> {
-  const { data } = await admin
-    .from("school_years")
-    .select("sy_id")
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-  return (data as { sy_id: number } | null)?.sy_id ?? null;
-}
-
-async function fetchActiveQuarterId(): Promise<number | null> {
-  const { data } = await admin
-    .from("quarters")
-    .select("quarter_id")
-    .eq("is_active", true)
-    .maybeSingle();
-  return (data as { quarter_id: number } | null)?.quarter_id ?? null;
-}
 
 async function getGradeLevelsCached(): Promise<GradeLevel[]> {
   "use cache";
@@ -121,15 +103,18 @@ async function getSectionsCached(syId: number): Promise<Section[]> {
 }
 
 export async function getExamInitData(): Promise<ExamInitialData> {
-  const [activeSyId, activeQuarterId, gradeLevels, schoolYears, subjects] =
-    await Promise.all([
-      fetchActiveSyId(),
-      fetchActiveQuarterId(),
-      getGradeLevelsCached(),
-      getSchoolYearsCached(),
-      getSubjectsCached(),
-    ]);
+  // Single Redis-cached active-context read (sy_id + quarter_id) instead of two
+  // uncached admin queries — and the same value the client reuses, so the term
+  // is resolved once per page load rather than 4×.
+  const [activeContext, gradeLevels, schoolYears, subjects] = await Promise.all([
+    getActiveContext(),
+    getGradeLevelsCached(),
+    getSchoolYearsCached(),
+    getSubjectsCached(),
+  ]);
 
+  const activeSyId = activeContext.sy_id;
+  const activeQuarterId = activeContext.quarter_id;
   const sections = activeSyId ? await getSectionsCached(activeSyId) : [];
 
   return { gradeLevels, schoolYears, subjects, sections, activeSyId, activeQuarterId };

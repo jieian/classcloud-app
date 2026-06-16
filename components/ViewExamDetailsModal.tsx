@@ -1,7 +1,9 @@
 'use client';
 
-import { Modal, Text, Tooltip } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Modal, Text, Tooltip, Center, Loader } from '@mantine/core';
 import type { ExamWithRelations, AnswerKeyJsonb, LearningObjective } from '@/lib/exam-supabase';
+import { fetchExamGradingData } from '@/lib/services/examService';
 
 interface ViewExamDetailsModalProps {
   exam: ExamWithRelations | null;
@@ -23,10 +25,33 @@ const OBJECTIVE_PALETTE = [
 ];
 
 export default function ViewExamDetailsModal({ exam, opened, onClose }: ViewExamDetailsModalProps) {
+  // answer_key/objectives are no longer carried on the list exam — fetch them
+  // on open so the details table reflects the real key.
+  const [answerKey, setAnswerKey] = useState<AnswerKeyJsonb | null>(null);
+  const [objectives, setObjectives] = useState<LearningObjective[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!opened || !exam) return;
+    let cancelled = false;
+    const examId = exam.exam_id;
+    void (async () => {
+      setLoading(true);
+      setAnswerKey(null);
+      setObjectives([]);
+      const grading = await fetchExamGradingData(examId);
+      if (cancelled) return;
+      setAnswerKey((grading?.answer_key ?? null) as AnswerKeyJsonb | null);
+      setObjectives((grading?.objectives ?? []) as LearningObjective[]);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [opened, exam?.exam_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!exam) return null;
 
-  const answerKey = exam.answer_key as AnswerKeyJsonb | null;
-  const objectives = (exam.objectives ?? []) as LearningObjective[];
   const totalItems = answerKey?.total_questions ?? exam.total_items ?? 0;
   const numChoices = answerKey?.num_choices ?? 4;
   const answers = answerKey?.answers ?? {};
@@ -106,8 +131,8 @@ export default function ViewExamDetailsModal({ exam, opened, onClose }: ViewExam
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           {[
             ['Exam Name', exam.title],
-            ['Items', String(totalItems)],
-            ['Choices', `${numChoices} (${choices.join('/')})`],
+            ['Items', loading ? '…' : String(totalItems)],
+            ['Choices', loading ? '…' : `${numChoices} (${choices.join('/')})`],
           ].map(([label, value]) => (
             <div key={label}>
               <Text size="sm" fw={700} mb={2}>{label}</Text>
@@ -119,10 +144,16 @@ export default function ViewExamDetailsModal({ exam, opened, onClose }: ViewExam
         <div className="border border-gray-200 overflow-hidden">
           {/* Single scroll container — both columns scroll together */}
           <div className="overflow-y-auto overflow-x-hidden" style={{ maxHeight: '520px' }}>
-            <div className="grid grid-cols-2 divide-x divide-gray-100">
-              <div>{renderTable(0, half)}</div>
-              <div>{renderTable(half, totalItems)}</div>
-            </div>
+            {loading ? (
+              <Center py={48}>
+                <Loader size="sm" color="#4EAE4A" />
+              </Center>
+            ) : (
+              <div className="grid grid-cols-2 divide-x divide-gray-100">
+                <div>{renderTable(0, half)}</div>
+                <div>{renderTable(half, totalItems)}</div>
+              </div>
+            )}
           </div>
         </div>
       </div>

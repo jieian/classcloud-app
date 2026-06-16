@@ -63,7 +63,14 @@ const _POST = async function(request: Request) {
     );
   }
 
-  await redis.del("users:pending", "users:active");
+  await redis.del(
+    "users:pending",
+    "users:active",
+    "faculty:list",
+    "faculty:candidates",
+    "faculty:gsl",
+    "coordinator:groups",
+  );
   revalidateTag("faculty", "minutes");
   await invalidateUserAssignmentsContext(uid);
 

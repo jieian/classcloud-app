@@ -3,18 +3,20 @@
 import { useState } from "react";
 import {
   ActionIcon,
+  Alert,
   Button,
   Group,
   Modal,
   Text,
   TextInput,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
-import { IconPencil, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconPencil, IconTrash } from "@tabler/icons-react";
 import { useDisclosure } from "@mantine/hooks";
 import { notify } from "@/components/notificationIcon/notificationIcon";
-import type { UserWithRoles } from "../_lib";
-import { deleteUser } from "../_lib";
+import type { UserWithRoles, UserAssignmentSummary } from "../_lib";
+import { deleteUser, fetchUserAssignmentSummary } from "../_lib";
 
 interface UserTableActionsProps {
   user: UserWithRoles;
@@ -33,10 +35,30 @@ export default function UserTableActions({
     useDisclosure(false);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [assignments, setAssignments] = useState<UserAssignmentSummary | null>(null);
 
   const isSelf = currentUid === user.uid;
 
   const fullName = `${user.first_name} ${user.last_name}`;
+
+  const handleTrashClick = async () => {
+    if (isSelf) return;
+    try {
+      setChecking(true);
+      const summary = await fetchUserAssignmentSummary(user.uid);
+      setAssignments(summary);
+      openDelete();
+    } catch {
+      notify({
+        type: "error",
+        title: "Error",
+        message: "Failed to check this user's assignments. Please try again.",
+      });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const handleCloseDelete = () => {
     setConfirmText("");
@@ -85,8 +107,9 @@ export default function UserTableActions({
               variant="subtle"
               color="red"
               aria-label="Delete user"
-              onClick={openDelete}
+              onClick={handleTrashClick}
               disabled={isSelf}
+              loading={checking}
             >
               <IconTrash size={16} stroke={1.5} />
             </ActionIcon>
@@ -100,6 +123,35 @@ export default function UserTableActions({
         title="Delete User"
         centered
       >
+        {assignments &&
+          (assignments.advisory > 0 ||
+            assignments.teaching > 0 ||
+            assignments.gsl !== null ||
+            assignments.coordinator !== null) && (
+            <Alert
+              variant="filled"
+              radius="md"
+              mb="md"
+              styles={{
+                root: { backgroundColor: "#fae173" },
+                icon: { alignSelf: "center", marginTop: 0 },
+              }}
+              icon={
+                <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
+                  <IconAlertTriangle size={20} />
+                </ThemeIcon>
+              }
+            >
+              <Text fw={700} size="sm" c="#2A2A2A">
+                Active Assignments
+              </Text>
+              <Text size="sm" fs="italic" c="#2A2A2A">
+                This user currently holds active assignments (advisory, teaching,
+                coordinator, or grade subject leader). Deleting the account will
+                remove all of them.
+              </Text>
+            </Alert>
+          )}
         <Text size="sm" mb="md">
           Are you sure you want to delete <strong>{fullName}</strong>? This
           action cannot be undone.

@@ -75,7 +75,7 @@ const _DELETE = async function(request: Request) {
       return Response.json({ error: "Internal server error." }, { status: 500 });
     }
 
-    await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl");
+    await redis.del("users:active", "faculty:list", "faculty:candidates", "faculty:gsl", "coordinator:groups");
     revalidateTag("faculty", "minutes");
     await invalidateUserAssignmentsContext(uuid);
 

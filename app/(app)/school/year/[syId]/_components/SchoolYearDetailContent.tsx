@@ -197,7 +197,9 @@ export default async function SchoolYearDetailContent({ syId }: Props) {
       sy_id: q.sy_id as number,
     })),
     coordinators,
-    grade_levels: Array.from(gradeLevelMap.values()),
+    grade_levels: Array.from(gradeLevelMap.values()).sort(
+      (a, b) => a.grade_level_id - b.grade_level_id,
+    ),
     hasExams,
   };
 

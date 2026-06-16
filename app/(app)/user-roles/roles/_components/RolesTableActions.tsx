@@ -9,6 +9,7 @@ import {
   Modal,
   Text,
   TextInput,
+  ThemeIcon,
   Tooltip,
 } from "@mantine/core";
 import { IconAlertTriangle, IconLock, IconPencil, IconTrash } from "@tabler/icons-react";
@@ -141,20 +142,47 @@ export default function RolesTableActions({
         closeOnEscape={!deleting}
         withCloseButton={!deleting}
       >
-        {affectedCounts && affectedCounts.active > 0 && (
-          <Alert icon={<IconAlertTriangle size={16} />} color="orange" mb="sm">
-            This role is currently assigned to{" "}
-            <strong>{affectedCounts.active} active user{affectedCounts.active !== 1 ? "s" : ""}</strong>.
-            Deleting it will remove it from all of them.
-          </Alert>
-        )}
-        {affectedCounts && affectedCounts.pending > 0 && (
-          <Alert icon={<IconAlertTriangle size={16} />} color="red" mb="md">
-            This role is assigned to{" "}
-            <strong>{affectedCounts.pending} pending/invited user{affectedCounts.pending !== 1 ? "s" : ""}</strong>{" "}
-            awaiting activation. They will have no roles when they activate.
-          </Alert>
-        )}
+        {affectedCounts &&
+          (affectedCounts.active > 0 || affectedCounts.pending > 0) && (
+            <Alert
+              variant="filled"
+              radius="md"
+              mb="md"
+              styles={{
+                root: { backgroundColor: "#fae173" },
+                icon: { alignSelf: "center", marginTop: 0 },
+              }}
+              icon={
+                <ThemeIcon color="#2A2A2A" variant="transparent" size="md">
+                  <IconAlertTriangle size={20} />
+                </ThemeIcon>
+              }
+            >
+              <Text fw={700} size="sm" c="#2A2A2A">
+                Role In Use
+              </Text>
+              {affectedCounts.active > 0 && (
+                <Text size="sm" fs="italic" c="#2A2A2A">
+                  This role is currently assigned to{" "}
+                  <strong>
+                    {affectedCounts.active} active user
+                    {affectedCounts.active !== 1 ? "s" : ""}
+                  </strong>
+                  . Deleting it will remove it from all of them.
+                </Text>
+              )}
+              {affectedCounts.pending > 0 && (
+                <Text size="sm" fs="italic" c="#2A2A2A">
+                  This role is assigned to{" "}
+                  <strong>
+                    {affectedCounts.pending} pending/invited user
+                    {affectedCounts.pending !== 1 ? "s" : ""}
+                  </strong>{" "}
+                  awaiting activation. They will have no roles when they activate.
+                </Text>
+              )}
+            </Alert>
+          )}
         <Text size="sm" mb="md">
           Are you sure you want to delete <strong>{role.name}</strong>? This
           action cannot be undone.

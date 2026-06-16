@@ -30,13 +30,17 @@ const _DELETE = async function(request: Request) {
 
   const { data: examData, error: examFetchError } = await adminClient
     .from("exams")
-    .select("exam_id, curriculum_subject_id, creator_teacher_id, title, curriculum_subjects!inner(subjects!inner(name))")
+    .select("exam_id, curriculum_subject_id, creator_teacher_id, title, is_locked, curriculum_subjects!inner(subjects!inner(name))")
     .eq("exam_id", examId)
     .is("deleted_at", null)
     .single();
 
   if (examFetchError || !examData) {
     return Response.json({ error: "Exam not found." }, { status: 404 });
+  }
+
+  if ((examData as { is_locked?: boolean }).is_locked) {
+    return Response.json({ error: "Cannot delete a finalized exam." }, { status: 409 });
   }
 
   const examCurriculumSubjectId = examData.curriculum_subject_id;
@@ -51,19 +55,35 @@ const _DELETE = async function(request: Request) {
 
   const { data: examAssignments, error: examAssignmentsError } = await adminClient
     .from("exam_assignments")
-    .select("section_id")
+    .select("id, section_id")
     .eq("exam_id", examId);
   if (examAssignmentsError) {
     console.error("[api/exams/delete] fetch exam_assignments error:", examAssignmentsError.message);
     return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
-  const sectionIds = (examAssignments ?? [])
-    .map((a: { section_id: number }) => a.section_id)
+  const assignmentRows = (examAssignments ?? []) as { id: number; section_id: number }[];
+  const sectionIds = assignmentRows
+    .map((a) => a.section_id)
     .filter((sectionId) => Number.isInteger(sectionId) && sectionId > 0);
 
   if (!examCurriculumSubjectId || sectionIds.length === 0) {
     return Response.json({ error: "Exam missing subject or section associations." }, { status: 400 });
+  }
+
+  const assignmentIds = assignmentRows.map((a) => a.id).filter((id) => id > 0);
+  if (assignmentIds.length > 0) {
+    const { count: scoreCount, error: scoreError } = await adminClient
+      .from("scores")
+      .select("*", { count: "exact", head: true })
+      .in("exam_assignment_id", assignmentIds);
+    if (scoreError) {
+      console.error("[api/exams/delete] score check error:", scoreError.message);
+      return Response.json({ error: "Internal server error." }, { status: 500 });
+    }
+    if ((scoreCount ?? 0) > 0) {
+      return Response.json({ error: "Cannot delete an exam with existing scan records." }, { status: 409 });
+    }
   }
 
   if (!hasFullAccess) {

@@ -95,13 +95,25 @@ async function fetchActiveQuarterId(): Promise<number | null> {
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
-export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<ExamWithRelations[]> {
-  // Exams are isolated per active Term. Fetch both the active SY and active quarter up front.
+export async function fetchExamsWithRelations(
+  sectionIds?: number[],
+  activeContext?: { activeSyId: number | null; activeQuarterId: number | null },
+): Promise<ExamWithRelations[]> {
+  // Exams are isolated per active Term. Prefer the active SY/quarter the server
+  // already resolved (passed in from initialData) to avoid two redundant
+  // browser-direct round-trips on every load and refetch.
   // No active quarter → no exams are shown (creation is also blocked without an active term).
-  const [activeSyId, activeQuarterId] = await Promise.all([
-    fetchActiveSchoolYearId(),
-    fetchActiveQuarterId(),
-  ]);
+  let activeSyId: number | null;
+  let activeQuarterId: number | null;
+  if (activeContext) {
+    activeSyId = activeContext.activeSyId;
+    activeQuarterId = activeContext.activeQuarterId;
+  } else {
+    [activeSyId, activeQuarterId] = await Promise.all([
+      fetchActiveSchoolYearId(),
+      fetchActiveQuarterId(),
+    ]);
+  }
 
   if (!activeQuarterId) return [];
 
@@ -111,16 +123,24 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
     return [];
   }
 
+  // When scoping to a teacher's sections, use an inner join so PostgREST drops
+  // exams with no matching assignment at the DB instead of shipping the whole
+  // quarter's exam table and filtering it out client-side.
+  const scoped = sectionIds !== undefined && sectionIds.length > 0;
+  const assignmentEmbed = scoped ? 'exam_assignments!inner' : 'exam_assignments';
+
+  // answer_key/objectives are intentionally omitted here — they are heavy JSONB
+  // only needed on demand (answer-sheet download, view-details, copy) and are
+  // fetched per-exam via fetchExamGradingData() to keep the list payload small.
   let query = supabase
     .from('exams')
     .select(`
       exam_id, title, total_items, exam_date, is_locked,
       creator_teacher_id, quarter_id, curriculum_subject_id, created_at,
-      answer_key, objectives,
       creator_user:users!creator_teacher_id ( first_name, last_name ),
       curriculum_subjects ( subject_id, subjects ( name, code, subject_type ) ),
       quarters ( name ),
-      exam_assignments (
+      ${assignmentEmbed} (
         id,
         sections (
           section_id,
@@ -135,7 +155,7 @@ export async function fetchExamsWithRelations(sectionIds?: number[]): Promise<Ex
     .eq('quarter_id', activeQuarterId)
     .order('created_at', { ascending: false });
 
-  if (sectionIds !== undefined && sectionIds.length > 0) {
+  if (scoped) {
     // Push the section filter into the join so Supabase resolves it in a single query
     // instead of a pre-fetch of exam IDs followed by a second round-trip.
     query = query.in('exam_assignments.section_id', sectionIds);
@@ -193,6 +213,29 @@ export async function fetchExamById(examId: number): Promise<ExamWithRelations |
     return null;
   }
   return data as ExamWithRelations;
+}
+
+/**
+ * Fetches only the heavy grading JSONB (answer_key + objectives) for a single
+ * exam. These are omitted from the list query and loaded on demand by the
+ * answer-sheet download, view-details modal, and copy modal.
+ */
+export async function fetchExamGradingData(
+  examId: number,
+): Promise<{ answer_key: AnswerKeyJsonb | null; objectives: LearningObjective[] | null } | null> {
+  const { data, error } = await supabase
+    .from('exams')
+    .select('answer_key, objectives')
+    .eq('exam_id', examId)
+    .is('deleted_at', null)
+    .single();
+
+  if (error) {
+    console.error('[examService] fetchExamGradingData error:', error.message);
+    return null;
+  }
+
+  return data as { answer_key: AnswerKeyJsonb | null; objectives: LearningObjective[] | null };
 }
 
 // ─── Duplicate check ──────────────────────────────────────────────────────────
@@ -347,35 +390,22 @@ export async function saveObjectives(examId: number, objectives: LearningObjecti
 }
 
 export async function setExamLocked(examId: number, isLocked: boolean): Promise<boolean> {
-  const { data, error, count } = await supabase
-    .from('exams')
-    .update({ is_locked: isLocked })
-    .eq('exam_id', examId)
-    .select('exam_id, is_locked', { count: 'exact' });
+  // The exams table is SELECT-only for the authenticated role under RLS, so the
+  // write goes through the service-role route rather than a browser-direct UPDATE
+  // (which RLS silently denies).
+  const res = await fetch('/api/exams/lock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ exam_id: examId, is_locked: isLocked }),
+  });
+  const parsed = await readResponsePayload(res);
 
-  if (error) {
-    console.error('[examService] setExamLocked error:', error.message);
+  if (!res.ok) {
+    console.error(
+      '[examService] setExamLocked error:',
+      getErrorMessageFromPayload(parsed, 'Unknown error'),
+    );
     return false;
-  }
-
-  // Definitive failure: no rows matched the update filter.
-  if (count === 0) {
-    console.error('[examService] setExamLocked no matching exam row for exam_id:', examId);
-    return false;
-  }
-
-  // If rows are returned, verify value.
-  if (Array.isArray(data) && data.length > 0) {
-    const row = data[0];
-    if (row?.is_locked !== isLocked) {
-      console.error('[examService] setExamLocked stale returned value for exam_id:', examId);
-      return false;
-    }
-  }
-
-  // Some RLS/select-return combinations can produce null/empty data with successful update.
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    console.warn('[examService] setExamLocked update succeeded but no row data returned for exam_id:', examId);
   }
 
   return true;

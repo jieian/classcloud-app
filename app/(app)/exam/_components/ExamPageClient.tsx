@@ -49,6 +49,7 @@ import CopyExamModal from "@/components/CopyExamModal";
 import { generateAnswerSheetPdf } from "@/lib/services/examPdfService";
 import {
   fetchExamsWithRelations,
+  fetchExamGradingData,
   setExamLocked,
   deleteExamWithAssignments,
 } from "@/lib/services/examService";
@@ -203,6 +204,8 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
   const [examToDelete, setExamToDelete] = useState<ExamWithRelations | null>(
     null,
   );
+  // null = not yet loaded (hide delete on all exams); Set = loaded (hide only scanned exams)
+  const [examIdsWithScores, setExamIdsWithScores] = useState<Set<number> | null>(null);
 
   /** Exam ID to highlight after creation flow completes */
   const [newlyCreatedExamIds, setNewlyCreatedExamIds] = useState<Set<number>>(
@@ -360,13 +363,55 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
     }
     setDbError(null);
     try {
-      const data = await fetchExamsWithRelations(sectionIds);
+      // Reuse the active term the server already resolved; if initialData failed
+      // to load, pass undefined so the service self-resolves (original behavior).
+      const data = await fetchExamsWithRelations(
+        sectionIds,
+        initialData
+          ? { activeSyId: initialData.activeSyId, activeQuarterId: initialData.activeQuarterId }
+          : undefined,
+      );
       setExams(data);
       if (storageKeys.exams && typeof window !== "undefined") {
         window.sessionStorage.setItem(
           storageKeys.exams,
           JSON.stringify({ scopeKey, exams: data }),
         );
+      }
+      // Check which exams have at least one scanned student — needed for delete guard.
+      // Wrapped in its own try so a failure here doesn't break the exam list.
+      const allAssignmentIds = data.flatMap(e => (e.exam_assignments ?? []).map(a => a.id));
+      try {
+        if (allAssignmentIds.length > 0) {
+          const scoresRes = await fetch('/api/exams/scores/exists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ assignmentIds: allAssignmentIds }),
+          });
+          if (scoresRes.ok) {
+            const { withScores } = await scoresRes.json() as { withScores: number[] };
+            const withScoresSet = new Set(withScores);
+            const assignmentToExam = new Map<number, number>();
+            for (const exam of data) {
+              for (const a of exam.exam_assignments ?? []) {
+                assignmentToExam.set(a.id, exam.exam_id);
+              }
+            }
+            setExamIdsWithScores(
+              new Set(
+                [...withScoresSet]
+                  .map(aId => assignmentToExam.get(aId))
+                  .filter((id): id is number => id != null),
+              ),
+            );
+          } else {
+            setExamIdsWithScores(new Set());
+          }
+        } else {
+          setExamIdsWithScores(new Set());
+        }
+      } catch {
+        setExamIdsWithScores(new Set());
       }
     } catch (error: unknown) {
       if (!cached.hasCache) setExams([]);
@@ -551,6 +596,11 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
 
   const canDeleteExam = (exam: ExamWithRelations): boolean => {
     if (!exam.curriculum_subject_id) return false;
+    // Finalized exams (pushed to reports) can never be deleted — applies to all roles.
+    if (exam.is_locked) return false;
+    // Exams with any scanned student can never be deleted — applies to all roles.
+    // null means the check hasn't resolved yet; treat as blocked until it does.
+    if (examIdsWithScores === null || examIdsWithScores.has(exam.exam_id)) return false;
     if (effectiveFullAccess) return true;
     // Creator can always delete their own exam (covers copies assigned to SSES/cross-type sections)
     if (user?.id && exam.creator_teacher_id === user.id) return true;
@@ -863,6 +913,15 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
       .sort((a, b) => a.levelNumber - b.levelNumber);
 	  }, [filteredExams, allGradeLevels, facultyVisibleGradeGroups, isFiltering, effectiveFullAccess, getVisibleAssignments]);
 
+  // Faculty with assigned classes always have (possibly empty) grade-level groups,
+  // so `groupedExams.length` is never 0 for them. Trigger the prominent empty state
+  // on the actual exam count instead, scoped to faculty (admins keep empty accordions).
+  const hasAnyExams = useMemo(
+    () => groupedExams.some((group) => group.exams.length > 0),
+    [groupedExams],
+  );
+  const showCreateEmptyState = !isFiltering && !hasAnyExams && !effectiveFullAccess;
+
   // Initialize once: open all visible groups if there is no restored state.
   // Wait for groupedExams to populate — exams load async, so firing before data
   // arrives would set an empty list and lock it in via accordionInitialized.
@@ -989,8 +1048,12 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
       `${firstName ?? ""} ${lastName ?? ""}`.trim() ||
       user?.email ||
       "Unknown User";
+    // answer_key is omitted from the list payload — fetch it on demand so the
+    // sheet uses the exam's real num_choices (resolveExamParams falls back to a
+    // 4-choice default if this is missing).
+    const grading = await fetchExamGradingData(exam.exam_id);
     const pdf = await generateAnswerSheetPdf({
-      exam,
+      exam: grading ? { ...exam, answer_key: grading.answer_key } : exam,
       sectionName: sectionNames,
       generatedBy,
     });
@@ -1280,7 +1343,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
         </Stack>
       ) : dbError ? null : isFiltering && filteredExams.length === 0 ? (
         <EmptySearchState />
-      ) : !isFiltering && groupedExams.length === 0 ? (
+      ) : showCreateEmptyState ? (
         <Center
           py={36}
           px="md"
@@ -1309,7 +1372,7 @@ export default function ExamPageClient({ initialData }: { initialData: ExamIniti
                 size="sm"
                 onClick={() => openExamRoute("/exam/create")}
               >
-                Create Examination
+                Create Exam
               </Button>
             )}
           </Stack>

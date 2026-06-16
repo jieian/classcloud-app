@@ -62,6 +62,32 @@ export async function deleteUser(uid: string, email: string, firstName: string):
   await deleteAuthUser(uid, true, email, firstName);
 }
 
+export interface UserAssignmentSummary {
+  advisory: number;
+  teaching: number;
+  gsl: string | null;
+  coordinator: string | null;
+}
+
+/**
+ * Fetches a user's active-SY assignments (advisory, teaching, GSL, coordinator)
+ * so the delete modal can warn the admin what deleting the account will remove.
+ */
+export async function fetchUserAssignmentSummary(uid: string): Promise<UserAssignmentSummary> {
+  const response = await fetch(
+    `/api/users/assignment-summary?uid=${encodeURIComponent(uid)}`,
+    { method: "GET", cache: "no-store" },
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || "Failed to check user assignments.");
+  }
+
+  return result.data as UserAssignmentSummary;
+}
+
 /**
  * Activates a pending user via the secure API route.
  * Handles both new users and restored (soft-deleted) users — unbans auth account if needed.

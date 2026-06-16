@@ -105,7 +105,14 @@ const _POST = async function (request: Request) {
     .eq("id", invitation.id);
   if (deleteError) console.error("Failed to delete invitation record:", deleteError.message);
 
-  await redis.del("users:pending", "users:active");
+  await redis.del(
+    "users:pending",
+    "users:active",
+    "faculty:list",
+    "faculty:candidates",
+    "faculty:gsl",
+    "coordinator:groups",
+  );
   revalidateTag("faculty", "minutes");
   await invalidateUserAssignmentsContext(uid);
 
