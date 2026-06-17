@@ -24,19 +24,30 @@ export function useReportPermissions(): ReportPermissionScope {
   const hasAnyReportAccess =
     canViewAll || canViewAssigned || canMonitorGradeLevel || canMonitorSubjects;
 
-  const [assignedScope, setAssignedScope] = useState<AssignedScope | null>(null);
-  const [scopeLoading, setScopeLoading] = useState(hasAnyReportAccess);
+  // Tracks the fetched scope alongside the user it belongs to, so loading state
+  // and the scope itself can be derived (no synchronous setState in the effect).
+  const [fetched, setFetched] = useState<{
+    userId: string | null;
+    scope: AssignedScope | null;
+  }>({ userId: null, scope: null });
 
   useEffect(() => {
-    if (!hasAnyReportAccess || !user?.id) {
-      setScopeLoading(false);
-      return;
-    }
-    setScopeLoading(true);
-    fetchMyAssignedScope(user.id)
-      .then(setAssignedScope)
-      .finally(() => setScopeLoading(false));
+    if (!hasAnyReportAccess || !user?.id) return;
+    let cancelled = false;
+    fetchMyAssignedScope(user.id).then((scope) => {
+      if (!cancelled) setFetched({ userId: user.id, scope });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [hasAnyReportAccess, user?.id]);
+
+  // Scope is current only when the fetched result matches the active user.
+  const scopeReady =
+    !hasAnyReportAccess || !user?.id || fetched.userId === user.id;
+  const scopeLoading = !scopeReady;
+  const assignedScope =
+    user?.id != null && fetched.userId === user.id ? fetched.scope : null;
 
   return {
     canViewAll,
@@ -55,8 +66,13 @@ export function isSectionInScope(
   scope: ReportPermissionScope,
 ): boolean {
   if (scope.canViewAll || !scope.assignedScope) return true;
-  const { sectionIds, glSectionIds, subjectSectionIds } = scope.assignedScope;
+  const { sectionIds, glSectionIds, subjectSectionIds, advisorySectionIds } =
+    scope.assignedScope;
   return (
+    // Advisers see every subject in their advisory section, regardless of who
+    // teaches it (advisory is part of view_assigned). Mirrors the server-side
+    // check in app/api/reports/exam-cards/route.ts.
+    (scope.canViewAssigned && advisorySectionIds.includes(sectionId)) ||
     (scope.canViewAssigned && sectionIds.includes(sectionId)) ||
     (scope.canMonitorGradeLevel && glSectionIds.includes(sectionId)) ||
     (scope.canMonitorSubjects && subjectSectionIds.includes(sectionId))
@@ -80,8 +96,17 @@ export function isPairInScope(
   scope: ReportPermissionScope,
 ): boolean {
   if (scope.canViewAll || !scope.assignedScope) return true;
-  const { assignedPairs, glSectionIds, curriculumSubjectIds, subjectSectionIds } = scope.assignedScope;
+  const {
+    assignedPairs,
+    glSectionIds,
+    curriculumSubjectIds,
+    subjectSectionIds,
+    advisorySectionIds,
+  } = scope.assignedScope;
   return (
+    // An adviser may view any subject taught in their advisory section, so the
+    // pair is in scope as soon as the section is one they advise.
+    (scope.canViewAssigned && advisorySectionIds.includes(sectionId)) ||
     (scope.canViewAssigned &&
       assignedPairs.some(
         (p) => p.sectionId === sectionId && p.curriculumSubjectId === curriculumSubjectId,

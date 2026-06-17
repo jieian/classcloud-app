@@ -367,15 +367,26 @@ export async function getAssignedScopeForUser(
   const ctx = await getUserAssignmentsContext(uid);
   const base = derivePartialScope(ctx);
 
-  const needsExtra =
-    (options.needsGlSections && base.curriculumSubjectIds.length > 0) ||
-    (options.needsSubjectSections && base.subjectIds.length > 0);
+  // Subject coordinators monitor the curriculum subjects in their group, which
+  // are independent of the subjects they personally teach (a coordinator need
+  // not teach at all). These drive subjectSectionIds for monitor_subjects.
+  const coordinatorCsIds = base.coordinatorCurriculumSubjectIds;
 
-  if (!needsExtra) return base;
+  const wantsGl = options.needsGlSections && base.curriculumSubjectIds.length > 0;
+  // Legacy behavior: monitor_subjects holders who also teach get their taught
+  // subjects' sections. Preserved as a superset so nothing narrows.
+  const wantsTaughtSubjectSections =
+    options.needsSubjectSections && base.subjectIds.length > 0;
+  const wantsCoordinatorSections =
+    options.needsSubjectSections && coordinatorCsIds.length > 0;
+
+  if (!wantsGl && !wantsTaughtSubjectSections && !wantsCoordinatorSections) {
+    return base;
+  }
 
   // Fetch cross-teacher section sets — only runs for GSL / coordinator users
-  const [glResult, subjectResult] = await Promise.all([
-    options.needsGlSections && base.curriculumSubjectIds.length > 0
+  const [glResult, taughtSubjectResult, coordinatorResult] = await Promise.all([
+    wantsGl
       ? adminClient
           .from("teacher_class_assignments")
           .select("section_id")
@@ -383,11 +394,19 @@ export async function getAssignedScopeForUser(
           .is("deleted_at", null)
       : Promise.resolve({ data: [] }),
 
-    options.needsSubjectSections && base.subjectIds.length > 0
+    wantsTaughtSubjectSections
       ? adminClient
           .from("teacher_class_assignments")
           .select("section_id, curriculum_subjects!inner(subject_id)")
           .in("curriculum_subject_id", base.curriculumSubjectIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] }),
+
+    wantsCoordinatorSections
+      ? adminClient
+          .from("teacher_class_assignments")
+          .select("section_id")
+          .in("curriculum_subject_id", coordinatorCsIds)
           .is("deleted_at", null)
       : Promise.resolve({ data: [] }),
   ]);
@@ -403,8 +422,8 @@ export async function getAssignedScopeForUser(
   ];
 
   const subjectSectionIds = [
-    ...new Set(
-      ((subjectResult.data ?? []) as { section_id: number; curriculum_subjects: { subject_id: number } | { subject_id: number }[] | null }[])
+    ...new Set([
+      ...((taughtSubjectResult.data ?? []) as { section_id: number; curriculum_subjects: { subject_id: number } | { subject_id: number }[] | null }[])
         .filter((r) => {
           const cs = Array.isArray(r.curriculum_subjects)
             ? r.curriculum_subjects[0]
@@ -413,8 +432,19 @@ export async function getAssignedScopeForUser(
         })
         .map((r) => r.section_id)
         .filter(Boolean),
-    ),
+      ...((coordinatorResult.data ?? []) as { section_id: number }[])
+        .map((r) => r.section_id)
+        .filter(Boolean),
+    ]),
   ];
 
-  return { ...base, glSectionIds, subjectSectionIds };
+  // The pair-level checks (here, the exam-cards route, and the client) gate
+  // coordinator access on curriculumSubjectIds, so fold in the coordinated
+  // curriculum subjects (which derivePartialScope keeps only in the separate
+  // coordinatorCurriculumSubjectIds field).
+  const curriculumSubjectIds = [
+    ...new Set([...base.curriculumSubjectIds, ...coordinatorCsIds]),
+  ];
+
+  return { ...base, glSectionIds, subjectSectionIds, curriculumSubjectIds };
 }

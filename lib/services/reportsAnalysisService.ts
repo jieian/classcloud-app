@@ -366,14 +366,6 @@ function normalizeSex(value: string | null | undefined): "Male" | "Female" | nul
   return null;
 }
 
-function isSchemaCacheTransientError(message: string): boolean {
-  return message.toLowerCase().includes("schema cache");
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function firstJoin<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -539,30 +531,6 @@ function standardDeviation(values: number[]): number | null {
   return Math.sqrt(variance);
 }
 
-async function fetchFinalizedReportKeys(syId: number | null): Promise<Set<string>> {
-  let query = supabase
-    .from("exam_results_reports")
-    .select("exam_id, section_id");
-
-  if (syId != null) query = query.eq("sy_id", syId);
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error(
-      "[reportsAnalysisService] fetchFinalizedReportKeys error:",
-      error.message,
-    );
-    return new Set();
-  }
-
-  return new Set(
-    ((data ?? []) as RawExamResultReportRow[])
-      .filter((row) => row.exam_id != null && row.section_id != null)
-      .map((row) => reportKey(Number(row.exam_id), Number(row.section_id))),
-  );
-}
-
 async function fetchFinalizedReportKeysForContext(
   syId: number,
   sectionIds: number[],
@@ -641,40 +609,6 @@ async function fetchActiveSectionsForReportsBySy(
   }
 
   return (data ?? []) as RawSectionOnly[];
-}
-
-async function fetchSectionSubjectsForReports(): Promise<Map<number, Map<number, string>>> {
-  const { data, error } = await supabase
-    .from("teacher_class_assignments")
-    .select(
-      "section_id, curriculum_subjects!inner(subject_id, subjects(name))",
-    )
-    .is("deleted_at", null);
-
-  if (error) {
-    console.error(
-      "[reportsAnalysisService] fetchSectionSubjectsForReports error:",
-      error.message,
-    );
-    return new Map();
-  }
-
-  const result = new Map<number, Map<number, string>>();
-
-  for (const row of (data ?? []) as RawSectionTeacherRow[]) {
-    const sectionId = row.section_id ?? null;
-    const curriculum = firstJoin(row.curriculum_subjects);
-    if (sectionId == null || !curriculum || curriculum.subject_id == null) continue;
-    const subjectId = curriculum.subject_id;
-
-    const subjectJoin = firstJoin(curriculum.subjects);
-    const subjectName = subjectJoin?.name ?? "Unknown Subject";
-
-    if (!result.has(sectionId)) result.set(sectionId, new Map());
-    result.get(sectionId)!.set(subjectId, subjectName);
-  }
-
-  return result;
 }
 
 async function fetchAllTeacherAssignmentsWithNames(
@@ -2678,7 +2612,7 @@ export async function fetchMyAssignedScope(
     curriculum_subjects: { grade_level_id: number | null } | { grade_level_id: number | null }[] | null;
   };
 
-  const [allResult, glResult] = await Promise.all([
+  const [allResult, glResult, coordResult] = await Promise.all([
     db
       .from("teacher_class_assignments")
       .select("section_id, curriculum_subjects!inner(subject_id, grade_level_id)")
@@ -2688,21 +2622,33 @@ export async function fetchMyAssignedScope(
       .select("section_id, curriculum_subject_id, curriculum_subjects!inner(grade_level_id)")
       .in("curriculum_subject_id", Array.from(myCurriculumSubjectIds))
       .is("deleted_at", null),
+    // Coordinator: sections teaching any curriculum subject in the coordinated
+    // group — independent of what the user personally teaches.
+    coordinatorCurriculumSubjectIds.length > 0
+      ? db
+          .from("teacher_class_assignments")
+          .select("section_id")
+          .in("curriculum_subject_id", coordinatorCurriculumSubjectIds)
+          .is("deleted_at", null)
+      : Promise.resolve({ data: [] as { section_id: number | null }[] }),
   ]);
 
   const subjectIdSet = mySubjectIds;
   const gradeLevelIdSet = myGradeLevelIds;
 
   const subjectSectionIds = [
-    ...new Set(
-      ((allResult.data ?? []) as AllRow[])
+    ...new Set([
+      ...((allResult.data ?? []) as AllRow[])
         .filter((row) => {
           const cs = firstJoin(row.curriculum_subjects);
           return cs?.subject_id != null && subjectIdSet.has(cs.subject_id);
         })
         .map((row) => row.section_id)
         .filter((id): id is number => id != null),
-    ),
+      ...((coordResult.data ?? []) as { section_id: number | null }[])
+        .map((row) => row.section_id)
+        .filter((id): id is number => id != null),
+    ]),
   ];
 
   const glSectionIds = [
@@ -2720,7 +2666,11 @@ export async function fetchMyAssignedScope(
   const scope = {
     sectionIds: Array.from(mySectionIds),
     subjectIds: Array.from(mySubjectIds),
-    curriculumSubjectIds: Array.from(myCurriculumSubjectIds),
+    // Fold coordinated curriculum subjects in so pair-level access checks
+    // recognize them (they are otherwise only in coordinatorCurriculumSubjectIds).
+    curriculumSubjectIds: Array.from(
+      new Set([...myCurriculumSubjectIds, ...coordinatorCurriculumSubjectIds]),
+    ),
     assignedPairs,
     glSectionIds,
     subjectSectionIds,
