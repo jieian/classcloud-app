@@ -32,7 +32,6 @@ const _POST = async function(request: Request) {
 
   const authUser = authData.user;
   const email = authUser.email;
-  const isBanned = authUser.banned_until && new Date(authUser.banned_until) > new Date();
 
   const firstName = (typeof clientFirstName === "string" && clientFirstName.trim()) ? clientFirstName.trim() : "Applicant";
 
@@ -44,30 +43,14 @@ const _POST = async function(request: Request) {
   const metaLast = typeof authMeta.last_name === "string" ? authMeta.last_name.trim() : "";
   const entityLabel = metaFullName || `${metaFirst} ${metaLast}`.trim() || firstName;
 
-  if (isBanned) {
-    // Restored (previously soft-deleted) user — soft delete: stamp deleted_at + keep banned
-    const { data: rpcResult, error: rpcError } = await adminClient.rpc(
-      "soft_delete_user_atomic",
-      { p_uid: uid },
-    );
+  // Rejecting a pending self-registration is always a brand-new, never-approved
+  // account — hard delete, which cascades public.users + user_roles. (The old
+  // "previously soft-deleted, re-registered while still banned" case is gone:
+  // DPA erasure removed restore-by-email, so no pending user is ever banned.)
+  const { error: deleteError } = await adminClient.auth.admin.deleteUser(uid);
 
-    if (rpcError) {
-      return Response.json({ error: "Internal server error." }, { status: 500 });
-    }
-
-    if (!rpcResult?.success) {
-      return Response.json(
-        { error: rpcResult?.message ?? "Failed to soft-delete user." },
-        { status: 500 },
-      );
-    }
-  } else {
-    // Brand new user — hard delete, cascades public.users + user_roles
-    const { error: deleteError } = await adminClient.auth.admin.deleteUser(uid);
-
-    if (deleteError) {
-      return Response.json({ error: "Internal server error." }, { status: 500 });
-    }
+  if (deleteError) {
+    return Response.json({ error: "Internal server error." }, { status: 500 });
   }
 
   await redis.del("users:pending");

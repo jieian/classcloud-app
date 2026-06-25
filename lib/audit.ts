@@ -30,6 +30,14 @@ export const AUDIT_ACTIONS = {
   roster_exported:                { label: "Student Roster Exported",        category: "ACCESS"   },
   exam_report_exported:           { label: "Exam Result Report Exported",    category: "ACCESS"   },
   consolidated_report_exported:   { label: "Consolidated Report Exported",   category: "ACCESS"   },
+  // Data-subject right of access/portability (RA 10173 Sec. 16/18) — self-export:
+  personal_data_exported:         { label: "Personal Data Exported",         category: "ACCESS"   },
+  // Account-deletion requests (RA 10173 — data-subject-initiated, admin-mediated). The
+  // account_deletion_requests row is the durable record; these are the security trail.
+  deletion_requested:             { label: "Account Deletion Requested",          category: "SECURITY" },
+  deletion_request_withdrawn:     { label: "Account Deletion Request Withdrawn",  category: "SECURITY" },
+  deletion_request_approved:      { label: "Account Deletion Request Approved",   category: "SECURITY" },
+  deletion_request_denied:        { label: "Account Deletion Request Denied",     category: "SECURITY" },
 
   // ── SECURITY ──────────────────────────────────────────────────────────────
   password_reset:                 { label: "Password Reset",                 category: "SECURITY" },
@@ -38,6 +46,7 @@ export const AUDIT_ACTIONS = {
   rate_limit_exceeded:            { label: "Rate Limit Exceeded",            category: "SECURITY" },
   honeypot_triggered:             { label: "Honeypot Triggered",             category: "SECURITY" },
   turnstile_failed:               { label: "Security Check Failed",          category: "SECURITY" },
+  privacy_notice_reconsented:     { label: "Privacy Notice Re-Consent",      category: "SECURITY" }, // RA 10173 — re-acknowledged updated notice
 
   // ── ADMIN · users ─────────────────────────────────────────────────────────
   user_approved:                  { label: "User Approved",                  category: "ADMIN"    },
@@ -106,6 +115,26 @@ export const AUDIT_ACTIONS = {
 } as const satisfies Record<string, { label: string; category: AuditCategory }>;
 
 export type AuditActionKey = keyof typeof AUDIT_ACTIONS;
+
+/**
+ * AUDIT-LOG RETENTION POLICY (for reference — NOT enforced here).
+ *
+ * Retention is enforced entirely in the database, because the purge runs as a Supabase
+ * pg_cron job (SQL, not TypeScript). The authoritative source of truth is the
+ * `public.prune_audit_logs()` function in
+ * `supabase/migrations/20260624010000_audit_log_tiered_retention.sql`. There is no runtime
+ * code path here that reads a retention value, so the periods are documented — not duplicated
+ * as a constant that could silently drift from the SQL.
+ *
+ * Current tiers (NPC Circular 2023-06, Sec. 29 — security/access logs kept LONGER than
+ * operational logs):
+ *   - SECURITY, ACCESS                 → 365 days (12-month baseline; PCI-DSS as a benchmark)
+ *   - ACADEMIC, ADMIN, SYSTEM          → 90 days (Sec. 11 proportionality — operational only)
+ * Consent evidence is NOT subject to this purge — it lives in `users` columns. Incident legal
+ * hold: a row with `audit_logs.legal_hold_until` in the future is retained past its tier until
+ * that timestamp passes (self-releasing). To change a period, edit `prune_audit_logs()` and
+ * the human-readable Notice text in `lib/privacy.ts → RETENTION_SCHEDULE`.
+ */
 
 // Caller-supplied fields. `action` is a stable key; the stored label and
 // category are derived from AUDIT_ACTIONS — never passed at call sites.

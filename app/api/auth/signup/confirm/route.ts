@@ -92,40 +92,35 @@ const _POST = async function (request: Request) {
   }
 
   // ── Auth API call (outside DB transaction — unavoidable) ──────────────────
+  // There is no "restore" type — DPA erasure made deletion irreversible, so every
+  // confirmed registration creates a brand-new auth user.
   let uid: string;
 
-  if (row.type === "new") {
-    if (existingAuthUser) {
-      // Auth user was created on a prior attempt — reuse uid
-      uid = existingAuthUser.id;
-    } else {
-      const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-        email: row.email,
-        password: decryptedPassword,
-        email_confirm: true,
-      });
-
-      if (createError || !created?.user) {
-        console.error("[confirm] createUser error:", createError?.message);
-        return Response.json({ status: "error" }, { status: 500 });
-      }
-
-      uid = created.user.id;
-    }
+  if (existingAuthUser) {
+    // Auth user was created on a prior attempt — reuse uid
+    uid = existingAuthUser.id;
   } else {
-    // type === 'restore'
-    uid = row.restore_uid as string;
-
-    const { error: updateError } = await adminClient.auth.admin.updateUserById(uid, {
+    const { data: created, error: createError } = await adminClient.auth.admin.createUser({
+      email: row.email,
       password: decryptedPassword,
-      // Note: ban_duration is intentionally NOT lifted here.
-      // The auth ban stays until the admin approves the account.
+      email_confirm: true,
     });
 
-    if (updateError) {
-      console.error("[confirm] updateUserById (restore) error:", updateError.message);
+    if (createError || !created?.user) {
+      // Defensive: a legacy erased account whose email isn't yet tombstoned (pre-
+      // backfill) would still occupy this address → GoTrue duplicate-email error.
+      const isDuplicate =
+        (createError as { code?: string } | null)?.code === "email_exists" ||
+        /already.*(registered|exists)/i.test(createError?.message ?? "");
+      if (isDuplicate) {
+        console.error("[confirm] email occupied by an un-tombstoned removed account:", row.email);
+        return Response.json({ status: "email_unavailable" }, { status: 409 });
+      }
+      console.error("[confirm] createUser error:", createError?.message);
       return Response.json({ status: "error" }, { status: 500 });
     }
+
+    uid = created.user.id;
   }
 
   // ── Filter out role_ids deleted since signup ──────────────────────────────

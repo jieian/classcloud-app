@@ -73,6 +73,10 @@ const PUSH_TITLES: Record<string, { title: string; body?: string }> = {
   "faculty.gsl_removed": { title: "You were removed as grade subject leader" },
   "role.changed": { title: "Your role was updated" },
   new_signup: { title: "New account pending approval" },
+  "account_deletion.requested": {
+    title: "Account deletion request",
+    body: "A user has requested deletion of their account.",
+  },
 };
 
 type SubRow = {

@@ -34,6 +34,8 @@ import { useAuth } from "@/context/AuthContext";
 import { getPasswordStrength, passwordRequirements } from "@/app/(app)/user-roles/users/_lib/utils";
 import MyAssignmentCard from "./MyAssignmentCard";
 import PushToggle from "@/components/pwa/PushToggle";
+import { downloadMyData } from "../_lib/dataExportService";
+import AccountDeletionRequest from "./AccountDeletionRequest";
 
 function PasswordRequirement({ meets, label }: { meets: boolean; label: string }) {
   return (
@@ -96,6 +98,7 @@ export default function SettingsClient() {
   const [saving, setSaving] = useState(false);
   const [passwordModalOpened, setPasswordModalOpened] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const form = useForm<FormValues>({
     validateInputOnChange: true,
@@ -352,6 +355,40 @@ export default function SettingsClient() {
     }
   };
 
+  const handleExportData = () => {
+    modals.openConfirmModal({
+      title: "Download your personal data?",
+      children: (
+        <Text size="sm">
+          This file will include your profile, role and assignment information, and a
+          log of actions you&apos;ve performed. Store it safely — it contains personal data.
+        </Text>
+      ),
+      labels: { confirm: "Download", cancel: "Cancel" },
+      confirmProps: { color: "#4EAE4A" },
+      ...confirmModalProps,
+      onConfirm: async () => {
+        try {
+          setExporting(true);
+          await downloadMyData();
+          notify({
+            type: "success",
+            title: "Download started",
+            message: "Your personal data is being downloaded.",
+          });
+        } catch (e) {
+          notify({
+            type: "error",
+            title: "Export failed",
+            message: e instanceof Error ? e.message : "Failed to export your data.",
+          });
+        } finally {
+          setExporting(false);
+        }
+      },
+    });
+  };
+
   // ─── Loading ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -594,6 +631,28 @@ export default function SettingsClient() {
         >
           Change Password
         </Button>
+      </Paper>
+
+      {/* ── Data & Privacy ────────────────────────────────────────────────── */}
+      <Paper withBorder p="md" radius="md">
+        <Text fw={700} c="#298925" mb="sm">
+          Data &amp; Privacy
+        </Text>
+        <Text size="sm" c="#808898" mb="md">
+          Download a copy of the personal data ClassCloud holds about you — your profile,
+          roles, current assignments, and a log of actions you&apos;ve performed.
+        </Text>
+        <Button
+          color="#4EAE4A"
+          size="sm"
+          onClick={handleExportData}
+          loading={exporting}
+          fullWidth={isMobile}
+        >
+          Download My Data (JSON)
+        </Button>
+
+        <AccountDeletionRequest />
       </Paper>
 
       {/* ── Push Notifications ─────────────────────────────────────────────── */}

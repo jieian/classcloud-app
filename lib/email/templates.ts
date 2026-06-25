@@ -1,4 +1,5 @@
 import resend from "./transporter";
+import { DPO_CONTACT } from "@/lib/privacy";
 
 const FROM = "ClassCloud <noreply@classcloudph.app>";
 
@@ -754,6 +755,84 @@ export async function sendAccountDeactivationEmail({
         <td style="padding: 0 40px 40px 40px;">
           <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6; margin: 0;">
             If you believe this was a mistake, please contact your school administrator.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+// ─── Account Deletion Request — Approved / Denied (RA 10173) ──────────────────
+
+export async function sendDeletionRequestApprovedToRequester({
+  to,
+  firstName,
+}: {
+  to: string;
+  firstName: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "Your ClassCloud account deletion request has been approved",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Your request to delete your ClassCloud account has been <strong>approved</strong>. Your account
+            and personal data have been deleted in accordance with the Data Privacy Act of 2012
+            (Republic Act No. 10173).
+          </p>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 15px 0 0 0;">
+            You no longer have access to ClassCloud. Thank you for being part of our community.
+          </p>
+        </td>
+      </tr>
+      ${endEmailLayout()}
+    `,
+  });
+}
+
+export async function sendDeletionRequestDeniedToRequester({
+  to,
+  firstName,
+  decisionNote,
+}: {
+  to: string;
+  firstName: string;
+  decisionNote: string;
+}) {
+  await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "Update on your ClassCloud account deletion request",
+    html: `
+      ${startEmailLayout()}
+      <tr>
+        <td style="padding: 0 40px 20px 40px;">
+          <h2 style="color: #1a1a1a; font-size: 22px; margin-top: 0;">Dear ${firstName},</h2>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 0;">
+            Your request to delete your ClassCloud account has been <strong>declined at this time</strong> by
+            the School, which is the Personal Information Controller for your data.
+          </p>
+          <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin: 15px 0 0 0;">
+            Under the Data Privacy Act of 2012, the right to erasure may be lawfully refused or deferred where
+            retention is required by law, the data is needed to establish or defend legal claims, or it remains
+            necessary for a legitimate purpose.
+          </p>
+        </td>
+      </tr>
+      ${notesBox(decisionNote, true)}
+      <tr>
+        <td style="padding: 0 40px 40px 40px;">
+          <p style="color: #4a4a4a; font-size: 15px; line-height: 1.6; margin: 0;">
+            If you have questions or wish to discuss this decision, you may contact our Data Protection Officer
+            at <a href="mailto:${DPO_CONTACT.email}" style="color: #45903B;">${DPO_CONTACT.email}</a>. You also
+            have the right to lodge a complaint with the National Privacy Commission
+            (<a href="https://privacy.gov.ph" style="color: #45903B;">privacy.gov.ph</a>).
           </p>
         </td>
       </tr>

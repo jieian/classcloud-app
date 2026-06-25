@@ -184,6 +184,8 @@ CREATE TABLE public.users (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   deleted_at timestamp with time zone,
   must_change_password boolean NOT NULL DEFAULT false,
+  privacy_consent_at timestamp with time zone,
+  privacy_consent_version text,
   CONSTRAINT users_pkey PRIMARY KEY (uid),
   CONSTRAINT users_uid_fkey FOREIGN KEY (uid) REFERENCES auth.users(id)
 );
@@ -249,19 +251,6 @@ CREATE TABLE public.notifications (
   CONSTRAINT notifications_pkey PRIMARY KEY (notification_id),
   CONSTRAINT notifications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
 );
-CREATE TABLE public.push_subscriptions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  endpoint text NOT NULL UNIQUE,
-  p256dh text NOT NULL,
-  auth text NOT NULL,
-  user_agent text,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  last_seen_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
-  CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid) ON DELETE CASCADE
-);
--- push_subscriptions: RLS enabled, deny-by-default (no authenticated/anon policies); server-only via service role.
 CREATE TABLE public.pending_registrations (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   email text NOT NULL UNIQUE,
@@ -272,12 +261,12 @@ CREATE TABLE public.pending_registrations (
   last_name text NOT NULL,
   role_ids ARRAY NOT NULL DEFAULT '{}'::integer[],
   type text NOT NULL DEFAULT 'new'::text CHECK (type = ANY (ARRAY['new'::text, 'restore'::text])),
-  restore_uid uuid,
   resend_count integer NOT NULL DEFAULT 0,
   expires_at timestamp with time zone NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id),
-  CONSTRAINT pending_registrations_restore_uid_fkey FOREIGN KEY (restore_uid) REFERENCES public.users(uid)
+  privacy_consent_at timestamp with time zone,
+  privacy_consent_version text,
+  CONSTRAINT pending_registrations_pkey PRIMARY KEY (id)
 );
 CREATE TABLE public.audit_logs (
   audit_id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -291,6 +280,7 @@ CREATE TABLE public.audit_logs (
   new_values jsonb,
   metadata jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  legal_hold_until timestamp with time zone,
   CONSTRAINT audit_logs_pkey PRIMARY KEY (audit_id),
   CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(uid)
 );
@@ -467,4 +457,35 @@ CREATE TABLE public.report_completion_milestones (
   CONSTRAINT report_completion_milestones_subject_group_id_fkey FOREIGN KEY (subject_group_id) REFERENCES public.subject_groups(subject_group_id),
   CONSTRAINT report_completion_milestones_quarter_id_fkey FOREIGN KEY (quarter_id) REFERENCES public.quarters(quarter_id),
   CONSTRAINT report_completion_milestones_sy_id_fkey FOREIGN KEY (sy_id) REFERENCES public.school_years(sy_id)
+);
+CREATE TABLE public.push_subscriptions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  endpoint text NOT NULL UNIQUE,
+  p256dh text NOT NULL,
+  auth text NOT NULL,
+  user_agent text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  last_seen_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT push_subscriptions_pkey PRIMARY KEY (id),
+  CONSTRAINT push_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(uid)
+);
+CREATE TABLE public.account_deletion_requests (
+  request_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  uid uuid NOT NULL,
+  status text NOT NULL DEFAULT 'PENDING'::text CHECK (status = ANY (ARRAY['PENDING'::text, 'APPROVING'::text, 'APPROVED'::text, 'DENIED'::text, 'WITHDRAWN'::text])),
+  reason text,
+  requested_at timestamp with time zone NOT NULL DEFAULT now(),
+  decided_by uuid,
+  decided_at timestamp with time zone,
+  denial_category text CHECK (denial_category = ANY (ARRAY['legal_retention'::text, 'active_legal_claim'::text, 'still_necessary'::text, 'other'::text])),
+  decision_note text,
+  internal_note text,
+  requester_email text,
+  notified_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT account_deletion_requests_pkey PRIMARY KEY (request_id),
+  CONSTRAINT account_deletion_requests_uid_fkey FOREIGN KEY (uid) REFERENCES public.users(uid),
+  CONSTRAINT account_deletion_requests_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES public.users(uid)
 );

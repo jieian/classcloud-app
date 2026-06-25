@@ -56,7 +56,9 @@ export async function updateUser(data: UpdateUserData): Promise<void> {
 }
 
 /**
- * Soft-deletes an active user: stamps deleted_at and bans their auth account.
+ * Permanently erases a user (RA 10173): scrubs PII from auth.users + public.users,
+ * leaving only the uid tombstone for audit-log integrity. Irreversible — there is no
+ * restore.
  */
 export async function deleteUser(uid: string, email: string, firstName: string): Promise<void> {
   await deleteAuthUser(uid, true, email, firstName);
@@ -89,8 +91,7 @@ export async function fetchUserAssignmentSummary(uid: string): Promise<UserAssig
 }
 
 /**
- * Activates a pending user via the secure API route.
- * Handles both new users and restored (soft-deleted) users — unbans auth account if needed.
+ * Activates a pending user via the secure API route (unbans the auth account if needed).
  */
 export async function activateUser(
   uid: string,
@@ -137,9 +138,9 @@ export async function rejectPendingUser(uid: string, reason: string, firstName?:
 }
 
 /**
- * Calls the server-side API route to delete a user from auth.users.
- * Pass soft=true for active users (stamps deleted_at + bans auth).
- * Pass soft=false (default) for pending user rejection (hard delete).
+ * Calls the server-side API route to remove a user.
+ * Pass soft=true for active users (permanent PII erasure + ban; keeps the uid tombstone).
+ * Pass soft=false (default) for pending-user rejection (hard delete from auth.users).
  */
 async function deleteAuthUser(uuid: string, soft = false, email?: string, firstName?: string): Promise<void> {
   const response = await fetch("/api/users/delete-auth", {
@@ -188,8 +189,8 @@ export async function createUser(data: CreateUserData): Promise<void> {
   const result = await response.json();
 
   if (!response.ok) {
-    const err = new Error(result.error || "Failed to create user.");
-    (err as any).code = result.code;
+    const err = new Error(result.error || "Failed to create user.") as Error & { code?: string };
+    err.code = result.code;
     throw err;
   }
 }

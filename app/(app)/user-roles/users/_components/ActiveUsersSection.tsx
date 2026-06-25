@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ActionIcon,
   Alert,
+  Badge,
   Button,
   Group,
   Select,
@@ -12,7 +13,7 @@ import {
   ThemeIcon,
   Tooltip,
 } from "@mantine/core";
-import { IconRefresh, IconList, IconAlertTriangle } from "@tabler/icons-react";
+import { IconRefresh, IconList, IconAlertTriangle, IconUserX } from "@tabler/icons-react";
 import { SearchBar } from "@/components/searchBar/SearchBar";
 import UsersTableWrapper, {
   type UsersTableWrapperRef,
@@ -30,7 +31,23 @@ export function ActiveUsersSection() {
   const [principalCount, setPrincipalCount] = useState(0);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FacultyFilter>("all");
+  const [deletionPending, setDeletionPending] = useState(0);
   const tableRef = useRef<UsersTableWrapperRef>(null);
+
+  // Pending deletion-request count for the badge — fetched once on load (not a global
+  // per-navigation poll); admins are also alerted in-app when a request comes in.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/users/deletion-requests")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j) setDeletionPending(j.pendingCount ?? 0);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <>
@@ -41,15 +58,33 @@ export function ActiveUsersSection() {
             <span className="text-[#808898]">({userCount})</span>
           )}
         </h1>
-        <Button
-          color="#4EAE4A"
-          radius="md"
-          mr="md"
-          component={Link}
-          href="/user-roles/users/create"
-        >
-          Create User
-        </Button>
+        <Group gap="sm" wrap="nowrap" mr="md">
+          <Button
+            color="#4EAE4A"
+            radius="md"
+            component={Link}
+            href="/user-roles/users/create"
+          >
+            Create User
+          </Button>
+          <Button
+            variant="outline"
+            color="#4EAE4A"
+            radius="md"
+            component={Link}
+            href="/user-roles/users/deletion-requests"
+            leftSection={<IconUserX size={15} />}
+            rightSection={
+              deletionPending > 0 ? (
+                <Badge size="xs" color="red" variant="filled" circle>
+                  {deletionPending > 99 ? "99+" : deletionPending}
+                </Badge>
+              ) : undefined
+            }
+          >
+            Deletion Requests
+          </Button>
+        </Group>
       </Group>
       <p className="mb-3 text-sm text-[#808898]">
         A user is an identity within an account that has long-term credentials

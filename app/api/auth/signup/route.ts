@@ -179,19 +179,15 @@ const _POST = async function (request: Request) {
       ? `${forwardedProto}://${forwardedHost}`
       : new URL(request.url).origin);
 
-  // ── Determine path: new user or restore ───────────────────────────────────
-  const isRestore = emailStatus?.status === "deleted";
-  const restoreUid = isRestore ? (emailStatus.uid as string) : null;
-
-  // ── DNS MX check (new users only — restored users' domain was already validated) ──
-  if (!isRestore) {
-    const domainValid = await domainHasMxRecords(trimmedEmail);
-    if (!domainValid) {
-      return Response.json(
-        { error: `The domain for "${trimmedEmail}" does not appear to accept mail. Double-check the address.` },
-        { status: 422 },
-      );
-    }
+  // ── DNS MX check ───────────────────────────────────────────────────────────
+  // (No "restore" path — DPA erasure made deletion irreversible; a previously-removed
+  // person self-registers as a brand-new account.)
+  const domainValid = await domainHasMxRecords(trimmedEmail);
+  if (!domainValid) {
+    return Response.json(
+      { error: `The domain for "${trimmedEmail}" does not appear to accept mail. Double-check the address.` },
+      { status: 422 },
+    );
   }
 
   // ── Generate token + encrypt password ────────────────────────────────────
@@ -212,8 +208,7 @@ const _POST = async function (request: Request) {
       middle_name:        middle_name?.trim() || null,
       last_name:          last_name.trim(),
       role_ids,
-      type:               isRestore ? "restore" : "new",
-      restore_uid:        restoreUid,
+      type:               "new",
       resend_count:       0,
       expires_at:         expiresAt,
       // Consent evidence — stamped server-side, carried to users on confirm.

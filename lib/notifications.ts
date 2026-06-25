@@ -27,6 +27,7 @@ import {
   sendSubjectGroupReportsCompleted,
   sendAllReportsCompleted,
 } from "@/lib/email/templates";
+import { sendDeletionRequestDeniedToRequester } from "@/lib/email/templates";
 import { getHomeActiveContextCached } from "@/lib/services/homeServerService";
 import { invalidateNotificationBadge } from "@/lib/services/badgeCache";
 import { sendPushToUsers } from "@/lib/push/webPush";
@@ -56,7 +57,7 @@ type NotificationInsert = {
  * Returns all active, non-deleted users that have the given permission
  * (via any of their assigned roles), along with their email addresses.
  */
-async function getUsersWithPermission(
+export async function getUsersWithPermission(
   permissionName: string,
 ): Promise<UserInfo[]> {
   // 1. Find permission_id by name
@@ -311,6 +312,97 @@ export async function dispatchNewSignup({
     );
   } catch (err) {
     console.error("[notifications] dispatchNewSignup:", err);
+  }
+}
+
+// ── Account deletion request dispatchers (RA 10173) ─────────────────────────────
+
+const DELETION_REQUESTS_URL = "/user-roles/users/deletion-requests";
+
+/**
+ * Called after a user submits an account-deletion request. Notifies all
+ * users.full_access holders IN-APP only (no admin email, by product decision),
+ * excluding the requester themselves. Fire-and-forget: never throws.
+ */
+export async function dispatchDeletionRequested({
+  requestId,
+  requesterUid,
+}: {
+  requestId: string;
+  requesterUid: string;
+}): Promise<void> {
+  try {
+    const [admins, requester] = await Promise.all([
+      getUsersWithPermission("users.full_access"),
+      getUserWithEmail(requesterUid),
+    ]);
+    const requesterName = requester
+      ? `${requester.firstName} ${requester.lastName}`.trim() || "A staff member"
+      : "A staff member";
+    const recipients = buildRecipientList(admins.map((u) => u.uid), [requesterUid]);
+    if (recipients.length === 0) return;
+
+    await insertNotifications(
+      recipients.map((uid) => ({
+        user_id: uid,
+        type: "account_deletion.requested",
+        title: "Account Deletion Request",
+        body: `${requesterName} has requested deletion of their account, pending your review.`,
+        reference_id: requestId,
+        reference_type: "account_deletion_request",
+        action_url: DELETION_REQUESTS_URL,
+      })),
+    );
+  } catch (err) {
+    console.error("[notifications] dispatchDeletionRequested:", err);
+  }
+}
+
+/**
+ * Called after an admin denies a deletion request. Emails the requester the
+ * subject-facing reason (never the internal note) at the address captured by the
+ * route (the row's requester_email was already nulled). Fire-and-forget.
+ */
+export async function dispatchDeletionRequestDenied({
+  requestId,
+  requesterEmail,
+  decisionNote,
+}: {
+  requestId: string;
+  requesterEmail: string | null;
+  decisionNote: string;
+}): Promise<void> {
+  try {
+    if (!requesterEmail) return;
+
+    // First name for the greeting (the account is intact after a denial).
+    const { data: req } = await admin
+      .from("account_deletion_requests")
+      .select("uid")
+      .eq("request_id", requestId)
+      .maybeSingle();
+    let firstName = "there";
+    if (req?.uid) {
+      const { data: u } = await admin
+        .from("users")
+        .select("first_name")
+        .eq("uid", req.uid as string)
+        .maybeSingle();
+      if (u?.first_name) firstName = u.first_name as string;
+    }
+
+    await sendDeletionRequestDeniedToRequester({
+      to: requesterEmail,
+      firstName,
+      decisionNote,
+    }).catch((e) =>
+      console.error(
+        `[notifications] denied email failed (manual follow-up) request=${requestId}:`,
+        e,
+      ),
+    );
+  } catch (err) {
+    console.error("[notifications] dispatchDeletionRequestDenied:", err);
   }
 }
 

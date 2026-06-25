@@ -2,7 +2,9 @@
 
 import {
   Alert,
+  Anchor,
   Button,
+  Checkbox,
   Container,
   Group,
   Loader,
@@ -25,7 +27,6 @@ interface ActivationData {
   first_name: string;
   full_name: string;
   email: string;
-  tempPassword: string;
   role_names: string[];
 }
 
@@ -36,8 +37,11 @@ export default function ActivateInvitePage() {
   const [activationData, setActivationData] = useState<ActivationData | null>(
     null,
   );
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const didRun = useRef(false);
+  // Held in memory (not the URL) so we can activate on the explicit "Log In" click.
+  const tokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (didRun.current) return;
@@ -51,15 +55,18 @@ export default function ActivateInvitePage() {
       return;
     }
 
+    tokenRef.current = token;
     // Remove token from URL bar immediately (single-use)
     window.history.replaceState(null, "", window.location.pathname);
 
-    void activate(token);
+    void validate(token);
   }, []);
 
-  const activate = async (token: string) => {
+  // Validate only — does NOT activate the account or consume the token. The DB
+  // change (activation + consent) happens on the "Log In" click below.
+  const validate = async (token: string) => {
     try {
-      const res = await fetch("/api/users/activate-invite", {
+      const res = await fetch("/api/users/validate-invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -69,8 +76,6 @@ export default function ActivateInvitePage() {
       if (!res.ok) {
         if (data?.error === "invalid") {
           setPageState("invalid");
-        } else if (data?.error === "already_used") {
-          setPageState("already_used");
         } else {
           setErrorMessage(
             data?.error ?? "Something went wrong. Please try again.",
@@ -84,7 +89,6 @@ export default function ActivateInvitePage() {
         first_name: data.first_name,
         full_name: data.full_name,
         email: data.email,
-        tempPassword: data.tempPassword,
         role_names: data.role_names ?? [],
       });
       setPageState("success");
@@ -95,13 +99,32 @@ export default function ActivateInvitePage() {
   };
 
   const handleLogin = async () => {
-    if (!activationData) return;
+    if (!activationData || !agreedToPrivacy || !tokenRef.current) return;
     try {
       setLoggingIn(true);
+
+      // Activate the account AND record Privacy Notice consent atomically
+      // (server-side), then sign in. The temp password is only returned here,
+      // after consent is given.
+      const res = await fetch("/api/users/activate-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: tokenRef.current }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (data?.error === "already_used") {
+          setPageState("already_used");
+          return;
+        }
+        throw new Error(data?.error ?? "Activation failed.");
+      }
+
       const supabase = getSupabase();
       const { error } = await supabase.auth.signInWithPassword({
-        email: activationData.email,
-        password: activationData.tempPassword,
+        email: data.email ?? activationData.email,
+        password: data.tempPassword,
       });
       if (error) throw error;
       // must_change_password is true for all invited users — go to welcome flow
@@ -181,10 +204,27 @@ export default function ActivateInvitePage() {
                     <Text size="sm" fs="italic">You must change your password on first login.</Text>
                   </Alert>
 
+                  <Checkbox
+                    mb="md"
+                    color="#4EAE4A"
+                    checked={agreedToPrivacy}
+                    onChange={(e) => setAgreedToPrivacy(e.currentTarget.checked)}
+                    label={
+                      <Text size="xs" c="#808898">
+                        I have read and agree to the{" "}
+                        <Anchor href="/privacy" target="_blank" rel="noopener noreferrer" c="#4EAE4A">
+                          Privacy Notice
+                        </Anchor>
+                        .
+                      </Text>
+                    }
+                  />
+
                   <Button
                     fullWidth
                     radius="md"
-                    style={{ backgroundColor: "#4EAE4A" }}
+                    style={agreedToPrivacy ? { backgroundColor: "#4EAE4A" } : undefined}
+                    disabled={!agreedToPrivacy}
                     loading={loggingIn}
                     onClick={handleLogin}
                   >

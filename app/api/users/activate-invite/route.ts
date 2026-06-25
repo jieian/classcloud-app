@@ -2,6 +2,7 @@ import { withErrorHandler } from "@/lib/api-error";
 import { adminClient } from "@/lib/supabase/admin";
 import { hashToken, decryptPassword } from "@/lib/crypto";
 import { insertAuditLog } from "@/lib/audit";
+import { PRIVACY_NOTICE_VERSION } from "@/lib/privacy";
 import { sendInviteActivatedEmail } from "@/lib/email/templates";
 import { syncUserPermissions } from "@/lib/permissions-sync";
 import { redis } from "@/lib/redis";
@@ -61,15 +62,22 @@ const _POST = async function (request: Request) {
   ]);
 
   const userProfile = profileResult.data;
-  const existingRoleIds = (rolesResult.data ?? []).map(
-    (r: any) => r.role_id as number,
-  );
-  const roleNames = (rolesResult.data ?? [])
-    .map((r: any) => (r.roles as { name: string } | null)?.name)
+  // PostgREST returns the to-one `roles` embed as an object at runtime, though the
+  // untyped client infers an array — handle both shapes safely.
+  const roleRows = (rolesResult.data ?? []) as unknown as Array<{
+    role_id: number;
+    roles: { name: string } | { name: string }[] | null;
+  }>;
+  const existingRoleIds = roleRows.map((r) => r.role_id);
+  const roleNames = roleRows
+    .map((r) => (Array.isArray(r.roles) ? r.roles[0] : r.roles)?.name)
     .filter((n): n is string => Boolean(n));
   const email = authResult.data?.user?.email ?? "";
 
-  // Activate user (sets active_status = 1, preserves names/roles)
+  // Activate user (sets active_status = 1, preserves names/roles) AND record the
+  // Privacy Notice consent in the SAME transaction — invited users consent here,
+  // so an invite-activated account is never active without consent on record.
+  // The version is server-injected (never client-supplied).
   const { error: activateError } = await adminClient.rpc(
     "activate_user_atomic",
     {
@@ -78,6 +86,7 @@ const _POST = async function (request: Request) {
       p_middle_name: userProfile?.middle_name ?? "",
       p_last_name: userProfile?.last_name ?? "",
       p_role_ids: existingRoleIds,
+      p_privacy_consent_version: PRIVACY_NOTICE_VERSION,
     },
   );
 
@@ -129,6 +138,7 @@ const _POST = async function (request: Request) {
     entity_id: uid,
     entity_label:
       `${userProfile?.first_name ?? ""} ${userProfile?.last_name ?? ""}`.trim(),
+    metadata: { privacy_consent_version: PRIVACY_NOTICE_VERSION },
   }).catch(() => {});
 
   // Send confirmation email (non-fatal)

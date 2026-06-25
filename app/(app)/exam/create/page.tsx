@@ -220,6 +220,7 @@ export default function CreateExamPage() {
   const [stepHasError, setStepHasError] = useState(false);
   const [maxStep, setMaxStep] = useState(d?.step ?? 0);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const [draftReady, setDraftReady] = useState(false);
 
   // Reference data
@@ -634,6 +635,8 @@ export default function CreateExamPage() {
 
   // ── Final save ──
   const handleFinalSave = async () => {
+    if (savingRef.current) return; // re-entrancy guard: block double-submit
+    savingRef.current = true;
     setSaving(true);
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -671,6 +674,7 @@ export default function CreateExamPage() {
       notify({ type: "error", title: 'Creation Failed', message: (error as Error)?.message || 'Unable to create examination. Please try again.' });
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 
@@ -1379,6 +1383,7 @@ export default function CreateExamPage() {
   };
 
   const handleConfirmFinalSave = () => {
+    if (savingRef.current) return; // prevent stacking confirm modals on double-click
     modals.openConfirmModal({
       title: 'Create examination?',
       children: (
